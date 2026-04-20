@@ -31,7 +31,8 @@ export class DesktopShell {
   renderDesktop() {
     const desktop = this.refs.desktop;
     desktop.innerHTML = "";
-    this.os.fs.list("/Desktop").forEach((node) => {
+    const desktopPath = this.os.session.desktopPath || this.os.fs.join(this.os.session.home, "Desktop");
+    this.os.fs.list(desktopPath).forEach((node) => {
       desktop.appendChild(this.createIcon(node));
     });
   }
