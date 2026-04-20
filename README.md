@@ -34,6 +34,32 @@ src/
   styles/        default DindbOS theme
 ```
 
+## Virtual File System
+
+The demo now boots with a Linux-like tree:
+
+```text
+/
+  bin/                  shell commands
+  boot/                 runtime boot notes
+  dev/                  browser devices
+  etc/                  os-release, motd, shell config
+  home/guest/Desktop/   user desktop symlinks
+  lib/dindbos/          runtime docs
+  mnt/portfolio/        mounted portfolio projects and decks
+  proc/                 runtime status files
+  usr/share/applications/
+  var/log/
+```
+
+The desktop is rendered from `/home/guest/Desktop`, not from hard-coded buttons. Apps live under `/usr/share/applications`, and portfolio content is mounted under `/mnt/portfolio`.
+
+Terminal commands currently include:
+
+```text
+help, ls -l, tree, cd, pwd, open, cat, stat, readlink, apps, whoami, uname, neofetch, clear
+```
+
 ## Goal
 
 The goal is to make DindbOS.js useful as an open-source web desktop runtime, while this repository also serves as the canonical demo.
