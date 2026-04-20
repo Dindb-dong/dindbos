@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260420-node-compat";
+import { ShellSession } from "../shell.js?v=20260421-local-mount";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -160,9 +160,10 @@ function renderFiles(os, content, path, windowApi) {
   let selectedPath = currentPath;
   let clickTimer = null;
 
-  const draw = (nextPath, nextSelectedPath = null) => {
+  const draw = async (nextPath, nextSelectedPath = null) => {
     currentPath = os.fs.normalize(nextPath);
     if (!os.fs.resolve(currentPath)) currentPath = os.session.home || "/";
+    if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.syncDirectory(currentPath);
     selectedPath = nextSelectedPath ? os.fs.normalize(nextSelectedPath) : currentPath;
     const currentStat = os.fs.stat(currentPath);
     windowApi.setTitle(`Files - ${currentPath}`);
@@ -192,6 +193,7 @@ function renderFiles(os, content, path, windowApi) {
           <div class="files-toolbar">
             <button type="button" data-action="new-folder">New Folder</button>
             <button type="button" data-action="new-file">New File</button>
+            <button type="button" data-action="mount-local">Mount Local</button>
             <button type="button" data-action="delete">Delete</button>
           </div>
           <div class="files-column-view" role="tree">
@@ -206,7 +208,7 @@ function renderFiles(os, content, path, windowApi) {
                       type="button"
                       class="files-row ${isSelected ? "is-selected" : ""}"
                       data-path="${escapeAttr(entry.path)}"
-                      data-openable="${resolved.type === "directory" ? "false" : "true"}"
+                      data-openable="${resolved.type === "directory" || resolved.type === "mount" ? "false" : "true"}"
                       data-icon="${escapeAttr(entry.icon || resolved.icon || resolved.type)}"
                     >
                       <span class="dos-mini-icon"></span>
@@ -237,7 +239,7 @@ function renderFiles(os, content, path, windowApi) {
         clickTimer = window.setTimeout(() => {
           const node = os.fs.resolve(button.dataset.path) || os.fs.lstat(button.dataset.path);
           const resolved = os.fs.resolveNode(node);
-          if (resolved.type === "directory") {
+          if (resolved.type === "directory" || resolved.type === "mount") {
             draw(button.dataset.path, button.dataset.path);
             return;
           }
@@ -250,10 +252,10 @@ function renderFiles(os, content, path, windowApi) {
       });
     });
     content.querySelectorAll("[data-action]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         try {
-          handleFileAction(os, currentPath, selectedPath, button.dataset.action);
-          draw(currentPath, currentPath);
+          const nextPath = await handleFileAction(os, currentPath, selectedPath, button.dataset.action);
+          draw(nextPath || currentPath, nextPath || currentPath);
         } catch (error) {
           windowApi.setTitle(`Files - ${error.message}`);
         }
@@ -288,6 +290,7 @@ function isWithinPath(path, rootPath) {
 
 function rowKind(os, entry, stat) {
   if (os.fs.isLink(entry)) return `alias -> ${entry.target}`;
+  if (entry.type === "mount") return "mounted folder";
   if (entry.type === "directory") return "folder";
   if (entry.type === "app") return "application";
   return stat?.mime || entry.type;
@@ -309,19 +312,37 @@ function renderInspector(stat) {
   `;
 }
 
-function handleFileAction(os, currentPath, selectedPath, action) {
+async function handleFileAction(os, currentPath, selectedPath, action) {
+  if (action === "mount-local") {
+    if (!os.localMounts?.supported()) throw new Error("File System Access API is not available");
+    const mount = await os.localMounts.mountLocal();
+    return mount.path;
+  }
   if (action === "new-folder") {
+    if (os.localMounts?.isMountedPath(currentPath)) {
+      await os.localMounts.createDirectory(uniquePath(os, currentPath, "untitled-folder"));
+      return currentPath;
+    }
     os.fs.createDirectory(uniquePath(os, currentPath, "untitled-folder"));
     return;
   }
   if (action === "new-file") {
+    if (os.localMounts?.isMountedPath(currentPath)) {
+      await os.localMounts.writeFile(uniquePath(os, currentPath, "untitled.txt"), "");
+      return currentPath;
+    }
     os.fs.createFile(uniquePath(os, currentPath, "untitled.txt"), "/", { content: "" });
     return;
   }
   if (action === "delete") {
     if (selectedPath === "/" || selectedPath === currentPath) throw new Error("Select an item to delete");
+    if (os.localMounts?.isMountedPath(selectedPath)) {
+      await os.localMounts.remove(selectedPath, "/", { recursive: true });
+      return currentPath;
+    }
     os.fs.remove(selectedPath, "/", { recursive: true });
   }
+  return currentPath;
 }
 
 function uniquePath(os, directory, name) {
@@ -474,6 +495,7 @@ function renderSettings(os, content) {
   const processes = safeRead(() => os.processes.list(), []);
   const storage = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
   const packages = safeRead(() => os.packages.list(), []);
+  const mounts = ["/", "/mnt/portfolio", ...safeRead(() => os.localMounts.listMounts().map((mount) => mount.path), [])];
   content.innerHTML = `
     <section class="settings-app">
       <p class="dos-kicker">System</p>
@@ -486,7 +508,7 @@ function renderSettings(os, content) {
         <div><dt>Processes</dt><dd>${processes.length}</dd></div>
         <div><dt>Storage</dt><dd>${escapeHtml(storage.backend || "memory")} · ${storage.persisted ? `${formatBytes(storage.bytes)} saved` : "not saved"}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(os.fs.join(os.session.home || "/home/guest", "Desktop"))}</dd></div>
-        <div><dt>Mounts</dt><dd>/, /mnt/portfolio</dd></div>
+        <div><dt>Mounts</dt><dd>${escapeHtml(mounts.join(", "))}</dd></div>
       </dl>
     </section>
   `;

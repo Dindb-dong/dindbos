@@ -34,6 +34,7 @@ export const demoFileSystem = directory("", [
     command("history", "Show shell command history"),
     command("ls", "List directory contents"),
     command("mkdir", "Create directories"),
+    command("mount-local", "Mount a user-selected local folder"),
     command("mv", "Move or rename files"),
     command("node", "Run CommonJS JavaScript files"),
     command("npm", "Install pure JavaScript npm packages into node_modules"),
@@ -44,6 +45,7 @@ export const demoFileSystem = directory("", [
     command("stat", "Show file metadata"),
     command("touch", "Create files or update timestamps"),
     command("tree", "Render a directory tree"),
+    command("umount", "Unmount a local folder"),
   ]),
   directory("boot", [
     file("dindbos-kernel.md", "text/markdown", [
@@ -219,11 +221,13 @@ export const demoFileSystem = directory("", [
     directory("bin", [
       symlink("cat", "/bin/cat", "terminal"),
       symlink("ls", "/bin/ls", "terminal"),
+      symlink("mount-local", "/bin/mount-local", "terminal"),
       symlink("node", "/bin/node", "terminal"),
       symlink("npm", "/bin/npm", "terminal"),
       symlink("open", "/bin/open", "terminal"),
       symlink("pkg", "/bin/pkg", "terminal"),
       symlink("tree", "/bin/tree", "terminal"),
+      symlink("umount", "/bin/umount", "terminal"),
     ]),
     directory("share", [
       directory("applications", [

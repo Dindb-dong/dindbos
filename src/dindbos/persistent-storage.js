@@ -55,6 +55,27 @@ export class PersistentStorage {
     return { ...this.lastStatus };
   }
 
+  async estimate() {
+    const estimate = await globalThis.navigator?.storage?.estimate?.();
+    const persisted = await globalThis.navigator?.storage?.persisted?.();
+    this.lastStatus = {
+      ...this.lastStatus,
+      usage: estimate?.usage ?? this.lastStatus.bytes,
+      quota: estimate?.quota ?? 0,
+      persistentPermission: Boolean(persisted),
+    };
+    return this.status();
+  }
+
+  async persist() {
+    const granted = await globalThis.navigator?.storage?.persist?.();
+    this.lastStatus = {
+      ...this.lastStatus,
+      persistentPermission: Boolean(granted),
+    };
+    return this.status();
+  }
+
   async read(key) {
     if (this.indexedDB) {
       try {

@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-node-compat";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-local-mount";
 
 export class AppRegistry {
   constructor(os) {

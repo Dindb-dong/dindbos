@@ -147,6 +147,29 @@ export class VirtualFileSystem {
     return this.withPath(node, normalized);
   }
 
+  createMount(path, options = {}, principal = this.systemPrincipal) {
+    const normalized = this.normalize(path);
+    if (this.exists(normalized)) throw new Error(`mount: ${normalized}: file exists`);
+    const parent = this.parentFor(normalized);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
+    const node = this.createNode({
+      name: this.basename(normalized),
+      type: "mount",
+      icon: options.icon || "folder",
+      mountType: options.mountType || "local-folder",
+      handleName: options.handleName || this.basename(normalized),
+      transient: true,
+      children: [],
+      permissions: options.permissions || "drwxrwxrwx",
+      owner: options.owner || "guest",
+      group: options.group || "users",
+    });
+    parent.children.push(node);
+    this.emitChange("mount", normalized);
+    return this.withPath(node, normalized);
+  }
+
   remove(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
     const normalized = this.normalize(path, cwd);
     if (normalized === "/") throw new Error("rm: cannot remove root");
@@ -154,7 +177,7 @@ export class VirtualFileSystem {
     if (!node) throw new Error(`rm: ${path}: no such file or directory`);
     this.assertAccess(parent, "write", principal, parent.path);
     this.assertAccess(parent, "execute", principal, parent.path);
-    if (node.type === "directory" && node.children?.length && !options.recursive) {
+    if ((node.type === "directory" || node.type === "mount") && node.children?.length && !options.recursive) {
       throw new Error(`rm: ${path}: directory not empty`);
     }
     parent.children.splice(index, 1);
@@ -166,8 +189,8 @@ export class VirtualFileSystem {
     const source = this.resolve(sourcePath, cwd);
     if (!source) throw new Error(`cp: ${sourcePath}: no such file or directory`);
     this.assertAccess(source, "read", principal, source.path);
-    if (source.type === "directory") this.assertAccess(source, "execute", principal, source.path);
-    if (source.type === "directory" && !options.recursive) throw new Error(`cp: ${sourcePath}: is a directory`);
+    if (source.type === "directory" || source.type === "mount") this.assertAccess(source, "execute", principal, source.path);
+    if ((source.type === "directory" || source.type === "mount") && !options.recursive) throw new Error(`cp: ${sourcePath}: is a directory`);
     const destination = this.resolve(destinationPath, cwd);
     const destinationPathNormalized = destination?.type === "directory"
       ? this.join(destination.path, source.name)
@@ -336,7 +359,7 @@ export class VirtualFileSystem {
       path,
       name: node.name,
       type: node.type,
-      resolvedType: resolved.type,
+      resolvedType: node.type === "mount" ? "directory" : resolved.type,
       target: node.target || "",
       mime: resolved.mime || mimeForNode(resolved),
       permissions: node.permissions || resolved.permissions || defaultPermissions(node),
@@ -349,14 +372,14 @@ export class VirtualFileSystem {
 }
 
 function sortNodes(a, b) {
-  const aRank = a.type === "directory" ? 0 : 1;
-  const bRank = b.type === "directory" ? 0 : 1;
+  const aRank = a.type === "directory" || a.type === "mount" ? 0 : 1;
+  const bRank = b.type === "directory" || b.type === "mount" ? 0 : 1;
   if (aRank !== bRank) return aRank - bRank;
   return a.name.localeCompare(b.name);
 }
 
 function defaultPermissions(node) {
-  if (node.type === "directory") return "drwxr-xr-x";
+  if (node.type === "directory" || node.type === "mount") return "drwxr-xr-x";
   if (node.type === "app") return "-rwxr-xr-x";
   if (node.type === "link" || node.type === "symlink") return "lrwxrwxrwx";
   return "-rw-r--r--";
@@ -369,7 +392,7 @@ function normalizePermissions(value, node) {
 }
 
 function typePrefix(node) {
-  if (node.type === "directory") return "d";
+  if (node.type === "directory" || node.type === "mount") return "d";
   if (node.type === "link" || node.type === "symlink") return "l";
   if (node.type === "device") return "c";
   return "-";
@@ -383,7 +406,7 @@ function octalToPermissions(octal) {
 }
 
 function mimeForNode(node) {
-  if (node.type === "directory") return "inode/directory";
+  if (node.type === "directory" || node.type === "mount") return "inode/directory";
   if (node.type === "app") return "application/x-dindbos-app";
   return "application/octet-stream";
 }
@@ -401,9 +424,12 @@ function cloneNode(node) {
 
 function cloneForSnapshot(node) {
   const { path, ...snapshot } = node;
+  const children = node.children
+    ?.filter((child) => !child.transient)
+    .map((child) => cloneForSnapshot(child));
   return {
     ...snapshot,
-    children: node.children?.map((child) => cloneForSnapshot(child)),
+    children,
   };
 }
 

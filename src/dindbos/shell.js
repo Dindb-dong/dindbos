@@ -16,6 +16,7 @@ const BUILTIN_MANUALS = {
   manifest: "manifest [app] - show app manifests",
   mkdir: "mkdir [-p] <path> - create directories",
   mount: "mount - print mounted virtual filesystems",
+  "mount-local": "mount-local [name] - mount a user-selected local folder under /mnt",
   mv: "mv <source> <destination> - move or rename files",
   node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
@@ -27,9 +28,10 @@ const BUILTIN_MANUALS = {
   rm: "rm [-r] <path> - remove files or directories",
   shell: "shell syntax - use command chaining with &&, ||, ; plus pipes and redirection",
   stat: "stat [path] - show file metadata",
-  storage: "storage - show persistence backend status",
+  storage: "storage [persist] - show quota status or request persistent storage",
   touch: "touch <path> - create or update a file",
   tree: "tree [path] - render a directory tree",
+  umount: "umount <path> - unmount a local folder",
   which: "which <command> - locate a command through PATH",
 };
 
@@ -164,7 +166,10 @@ export class ShellSession {
     let output = await this.dispatchAsync(command, args, stdin);
     if (redirect.target) {
       const value = output.endsWith("\n") ? output : `${output}\n`;
-      if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd);
+      if (this.isLocalPath(redirect.target)) {
+        if (redirect.append) await this.os.localMounts.appendFile(redirect.target, value, this.cwd);
+        else await this.os.localMounts.writeFile(redirect.target, value, this.cwd);
+      } else if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd);
       else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd);
       output = "";
     }
@@ -182,7 +187,7 @@ export class ShellSession {
     if (command === "cd") return this.cd(args[0] || this.env.HOME);
     if (command === "ls") return this.ls(args);
     if (command === "tree") return this.tree(args[0] || this.cwd);
-    if (command === "cat") return args.length ? this.os.fs.readFile(args[0], this.cwd) : stdin;
+    if (command === "cat") return args.length ? this.readFile(args[0]) : stdin;
     if (command === "grep") return this.grep(args, stdin);
     if (command === "echo") return args.join(" ");
     if (command === "mkdir") return this.mkdir(args);
@@ -191,7 +196,7 @@ export class ShellSession {
     if (command === "cp") return this.cp(args);
     if (command === "mv") return this.mv(args);
     if (command === "chmod") return this.chmod(args);
-    if (command === "stat") return formatStat(this.os.fs.stat(args[0] || this.cwd, this.cwd));
+    if (command === "stat") return this.stat(args[0] || this.cwd);
     if (command === "readlink") return this.os.fs.lstat(args[0] || this.cwd, this.cwd)?.target || "";
     if (command === "find") return this.find(args);
     if (command === "open") {
@@ -200,10 +205,12 @@ export class ShellSession {
     }
     if (command === "apps") return this.os.apps.list().map((app) => `${app.id} - ${app.name}`).join("\n");
     if (command === "manifest") return this.manifest(args[0]);
+    if (command === "mount-local") return this.mountLocal(args);
+    if (command === "umount") return this.umount(args);
     if (command === "pkg") return this.pkg(args);
     if (command === "ps") return this.os.processes.table();
     if (command === "kill") return this.kill(args);
-    if (command === "storage") return formatStorage(this.os.storage.status());
+    if (command === "storage") return this.storage(args);
     if (command === "resetfs") return this.resetFileSystem();
     if (command === "whoami") return this.env.USER;
     if (command === "id") return `uid=${this.env.USER} gid=${(this.os.session.groups || ["users"]).join(",")}`;
@@ -222,6 +229,14 @@ export class ShellSession {
   }
 
   cd(path) {
+    if (this.isLocalPath(path)) {
+      return this.os.localMounts.stat(path, this.cwd).then((stat) => {
+        if (!stat || (stat.resolvedType !== "directory" && stat.type !== "mount")) throw new Error(`cd: no such directory: ${path}`);
+        this.cwd = this.os.fs.normalize(path, this.cwd);
+        this.env.PWD = this.cwd;
+        return "";
+      });
+    }
     const next = this.os.fs.resolve(path, this.cwd);
     if (next?.type !== "directory") throw new Error(`cd: no such directory: ${path}`);
     this.cwd = next.path;
@@ -233,6 +248,13 @@ export class ShellSession {
     const long = args.includes("-l") || args.includes("-la") || args.includes("-al");
     const showAll = args.includes("-a") || args.includes("-la") || args.includes("-al");
     const path = args.find((arg) => !arg.startsWith("-")) || this.cwd;
+    if (this.isLocalPath(path)) {
+      return this.os.localMounts.list(path, this.cwd)
+        .then((entries) => {
+          const visible = entries.filter((entry) => showAll || !entry.name.startsWith("."));
+          return long ? visible.map((entry) => formatLocalLsEntry(entry)).join("\n") : visible.map((entry) => entry.name).join("  ");
+        });
+    }
     const entries = this.os.fs.list(path, this.cwd).filter((entry) => showAll || !entry.name.startsWith("."));
     if (!long) return entries.map((entry) => entry.name).join("  ");
     return entries.map((entry) => formatLsEntry(this.os, entry)).join("\n");
@@ -256,14 +278,23 @@ export class ShellSession {
   grep(args, stdin) {
     const [needle, filePath] = args;
     if (!needle) return "grep: usage: grep <text> [file]";
+    if (filePath && this.isLocalPath(filePath)) {
+      return this.os.localMounts.readFile(filePath, this.cwd)
+        .then((content) => filterGrep(content, needle));
+    }
     const content = filePath ? this.os.fs.readFile(filePath, this.cwd) : stdin;
-    return content.split("\n").filter((line) => line.toLowerCase().includes(needle.toLowerCase())).join("\n");
+    return filterGrep(content, needle);
   }
 
   mkdir(args) {
     const parents = args.includes("-p");
     const paths = args.filter((arg) => !arg.startsWith("-"));
     if (!paths.length) throw new Error("mkdir: missing operand");
+    if (paths.some((path) => this.isLocalPath(path))) {
+      return Promise.all(paths.map((path) => this.isLocalPath(path)
+        ? this.os.localMounts.createDirectory(path, this.cwd, { parents })
+        : parents ? this.createParents(path) : this.os.fs.createDirectory(path, this.cwd))).then(() => "");
+    }
     paths.forEach((path) => parents ? this.createParents(path) : this.os.fs.createDirectory(path, this.cwd));
     return "";
   }
@@ -280,6 +311,9 @@ export class ShellSession {
   touch(args) {
     const paths = args.filter((arg) => !arg.startsWith("-"));
     if (!paths.length) throw new Error("touch: missing file operand");
+    if (paths.some((path) => this.isLocalPath(path))) {
+      return Promise.all(paths.map((path) => this.touchOne(path))).then(() => "");
+    }
     paths.forEach((path) => {
       const existing = this.os.fs.resolve(path, this.cwd);
       if (existing?.type === "directory") throw new Error(`touch: ${path}: is a directory`);
@@ -293,6 +327,22 @@ export class ShellSession {
     const force = args.includes("-f") || args.includes("-rf") || args.includes("-fr");
     const paths = args.filter((arg) => !arg.startsWith("-"));
     if (!paths.length) throw new Error("rm: missing operand");
+    if (paths.some((path) => this.isLocalPath(path))) {
+      return Promise.all(paths.map((path) => {
+        if (this.isLocalPath(path)) {
+          return this.os.localMounts.remove(path, this.cwd, { recursive }).catch((error) => {
+            if (!force) throw error;
+          });
+        }
+        try {
+          this.os.fs.remove(path, this.cwd, { recursive });
+          return Promise.resolve();
+        } catch (error) {
+          if (!force) throw error;
+          return Promise.resolve();
+        }
+      })).then(() => "");
+    }
     paths.forEach((path) => {
       try {
         this.os.fs.remove(path, this.cwd, { recursive });
@@ -307,6 +357,7 @@ export class ShellSession {
     const recursive = args.includes("-r") || args.includes("-R");
     const operands = args.filter((arg) => !arg.startsWith("-"));
     if (operands.length < 2) throw new Error("cp: missing source or destination");
+    if (this.isLocalPath(operands[0]) || this.isLocalPath(operands[1])) return this.copyWithLocal(operands[0], operands[1], { recursive });
     this.os.fs.copy(operands[0], operands[1], this.cwd, { recursive });
     return "";
   }
@@ -314,6 +365,13 @@ export class ShellSession {
   mv(args) {
     const operands = args.filter((arg) => !arg.startsWith("-"));
     if (operands.length < 2) throw new Error("mv: missing source or destination");
+    if (this.isLocalPath(operands[0]) || this.isLocalPath(operands[1])) {
+      return this.copyWithLocal(operands[0], operands[1], { recursive: true })
+        .then(() => this.isLocalPath(operands[0])
+          ? this.os.localMounts.remove(operands[0], this.cwd, { recursive: true })
+          : this.os.fs.remove(operands[0], this.cwd, { recursive: true }))
+        .then(() => "");
+    }
     this.os.fs.move(operands[0], operands[1], this.cwd);
     return "";
   }
@@ -451,6 +509,11 @@ export class ShellSession {
     return "npm: usage: npm install <package...> | npm root";
   }
 
+  storage(args) {
+    if (args[0] === "persist") return this.os.storage.persist().then(formatStorage);
+    return this.os.storage.estimate().then(formatStorage);
+  }
+
   node(args) {
     const { inputType, rest } = parseNodeOptions(args);
     if (rest[0] === "-e" || rest[0] === "--eval") {
@@ -461,6 +524,85 @@ export class ShellSession {
     const [file, ...argv] = rest;
     if (!file) return "node: usage: node [--input-type=module] [-e code] <file>";
     return Promise.resolve(this.os.node.runFile(file, this.cwd, { argv, inputType })).then(formatNodeResult);
+  }
+
+  readFile(path) {
+    if (this.isLocalPath(path)) return this.os.localMounts.readFile(path, this.cwd);
+    return this.os.fs.readFile(path, this.cwd);
+  }
+
+  stat(path) {
+    if (this.isLocalPath(path)) return this.os.localMounts.stat(path, this.cwd).then(formatStat);
+    return formatStat(this.os.fs.stat(path, this.cwd));
+  }
+
+  async touchOne(path) {
+    if (this.isLocalPath(path)) {
+      const existing = await this.os.localMounts.exists(path, this.cwd);
+      if (!existing) {
+        await this.os.localMounts.writeFile(path, "", this.cwd);
+        return;
+      }
+      const stat = await this.os.localMounts.stat(path, this.cwd);
+      if (stat?.resolvedType === "directory") throw new Error(`touch: ${path}: is a directory`);
+      await this.os.localMounts.writeFile(path, await this.os.localMounts.readFile(path, this.cwd), this.cwd);
+      return;
+    }
+    const existing = this.os.fs.resolve(path, this.cwd);
+    if (existing?.type === "directory") throw new Error(`touch: ${path}: is a directory`);
+    this.os.fs.writeOrCreateFile(path, existing ? this.os.fs.readFile(path, this.cwd) : "", this.cwd);
+  }
+
+  async copyWithLocal(sourcePath, destinationPath, options = {}) {
+    const sourceLocal = this.isLocalPath(sourcePath);
+    const destinationLocal = this.isLocalPath(destinationPath);
+    if (sourceLocal) {
+      const stat = await this.os.localMounts.stat(sourcePath, this.cwd);
+      if (stat?.resolvedType === "directory") throw new Error(`cp: ${sourcePath}: local directory copy is pending`);
+    } else {
+      const source = this.os.fs.resolve(sourcePath, this.cwd);
+      if (!source) throw new Error(`cp: ${sourcePath}: no such file or directory`);
+      if (source.type === "directory" && !options.recursive) throw new Error(`cp: ${sourcePath}: is a directory`);
+      if (source.type === "directory") throw new Error(`cp: ${sourcePath}: local directory copy is pending`);
+    }
+    const content = sourceLocal
+      ? await this.os.localMounts.readFile(sourcePath, this.cwd)
+      : this.os.fs.readFile(sourcePath, this.cwd);
+    const sourceName = this.os.fs.basename(this.os.fs.normalize(sourcePath, this.cwd));
+    if (destinationLocal) {
+      const target = await this.localDestinationPath(destinationPath, sourceName);
+      await this.os.localMounts.writeFile(target, content, this.cwd);
+      return "";
+    }
+    const destination = this.os.fs.resolve(destinationPath, this.cwd);
+    const target = destination?.type === "directory"
+      ? this.os.fs.join(destination.path, sourceName)
+      : this.os.fs.normalize(destinationPath, this.cwd);
+    this.os.fs.writeOrCreateFile(target, content);
+    return "";
+  }
+
+  async localDestinationPath(destinationPath, sourceName) {
+    const normalized = this.os.fs.normalize(destinationPath, this.cwd);
+    if (await this.os.localMounts.exists(normalized)) {
+      const stat = await this.os.localMounts.stat(normalized);
+      if (stat?.resolvedType === "directory" || stat?.type === "mount") return this.os.fs.join(normalized, sourceName);
+    }
+    return normalized;
+  }
+
+  mountLocal(args) {
+    const [name] = args;
+    if (!this.os.localMounts?.supported()) return "mount-local: File System Access API is not available in this browser";
+    return this.os.localMounts.mountLocal(name)
+      .then((mount) => `mounted ${mount.handleName} at ${mount.path}`);
+  }
+
+  umount(args) {
+    const [path] = args;
+    if (!path) return "umount: usage: umount <path>";
+    const mount = this.os.localMounts.unmount(this.os.fs.normalize(path, this.cwd));
+    return `unmounted ${mount.path}`;
   }
 
   kill(args) {
@@ -505,10 +647,16 @@ export class ShellSession {
 
   mount() {
     try {
-      return this.os.fs.readFile("/proc/mounts");
+      const base = this.os.fs.readFile("/proc/mounts").trim().split("\n").filter(Boolean);
+      const localLines = this.os.localMounts?.mountLines?.() || [];
+      return [...base, ...localLines].join("\n");
     } catch {
       return "rootfs / virtualfs rw 0 0";
     }
+  }
+
+  isLocalPath(path) {
+    return Boolean(this.os.localMounts?.isMountedPath(path, this.cwd));
   }
 }
 
@@ -607,6 +755,17 @@ function formatLsEntry(os, node) {
   return `${stat.permissions} ${stat.owner.padEnd(5)} ${stat.group.padEnd(5)} ${String(stat.size).padStart(6)} ${node.name}${target}`;
 }
 
+function formatLocalLsEntry(node) {
+  const permissions = node.permissions || (node.type === "directory" ? "drwxrwxrwx" : "-rw-rw-rw-");
+  const owner = node.owner || "guest";
+  const group = node.group || "users";
+  return `${permissions} ${owner.padEnd(5)} ${group.padEnd(5)} ${String(node.size || 0).padStart(6)} ${node.name}`;
+}
+
+function filterGrep(content, needle) {
+  return String(content).split("\n").filter((line) => line.toLowerCase().includes(needle.toLowerCase())).join("\n");
+}
+
 function formatStat(stat) {
   if (!stat) return "stat: no such file or directory";
   return [
@@ -626,7 +785,10 @@ function formatStorage(status) {
     `backend=${status.backend || "memory"}`,
     `enabled=${status.enabled}`,
     `persisted=${status.persisted}`,
+    `persistentPermission=${status.persistentPermission || false}`,
     `bytes=${status.bytes}`,
+    `usage=${status.usage ?? status.bytes}`,
+    `quota=${status.quota || 0}`,
   ].join("\n");
 }
 

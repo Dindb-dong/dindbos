@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-node-compat";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-local-mount";
 
 export class AppSandbox {
   constructor(os, process) {

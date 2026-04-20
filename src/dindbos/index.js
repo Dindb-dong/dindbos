@@ -1,15 +1,16 @@
-import { AppRegistry } from "./app-registry.js?v=20260420-node-compat";
-import { AppSandbox } from "./app-sandbox.js?v=20260420-node-compat";
-import { DesktopShell } from "./desktop-shell.js?v=20260420-node-compat";
-import { EventBus } from "./event-bus.js?v=20260420-node-compat";
-import { NodeCompat } from "./node-compat.js?v=20260420-node-compat";
-import { NpmInstaller } from "./npm-installer.js?v=20260420-node-compat";
-import { PackageManager } from "./package-manager.js?v=20260420-node-compat";
-import { PermissionPolicy } from "./permission-policy.js?v=20260420-node-compat";
-import { PersistentStorage } from "./persistent-storage.js?v=20260420-node-compat";
-import { ProcessManager } from "./process-manager.js?v=20260420-node-compat";
-import { VirtualFileSystem } from "./vfs.js?v=20260420-node-compat";
-import { WindowManager } from "./window-manager.js?v=20260420-node-compat";
+import { AppRegistry } from "./app-registry.js?v=20260421-local-mount";
+import { AppSandbox } from "./app-sandbox.js?v=20260421-local-mount";
+import { DesktopShell } from "./desktop-shell.js?v=20260421-local-mount";
+import { EventBus } from "./event-bus.js?v=20260421-local-mount";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-local-mount";
+import { NodeCompat } from "./node-compat.js?v=20260421-local-mount";
+import { NpmInstaller } from "./npm-installer.js?v=20260421-local-mount";
+import { PackageManager } from "./package-manager.js?v=20260421-local-mount";
+import { PermissionPolicy } from "./permission-policy.js?v=20260421-local-mount";
+import { PersistentStorage } from "./persistent-storage.js?v=20260421-local-mount";
+import { ProcessManager } from "./process-manager.js?v=20260421-local-mount";
+import { VirtualFileSystem } from "./vfs.js?v=20260421-local-mount";
+import { WindowManager } from "./window-manager.js?v=20260421-local-mount";
 
 export class DindbOS {
   constructor(options) {
@@ -27,6 +28,7 @@ export class DindbOS {
     this.packages = new PackageManager(this);
     this.npm = new NpmInstaller(this);
     this.node = new NodeCompat(this);
+    this.localMounts = new LocalFolderMountManager(this, options.localMounts || {});
   }
 
   createFileSystem(rootNode) {
@@ -83,7 +85,7 @@ export class DindbOS {
   openNode(node, context = {}) {
     if (!node) return null;
     const resolved = this.fs.resolveNode(node);
-    if (resolved.type === "directory") {
+    if (resolved.type === "directory" || resolved.type === "mount") {
       return this.launch("files", { path: resolved.path });
     }
     if (resolved.type === "app") {
@@ -93,4 +95,4 @@ export class DindbOS {
   }
 }
 
-export { AppRegistry, AppSandbox, DesktopShell, EventBus, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
+export { AppRegistry, AppSandbox, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
