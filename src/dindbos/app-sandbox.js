@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-shell-indexeddb";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-shell-chaining";
 
 export class AppSandbox {
   constructor(os, process) {

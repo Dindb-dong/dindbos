@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-shell-indexeddb";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-shell-chaining";
 
 export class AppRegistry {
   constructor(os) {

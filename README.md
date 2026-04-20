@@ -68,6 +68,7 @@ export, env, which, man, chmod, df, mount, manifest, ps, kill, storage, resetfs
 ```
 
 Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
+Shell syntax supports command chaining with `&&`, `||`, and `;`, plus pipes and redirection.
 
 ## Runtime Kernel
 

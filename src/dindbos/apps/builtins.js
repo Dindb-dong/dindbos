@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260420-shell-indexeddb";
+import { ShellSession } from "../shell.js?v=20260420-shell-chaining";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({

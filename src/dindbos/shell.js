@@ -22,6 +22,7 @@ const BUILTIN_MANUALS = {
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
   rm: "rm [-r] <path> - remove files or directories",
+  shell: "shell syntax - use command chaining with &&, ||, ; plus pipes and redirection",
   stat: "stat [path] - show file metadata",
   storage: "storage - show persistence backend status",
   touch: "touch <path> - create or update a file",
@@ -66,9 +67,30 @@ export class ShellSession {
     this.history.push(line);
     this.historyIndex = this.history.length;
     const expanded = expandVariables(line, this.env);
-    const pipeline = splitPipeline(expanded);
+    const commands = splitCommandList(expanded);
+    const output = [];
+    let previousStatus = 0;
+    for (const item of commands) {
+      if (!shouldExecute(item.operator, previousStatus)) continue;
+      let result;
+      try {
+        result = this.executePipeline(item.command);
+        previousStatus = result.status;
+      } catch (error) {
+        result = { output: error.message, clear: false, reload: false, status: 1 };
+        previousStatus = 1;
+      }
+      if (result.clear) return { output: "", clear: true, reload: false, status: previousStatus };
+      if (result.output) output.push(result.output);
+      if (result.reload) return { ...result, output: output.join("\n") };
+    }
+    return { output: output.join("\n"), clear: false, reload: false, status: previousStatus };
+  }
+
+  executePipeline(commandLine) {
+    const pipeline = splitPipeline(commandLine);
     let stdin = "";
-    let result = { output: "", clear: false, reload: false };
+    let result = { output: "", clear: false, reload: false, status: 0 };
     for (const segment of pipeline) {
       result = this.executeSegment(segment, stdin);
       stdin = result.output;
@@ -81,7 +103,7 @@ export class ShellSession {
     const redirect = extractRedirect(segment);
     const tokens = tokenizeCommand(redirect.command);
     const [command, ...args] = tokens;
-    if (!command) return { output: stdin, clear: false, reload: false };
+    if (!command) return { output: stdin, clear: false, reload: false, status: 0 };
     let output = this.dispatch(command, args, stdin);
     if (redirect.target) {
       const value = output.endsWith("\n") ? output : `${output}\n`;
@@ -89,7 +111,7 @@ export class ShellSession {
       else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd);
       output = "";
     }
-    return { output, clear: command === "clear", reload: command === "resetfs" };
+    return { output, clear: command === "clear", reload: command === "resetfs", status: 0 };
   }
 
   dispatch(command, args, stdin = "") {
@@ -335,6 +357,56 @@ function extractRedirect(segment) {
     target: tokens[index + 1] || "",
     append: appendIndex >= 0,
   };
+}
+
+function splitCommandList(line) {
+  const commands = [];
+  let current = "";
+  let quote = "";
+  let operator = null;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if ((char === "\"" || char === "'") && !quote) {
+      quote = char;
+    } else if (char === quote) {
+      quote = "";
+    }
+    if (!quote && char === "&" && next === "&") {
+      pushCommand(commands, operator, current);
+      operator = "&&";
+      current = "";
+      index += 1;
+      continue;
+    }
+    if (!quote && char === "|" && next === "|") {
+      pushCommand(commands, operator, current);
+      operator = "||";
+      current = "";
+      index += 1;
+      continue;
+    }
+    if (!quote && char === ";") {
+      pushCommand(commands, operator, current);
+      operator = ";";
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  pushCommand(commands, operator, current);
+  return commands;
+}
+
+function pushCommand(commands, operator, command) {
+  const trimmed = command.trim();
+  if (trimmed) commands.push({ operator, command: trimmed });
+}
+
+function shouldExecute(operator, previousStatus) {
+  if (operator === "&&") return previousStatus === 0;
+  if (operator === "||") return previousStatus !== 0;
+  return true;
 }
 
 function splitPipeline(line) {
