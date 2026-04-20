@@ -232,12 +232,31 @@ export class LocalFolderMountManager {
     return file.text();
   }
 
+  async readFileBytes(path, cwd = "/") {
+    const normalized = this.os.fs.normalize(path, cwd);
+    const { parentHandle, name } = await this.parentHandleFor(normalized);
+    const handle = await parentHandle.getFileHandle(name);
+    const file = await handle.getFile();
+    return new Uint8Array(await file.arrayBuffer());
+  }
+
   async writeFile(path, content, cwd = "/") {
     const normalized = this.os.fs.normalize(path, cwd);
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
     await writable.write(content);
+    await writable.close();
+    await this.syncDirectory(this.os.fs.dirname(normalized));
+    return this.stat(normalized);
+  }
+
+  async writeFileBytes(path, bytes, cwd = "/", options = {}) {
+    const normalized = this.os.fs.normalize(path, cwd);
+    const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
+    const handle = await parentHandle.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
     await writable.close();
     await this.syncDirectory(this.os.fs.dirname(normalized));
     return this.stat(normalized);
@@ -441,7 +460,10 @@ function mimeFromName(name) {
   if (/\.json$/i.test(name)) return "application/json";
   if (/\.html?$/i.test(name)) return "text/html";
   if (/\.pdf$/i.test(name)) return "application/pdf";
-  if (/\.(png|jpe?g|gif|webp)$/i.test(name)) return "image/*";
+  if (/\.png$/i.test(name)) return "image/png";
+  if (/\.jpe?g$/i.test(name)) return "image/jpeg";
+  if (/\.gif$/i.test(name)) return "image/gif";
+  if (/\.webp$/i.test(name)) return "image/webp";
   return "text/plain";
 }
 

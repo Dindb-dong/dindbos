@@ -292,11 +292,16 @@ class CommonJsRuntime {
   createFsModule() {
     return {
       readFileSync: (path, encoding = null) => {
-        const content = this.os.fs.readFile(path, this.processContext.cwd, this.node.system);
-        if (encoding === "utf8" || encoding === "utf-8" || encoding?.encoding) return content;
-        return this.buffer.from(content);
+        if (encoding === "utf8" || encoding === "utf-8" || encoding?.encoding) {
+          return this.os.fs.readFile(path, this.processContext.cwd, this.node.system);
+        }
+        return this.buffer.from(this.os.fs.readFileBytes(path, this.processContext.cwd, this.node.system));
       },
       writeFileSync: (path, data) => {
+        if (data instanceof Uint8Array) {
+          this.os.fs.writeOrCreateFileBytes(path, data, this.processContext.cwd, {}, this.node.system);
+          return;
+        }
         this.os.fs.writeOrCreateFile(path, stringifyFileData(data), this.processContext.cwd, {}, this.node.system);
       },
       existsSync: (path) => this.os.fs.exists(path, this.processContext.cwd),

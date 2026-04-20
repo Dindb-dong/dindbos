@@ -1,3 +1,5 @@
+import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260421-binary-io";
+
 const STORAGE_VERSION = 2;
 const STORE_NAME = "kv";
 const FILE_RECORD_FORMAT = "opfs-file-records";
@@ -309,10 +311,10 @@ export class PersistentStorage {
     const ref = stableInodeRef(nodePath);
     let metadata;
     if (node.type === "file") {
-      const text = String(content ?? "");
-      const contentRef = contentRecordRef(text);
+      const recordContent = serializeFileContentRecord(content);
+      const contentRef = contentRecordRef(recordContent);
       const contentKey = this.fileRecordKey(contentRef);
-      const size = byteLength(text);
+      const size = fileContentByteLength(content);
       if (!fileRecordsByRef.has(contentRef)) {
         fileRecordsByRef.set(contentRef, {
           ref: contentRef,
@@ -320,14 +322,14 @@ export class PersistentStorage {
           path: nodePath,
           size,
           hash: contentRef,
-          content: text,
+          content: recordContent,
         });
       }
       metadata = {
         ...snapshot,
         size,
         contentRef,
-        contentEncoding: "utf-8",
+        contentEncoding: "dindbos-content-record-v1",
       };
     } else {
       metadata = {
@@ -358,7 +360,7 @@ export class PersistentStorage {
     if (node.type === "file") {
       let content = "";
       try {
-        content = contentRef ? await this.opfsGet(this.fileRecordKey(contentRef)) : "";
+        content = contentRef ? parseFileContentRecord(await this.opfsGet(this.fileRecordKey(contentRef))) : "";
       } catch {
         content = node.content || "";
       }
@@ -416,10 +418,10 @@ export class PersistentStorage {
     const { path: _path, content, children, ...snapshot } = node;
     const nodePath = path === "/" ? "/" : path;
     if (node.type === "file") {
-      const text = String(content ?? "");
+      const text = serializeFileContentRecord(content);
       const ref = stableFileRef(nodePath);
       const key = this.fileRecordKey(ref);
-      const size = byteLength(text);
+      const size = fileContentByteLength(content);
       records.push({
         ref,
         key,
@@ -432,7 +434,7 @@ export class PersistentStorage {
         ...snapshot,
         size,
         contentRef: ref,
-        contentEncoding: "utf-8",
+        contentEncoding: "dindbos-content-record-v1",
       };
     }
     return {
@@ -450,7 +452,7 @@ export class PersistentStorage {
     if (node.type === "file" && contentRef) {
       let content = "";
       try {
-        content = await this.opfsGet(this.fileRecordKey(contentRef));
+        content = parseFileContentRecord(await this.opfsGet(this.fileRecordKey(contentRef)));
       } catch {
         content = node.content || "";
       }

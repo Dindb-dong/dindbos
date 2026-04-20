@@ -569,19 +569,19 @@ export class ShellSession {
       if (source.type === "directory") throw new Error(`cp: ${sourcePath}: local directory copy is pending`);
     }
     const content = sourceLocal
-      ? await this.os.localMounts.readFile(sourcePath, this.cwd)
-      : this.os.fs.readFile(sourcePath, this.cwd);
+      ? await this.os.localMounts.readFileBytes(sourcePath, this.cwd)
+      : this.os.fs.readFileBytes(sourcePath, this.cwd);
     const sourceName = this.os.fs.basename(this.os.fs.normalize(sourcePath, this.cwd));
     if (destinationLocal) {
       const target = await this.localDestinationPath(destinationPath, sourceName);
-      await this.os.localMounts.writeFile(target, content, this.cwd);
+      await this.os.localMounts.writeFileBytes(target, content, this.cwd);
       return "";
     }
     const destination = this.os.fs.resolve(destinationPath, this.cwd);
     const target = destination?.type === "directory"
       ? this.os.fs.join(destination.path, sourceName)
       : this.os.fs.normalize(destinationPath, this.cwd);
-    this.os.fs.writeOrCreateFile(target, content);
+    this.os.fs.writeOrCreateFileBytes(target, content);
     return "";
   }
 

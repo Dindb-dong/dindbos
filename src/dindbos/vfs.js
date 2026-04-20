@@ -1,3 +1,5 @@
+import { fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent } from "./file-data.js?v=20260421-binary-io";
+
 export class VirtualFileSystem {
   constructor(rootNode, options = {}) {
     this.root = rootNode || { name: "", type: "directory", children: [] };
@@ -50,18 +52,29 @@ export class VirtualFileSystem {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
     this.assertAccess(node, "read", principal, node.path);
-    return node.content || "";
+    return fileContentToText(node.content);
+  }
+
+  readFileBytes(path, cwd = "/", principal = this.systemPrincipal) {
+    const node = this.resolve(path, cwd);
+    if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
+    this.assertAccess(node, "read", principal, node.path);
+    return fileContentToBytes(node.content);
   }
 
   writeFile(path, content, cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
     this.assertAccess(node, "write", principal, node.path);
-    node.content = content;
-    node.size = byteLength(content);
+    node.content = normalizeFileContent(content, { mime: node.mime });
+    node.size = fileContentByteLength(node.content);
     node.modified = new Date().toISOString();
     this.emitChange("write", node.path);
     return this.withPath(node, this.normalize(path, cwd));
+  }
+
+  writeFileBytes(path, bytes, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.writeFile(path, normalizeFileContent(bytes, options), cwd, principal);
   }
 
   appendFile(path, content, cwd = "/", principal = this.systemPrincipal) {
@@ -81,7 +94,7 @@ export class VirtualFileSystem {
       name,
       type: "file",
       mime: options.mime || mimeFromName(name),
-      content,
+      content: normalizeFileContent(content, { mime: options.mime || mimeFromName(name) }),
       icon: options.icon || iconFromMime(options.mime || mimeFromName(name)),
       permissions: options.permissions || "-rw-r--r--",
       owner: options.owner || "guest",
@@ -90,6 +103,10 @@ export class VirtualFileSystem {
     parent.children.push(node);
     this.emitChange("create", normalized);
     return this.withPath(node, normalized);
+  }
+
+  writeOrCreateFileBytes(path, bytes, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.writeOrCreateFile(path, normalizeFileContent(bytes, options), cwd, options, principal);
   }
 
   createDirectory(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
@@ -336,7 +353,7 @@ export class VirtualFileSystem {
       created,
       modified: created,
       ...node,
-      size: node.size ?? byteLength(node.content || ""),
+      size: node.size ?? fileContentByteLength(node.content),
     };
   }
 
@@ -365,7 +382,7 @@ export class VirtualFileSystem {
       permissions: node.permissions || resolved.permissions || defaultPermissions(node),
       owner: node.owner || resolved.owner || "root",
       group: node.group || resolved.group || "root",
-      size: resolved.size ?? byteLength(resolved.content || ""),
+      size: resolved.size ?? fileContentByteLength(resolved.content),
       modified: resolved.modified || node.modified || "2026-04-20T00:00:00.000Z",
     };
   }
@@ -411,10 +428,6 @@ function mimeForNode(node) {
   return "application/octet-stream";
 }
 
-function byteLength(value) {
-  return new TextEncoder().encode(String(value ?? "")).length;
-}
-
 function cloneNode(node) {
   return {
     ...node,
@@ -444,11 +457,16 @@ function mimeFromName(name) {
   if (/\.json$/i.test(name)) return "application/json";
   if (/\.html?$/i.test(name)) return "text/html";
   if (/\.pdf$/i.test(name)) return "application/pdf";
+  if (/\.png$/i.test(name)) return "image/png";
+  if (/\.jpe?g$/i.test(name)) return "image/jpeg";
+  if (/\.gif$/i.test(name)) return "image/gif";
+  if (/\.webp$/i.test(name)) return "image/webp";
   return "text/plain";
 }
 
 function iconFromMime(mime) {
   if (mime === "text/html") return "browser";
   if (mime === "application/pdf") return "pdf";
+  if (mime?.startsWith("image/")) return "image";
   return "text";
 }
