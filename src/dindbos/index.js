@@ -1,24 +1,38 @@
-import { AppRegistry } from "./app-registry.js?v=20260421-opfs-inodes";
-import { AppSandbox } from "./app-sandbox.js?v=20260421-opfs-inodes";
-import { DesktopShell } from "./desktop-shell.js?v=20260421-opfs-inodes";
-import { EventBus } from "./event-bus.js?v=20260421-opfs-inodes";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-opfs-inodes";
-import { NodeCompat } from "./node-compat.js?v=20260421-opfs-inodes";
-import { NpmInstaller } from "./npm-installer.js?v=20260421-opfs-inodes";
-import { PackageManager } from "./package-manager.js?v=20260421-opfs-inodes";
-import { PermissionPolicy } from "./permission-policy.js?v=20260421-opfs-inodes";
-import { PersistentStorage } from "./persistent-storage.js?v=20260421-opfs-inodes";
-import { ProcessManager } from "./process-manager.js?v=20260421-opfs-inodes";
-import { VirtualFileSystem } from "./vfs.js?v=20260421-opfs-inodes";
-import { WindowManager } from "./window-manager.js?v=20260421-opfs-inodes";
+import { AppRegistry } from "./app-registry.js?v=20260421-persist-coalesce";
+import { AppSandbox } from "./app-sandbox.js?v=20260421-persist-coalesce";
+import { DesktopShell } from "./desktop-shell.js?v=20260421-persist-coalesce";
+import { EventBus } from "./event-bus.js?v=20260421-persist-coalesce";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-persist-coalesce";
+import { NodeCompat } from "./node-compat.js?v=20260421-persist-coalesce";
+import { NpmInstaller } from "./npm-installer.js?v=20260421-persist-coalesce";
+import { PackageManager } from "./package-manager.js?v=20260421-persist-coalesce";
+import { PermissionPolicy } from "./permission-policy.js?v=20260421-persist-coalesce";
+import { PersistentStorage } from "./persistent-storage.js?v=20260421-persist-coalesce";
+import { ProcessManager } from "./process-manager.js?v=20260421-persist-coalesce";
+import { VirtualFileSystem } from "./vfs.js?v=20260421-persist-coalesce";
+import { WindowManager } from "./window-manager.js?v=20260421-persist-coalesce";
 
 export class DindbOS {
-  constructor(options) {
+  constructor(options = {}) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
     this.session = { user: "guest", groups: ["users"], home: "/home/guest", ...options.session };
     this.bus = new EventBus();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
-    this.storage = new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
+    this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
+    this.persistDelayMs = options.persistDelayMs ?? 120;
+    this.persistTimer = null;
+    this.persistPending = false;
+    this.persisting = false;
+    this.persistRequestedDuringFlush = false;
+    this.persistenceHooksInstalled = false;
+    this.persistenceStats = {
+      scheduled: 0,
+      coalesced: 0,
+      flushed: 0,
+      lastAction: "",
+      lastPath: "",
+      lastFlushedAt: "",
+    };
     this.initialFileSystem = options.fileSystem;
     this.fs = this.createFileSystem(options.fileSystem);
     this.shell = new DesktopShell(this);
@@ -35,7 +49,7 @@ export class DindbOS {
     return new VirtualFileSystem(rootNode, {
       home: this.session.home,
       policy: this.permissions,
-      onChange: () => this.persistFileSystem(),
+      onChange: (event) => this.schedulePersistFileSystem(event),
     });
   }
 
@@ -52,6 +66,7 @@ export class DindbOS {
     this.shell.renderDesktop();
     this.shell.renderDock();
     this.processes.syncProcfs();
+    this.installPersistenceLifecycleHooks();
     this.bus.emit("boot", { session: this.session });
   }
 
@@ -76,6 +91,95 @@ export class DindbOS {
 
   persistFileSystem() {
     this.storage.saveFileSystem(this.fs.snapshot());
+  }
+
+  schedulePersistFileSystem(event = {}) {
+    this.persistPending = true;
+    this.persistenceStats.scheduled += 1;
+    this.persistenceStats.lastAction = event.action || "";
+    this.persistenceStats.lastPath = event.path || "";
+    if (this.persisting) {
+      this.persistRequestedDuringFlush = true;
+      this.persistenceStats.coalesced += 1;
+      return;
+    }
+    if (this.persistDelayMs <= 0) {
+      this.flushPersistentFileSystem();
+      return;
+    }
+    if (this.persistTimer) {
+      this.persistenceStats.coalesced += 1;
+      return;
+    }
+    this.persistTimer = globalThis.setTimeout(() => {
+      this.persistTimer = null;
+      this.flushPersistentFileSystem();
+    }, this.persistDelayMs);
+  }
+
+  async flushPersistentFileSystem() {
+    if (this.persistTimer) {
+      globalThis.clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    if (this.persisting) {
+      this.persistRequestedDuringFlush = true;
+      await this.storage.flush?.();
+      return this.persistenceStatus();
+    }
+    this.persisting = true;
+    try {
+      do {
+        this.persistRequestedDuringFlush = false;
+        if (!this.persistPending) {
+          await this.storage.flush?.();
+          break;
+        }
+        this.persistPending = false;
+        this.persistFileSystem();
+        await this.storage.flush?.();
+        this.persistenceStats.flushed += 1;
+        this.persistenceStats.lastFlushedAt = new Date().toISOString();
+      } while (this.persistRequestedDuringFlush || this.persistPending);
+    } finally {
+      this.persisting = false;
+    }
+    return this.persistenceStatus();
+  }
+
+  resetPersistentFileSystem() {
+    if (this.persistTimer) {
+      globalThis.clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    this.persistPending = false;
+    this.persistRequestedDuringFlush = false;
+    this.storage.resetFileSystem();
+  }
+
+  persistenceStatus() {
+    return {
+      persistDelayMs: this.persistDelayMs,
+      persistPending: this.persistPending || Boolean(this.persistTimer),
+      persistScheduled: this.persistenceStats.scheduled,
+      persistCoalesced: this.persistenceStats.coalesced,
+      persistFlushes: this.persistenceStats.flushed,
+      persistLastAction: this.persistenceStats.lastAction,
+      persistLastPath: this.persistenceStats.lastPath,
+      persistLastFlushedAt: this.persistenceStats.lastFlushedAt,
+    };
+  }
+
+  installPersistenceLifecycleHooks() {
+    if (this.persistenceHooksInstalled || typeof globalThis.window === "undefined") return;
+    this.persistenceHooksInstalled = true;
+    const flush = () => {
+      this.flushPersistentFileSystem();
+    };
+    globalThis.window.addEventListener("pagehide", flush);
+    globalThis.document?.addEventListener?.("visibilitychange", () => {
+      if (globalThis.document.visibilityState === "hidden") flush();
+    });
   }
 
   openPath(path, context = {}) {

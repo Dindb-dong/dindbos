@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-opfs-inodes";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-persist-coalesce";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -253,7 +253,8 @@ export class AppSandbox {
       },
       resetFileSystem: () => {
         this.assertCapability("storage.manage");
-        this.os.storage.clearFileSystem();
+        if (typeof this.os.resetPersistentFileSystem === "function") this.os.resetPersistentFileSystem();
+        else this.os.storage.clearFileSystem();
       },
     };
   }

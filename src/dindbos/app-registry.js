@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-opfs-inodes";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-persist-coalesce";
 
 export class AppRegistry {
   constructor(os) {

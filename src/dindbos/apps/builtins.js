@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260421-opfs-inodes";
+import { ShellSession } from "../shell.js?v=20260421-persist-coalesce";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({

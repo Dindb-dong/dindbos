@@ -28,7 +28,7 @@ const BUILTIN_MANUALS = {
   rm: "rm [-r] <path> - remove files or directories",
   shell: "shell syntax - use command chaining with &&, ||, ; plus pipes and redirection",
   stat: "stat [path] - show file metadata",
-  storage: "storage [persist] - show quota status or request persistent storage",
+  storage: "storage [persist|flush] - show quota status, request persistence, or flush pending writes",
   touch: "touch <path> - create or update a file",
   tree: "tree [path] - render a directory tree",
   umount: "umount [--forget] <path> - unmount a local folder",
@@ -510,8 +510,11 @@ export class ShellSession {
   }
 
   storage(args) {
-    if (args[0] === "persist") return this.os.storage.persist().then(formatStorage);
-    return this.os.storage.estimate().then(formatStorage);
+    if (args[0] === "flush") {
+      return this.os.flushPersistentFileSystem().then(() => formatStorage(this.withPersistenceStatus(this.os.storage.status())));
+    }
+    if (args[0] === "persist") return this.os.storage.persist().then((status) => formatStorage(this.withPersistenceStatus(status)));
+    return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
   }
 
   node(args) {
@@ -622,7 +625,8 @@ export class ShellSession {
   }
 
   resetFileSystem() {
-    this.os.storage.resetFileSystem();
+    if (typeof this.os.resetPersistentFileSystem === "function") this.os.resetPersistentFileSystem();
+    else this.os.storage.resetFileSystem();
     window.setTimeout(() => window.location.reload(), 250);
     return "persistent filesystem cleared; reloading";
   }
@@ -666,6 +670,13 @@ export class ShellSession {
 
   isLocalPath(path) {
     return Boolean(this.os.localMounts?.isMountedPath(path, this.cwd));
+  }
+
+  withPersistenceStatus(status) {
+    return {
+      ...status,
+      ...(this.os.persistenceStatus?.() || {}),
+    };
   }
 }
 
@@ -803,6 +814,10 @@ function formatStorage(status) {
     `contentBytes=${status.contentBytes || 0}`,
     `dirtyInodes=${status.dirtyInodes || 0}`,
     `dirtyFiles=${status.dirtyFiles || 0}`,
+    `persistPending=${status.persistPending || false}`,
+    `persistScheduled=${status.persistScheduled || 0}`,
+    `persistCoalesced=${status.persistCoalesced || 0}`,
+    `persistFlushes=${status.persistFlushes || 0}`,
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
   ].join("\n");
