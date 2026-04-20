@@ -41,17 +41,21 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - sha256 file integrity checks
 - `/usr/share/applications/*.app`
 - `/opt/<package>`
-- remaining: transitive dependency solving, NodeCompat module loader, public-key package signatures, richer app lifecycle hooks, npm bundle caching
+- remaining: transitive dependency solving, public-key package signatures, richer app lifecycle hooks, npm bundle caching
 
 ## 3.1 NodeCompat
 
-- 1차 시작
+- 1차 구현 완료
 - `npm install <package>` direct dependency install
 - npm `.tgz` download and extraction
 - npm integrity verification
 - VFS-backed `node_modules`
 - package.json and package-lock.json writes
-- remaining: recursive dependencies, CommonJS `require`, ESM resolver, `node index.js`, built-in polyfills, JS-only lifecycle scripts
+- `node <file>` and `node -e <code>`
+- CommonJS `require`
+- package `main` and simple `exports` resolution
+- VFS-backed `fs`, `path`, `process`, and `Buffer` facades
+- remaining: recursive dependencies, ESM resolver, richer package `exports` conditions, JS-only lifecycle scripts, broader Node built-in compatibility
 
 ## 4. Activity Monitor
 

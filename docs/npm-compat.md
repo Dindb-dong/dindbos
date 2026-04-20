@@ -8,6 +8,7 @@ npm install is-number@7.0.0
 ls node_modules/is-number
 cat package.json
 cat package-lock.json
+node -e "console.log(require('is-number')(7))"
 ```
 
 The installer performs real npm registry work:
@@ -21,6 +22,14 @@ The installer performs real npm registry work:
 - update `package.json`
 - write `package-lock.json`
 
+Installed CommonJS packages can run through NodeCompat:
+
+- `node <file>`
+- `node -e <code>`
+- package lookup through parent `node_modules` folders
+- `package.json` `main` and simple `exports` resolution
+- VFS-backed `fs`, `path`, `process`, and `Buffer` facades
+
 This is not full Node.js yet. Current limits:
 
 - direct dependencies only
@@ -28,7 +37,7 @@ This is not full Node.js yet. Current limits:
 - no native addons
 - no `node-gyp`
 - no `child_process`
-- no Node built-ins such as `fs`, `net`, or `http`
-- no CommonJS or ESM module resolver yet
+- partial Node built-ins only
+- no ESM package loader yet
 
-The next layer is NodeCompat: `require()`, package `exports` resolution, VFS-backed `fs`, `path`, `process`, `Buffer`, and `node index.js`.
+The next layer is recursive dependency installation, broader Node built-ins, ESM package loading, and JS-only lifecycle scripts.

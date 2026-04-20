@@ -68,7 +68,7 @@ help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
 mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
 export, env, which, man, chmod, df, mount, manifest, ps, kill, storage, resetfs
 pkg list, pkg info, pkg install, pkg search, pkg registry, pkg update, pkg deps, pkg npm, pkg remove
-npm install, npm root
+npm install, npm root, node -e, node <file>
 ```
 
 Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
@@ -82,6 +82,7 @@ DindbOS.js now has browser-native OS primitives:
 - `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
 - `PackageManager` installs local, remote, or registry-backed `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
 - `NpmInstaller` fetches npm registry metadata and tarballs, verifies integrity, and writes pure JavaScript packages into VFS-backed `node_modules`.
+- `NodeCompat` runs CommonJS files with `require()`, package resolution, and VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
 - `AppSandbox` gives each app a scoped runtime instead of the raw OS object.
 - `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
 - `ShellSession` handles `PATH`, environment variables, pipes, redirection, and shell builtins.
@@ -129,9 +130,11 @@ cd /home/guest/Documents
 npm install is-number@7.0.0
 ls node_modules/is-number
 cat package-lock.json
+node -e "console.log(require('is-number')(7))"
 ```
 
 This fetches package metadata from the npm registry, resolves a version, downloads the `.tgz` tarball, verifies npm integrity, extracts files, updates `package.json`, and writes `package-lock.json`.
+Installed CommonJS packages can be loaded by the early NodeCompat runtime.
 
 Current limits:
 
@@ -139,7 +142,8 @@ Current limits:
 - supports simple exact, `latest`, `^`, `~`, and `>=` ranges
 - does not run lifecycle scripts
 - does not execute native addons
-- does not provide Node built-ins or `require()` yet
+- provides only a partial Node built-in surface
+- does not support ESM package loading yet
 
 ## Goal
 
