@@ -68,6 +68,7 @@ help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
 mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
 export, env, which, man, chmod, df, mount, manifest, ps, kill, storage, resetfs
 pkg list, pkg info, pkg install, pkg search, pkg registry, pkg update, pkg deps, pkg npm, pkg remove
+npm install, npm root
 ```
 
 Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
@@ -80,6 +81,7 @@ DindbOS.js now has browser-native OS primitives:
 - `ProcessManager` assigns PIDs to launched apps and exposes `ps`/`kill`.
 - `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
 - `PackageManager` installs local, remote, or registry-backed `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
+- `NpmInstaller` fetches npm registry metadata and tarballs, verifies integrity, and writes pure JavaScript packages into VFS-backed `node_modules`.
 - `AppSandbox` gives each app a scoped runtime instead of the raw OS object.
 - `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
 - `ShellSession` handles `PATH`, environment variables, pipes, redirection, and shell builtins.
@@ -117,6 +119,27 @@ pkg npm add hello-notes lodash-es@4.17.21
 ```
 
 Package apps can execute `/opt/<package>/app.js` when the manifest sets `app.entry`. npm dependencies are installed as browser ESM dependency records and loaded at runtime through `imports.npm("package-name")`; this is not a Node.js `npm install` or native binary execution path.
+
+## npm Compatibility
+
+DindbOS has an early npm-compatible installer:
+
+```text
+cd /home/guest/Documents
+npm install is-number@7.0.0
+ls node_modules/is-number
+cat package-lock.json
+```
+
+This fetches package metadata from the npm registry, resolves a version, downloads the `.tgz` tarball, verifies npm integrity, extracts files, updates `package.json`, and writes `package-lock.json`.
+
+Current limits:
+
+- installs direct dependencies only
+- supports simple exact, `latest`, `^`, `~`, and `>=` ranges
+- does not run lifecycle scripts
+- does not execute native addons
+- does not provide Node built-ins or `require()` yet
 
 ## Goal
 
