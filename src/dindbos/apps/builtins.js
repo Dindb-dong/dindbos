@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260420-npm-installer";
+import { ShellSession } from "../shell.js?v=20260420-node-compat";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -54,6 +54,7 @@ export function installBuiltinApps(os, { portfolioData }) {
         "package.read",
         "package.manage",
         "npm.install",
+        "node.execute",
       ],
       fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp", "/opt", "/usr/share/applications", "/var/lib/dindbos/packages"] },
     },

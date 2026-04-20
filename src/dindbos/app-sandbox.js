@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-npm-installer";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-node-compat";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -10,6 +10,7 @@ export class AppSandbox {
     this.processes = this.createProcessFacade();
     this.packages = this.createPackageFacade();
     this.npm = this.createNpmFacade();
+    this.node = this.createNodeFacade();
     this.storage = this.createStorageFacade();
     this.session = Object.freeze({ ...os.session });
   }
@@ -223,6 +224,23 @@ export class AppSandbox {
         const normalized = this.os.fs.normalize(cwd, this.process.cwd);
         this.assertFileSystem(normalized, "write");
         return this.os.npm.install(specifiers, normalized);
+      },
+    };
+  }
+
+  createNodeFacade() {
+    return {
+      runFile: (path, cwd = this.process.cwd, argv = []) => {
+        this.assertCapability("node.execute");
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "read");
+        return this.os.node.runFile(normalized, "/", { argv });
+      },
+      evaluate: (source, cwd = this.process.cwd) => {
+        this.assertCapability("node.execute");
+        const normalized = this.os.fs.normalize(cwd, this.process.cwd);
+        this.assertFileSystem(normalized, "read");
+        return this.os.node.evaluate(source, normalized);
       },
     };
   }

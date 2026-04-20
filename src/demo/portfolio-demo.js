@@ -35,6 +35,7 @@ export const demoFileSystem = directory("", [
     command("ls", "List directory contents"),
     command("mkdir", "Create directories"),
     command("mv", "Move or rename files"),
+    command("node", "Run CommonJS JavaScript files"),
     command("npm", "Install pure JavaScript npm packages into node_modules"),
     command("open", "Open a file, folder, or app"),
     command("pkg", "Install, remove, and inspect DindbOS packages"),
@@ -218,6 +219,7 @@ export const demoFileSystem = directory("", [
     directory("bin", [
       symlink("cat", "/bin/cat", "terminal"),
       symlink("ls", "/bin/ls", "terminal"),
+      symlink("node", "/bin/node", "terminal"),
       symlink("npm", "/bin/npm", "terminal"),
       symlink("open", "/bin/open", "terminal"),
       symlink("pkg", "/bin/pkg", "terminal"),

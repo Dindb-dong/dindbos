@@ -17,6 +17,7 @@ const BUILTIN_MANUALS = {
   mkdir: "mkdir [-p] <path> - create directories",
   mount: "mount - print mounted virtual filesystems",
   mv: "mv <source> <destination> - move or rename files",
+  node: "node [-e code] <file> - run CommonJS JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
   pkg: "pkg list|info|install|remove|search|registry|update|deps|npm - manage DindbOS packages",
@@ -213,6 +214,7 @@ export class ShellSession {
     if (command === "export") return this.export(args);
     if (command === "which") return this.which(args[0]);
     if (command === "man") return BUILTIN_MANUALS[args[0]] || `man: ${args[0] || ""}: no manual entry`;
+    if (command === "node") return this.node(args);
     if (command === "npm") return this.npm(args);
     if (command === "df") return this.df();
     if (command === "mount") return this.mount();
@@ -449,6 +451,17 @@ export class ShellSession {
     return "npm: usage: npm install <package...> | npm root";
   }
 
+  node(args) {
+    if (args[0] === "-e" || args[0] === "--eval") {
+      const source = args.slice(1).join(" ");
+      if (!source) return "node: usage: node -e <code>";
+      return Promise.resolve(this.os.node.evaluate(source, this.cwd)).then(formatNodeResult);
+    }
+    const [file, ...argv] = args;
+    if (!file) return "node: usage: node [-e code] <file>";
+    return Promise.resolve(this.os.node.runFile(file, this.cwd, { argv })).then(formatNodeResult);
+  }
+
   kill(args) {
     const pid = Number(args[0]);
     if (!Number.isFinite(pid)) return "kill: usage: kill <pid>";
@@ -614,6 +627,11 @@ function formatStorage(status) {
     `persisted=${status.persisted}`,
     `bytes=${status.bytes}`,
   ].join("\n");
+}
+
+function formatNodeResult(result) {
+  if (result.status) throw new Error(`node: process exited with status ${result.status}`);
+  return result.output || "";
 }
 
 function isPromise(value) {

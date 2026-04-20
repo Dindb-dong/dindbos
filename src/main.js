@@ -1,6 +1,6 @@
-import { DindbOS } from "./dindbos/index.js?v=20260420-npm-installer";
-import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-npm-installer";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-npm-installer";
+import { DindbOS } from "./dindbos/index.js?v=20260420-node-compat";
+import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-node-compat";
+import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-node-compat";
 
 const os = new DindbOS({
   root: "#dindbos-root",

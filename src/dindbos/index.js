@@ -1,14 +1,15 @@
-import { AppRegistry } from "./app-registry.js?v=20260420-npm-installer";
-import { AppSandbox } from "./app-sandbox.js?v=20260420-npm-installer";
-import { DesktopShell } from "./desktop-shell.js?v=20260420-npm-installer";
-import { EventBus } from "./event-bus.js?v=20260420-npm-installer";
-import { NpmInstaller } from "./npm-installer.js?v=20260420-npm-installer";
-import { PackageManager } from "./package-manager.js?v=20260420-npm-installer";
-import { PermissionPolicy } from "./permission-policy.js?v=20260420-npm-installer";
-import { PersistentStorage } from "./persistent-storage.js?v=20260420-npm-installer";
-import { ProcessManager } from "./process-manager.js?v=20260420-npm-installer";
-import { VirtualFileSystem } from "./vfs.js?v=20260420-npm-installer";
-import { WindowManager } from "./window-manager.js?v=20260420-npm-installer";
+import { AppRegistry } from "./app-registry.js?v=20260420-node-compat";
+import { AppSandbox } from "./app-sandbox.js?v=20260420-node-compat";
+import { DesktopShell } from "./desktop-shell.js?v=20260420-node-compat";
+import { EventBus } from "./event-bus.js?v=20260420-node-compat";
+import { NodeCompat } from "./node-compat.js?v=20260420-node-compat";
+import { NpmInstaller } from "./npm-installer.js?v=20260420-node-compat";
+import { PackageManager } from "./package-manager.js?v=20260420-node-compat";
+import { PermissionPolicy } from "./permission-policy.js?v=20260420-node-compat";
+import { PersistentStorage } from "./persistent-storage.js?v=20260420-node-compat";
+import { ProcessManager } from "./process-manager.js?v=20260420-node-compat";
+import { VirtualFileSystem } from "./vfs.js?v=20260420-node-compat";
+import { WindowManager } from "./window-manager.js?v=20260420-node-compat";
 
 export class DindbOS {
   constructor(options) {
@@ -25,6 +26,7 @@ export class DindbOS {
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);
     this.npm = new NpmInstaller(this);
+    this.node = new NodeCompat(this);
   }
 
   createFileSystem(rootNode) {
@@ -91,4 +93,4 @@ export class DindbOS {
   }
 }
 
-export { AppRegistry, AppSandbox, DesktopShell, EventBus, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
+export { AppRegistry, AppSandbox, DesktopShell, EventBus, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
