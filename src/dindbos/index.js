@@ -1,17 +1,29 @@
-import { AppRegistry } from "./app-registry.js?v=20260420-stateful-terminal";
-import { DesktopShell } from "./desktop-shell.js?v=20260420-stateful-terminal";
-import { EventBus } from "./event-bus.js?v=20260420-stateful-terminal";
-import { VirtualFileSystem } from "./vfs.js?v=20260420-stateful-terminal";
-import { WindowManager } from "./window-manager.js?v=20260420-stateful-terminal";
+import { AppRegistry } from "./app-registry.js?v=20260420-runtime-kernel";
+import { AppSandbox } from "./app-sandbox.js?v=20260420-runtime-kernel";
+import { DesktopShell } from "./desktop-shell.js?v=20260420-runtime-kernel";
+import { EventBus } from "./event-bus.js?v=20260420-runtime-kernel";
+import { PermissionPolicy } from "./permission-policy.js?v=20260420-runtime-kernel";
+import { PersistentStorage } from "./persistent-storage.js?v=20260420-runtime-kernel";
+import { ProcessManager } from "./process-manager.js?v=20260420-runtime-kernel";
+import { VirtualFileSystem } from "./vfs.js?v=20260420-runtime-kernel";
+import { WindowManager } from "./window-manager.js?v=20260420-runtime-kernel";
 
 export class DindbOS {
   constructor(options) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
-    this.session = { user: "guest", home: "/home/guest", ...options.session };
+    this.session = { user: "guest", groups: ["users"], home: "/home/guest", ...options.session };
     this.bus = new EventBus();
-    this.fs = new VirtualFileSystem(options.fileSystem, { home: this.session.home });
+    this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
+    this.storage = new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
+    const storedFileSystem = this.storage.loadFileSystem();
+    this.fs = new VirtualFileSystem(storedFileSystem || options.fileSystem, {
+      home: this.session.home,
+      policy: this.permissions,
+      onChange: () => this.persistFileSystem(),
+    });
     this.shell = new DesktopShell(this);
     this.windows = new WindowManager(this);
+    this.processes = new ProcessManager(this);
     this.apps = new AppRegistry(this);
   }
 
@@ -21,6 +33,7 @@ export class DindbOS {
     this.windows.mount(this.shell.refs.windowLayer, this.shell.refs.taskStrip);
     this.shell.renderDesktop();
     this.shell.renderDock();
+    this.processes.syncProcfs();
     this.bus.emit("boot", { session: this.session });
   }
 
@@ -31,6 +44,14 @@ export class DindbOS {
 
   launch(appId, context = {}) {
     return this.apps.launch(appId, context);
+  }
+
+  createSandbox(process) {
+    return new AppSandbox(this, process);
+  }
+
+  persistFileSystem() {
+    this.storage.saveFileSystem(this.fs.snapshot());
   }
 
   openPath(path, context = {}) {
@@ -51,4 +72,4 @@ export class DindbOS {
   }
 }
 
-export { AppRegistry, DesktopShell, EventBus, VirtualFileSystem, WindowManager };
+export { AppRegistry, AppSandbox, DesktopShell, EventBus, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };

@@ -4,11 +4,16 @@ export class VirtualFileSystem {
     this.root.name = "";
     this.root.type = "directory";
     this.home = options.home || "/home/guest";
+    this.policy = options.policy || null;
+    this.systemPrincipal = this.policy?.systemPrincipal() || { user: "root", groups: ["root"], system: true };
+    this.onChange = options.onChange || (() => {});
   }
 
-  list(path = "/", cwd = "/") {
+  list(path = "/", cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "directory") return [];
+    this.assertAccess(node, "read", principal, node.path);
+    this.assertAccess(node, "execute", principal, node.path);
     return (node.children || [])
       .map((child) => this.withPath(child, this.join(node.path, child.name)))
       .sort((a, b) => sortNodes(a, b));
@@ -41,31 +46,36 @@ export class VirtualFileSystem {
     return node;
   }
 
-  readFile(path, cwd = "/") {
+  readFile(path, cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
+    this.assertAccess(node, "read", principal, node.path);
     return node.content || "";
   }
 
-  writeFile(path, content, cwd = "/") {
+  writeFile(path, content, cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
+    this.assertAccess(node, "write", principal, node.path);
     node.content = content;
     node.size = byteLength(content);
     node.modified = new Date().toISOString();
+    this.emitChange("write", node.path);
     return this.withPath(node, this.normalize(path, cwd));
   }
 
-  appendFile(path, content, cwd = "/") {
-    const current = this.exists(path, cwd) ? this.readFile(path, cwd) : "";
-    return this.writeOrCreateFile(path, `${current}${content}`, cwd);
+  appendFile(path, content, cwd = "/", principal = this.systemPrincipal) {
+    const current = this.exists(path, cwd) ? this.readFile(path, cwd, principal) : "";
+    return this.writeOrCreateFile(path, `${current}${content}`, cwd, {}, principal);
   }
 
-  writeOrCreateFile(path, content, cwd = "/", options = {}) {
+  writeOrCreateFile(path, content, cwd = "/", options = {}, principal = this.systemPrincipal) {
     const normalized = this.normalize(path, cwd);
     const existing = this.resolve(normalized);
-    if (existing) return this.writeFile(normalized, content);
+    if (existing) return this.writeFile(normalized, content, "/", principal);
     const parent = this.parentFor(normalized);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
     const name = this.basename(normalized);
     const node = this.createNode({
       name,
@@ -78,13 +88,16 @@ export class VirtualFileSystem {
       group: options.group || "users",
     });
     parent.children.push(node);
+    this.emitChange("create", normalized);
     return this.withPath(node, normalized);
   }
 
-  createDirectory(path, cwd = "/", options = {}) {
+  createDirectory(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
     const normalized = this.normalize(path, cwd);
     if (this.exists(normalized)) throw new Error(`mkdir: ${normalized}: file exists`);
     const parent = this.parentFor(normalized);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
     const node = this.createNode({
       name: this.basename(normalized),
       type: "directory",
@@ -95,28 +108,34 @@ export class VirtualFileSystem {
       group: options.group || "users",
     });
     parent.children.push(node);
+    this.emitChange("mkdir", normalized);
     return this.withPath(node, normalized);
   }
 
-  createFile(path, cwd = "/", options = {}) {
-    return this.writeOrCreateFile(path, options.content || "", cwd, options);
+  createFile(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.writeOrCreateFile(path, options.content || "", cwd, options, principal);
   }
 
-  remove(path, cwd = "/", options = {}) {
+  remove(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
     const normalized = this.normalize(path, cwd);
     if (normalized === "/") throw new Error("rm: cannot remove root");
     const { parent, node, index } = this.lookupChild(normalized);
     if (!node) throw new Error(`rm: ${path}: no such file or directory`);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
     if (node.type === "directory" && node.children?.length && !options.recursive) {
       throw new Error(`rm: ${path}: directory not empty`);
     }
     parent.children.splice(index, 1);
+    this.emitChange("remove", normalized);
     return this.withPath(node, normalized);
   }
 
-  copy(sourcePath, destinationPath, cwd = "/", options = {}) {
+  copy(sourcePath, destinationPath, cwd = "/", options = {}, principal = this.systemPrincipal) {
     const source = this.resolve(sourcePath, cwd);
     if (!source) throw new Error(`cp: ${sourcePath}: no such file or directory`);
+    this.assertAccess(source, "read", principal, source.path);
+    if (source.type === "directory") this.assertAccess(source, "execute", principal, source.path);
     if (source.type === "directory" && !options.recursive) throw new Error(`cp: ${sourcePath}: is a directory`);
     const destination = this.resolve(destinationPath, cwd);
     const destinationPathNormalized = destination?.type === "directory"
@@ -127,18 +146,23 @@ export class VirtualFileSystem {
     }
     if (this.exists(destinationPathNormalized)) throw new Error(`cp: ${destinationPathNormalized}: file exists`);
     const parent = this.parentFor(destinationPathNormalized);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
     const copy = cloneNode(source);
     copy.name = this.basename(destinationPathNormalized);
     touchNode(copy);
     parent.children.push(copy);
+    this.emitChange("copy", destinationPathNormalized);
     return this.withPath(copy, destinationPathNormalized);
   }
 
-  move(sourcePath, destinationPath, cwd = "/") {
+  move(sourcePath, destinationPath, cwd = "/", principal = this.systemPrincipal) {
     const normalizedSource = this.normalize(sourcePath, cwd);
     if (normalizedSource === "/") throw new Error("mv: cannot move root");
     const { parent: sourceParent, node, index } = this.lookupChild(normalizedSource);
     if (!node) throw new Error(`mv: ${sourcePath}: no such file or directory`);
+    this.assertAccess(sourceParent, "write", principal, sourceParent.path);
+    this.assertAccess(sourceParent, "execute", principal, sourceParent.path);
     const destination = this.resolve(destinationPath, cwd);
     const normalizedDestination = destination?.type === "directory"
       ? this.join(destination.path, node.name)
@@ -148,10 +172,13 @@ export class VirtualFileSystem {
     }
     if (this.exists(normalizedDestination)) throw new Error(`mv: ${normalizedDestination}: file exists`);
     const targetParent = this.parentFor(normalizedDestination);
+    this.assertAccess(targetParent, "write", principal, targetParent.path);
+    this.assertAccess(targetParent, "execute", principal, targetParent.path);
     sourceParent.children.splice(index, 1);
     node.name = this.basename(normalizedDestination);
     touchNode(node);
     targetParent.children.push(node);
+    this.emitChange("move", normalizedDestination);
     return this.withPath(node, normalizedDestination);
   }
 
@@ -244,6 +271,19 @@ export class VirtualFileSystem {
     };
   }
 
+  snapshot() {
+    return cloneForSnapshot(this.root);
+  }
+
+  assertAccess(node, access, principal, path) {
+    if (!this.policy) return;
+    this.policy.assert(node, access, principal, path);
+  }
+
+  emitChange(action, path) {
+    this.onChange({ action, path, root: this.root });
+  }
+
   nodeStat(node, path) {
     const resolved = this.resolveNode(node);
     return {
@@ -290,6 +330,14 @@ function cloneNode(node) {
   return {
     ...node,
     children: node.children?.map((child) => cloneNode(child)),
+  };
+}
+
+function cloneForSnapshot(node) {
+  const { path, ...snapshot } = node;
+  return {
+    ...snapshot,
+    children: node.children?.map((child) => cloneForSnapshot(child)),
   };
 }
 

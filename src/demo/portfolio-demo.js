@@ -87,7 +87,7 @@ export const demoFileSystem = directory("", [
         symlink("Projects", "/mnt/portfolio/projects", "folder"),
         symlink("Presentations", "/mnt/portfolio/presentations", "folder"),
         symlink("README.md", "/home/guest/README.md", "text"),
-      ]),
+      ], { owner: "guest", group: "users" }),
       directory("Documents", [
         file("todo.md", "text/markdown", [
           "# DindbOS roadmap",
@@ -97,8 +97,8 @@ export const demoFileSystem = directory("", [
           "- Add PDF Viewer.app",
           "- Publish docs for app authors",
         ].join("\n")),
-      ]),
-      directory("Downloads", []),
+      ], { owner: "guest", group: "users" }),
+      directory("Downloads", [], { owner: "guest", group: "users" }),
       file("README.md", "text/markdown", [
         "# guest home",
         "",
@@ -111,7 +111,7 @@ export const demoFileSystem = directory("", [
         "export SHELL=/bin/dindbsh",
         "",
       ].join("\n")),
-    ]),
+    ], { owner: "guest", group: "users" }),
   ]),
   directory("lib", [
     directory("dindbos", [
@@ -126,14 +126,14 @@ export const demoFileSystem = directory("", [
         file("remote-browser.md", "text/markdown", "# Remote Browser\n\nA browser engine adapter for opening real websites inside DindbOS.js."),
         file("portfolio-runtime.md", "text/markdown", "# Portfolio Runtime\n\nThe demo portfolio is a mounted workspace inside DindbOS.js."),
         file("ai-presentations.md", "text/markdown", "# AI Presentations\n\nResearch decks and project writeups are mounted as files."),
-      ]),
+      ], { owner: "guest", group: "users" }),
       directory("presentations", [
         file("clip-blip2-retrieval.html", "text/html", "<h1>CLIP + BLIP2 Retrieval</h1>\n<p>HTML deck mounting will be wired into Browser.app.</p>\n"),
         file("dueling-ddqn-yakemon-agent.pdf", "application/pdf", "PDF mount placeholder: Dueling DDQN Yakemon Agent"),
         file("qcnn.pdf", "application/pdf", "PDF mount placeholder: QCNN Quantum Convolution"),
-      ]),
+      ], { owner: "guest", group: "users" }),
       file("portfolio.json", "application/json", JSON.stringify(portfolioData, null, 2)),
-    ]),
+    ], { owner: "guest", group: "users" }),
   ]),
   directory("opt", [
     directory("dindbos", [
@@ -148,7 +148,7 @@ export const demoFileSystem = directory("", [
       "",
     ].join("\n")),
   ]),
-  directory("tmp", []),
+  directory("tmp", [], { permissions: "drwxrwxrwx", owner: "root", group: "root" }),
   directory("usr", [
     directory("bin", [
       symlink("cat", "/bin/cat", "terminal"),
@@ -183,15 +183,15 @@ export const demoFileSystem = directory("", [
   ]),
 ]);
 
-function directory(name, children) {
+function directory(name, children, options = {}) {
   return {
     name,
     type: "directory",
     icon: "folder",
     children,
-    permissions: "drwxr-xr-x",
-    owner: "root",
-    group: "root",
+    permissions: options.permissions || "drwxr-xr-x",
+    owner: options.owner || "root",
+    group: options.group || "root",
   };
 }
 

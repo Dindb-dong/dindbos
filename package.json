@@ -6,7 +6,7 @@
   "description": "Browser-native desktop runtime for portfolio and web OS demos.",
   "scripts": {
     "dev": "python3 -m http.server 5174 --bind 127.0.0.1",
-    "check": "node --check src/main.js && node --check src/dindbos/index.js && node --check src/dindbos/window-manager.js && node --check src/dindbos/apps/builtins.js"
+    "check": "node --check src/main.js && node --check src/dindbos/index.js && node --check src/dindbos/app-manifest.js && node --check src/dindbos/app-registry.js && node --check src/dindbos/app-sandbox.js && node --check src/dindbos/desktop-shell.js && node --check src/dindbos/event-bus.js && node --check src/dindbos/permission-policy.js && node --check src/dindbos/persistent-storage.js && node --check src/dindbos/process-manager.js && node --check src/dindbos/vfs.js && node --check src/dindbos/window-manager.js && node --check src/dindbos/apps/builtins.js && node --check src/demo/portfolio-demo.js"
   },
   "keywords": [
     "web-os",

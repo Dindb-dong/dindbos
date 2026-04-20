@@ -8,6 +8,10 @@ export function installBuiltinApps(os, { portfolioData }) {
     singleton: true,
     width: 860,
     height: 620,
+    manifest: {
+      capabilities: ["app.launch"],
+      fileSystem: { read: ["/mnt/portfolio", "/home/guest"], write: [] },
+    },
     render: ({ content }) => renderPortfolio(content, portfolioData),
   });
 
@@ -20,6 +24,10 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 760,
     height: 520,
     accepts: ["inode/directory"],
+    manifest: {
+      capabilities: ["app.launch"],
+      fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
+    },
     render: ({ os: runtime, content, context, window }) => (
       renderFiles(runtime, content, context.path || runtime.session.home || "/", window)
     ),
@@ -34,6 +42,10 @@ export function installBuiltinApps(os, { portfolioData }) {
     singleton: true,
     width: 760,
     height: 460,
+    manifest: {
+      capabilities: ["app.launch", "process.read", "process.manage", "storage.read", "storage.manage"],
+      fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
+    },
     render: ({ os: runtime, content }) => renderTerminal(runtime, content),
   });
 
@@ -45,6 +57,9 @@ export function installBuiltinApps(os, { portfolioData }) {
     accepts: ["text/plain", "text/markdown", "application/json", "application/x-dindbos-command"],
     width: 720,
     height: 520,
+    manifest: {
+      fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
+    },
     render: ({ os: runtime, content, context, window }) => renderText(runtime, content, context.node, window),
   });
 
@@ -56,6 +71,9 @@ export function installBuiltinApps(os, { portfolioData }) {
     accepts: ["application/pdf", "text/html"],
     width: 820,
     height: 560,
+    manifest: {
+      fileSystem: { read: ["/"], write: [] },
+    },
     render: ({ content, context }) => renderViewer(content, context.node),
   });
 
@@ -68,6 +86,9 @@ export function installBuiltinApps(os, { portfolioData }) {
     singleton: true,
     width: 360,
     height: 430,
+    manifest: {
+      fileSystem: { read: [], write: [] },
+    },
     render: ({ content }) => renderCalculator(content),
   });
 
@@ -80,6 +101,10 @@ export function installBuiltinApps(os, { portfolioData }) {
     singleton: true,
     width: 520,
     height: 380,
+    manifest: {
+      capabilities: ["process.read", "storage.read"],
+      fileSystem: { read: ["/etc", "/proc", "/home/guest"], write: [] },
+    },
     render: ({ content, os: runtime }) => renderSettings(runtime, content),
   });
 }
@@ -362,9 +387,11 @@ function renderTerminal(os, content) {
         "cat [path], grep <text> <file>, stat [path], readlink [path]",
         "mkdir [-p] <path>, touch <path>, rm [-r] <path>, cp [-r] <src> <dest>, mv <src> <dest>",
         "echo <text>, echo <text> > <file>, echo <text> >> <file>",
-        "open [path], apps, whoami, uname, neofetch, date",
+        "open [path], apps, manifest [app], ps, kill <pid>, storage, resetfs",
+        "whoami, id, uname, neofetch, date",
       ].join("\n"));
       else if (command === "whoami") print(os.session.user || "guest");
+      else if (command === "id") print(`uid=${os.session.user || "guest"} gid=${(os.session.groups || ["users"]).join(",")}`);
       else if (command === "uname") print("DindbOS.js browser-runtime 0.1.0");
       else if (command === "date") print(new Date().toString());
       else if (command === "history") history.forEach((entry, index) => print(`${String(index + 1).padStart(4)}  ${entry}`));
@@ -396,6 +423,15 @@ function renderTerminal(os, content) {
       else if (command === "echo") runEcho(os, cwd, args, print);
       else if (command === "find") print(runFind(os, cwd, args));
       else if (command === "apps") os.apps.list().forEach((app) => print(`${app.id} - ${app.name}`));
+      else if (command === "manifest") print(formatManifest(os, args[0]));
+      else if (command === "ps") print(os.processes.table());
+      else if (command === "kill") print(runKill(os, args));
+      else if (command === "storage") print(formatStorage(os.storage.status()));
+      else if (command === "resetfs") {
+        os.storage.resetFileSystem();
+        print("persistent filesystem cleared; reloading");
+        window.setTimeout(() => window.location.reload(), 250);
+      }
       else if (command === "clear") output.textContent = "";
       else print(`command not found: ${command}`);
     } catch (error) {
@@ -445,6 +481,8 @@ function renderCalculator(content) {
 }
 
 function renderSettings(os, content) {
+  const processes = safeRead(() => os.processes.list(), []);
+  const storage = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
   content.innerHTML = `
     <section class="settings-app">
       <p class="dos-kicker">System</p>
@@ -453,11 +491,21 @@ function renderSettings(os, content) {
         <div><dt>User</dt><dd>${escapeHtml(os.session.user || "guest")}</dd></div>
         <div><dt>Home</dt><dd>${escapeHtml(os.session.home || "/home/guest")}</dd></div>
         <div><dt>Apps</dt><dd>${os.apps.list().length}</dd></div>
+        <div><dt>Processes</dt><dd>${processes.length}</dd></div>
+        <div><dt>Storage</dt><dd>${storage.enabled ? "localStorage" : "memory"} · ${storage.persisted ? `${formatBytes(storage.bytes)} saved` : "not saved"}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(os.fs.join(os.session.home || "/home/guest", "Desktop"))}</dd></div>
         <div><dt>Mounts</dt><dd>/, /mnt/portfolio</dd></div>
       </dl>
     </section>
   `;
+}
+
+function safeRead(reader, fallback) {
+  try {
+    return reader();
+  } catch {
+    return fallback;
+  }
 }
 
 function safeCalculate(expression) {
@@ -589,6 +637,43 @@ function runGrep(os, cwd, args) {
     .filter(({ line }) => line.toLowerCase().includes(needle))
     .map(({ line, index }) => `${filePath}:${index}: ${line}`)
     .join("\n");
+}
+
+function runKill(os, args) {
+  const pid = Number(args[0]);
+  if (!Number.isFinite(pid)) return "kill: usage: kill <pid>";
+  const killed = os.processes.kill(pid);
+  return `killed ${killed.pid} ${killed.appId}`;
+}
+
+function formatManifest(os, appId) {
+  if (!appId) {
+    return os.apps.manifests()
+      .map((manifest) => `${manifest.id} ${manifest.version} capabilities=${manifest.capabilities.join(",") || "-"}`)
+      .join("\n");
+  }
+  const manifest = os.apps.getManifest(appId);
+  if (!manifest) return `manifest: ${appId}: no such app`;
+  return [
+    `id=${manifest.id}`,
+    `name=${manifest.name}`,
+    `version=${manifest.version}`,
+    `entry=${manifest.entry}`,
+    `singleton=${manifest.singleton}`,
+    `accepts=${manifest.accepts.join(",") || "-"}`,
+    `capabilities=${manifest.capabilities.join(",") || "-"}`,
+    `fs.read=${manifest.fileSystem.read.join(",") || "-"}`,
+    `fs.write=${manifest.fileSystem.write.join(",") || "-"}`,
+  ].join("\n");
+}
+
+function formatStorage(status) {
+  return [
+    `key=${status.key}`,
+    `enabled=${status.enabled}`,
+    `persisted=${status.persisted}`,
+    `bytes=${status.bytes}`,
+  ].join("\n");
 }
 
 function walkNodes(os, path, visit) {

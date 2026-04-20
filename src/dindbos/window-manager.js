@@ -16,6 +16,18 @@ export class WindowManager {
     this.taskStrip = taskStrip;
   }
 
+  has(id) {
+    return this.windows.has(id);
+  }
+
+  activate(id) {
+    const task = this.windows.get(id);
+    if (!task) return null;
+    this.restore(id);
+    this.focus(id);
+    return task.api;
+  }
+
   open(config) {
     const existing = this.windows.get(config.id);
     if (existing) {
@@ -112,11 +124,12 @@ export class WindowManager {
     this.focus(id);
   }
 
-  close(id) {
+  close(id, options = {}) {
     const task = this.windows.get(id);
     if (!task) return;
     task.frame.remove();
     this.windows.delete(id);
+    if (!options.skipOnClose) task.onClose?.();
     this.renderTasks();
   }
 
