@@ -7,9 +7,9 @@ import { WindowManager } from "./window-manager.js";
 export class DindbOS {
   constructor(options) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
-    this.session = options.session || {};
+    this.session = { user: "guest", home: "/home/guest", ...options.session };
     this.bus = new EventBus();
-    this.fs = new VirtualFileSystem(options.fileSystem);
+    this.fs = new VirtualFileSystem(options.fileSystem, { home: this.session.home });
     this.shell = new DesktopShell(this);
     this.windows = new WindowManager(this);
     this.apps = new AppRegistry(this);
