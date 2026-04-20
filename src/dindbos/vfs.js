@@ -56,6 +56,105 @@ export class VirtualFileSystem {
     return this.withPath(node, this.normalize(path, cwd));
   }
 
+  appendFile(path, content, cwd = "/") {
+    const current = this.exists(path, cwd) ? this.readFile(path, cwd) : "";
+    return this.writeOrCreateFile(path, `${current}${content}`, cwd);
+  }
+
+  writeOrCreateFile(path, content, cwd = "/", options = {}) {
+    const normalized = this.normalize(path, cwd);
+    const existing = this.resolve(normalized);
+    if (existing) return this.writeFile(normalized, content);
+    const parent = this.parentFor(normalized);
+    const name = this.basename(normalized);
+    const node = this.createNode({
+      name,
+      type: "file",
+      mime: options.mime || mimeFromName(name),
+      content,
+      icon: options.icon || iconFromMime(options.mime || mimeFromName(name)),
+      permissions: options.permissions || "-rw-r--r--",
+      owner: options.owner || "guest",
+      group: options.group || "users",
+    });
+    parent.children.push(node);
+    return this.withPath(node, normalized);
+  }
+
+  createDirectory(path, cwd = "/", options = {}) {
+    const normalized = this.normalize(path, cwd);
+    if (this.exists(normalized)) throw new Error(`mkdir: ${normalized}: file exists`);
+    const parent = this.parentFor(normalized);
+    const node = this.createNode({
+      name: this.basename(normalized),
+      type: "directory",
+      icon: options.icon || "folder",
+      children: [],
+      permissions: options.permissions || "drwxr-xr-x",
+      owner: options.owner || "guest",
+      group: options.group || "users",
+    });
+    parent.children.push(node);
+    return this.withPath(node, normalized);
+  }
+
+  createFile(path, cwd = "/", options = {}) {
+    return this.writeOrCreateFile(path, options.content || "", cwd, options);
+  }
+
+  remove(path, cwd = "/", options = {}) {
+    const normalized = this.normalize(path, cwd);
+    if (normalized === "/") throw new Error("rm: cannot remove root");
+    const { parent, node, index } = this.lookupChild(normalized);
+    if (!node) throw new Error(`rm: ${path}: no such file or directory`);
+    if (node.type === "directory" && node.children?.length && !options.recursive) {
+      throw new Error(`rm: ${path}: directory not empty`);
+    }
+    parent.children.splice(index, 1);
+    return this.withPath(node, normalized);
+  }
+
+  copy(sourcePath, destinationPath, cwd = "/", options = {}) {
+    const source = this.resolve(sourcePath, cwd);
+    if (!source) throw new Error(`cp: ${sourcePath}: no such file or directory`);
+    if (source.type === "directory" && !options.recursive) throw new Error(`cp: ${sourcePath}: is a directory`);
+    const destination = this.resolve(destinationPath, cwd);
+    const destinationPathNormalized = destination?.type === "directory"
+      ? this.join(destination.path, source.name)
+      : this.normalize(destinationPath, cwd);
+    if (destinationPathNormalized.startsWith(`${source.path}/`)) {
+      throw new Error(`cp: cannot copy ${source.path} into itself`);
+    }
+    if (this.exists(destinationPathNormalized)) throw new Error(`cp: ${destinationPathNormalized}: file exists`);
+    const parent = this.parentFor(destinationPathNormalized);
+    const copy = cloneNode(source);
+    copy.name = this.basename(destinationPathNormalized);
+    touchNode(copy);
+    parent.children.push(copy);
+    return this.withPath(copy, destinationPathNormalized);
+  }
+
+  move(sourcePath, destinationPath, cwd = "/") {
+    const normalizedSource = this.normalize(sourcePath, cwd);
+    if (normalizedSource === "/") throw new Error("mv: cannot move root");
+    const { parent: sourceParent, node, index } = this.lookupChild(normalizedSource);
+    if (!node) throw new Error(`mv: ${sourcePath}: no such file or directory`);
+    const destination = this.resolve(destinationPath, cwd);
+    const normalizedDestination = destination?.type === "directory"
+      ? this.join(destination.path, node.name)
+      : this.normalize(destinationPath, cwd);
+    if (normalizedDestination.startsWith(`${normalizedSource}/`)) {
+      throw new Error(`mv: cannot move ${normalizedSource} into itself`);
+    }
+    if (this.exists(normalizedDestination)) throw new Error(`mv: ${normalizedDestination}: file exists`);
+    const targetParent = this.parentFor(normalizedDestination);
+    sourceParent.children.splice(index, 1);
+    node.name = this.basename(normalizedDestination);
+    touchNode(node);
+    targetParent.children.push(node);
+    return this.withPath(node, normalizedDestination);
+  }
+
   stat(path, cwd = "/") {
     const node = this.resolve(path, cwd);
     if (!node) return null;
@@ -120,6 +219,31 @@ export class VirtualFileSystem {
     return node;
   }
 
+  parentFor(path) {
+    const parentPath = this.dirname(path);
+    const parent = this.resolve(parentPath);
+    if (!parent || parent.type !== "directory") throw new Error(`No such directory: ${parentPath}`);
+    return parent;
+  }
+
+  lookupChild(path) {
+    const normalized = this.normalize(path);
+    const parent = this.parentFor(normalized);
+    const name = this.basename(normalized);
+    const index = parent.children?.findIndex((child) => child.name === name) ?? -1;
+    return { parent, node: index >= 0 ? parent.children[index] : null, index };
+  }
+
+  createNode(node) {
+    const created = new Date().toISOString();
+    return {
+      created,
+      modified: created,
+      ...node,
+      size: node.size ?? byteLength(node.content || ""),
+    };
+  }
+
   nodeStat(node, path) {
     const resolved = this.resolveNode(node);
     return {
@@ -160,4 +284,31 @@ function mimeForNode(node) {
 
 function byteLength(value) {
   return new TextEncoder().encode(String(value ?? "")).length;
+}
+
+function cloneNode(node) {
+  return {
+    ...node,
+    children: node.children?.map((child) => cloneNode(child)),
+  };
+}
+
+function touchNode(node) {
+  node.modified = new Date().toISOString();
+  if (node.children) node.children.forEach((child) => touchNode(child));
+}
+
+function mimeFromName(name) {
+  if (/\.md$/i.test(name)) return "text/markdown";
+  if (/\.txt$/i.test(name)) return "text/plain";
+  if (/\.json$/i.test(name)) return "application/json";
+  if (/\.html?$/i.test(name)) return "text/html";
+  if (/\.pdf$/i.test(name)) return "application/pdf";
+  return "text/plain";
+}
+
+function iconFromMime(mime) {
+  if (mime === "text/html") return "browser";
+  if (mime === "application/pdf") return "pdf";
+  return "text";
 }

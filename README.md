@@ -23,7 +23,7 @@ The first demo boots a portfolio inside DindbOS instead of decorating a portfoli
 npm run dev
 ```
 
-Then open `http://127.0.0.1:5173`.
+Then open `http://127.0.0.1:5174`.
 
 ## Project Shape
 
@@ -54,10 +54,11 @@ The demo now boots with a Linux-like tree:
 
 The desktop is rendered from `/home/guest/Desktop`, not from hard-coded buttons. Apps live under `/usr/share/applications`, and portfolio content is mounted under `/mnt/portfolio`.
 
-Terminal commands currently include:
+Terminal commands currently include read and write operations against the shared virtual filesystem:
 
 ```text
-help, ls -l, tree, cd, pwd, open, cat, stat, readlink, apps, whoami, uname, neofetch, clear
+help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
+mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
 ```
 
 ## Goal
