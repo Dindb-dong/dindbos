@@ -14,37 +14,128 @@ export class NpmInstaller {
     if (!targets.length || targets.some((target) => !target)) throw new Error("npm: usage: npm install <package...>");
     const fetcher = options.fetch || globalThis.fetch;
     if (typeof fetcher !== "function") throw new Error("npm: fetch is not available in this runtime");
-    this.ensureProject(cwd);
-    const installed = [];
-    for (const specifier of targets) {
-      const request = parsePackageSpecifier(specifier);
-      const metadata = await this.fetchMetadata(fetcher, request.name);
-      const version = resolveVersion(metadata, request.range);
-      const versionMeta = metadata.versions?.[version];
-      if (!versionMeta?.dist?.tarball) throw new Error(`npm: ${request.name}@${version}: missing tarball`);
-      const tarball = await fetchBytes(fetcher, versionMeta.dist.tarball, MAX_TARBALL_BYTES, `${request.name} tarball`);
-      await verifyIntegrity(tarball, versionMeta.dist.integrity || versionMeta.dist.shasum || "", `${request.name}@${version}`);
-      const files = await extractPackageTarball(tarball);
-      const packageRoot = this.packageInstallPath(cwd, request.name);
-      this.installFiles(packageRoot, files);
-      const record = {
-        name: request.name,
-        version,
-        range: request.range,
-        packageRoot,
-        tarball: versionMeta.dist.tarball,
-        integrity: versionMeta.dist.integrity || "",
-        fileCount: files.length,
-      };
-      this.updateProjectManifests(cwd, record);
-      installed.push(record);
+    const root = this.os.fs.normalize(cwd);
+    this.ensureProject(root);
+    const context = {
+      fetcher,
+      root,
+      maxDepth: options.maxDepth ?? 12,
+      maxPackages: options.maxPackages ?? 128,
+      metadata: new Map(),
+      records: [],
+      recordsByPath: new Map(),
+      rootRecordsByName: new Map(),
+      topLevelDependencies: new Map(),
+      pendingDependencies: [],
+      deferDependencies: true,
+    };
+    const requests = targets.map((specifier) => parsePackageSpecifier(specifier));
+    for (const request of requests) {
+      context.topLevelDependencies.set(request.name, request.range);
     }
-    return installed;
+    for (const request of requests) {
+      await this.installRequest(context, { ...request, depth: 0, parent: null, topLevel: true });
+    }
+    context.deferDependencies = false;
+    while (context.pendingDependencies.length) {
+      const request = context.pendingDependencies.shift();
+      await this.installRequest(context, request);
+    }
+    this.updateProjectManifests(root, context.records, context.topLevelDependencies);
+    return context.records;
   }
 
   async fetchMetadata(fetcher, packageName) {
     const url = `${this.registry.replace(/\/$/, "")}/${encodePackageName(packageName)}`;
     return JSON.parse(await fetchText(fetcher, url, MAX_METADATA_BYTES, `metadata ${packageName}`));
+  }
+
+  async metadataFor(context, packageName) {
+    if (!context.metadata.has(packageName)) {
+      context.metadata.set(packageName, await this.fetchMetadata(context.fetcher, packageName));
+    }
+    return context.metadata.get(packageName);
+  }
+
+  async installRequest(context, request) {
+    if (context.records.length >= context.maxPackages) throw new Error(`npm: package limit exceeded (${context.maxPackages})`);
+    if (request.depth > context.maxDepth) throw new Error(`npm: dependency depth exceeded (${context.maxDepth})`);
+    const reusable = this.findReusableRecord(context, request);
+    if (reusable) return reusable;
+    const metadata = await this.metadataFor(context, request.name);
+    const version = resolveVersion(metadata, request.range);
+    const versionMeta = metadata.versions?.[version];
+    if (!versionMeta?.dist?.tarball) throw new Error(`npm: ${request.name}@${version}: missing tarball`);
+    const installBase = this.installBaseFor(context, request, version);
+    const packageRoot = this.packageInstallPath(installBase, request.name);
+    const existingAtPath = context.recordsByPath.get(packageRoot);
+    if (existingAtPath) {
+      if (satisfies(existingAtPath.version, request.range)) return existingAtPath;
+      throw new Error(`npm: dependency conflict at ${packageRoot}: ${existingAtPath.version} does not satisfy ${request.range}`);
+    }
+    const tarball = await fetchBytes(context.fetcher, versionMeta.dist.tarball, MAX_TARBALL_BYTES, `${request.name} tarball`);
+    await verifyIntegrity(tarball, versionMeta.dist.integrity || versionMeta.dist.shasum || "", `${request.name}@${version}`);
+    const files = await extractPackageTarball(tarball);
+    this.installFiles(packageRoot, files);
+    const dependencies = dependencyMap(versionMeta.dependencies || {});
+    const record = {
+      name: request.name,
+      version,
+      range: request.range,
+      packageRoot,
+      tarball: versionMeta.dist.tarball,
+      integrity: versionMeta.dist.integrity || versionMeta.dist.shasum || "",
+      fileCount: files.length,
+      dependencies,
+      depth: request.depth,
+      dependencyOf: request.parent?.name || "",
+      topLevel: Boolean(request.topLevel),
+    };
+    context.records.push(record);
+    context.recordsByPath.set(packageRoot, record);
+    if (packageRoot === this.packagePath(context.root, record.name)) {
+      context.rootRecordsByName.set(record.name, record);
+    }
+    for (const [dependencyName, dependencyRange] of Object.entries(dependencies)) {
+      const dependencyRequest = {
+        name: dependencyName,
+        range: dependencyRange,
+        depth: request.depth + 1,
+        parent: record,
+        topLevel: false,
+      };
+      if (context.deferDependencies && request.topLevel) context.pendingDependencies.push(dependencyRequest);
+      else await this.installRequest(context, dependencyRequest);
+    }
+    return record;
+  }
+
+  findReusableRecord(context, request) {
+    const candidates = [];
+    if (request.parent) {
+      let cursor = request.parent.packageRoot;
+      while (true) {
+        candidates.push(this.packagePath(cursor, request.name));
+        if (cursor === context.root) break;
+        const parent = this.os.fs.dirname(this.os.fs.dirname(cursor));
+        if (parent === cursor || !parent.startsWith(context.root)) break;
+        cursor = parent;
+      }
+    }
+    candidates.push(this.packagePath(context.root, request.name));
+    for (const path of candidates) {
+      const record = context.recordsByPath.get(path);
+      if (record && satisfies(record.version, request.range)) return record;
+    }
+    return null;
+  }
+
+  installBaseFor(context, request, version) {
+    if (!request.parent) return context.root;
+    const rootRecord = context.rootRecordsByName.get(request.name);
+    if (!rootRecord || satisfies(rootRecord.version, request.range)) return context.root;
+    if (satisfies(version, request.range)) return request.parent.packageRoot;
+    throw new Error(`npm: ${request.name}@${version} does not satisfy ${request.range}`);
   }
 
   ensureProject(cwd) {
@@ -66,9 +157,11 @@ export class NpmInstaller {
   }
 
   packageInstallPath(cwd, packageName) {
-    const root = this.os.fs.normalize(cwd);
     const parts = packageName.split("/");
-    let cursor = this.os.fs.join(root, "node_modules");
+    let cursor = this.os.fs.join(this.os.fs.normalize(cwd), "node_modules");
+    if (!this.os.fs.exists(cursor)) {
+      this.os.fs.createDirectory(cursor, "/", { owner: "guest", group: "users", permissions: "drwxr-xr-x" }, this.system);
+    }
     parts.forEach((part) => {
       cursor = this.os.fs.join(cursor, part);
       if (!this.os.fs.exists(cursor)) {
@@ -76,6 +169,12 @@ export class NpmInstaller {
       }
     });
     return cursor;
+  }
+
+  packagePath(cwd, packageName) {
+    return packageName
+      .split("/")
+      .reduce((cursor, part) => this.os.fs.join(cursor, part), this.os.fs.join(this.os.fs.normalize(cwd), "node_modules"));
   }
 
   installFiles(packageRoot, files) {
@@ -118,12 +217,14 @@ export class NpmInstaller {
     });
   }
 
-  updateProjectManifests(cwd, record) {
+  updateProjectManifests(cwd, records, topLevelDependencies) {
     const root = this.os.fs.normalize(cwd);
     const packageJsonPath = this.os.fs.join(root, "package.json");
     const packageJson = safeJson(this.os.fs.readFile(packageJsonPath, "/", this.system), {});
     packageJson.dependencies = packageJson.dependencies || {};
-    packageJson.dependencies[record.name] = record.range || record.version;
+    for (const [name, range] of topLevelDependencies.entries()) {
+      packageJson.dependencies[name] = range;
+    }
     this.os.fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "/", this.system);
     const lockPath = this.os.fs.join(root, "package-lock.json");
     const lock = this.os.fs.exists(lockPath)
@@ -145,18 +246,24 @@ export class NpmInstaller {
     nextLock.packages = nextLock.packages || {};
     nextLock.packages[""] = nextLock.packages[""] || { dependencies: {} };
     nextLock.packages[""].dependencies = packageJson.dependencies;
-    const lockKey = `node_modules/${record.name}`;
-    nextLock.packages[lockKey] = {
-      version: record.version,
-      resolved: record.tarball,
-      integrity: record.integrity,
-    };
     nextLock.dependencies = nextLock.dependencies || {};
-    nextLock.dependencies[record.name] = {
-      version: record.version,
-      resolved: record.tarball,
-      integrity: record.integrity,
-    };
+    for (const record of records) {
+      const lockKey = relativePackagePath(root, record.packageRoot);
+      nextLock.packages[lockKey] = {
+        version: record.version,
+        resolved: record.tarball,
+        integrity: record.integrity,
+        ...(Object.keys(record.dependencies || {}).length ? { dependencies: record.dependencies } : {}),
+      };
+      if (record.topLevel || !nextLock.dependencies[record.name]) {
+        nextLock.dependencies[record.name] = {
+          version: record.version,
+          resolved: record.tarball,
+          integrity: record.integrity,
+          ...(Object.keys(record.dependencies || {}).length ? { requires: record.dependencies } : {}),
+        };
+      }
+    }
     this.os.fs.writeOrCreateFile(
       lockPath,
       `${JSON.stringify(nextLock, null, 2)}\n`,
@@ -178,6 +285,23 @@ export function parsePackageSpecifier(specifier) {
   return { name, range: range || "latest" };
 }
 
+function dependencyMap(dependencies) {
+  return Object.fromEntries(Object.entries(dependencies)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, range]) => {
+      if (!/^(@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/i.test(name)) throw new Error(`npm: unsupported dependency name: ${name}`);
+      return [name, normalizeDependencyRange(range, name)];
+    }));
+}
+
+function normalizeDependencyRange(range, name) {
+  const value = String(range || "latest").trim();
+  if (/^(file|git|github|http|https|workspace):/i.test(value) || value.startsWith("npm:")) {
+    throw new Error(`npm: unsupported dependency specifier for ${name}: ${value}`);
+  }
+  return value || "latest";
+}
+
 function resolveVersion(metadata, range) {
   const versions = Object.keys(metadata.versions || {}).filter((version) => parseSemver(version));
   if (!versions.length) throw new Error(`npm: ${metadata.name}: no installable versions`);
@@ -191,14 +315,50 @@ function resolveVersion(metadata, range) {
 }
 
 function satisfies(version, range) {
-  const normalized = range.trim();
-  if (normalized === "*" || normalized === "latest") return true;
-  if (/^\d+\.\d+\.\d+/.test(normalized)) return version === normalized;
+  const normalized = String(range || "latest").trim();
+  if (normalized === "*" || /^x$/i.test(normalized) || normalized === "latest") return true;
+  return normalized
+    .split("||")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .some((part) => satisfiesRangeSet(version, part));
+}
+
+function satisfiesRangeSet(version, rangeSet) {
+  const comparators = rangeSet.match(/(?:[<>]=?|=)?\s*v?\d+(?:\.(?:\d+|x|\*))?(?:\.(?:\d+|x|\*))?(?:[-+][0-9A-Za-z.-]+)?|\^[^\s]+|~[^\s]+|[x*]/gi) || [];
+  if (!comparators.length) return version === rangeSet;
+  return comparators.every((comparator) => satisfiesComparator(version, comparator));
+}
+
+function satisfiesComparator(version, comparator) {
+  const normalized = comparator.trim();
+  if (!normalized || normalized === "*" || /^x$/i.test(normalized)) return true;
   if (normalized.startsWith("^")) return satisfiesCaret(version, normalized.slice(1));
   if (normalized.startsWith("~")) return satisfiesTilde(version, normalized.slice(1));
-  if (normalized.startsWith(">=")) return compareSemver(version, normalized.slice(2)) >= 0;
-  if (/^\d+$/.test(normalized)) return parseSemver(version)?.major === Number(normalized);
-  return version === normalized;
+  const match = /^(<=|>=|<|>|=)?\s*(.+)$/.exec(normalized);
+  const operator = match?.[1] || "";
+  const target = match?.[2] || normalized;
+  if (/[x*]/i.test(target)) return satisfiesWildcard(version, target);
+  const parsedTarget = parseSemver(normalizeRangeBase(target));
+  if (!parsedTarget) return version === target;
+  const comparison = compareSemver(version, parsedTarget.raw);
+  if (operator === ">=") return comparison >= 0;
+  if (operator === ">") return comparison > 0;
+  if (operator === "<=") return comparison <= 0;
+  if (operator === "<") return comparison < 0;
+  return comparison === 0;
+}
+
+function satisfiesWildcard(version, range) {
+  const candidate = parseSemver(version);
+  if (!candidate) return false;
+  const parts = String(range || "").replace(/^v/i, "").split(".");
+  if (!parts[0] || /[x*]/i.test(parts[0])) return true;
+  if (candidate.major !== Number(parts[0])) return false;
+  if (!parts[1] || /[x*]/i.test(parts[1])) return true;
+  if (candidate.minor !== Number(parts[1])) return false;
+  if (!parts[2] || /[x*]/i.test(parts[2])) return true;
+  return candidate.patch === Number(parts[2]);
 }
 
 function satisfiesCaret(version, base) {
@@ -218,13 +378,13 @@ function satisfiesTilde(version, base) {
 }
 
 function normalizeRangeBase(value) {
-  const parts = String(value || "").split(".");
+  const parts = String(value || "").trim().replace(/^v/i, "").split(".");
   while (parts.length < 3) parts.push("0");
-  return parts.slice(0, 3).join(".");
+  return parts.slice(0, 3).map((part) => part.replace(/[x*]/i, "0")).join(".");
 }
 
 function parseSemver(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(String(version || ""));
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(String(version || "").trim());
   if (!match) return null;
   return {
     raw: match[0],
@@ -374,6 +534,14 @@ function safeJson(text, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function relativePackagePath(root, packageRoot) {
+  const normalizedRoot = String(root || "/").replace(/\/$/, "");
+  const normalizedPackageRoot = String(packageRoot || "").replace(/\/$/, "");
+  if (normalizedPackageRoot === normalizedRoot) return "";
+  if (normalizedPackageRoot.startsWith(`${normalizedRoot}/`)) return normalizedPackageRoot.slice(normalizedRoot.length + 1);
+  return normalizedPackageRoot.replace(/^\//, "");
 }
 
 function mimeFromName(path) {
