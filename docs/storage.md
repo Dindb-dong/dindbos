@@ -16,6 +16,8 @@ Current implementation:
 - OPFS is preferred when available. It stores a tiny root manifest, separate inode metadata records, and content-addressed file records.
 - Saves compare record hashes and only rewrite dirty inode/content records.
 - Filesystem changes are debounced and coalesced so bursts of writes produce one persisted snapshot.
+- VFS exposes binary-safe byte read/write APIs while keeping text APIs compatible.
+- Files.app supports browser file import, DindbOS archive export/import, and drag and drop upload.
 - IndexedDB, localStorage, and memory remain fallbacks for snapshot storage.
 - `storage` reports backend, saved bytes, and browser quota estimates when available.
 - `storage persist` requests persistent browser storage.
@@ -53,7 +55,7 @@ Planned storage stack:
 
 Known limits:
 
-- binary-safe copy/export is pending
+- native Blob/Uint8Array file nodes are planned after the compatibility layer is stable
 - persistence still walks the in-memory tree to compute record hashes
 - page unload flushing is best-effort because browsers may stop asynchronous storage work during shutdown
 - directory copy between OPFS and local mounts is pending

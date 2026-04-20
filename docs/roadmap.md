@@ -34,7 +34,10 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - `storage persist` and quota estimate
 - persisted directory handles in IndexedDB
 - `mount-local --list`, `mount-local --restore`, `mount-local --forget`
-- remaining: import/export, drag and drop upload, binary-safe file reads/writes, richer local mount permission UX, stronger unload flush guarantees
+- binary-safe VFS read/write compatibility layer
+- Files.app import/export
+- Files.app drag and drop upload
+- next: native Blob/Uint8Array file model, richer local mount permission UX, stronger unload flush guarantees
 
 ## 3. Package System
 
