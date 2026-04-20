@@ -5,6 +5,11 @@ DindbOS.js is a browser-native desktop runtime for portfolio sites, docs, demos,
 It is not a Linux kernel emulator. It is a small OS-style runtime for the browser:
 
 - virtual file system
+- process manager
+- chmod-style permission checks
+- app manifests
+- process-scoped app sandbox
+- persistent filesystem snapshots
 - app registry
 - window manager
 - desktop shell
@@ -59,7 +64,22 @@ Terminal commands currently include read and write operations against the shared
 ```text
 help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
 mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
+manifest, ps, kill, storage, resetfs
 ```
+
+Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
+
+## Runtime Kernel
+
+DindbOS.js now has browser-native OS primitives:
+
+- `ProcessManager` assigns PIDs to launched apps and exposes `ps`/`kill`.
+- `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
+- `AppSandbox` gives each app a scoped runtime instead of the raw OS object.
+- `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
+- `PersistentStorage` saves the VFS snapshot to `localStorage`; `resetfs` clears it and reloads.
+
+The current model is still a browser runtime, not a Linux kernel emulator, but app execution now flows through process, manifest, sandbox, permission, and storage layers.
 
 ## Goal
 
