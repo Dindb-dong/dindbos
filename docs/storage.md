@@ -15,9 +15,11 @@ Current implementation:
 - VFS metadata is stored through `PersistentStorage`.
 - OPFS is preferred when available. It stores a tiny root manifest, separate inode metadata records, and content-addressed file records.
 - Saves compare record hashes and only rewrite dirty inode/content records.
+- Filesystem changes are debounced and coalesced so bursts of writes produce one persisted snapshot.
 - IndexedDB, localStorage, and memory remain fallbacks for snapshot storage.
 - `storage` reports backend, saved bytes, and browser quota estimates when available.
 - `storage persist` requests persistent browser storage.
+- `storage flush` forces pending filesystem writes to commit immediately.
 - `mount-local [name]` uses File System Access API to mount a user-selected folder under `/mnt`.
 - `mount-local --list` reports persisted and runtime local mounts.
 - `mount-local --restore` requests permission again and reconnects persisted local mounts.
@@ -53,6 +55,6 @@ Known limits:
 
 - binary-safe copy/export is pending
 - persistence still walks the in-memory tree to compute record hashes
-- debounce/coalescing for bursty filesystem changes is pending
+- page unload flushing is best-effort because browsers may stop asynchronous storage work during shutdown
 - directory copy between OPFS and local mounts is pending
 - browser support is strongest in Chromium-based browsers
