@@ -1,12 +1,12 @@
-import { AppRegistry } from "./app-registry.js?v=20260420-shell-chaining";
-import { AppSandbox } from "./app-sandbox.js?v=20260420-shell-chaining";
-import { DesktopShell } from "./desktop-shell.js?v=20260420-shell-chaining";
-import { EventBus } from "./event-bus.js?v=20260420-shell-chaining";
-import { PermissionPolicy } from "./permission-policy.js?v=20260420-shell-chaining";
-import { PersistentStorage } from "./persistent-storage.js?v=20260420-shell-chaining";
-import { ProcessManager } from "./process-manager.js?v=20260420-shell-chaining";
-import { VirtualFileSystem } from "./vfs.js?v=20260420-shell-chaining";
-import { WindowManager } from "./window-manager.js?v=20260420-shell-chaining";
+import { AppRegistry } from "./app-registry.js?v=20260420-text-save";
+import { AppSandbox } from "./app-sandbox.js?v=20260420-text-save";
+import { DesktopShell } from "./desktop-shell.js?v=20260420-text-save";
+import { EventBus } from "./event-bus.js?v=20260420-text-save";
+import { PermissionPolicy } from "./permission-policy.js?v=20260420-text-save";
+import { PersistentStorage } from "./persistent-storage.js?v=20260420-text-save";
+import { ProcessManager } from "./process-manager.js?v=20260420-text-save";
+import { VirtualFileSystem } from "./vfs.js?v=20260420-text-save";
+import { WindowManager } from "./window-manager.js?v=20260420-text-save";
 
 export class DindbOS {
   constructor(options) {

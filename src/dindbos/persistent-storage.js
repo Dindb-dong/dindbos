@@ -9,6 +9,7 @@ export class PersistentStorage {
     this.indexedDB = options.indexedDB || safeIndexedDB();
     this.memory = new Map();
     this.dbPromise = null;
+    this.writeQueue = Promise.resolve();
     this.lastStatus = {
       key: this.key,
       backend: this.indexedDB ? "indexedDB" : this.adapter ? "localStorage" : "memory",
@@ -67,7 +68,10 @@ export class PersistentStorage {
 
   write(key, value) {
     if (this.indexedDB) {
-      this.idbSet(key, value).catch(() => this.writeFallback(key, value));
+      this.writeQueue = this.writeQueue
+        .catch(() => {})
+        .then(() => this.idbSet(key, value))
+        .catch(() => this.writeFallback(key, value));
       return;
     }
     this.writeFallback(key, value);
@@ -75,7 +79,10 @@ export class PersistentStorage {
 
   remove(key) {
     if (this.indexedDB) {
-      this.idbDelete(key).catch(() => this.removeFallback(key));
+      this.writeQueue = this.writeQueue
+        .catch(() => {})
+        .then(() => this.idbDelete(key))
+        .catch(() => this.removeFallback(key));
       return;
     }
     this.removeFallback(key);

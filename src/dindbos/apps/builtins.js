@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260420-shell-chaining";
+import { ShellSession } from "../shell.js?v=20260420-text-save";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -329,18 +329,36 @@ function uniquePath(os, directory, name) {
 
 function renderText(os, content, node, windowApi) {
   const stat = os.fs.stat(node.path);
+  const initialContent = node?.path ? os.fs.readFile(node.path) : node?.content || "";
   content.innerHTML = `
     <section class="text-app">
-      <textarea spellcheck="false">${escapeHtml(node?.content || "")}</textarea>
+      <textarea spellcheck="false">${escapeHtml(initialContent)}</textarea>
       <footer>
         <span>${escapeHtml(node?.path || "")} · ${escapeHtml(stat?.permissions || "")}</span>
         <button type="button">Save</button>
       </footer>
     </section>
   `;
-  content.querySelector("button").addEventListener("click", () => {
-    os.fs.writeFile(node.path, content.querySelector("textarea").value);
-    windowApi.setTitle(`${node.name} - saved`);
+  const textarea = content.querySelector("textarea");
+  const footer = content.querySelector("footer span");
+  const save = () => {
+    try {
+      os.fs.writeFile(node.path, textarea.value);
+      node.content = os.fs.readFile(node.path);
+      const nextStat = os.fs.stat(node.path);
+      footer.textContent = `${node.path} · ${nextStat?.permissions || ""} · saved ${shortTime(nextStat?.modified)}`;
+      windowApi.setTitle(`${node.name} - saved`);
+    } catch (error) {
+      footer.textContent = error.message;
+      windowApi.setTitle(`${node.name} - save failed`);
+    }
+  };
+  content.querySelector("button").addEventListener("click", save);
+  textarea.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      save();
+    }
   });
 }
 

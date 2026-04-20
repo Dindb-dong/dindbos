@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-shell-chaining";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-text-save";
 
 export class AppRegistry {
   constructor(os) {

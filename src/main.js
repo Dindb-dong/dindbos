@@ -1,6 +1,6 @@
-import { DindbOS } from "./dindbos/index.js?v=20260420-shell-chaining";
-import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-shell-chaining";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-shell-chaining";
+import { DindbOS } from "./dindbos/index.js?v=20260420-text-save";
+import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-text-save";
+import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-text-save";
 
 const os = new DindbOS({
   root: "#dindbos-root",

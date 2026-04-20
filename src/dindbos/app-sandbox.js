@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-shell-chaining";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-text-save";
 
 export class AppSandbox {
   constructor(os, process) {
