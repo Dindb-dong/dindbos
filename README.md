@@ -13,6 +13,10 @@ It is not a Linux kernel emulator. It is a small OS-style runtime for the browse
 
 The first demo boots a portfolio inside DindbOS instead of decorating a portfolio page to look like an OS.
 
+## Demo
+
+- GitHub Pages: https://dindb-dong.github.io/dindbos/
+
 ## Local Dev
 
 ```bash
