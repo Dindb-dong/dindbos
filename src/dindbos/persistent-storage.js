@@ -1,5 +1,6 @@
 const STORAGE_VERSION = 2;
 const STORE_NAME = "kv";
+const FILE_RECORD_FORMAT = "opfs-file-records";
 
 export class PersistentStorage {
   constructor(options = {}) {
@@ -29,6 +30,15 @@ export class PersistentStorage {
     try {
       const payload = JSON.parse(raw);
       if (payload.version !== STORAGE_VERSION) return null;
+      if (payload.format === FILE_RECORD_FORMAT) {
+        this.lastStatus = {
+          ...this.lastStatus,
+          storageFormat: FILE_RECORD_FORMAT,
+          fileRecords: payload.fileRecords?.length || 0,
+          contentBytes: payload.contentBytes || 0,
+        };
+        return await this.hydrateFileRecordTree(payload.root || null);
+      }
       return payload.root || null;
     } catch {
       return null;
@@ -36,12 +46,25 @@ export class PersistentStorage {
   }
 
   saveFileSystem(root) {
+    if (this.opfsProvider) {
+      const recordPayload = this.createFileRecordPayload(root);
+      this.updateStatus(recordPayload.manifest, {
+        storageFormat: FILE_RECORD_FORMAT,
+        fileRecords: recordPayload.records.length,
+        contentBytes: recordPayload.contentBytes,
+      });
+      this.writeQueue = this.writeQueue
+        .catch(() => {})
+        .then(() => this.writeFileRecordPayload(recordPayload))
+        .catch(() => this.writeSnapshotFallback(root));
+      return;
+    }
     const payload = JSON.stringify({
       version: STORAGE_VERSION,
       savedAt: new Date().toISOString(),
       root,
     });
-    this.updateStatus(payload);
+    this.updateStatus(payload, { storageFormat: "snapshot", fileRecords: 0, contentBytes: 0 });
     this.write(this.key, payload);
   }
 
@@ -161,6 +184,7 @@ export class PersistentStorage {
         .catch(() => {})
         .then(async () => {
           await this.opfsDelete(key);
+          if (key === this.key) await this.cleanupOpfsFileRecords(new Set());
           await this.removeDurableFallback(key);
         })
         .catch(() => this.removeDurableFallback(key));
@@ -214,6 +238,114 @@ export class PersistentStorage {
       } catch {}
     }
     this.removeFallback(key);
+  }
+
+  createFileRecordPayload(root) {
+    const records = [];
+    const tree = this.serializeFileRecordNode(root, "/", records);
+    const manifestPayload = {
+      version: STORAGE_VERSION,
+      format: FILE_RECORD_FORMAT,
+      savedAt: new Date().toISOString(),
+      root: tree,
+      fileRecords: records.map(({ content, ...record }) => record),
+      contentBytes: records.reduce((total, record) => total + record.size, 0),
+    };
+    return {
+      manifest: JSON.stringify(manifestPayload),
+      records,
+      contentBytes: manifestPayload.contentBytes,
+    };
+  }
+
+  serializeFileRecordNode(node, path, records) {
+    if (!node) return null;
+    const { path: _path, content, children, ...snapshot } = node;
+    const nodePath = path === "/" ? "/" : path;
+    if (node.type === "file") {
+      const text = String(content ?? "");
+      const ref = stableFileRef(nodePath);
+      const key = this.fileRecordKey(ref);
+      const size = byteLength(text);
+      records.push({
+        ref,
+        key,
+        path: nodePath,
+        size,
+        modified: node.modified || "",
+        content: text,
+      });
+      return {
+        ...snapshot,
+        size,
+        contentRef: ref,
+        contentEncoding: "utf-8",
+      };
+    }
+    return {
+      ...snapshot,
+      children: children
+        ?.filter((child) => !child.transient)
+        .map((child) => this.serializeFileRecordNode(child, joinPath(nodePath, child.name), records))
+        .filter(Boolean),
+    };
+  }
+
+  async hydrateFileRecordTree(node) {
+    if (!node) return null;
+    const { children, contentRef, contentEncoding: _encoding, ...snapshot } = node;
+    if (node.type === "file" && contentRef) {
+      let content = "";
+      try {
+        content = await this.opfsGet(this.fileRecordKey(contentRef));
+      } catch {
+        content = node.content || "";
+      }
+      return {
+        ...snapshot,
+        content,
+        size: node.size ?? byteLength(content),
+      };
+    }
+    return {
+      ...snapshot,
+      children: children ? await Promise.all(children.map((child) => this.hydrateFileRecordTree(child))) : children,
+    };
+  }
+
+  async writeFileRecordPayload(payload) {
+    for (const record of payload.records) {
+      await this.opfsSet(record.key, record.content);
+    }
+    await this.opfsSet(this.key, payload.manifest);
+    await this.cleanupOpfsFileRecords(new Set(payload.records.map((record) => opfsFileName(record.key))));
+  }
+
+  async writeSnapshotFallback(root) {
+    const payload = JSON.stringify({
+      version: STORAGE_VERSION,
+      savedAt: new Date().toISOString(),
+      root,
+    });
+    this.updateStatus(payload, { storageFormat: "snapshot-fallback", fileRecords: 0, contentBytes: 0 });
+    await this.writeDurableFallback(this.key, payload);
+  }
+
+  async cleanupOpfsFileRecords(activeNames) {
+    const root = await this.openOpfsRoot();
+    if (typeof root.entries !== "function") return;
+    const prefix = opfsFileName(this.fileRecordKey("")).replace(/\.json$/, "");
+    for await (const [name] of root.entries()) {
+      if (name.startsWith(prefix) && !activeNames.has(name)) {
+        try {
+          await root.removeEntry(name);
+        } catch {}
+      }
+    }
+  }
+
+  fileRecordKey(ref) {
+    return `${this.key}:file:${ref}`;
   }
 
   async opfsGet(key) {
@@ -277,11 +409,12 @@ export class PersistentStorage {
     return this.dbPromise;
   }
 
-  updateStatus(raw) {
+  updateStatus(raw, extra = {}) {
     this.lastStatus = {
       ...this.lastStatus,
       bytes: raw ? new TextEncoder().encode(raw).length : 0,
       persisted: Boolean(raw),
+      ...extra,
     };
   }
 }
@@ -320,6 +453,25 @@ function safeOpfsProvider() {
 
 function opfsFileName(key) {
   return `${String(key || "dindbos").replace(/[^A-Za-z0-9._-]+/g, "_")}.json`;
+}
+
+function stableFileRef(path) {
+  const value = String(path || "/");
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${(hash >>> 0).toString(36)}-${value.length}`;
+}
+
+function joinPath(base, name) {
+  if (!base || base === "/") return `/${name}`;
+  return `${base}/${name}`;
+}
+
+function byteLength(value) {
+  return new TextEncoder().encode(String(value ?? "")).length;
 }
 
 function safeLocalStorage() {

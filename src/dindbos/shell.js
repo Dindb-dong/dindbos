@@ -793,10 +793,13 @@ function formatStorage(status) {
     `key=${status.key}`,
     `backend=${status.backend || "memory"}`,
     `structuredBackend=${status.structuredBackend || "memory"}`,
+    `format=${status.storageFormat || "snapshot"}`,
     `enabled=${status.enabled}`,
     `persisted=${status.persisted}`,
     `persistentPermission=${status.persistentPermission || false}`,
     `bytes=${status.bytes}`,
+    `fileRecords=${status.fileRecords || 0}`,
+    `contentBytes=${status.contentBytes || 0}`,
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
   ].join("\n");
