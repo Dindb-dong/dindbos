@@ -212,6 +212,21 @@ button {
   background: linear-gradient(160deg, #eef2e5, #8ac66a);
 }
 
+/* Browser icon art */
+[data-icon="browser"] .dos-icon-art {
+  background: linear-gradient(160deg, #eef2e5, #3b82f6);
+}
+
+/* PDF icon art */
+[data-icon="pdf"] .dos-icon-art {
+  background: linear-gradient(160deg, #eef2e5, #e15845);
+}
+
+/* Device icon art */
+[data-icon="device"] .dos-icon-art {
+  background: linear-gradient(160deg, #171b14, #4a5544);
+}
+
 /* Icon label */
 .dos-icon-label {
   display: -webkit-box;
@@ -457,12 +472,33 @@ button {
 
 /* Path bar */
 .pathbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.06);
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Path bar code */
+.pathbar code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Path bar button */
+.pathbar button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
 }
 
 /* File grid */
@@ -513,10 +549,18 @@ button {
 /* Terminal form */
 .terminal-app form {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(90px, auto) minmax(0, 1fr);
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid rgba(189, 247, 160, 0.18);
+}
+
+/* Terminal prompt */
+.terminal-app [data-prompt] {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Terminal input */
@@ -594,6 +638,29 @@ button {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
+}
+
+/* Viewer app */
+.viewer-app {
+  display: grid;
+  gap: 12px;
+}
+
+/* Viewer heading */
+.viewer-app h2 {
+  margin: 0;
+}
+
+/* Viewer preview */
+.viewer-app pre {
+  min-height: 320px;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  white-space: pre-wrap;
 }
 
 /* Settings app */
