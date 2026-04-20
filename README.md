@@ -11,6 +11,7 @@ It is not a Linux kernel emulator. It is a small OS-style runtime for the browse
 - process-scoped app sandbox
 - persistent filesystem snapshots
 - app registry
+- package manager
 - window manager
 - desktop shell
 - built-in apps
@@ -54,6 +55,7 @@ The demo now boots with a Linux-like tree:
   mnt/portfolio/        mounted portfolio projects and decks
   proc/                 runtime status files
   usr/share/applications/
+  var/lib/dindbos/      installed package records
   var/log/
 ```
 
@@ -65,6 +67,7 @@ Terminal commands currently include read and write operations against the shared
 help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
 mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
 export, env, which, man, chmod, df, mount, manifest, ps, kill, storage, resetfs
+pkg list, pkg info, pkg install, pkg remove
 ```
 
 Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
@@ -76,12 +79,25 @@ DindbOS.js now has browser-native OS primitives:
 
 - `ProcessManager` assigns PIDs to launched apps and exposes `ps`/`kill`.
 - `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
+- `PackageManager` installs `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
 - `AppSandbox` gives each app a scoped runtime instead of the raw OS object.
 - `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
 - `ShellSession` handles `PATH`, environment variables, pipes, redirection, and shell builtins.
 - `PersistentStorage` saves the VFS snapshot to IndexedDB with localStorage and memory fallback; `resetfs` clears it and reloads.
 
 The current model is still a browser runtime, not a Linux kernel emulator, but app execution now flows through process, manifest, sandbox, permission, and storage layers.
+
+## Packages
+
+A DindbOS package starts with a `dindbos.app.json` manifest. The package manager stores installed package records under `/var/lib/dindbos/packages`, installs app files under `/opt/<package>`, creates launchers under `/usr/share/applications`, and registers the app with the runtime.
+
+Try the sample package:
+
+```text
+pkg list
+pkg info hello-notes
+open "/usr/share/applications/Hello Notes.app"
+```
 
 ## Goal
 
