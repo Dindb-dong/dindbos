@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-package-app-runtime";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-npm-installer";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -9,6 +9,7 @@ export class AppSandbox {
     this.apps = this.createAppFacade();
     this.processes = this.createProcessFacade();
     this.packages = this.createPackageFacade();
+    this.npm = this.createNpmFacade();
     this.storage = this.createStorageFacade();
     this.session = Object.freeze({ ...os.session });
   }
@@ -211,6 +212,17 @@ export class AppSandbox {
       remove: (packageId) => {
         this.assertCapability("package.manage");
         return packageSummary(this.os.packages.remove(packageId), true);
+      },
+    };
+  }
+
+  createNpmFacade() {
+    return {
+      install: async (specifiers, cwd = this.process.cwd) => {
+        this.assertCapability("npm.install");
+        const normalized = this.os.fs.normalize(cwd, this.process.cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.npm.install(specifiers, normalized);
       },
     };
   }

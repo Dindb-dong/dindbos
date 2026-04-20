@@ -1,13 +1,14 @@
-import { AppRegistry } from "./app-registry.js?v=20260420-package-app-runtime";
-import { AppSandbox } from "./app-sandbox.js?v=20260420-package-app-runtime";
-import { DesktopShell } from "./desktop-shell.js?v=20260420-package-app-runtime";
-import { EventBus } from "./event-bus.js?v=20260420-package-app-runtime";
-import { PackageManager } from "./package-manager.js?v=20260420-package-app-runtime";
-import { PermissionPolicy } from "./permission-policy.js?v=20260420-package-app-runtime";
-import { PersistentStorage } from "./persistent-storage.js?v=20260420-package-app-runtime";
-import { ProcessManager } from "./process-manager.js?v=20260420-package-app-runtime";
-import { VirtualFileSystem } from "./vfs.js?v=20260420-package-app-runtime";
-import { WindowManager } from "./window-manager.js?v=20260420-package-app-runtime";
+import { AppRegistry } from "./app-registry.js?v=20260420-npm-installer";
+import { AppSandbox } from "./app-sandbox.js?v=20260420-npm-installer";
+import { DesktopShell } from "./desktop-shell.js?v=20260420-npm-installer";
+import { EventBus } from "./event-bus.js?v=20260420-npm-installer";
+import { NpmInstaller } from "./npm-installer.js?v=20260420-npm-installer";
+import { PackageManager } from "./package-manager.js?v=20260420-npm-installer";
+import { PermissionPolicy } from "./permission-policy.js?v=20260420-npm-installer";
+import { PersistentStorage } from "./persistent-storage.js?v=20260420-npm-installer";
+import { ProcessManager } from "./process-manager.js?v=20260420-npm-installer";
+import { VirtualFileSystem } from "./vfs.js?v=20260420-npm-installer";
+import { WindowManager } from "./window-manager.js?v=20260420-npm-installer";
 
 export class DindbOS {
   constructor(options) {
@@ -23,6 +24,7 @@ export class DindbOS {
     this.processes = new ProcessManager(this);
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);
+    this.npm = new NpmInstaller(this);
   }
 
   createFileSystem(rootNode) {
@@ -89,4 +91,4 @@ export class DindbOS {
   }
 }
 
-export { AppRegistry, AppSandbox, DesktopShell, EventBus, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
+export { AppRegistry, AppSandbox, DesktopShell, EventBus, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };

@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-package-app-runtime";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-npm-installer";
 
 export class AppRegistry {
   constructor(os) {
