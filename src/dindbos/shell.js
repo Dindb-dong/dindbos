@@ -17,7 +17,7 @@ const BUILTIN_MANUALS = {
   mkdir: "mkdir [-p] <path> - create directories",
   mount: "mount - print mounted virtual filesystems",
   mv: "mv <source> <destination> - move or rename files",
-  node: "node [-e code] <file> - run CommonJS JavaScript in the DindbOS runtime",
+  node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
   pkg: "pkg list|info|install|remove|search|registry|update|deps|npm - manage DindbOS packages",
@@ -452,14 +452,15 @@ export class ShellSession {
   }
 
   node(args) {
-    if (args[0] === "-e" || args[0] === "--eval") {
-      const source = args.slice(1).join(" ");
-      if (!source) return "node: usage: node -e <code>";
-      return Promise.resolve(this.os.node.evaluate(source, this.cwd)).then(formatNodeResult);
+    const { inputType, rest } = parseNodeOptions(args);
+    if (rest[0] === "-e" || rest[0] === "--eval") {
+      const source = rest.slice(1).join(" ");
+      if (!source) return "node: usage: node [--input-type=module] -e <code>";
+      return Promise.resolve(this.os.node.evaluate(source, this.cwd, { inputType })).then(formatNodeResult);
     }
-    const [file, ...argv] = args;
-    if (!file) return "node: usage: node [-e code] <file>";
-    return Promise.resolve(this.os.node.runFile(file, this.cwd, { argv })).then(formatNodeResult);
+    const [file, ...argv] = rest;
+    if (!file) return "node: usage: node [--input-type=module] [-e code] <file>";
+    return Promise.resolve(this.os.node.runFile(file, this.cwd, { argv, inputType })).then(formatNodeResult);
   }
 
   kill(args) {
@@ -632,6 +633,27 @@ function formatStorage(status) {
 function formatNodeResult(result) {
   if (result.status) throw new Error(`node: process exited with status ${result.status}`);
   return result.output || "";
+}
+
+function parseNodeOptions(args) {
+  const rest = [...args];
+  let inputType = "";
+  for (let index = 0; index < rest.length;) {
+    const current = rest[index];
+    if (current?.startsWith("--input-type=")) {
+      inputType = current.split("=").slice(1).join("=");
+      rest.splice(index, 1);
+      continue;
+    }
+    if (current === "--input-type") {
+      inputType = rest[index + 1] || "";
+      rest.splice(index, 2);
+      continue;
+    }
+    index += 1;
+  }
+  if (inputType && inputType !== "module" && inputType !== "commonjs") throw new Error(`node: unsupported input type: ${inputType}`);
+  return { inputType, rest };
 }
 
 function isPromise(value) {

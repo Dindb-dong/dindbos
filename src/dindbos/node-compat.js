@@ -1,5 +1,6 @@
-const JS_EXTENSIONS = ["", ".js", ".json"];
+const JS_EXTENSIONS = ["", ".js", ".mjs", ".json", ".cjs"];
 const BUILTIN_MODULES = new Set(["fs", "node:fs", "path", "node:path", "process", "node:process", "buffer", "node:buffer"]);
+const AsyncFunction = Object.getPrototypeOf(async function createAsyncFunction() {}).constructor;
 
 export class NodeCompat {
   constructor(os) {
@@ -10,6 +11,10 @@ export class NodeCompat {
   runFile(path, cwd = this.os.session.home || "/", options = {}) {
     const filename = this.resolveEntry(path, cwd);
     const process = this.createProcessContext(this.os.fs.dirname(filename), ["/usr/bin/node", filename, ...(options.argv || [])]);
+    if (this.isEsmFile(filename, options)) {
+      const runtime = new EsmRuntime(this, process);
+      return runtime.loadModule(filename).then(() => runtime.result());
+    }
     const runtime = new CommonJsRuntime(this, process);
     runtime.loadModule(filename);
     return runtime.result();
@@ -17,8 +22,12 @@ export class NodeCompat {
 
   evaluate(source, cwd = this.os.session.home || "/", options = {}) {
     const normalizedCwd = this.os.fs.normalize(cwd);
-    const filename = options.filename || this.os.fs.join(normalizedCwd, "[eval].js");
+    const filename = options.filename || this.os.fs.join(normalizedCwd, options.inputType === "module" ? "[eval].mjs" : "[eval].js");
     const process = this.createProcessContext(normalizedCwd, ["/usr/bin/node", "-e", String(source)]);
+    if (options.inputType === "module") {
+      const runtime = new EsmRuntime(this, process);
+      return runtime.evaluate(String(source), filename).then(() => runtime.result());
+    }
     const runtime = new CommonJsRuntime(this, process);
     runtime.evaluate(String(source), filename);
     return runtime.result();
@@ -29,17 +38,17 @@ export class NodeCompat {
     return this.resolveAsFileOrDirectory(normalized);
   }
 
-  resolveModule(specifier, fromFilename, cwd) {
+  resolveModule(specifier, fromFilename, cwd, options = {}) {
     const request = String(specifier || "");
     if (BUILTIN_MODULES.has(request)) return { type: "builtin", id: request.replace(/^node:/, "") };
     if (request.startsWith("/") || request.startsWith("./") || request.startsWith("../")) {
       const base = request.startsWith("/") ? "/" : this.os.fs.dirname(fromFilename || this.os.fs.join(cwd, "[eval].js"));
-      return { type: "file", path: this.resolveAsFileOrDirectory(this.os.fs.normalize(request, base)) };
+      return { type: "file", path: this.resolveAsFileOrDirectory(this.os.fs.normalize(request, base), options) };
     }
-    return { type: "file", path: this.resolvePackage(request, fromFilename, cwd) };
+    return { type: "file", path: this.resolvePackage(request, fromFilename, cwd, options) };
   }
 
-  resolveAsFileOrDirectory(path) {
+  resolveAsFileOrDirectory(path, options = {}) {
     for (const extension of JS_EXTENSIONS) {
       const candidate = `${path}${extension}`;
       const node = this.os.fs.resolve(candidate);
@@ -50,14 +59,15 @@ export class NodeCompat {
     const packageJsonPath = this.os.fs.join(path, "package.json");
     if (this.os.fs.exists(packageJsonPath)) {
       const manifest = safeJson(this.os.fs.readFile(packageJsonPath, "/", this.system), {});
-      const entry = stringEntry(manifest.exports) || manifest.main || manifest.module || "index.js";
+      const entry = stringEntry(manifest.exports, options.condition) || packageEntry(manifest, options.condition);
       try {
-        return this.resolveAsFileOrDirectory(this.os.fs.normalize(entry, path));
+        return this.resolveAsFileOrDirectory(this.os.fs.normalize(entry, path), options);
       } catch (error) {
         if (!String(error.message || "").includes("module not found")) throw error;
       }
     }
-    for (const extension of [".js", ".json"]) {
+    const indexExtensions = options.condition === "import" ? [".mjs", ".js", ".json"] : [".js", ".json", ".cjs"];
+    for (const extension of indexExtensions) {
       const candidate = this.os.fs.join(path, `index${extension}`);
       const node = this.os.fs.resolve(candidate);
       if (node?.type === "file") return candidate;
@@ -65,14 +75,14 @@ export class NodeCompat {
     throw new Error(`node: module not found: ${path}`);
   }
 
-  resolvePackage(specifier, fromFilename, cwd) {
+  resolvePackage(specifier, fromFilename, cwd, options = {}) {
     const { packageName, subpath } = splitPackageSpecifier(specifier);
     let cursor = this.os.fs.dirname(fromFilename || this.os.fs.join(cwd, "[eval].js"));
     while (true) {
       const packageRoot = this.os.fs.join(this.os.fs.join(cursor, "node_modules"), packageName);
       if (this.os.fs.exists(packageRoot)) {
         const target = subpath ? this.os.fs.join(packageRoot, subpath) : packageRoot;
-        return this.resolveAsFileOrDirectory(target);
+        return this.resolveAsFileOrDirectory(target, options);
       }
       if (cursor === "/") break;
       cursor = this.os.fs.dirname(cursor);
@@ -93,6 +103,27 @@ export class NodeCompat {
       cwd,
       exitCode: 0,
     };
+  }
+
+  isEsmFile(filename, options = {}) {
+    if (options.inputType === "module") return true;
+    if (options.inputType === "commonjs") return false;
+    if (filename.endsWith(".mjs")) return true;
+    if (filename.endsWith(".cjs") || filename.endsWith(".json")) return false;
+    if (!filename.endsWith(".js")) return false;
+    return this.packageTypeFor(filename) === "module";
+  }
+
+  packageTypeFor(filename) {
+    let cursor = this.os.fs.dirname(filename);
+    while (true) {
+      const packageJsonPath = this.os.fs.join(cursor, "package.json");
+      if (this.os.fs.exists(packageJsonPath)) {
+        return safeJson(this.os.fs.readFile(packageJsonPath, "/", this.system), {}).type || "";
+      }
+      if (cursor === "/") return "";
+      cursor = this.os.fs.dirname(cursor);
+    }
   }
 }
 
@@ -121,6 +152,7 @@ class CommonJsRuntime {
   loadModule(filename) {
     const normalized = this.os.fs.normalize(filename);
     if (this.cache.has(normalized)) return this.cache.get(normalized).exports;
+    if (this.node.isEsmFile(normalized)) throw new Error(`require() of ES module is not supported: ${normalized}`);
     if (normalized.endsWith(".json")) {
       const jsonModule = {
         id: normalized,
@@ -285,6 +317,75 @@ class CommonJsRuntime {
   }
 }
 
+class EsmRuntime extends CommonJsRuntime {
+  constructor(node, processContext) {
+    super(node, processContext);
+    this.esmCache = new Map();
+  }
+
+  async evaluate(source, filename) {
+    const module = { id: filename, filename, namespace: {}, loaded: false };
+    await this.executeModuleSource(source, filename, module);
+    return module.namespace;
+  }
+
+  async loadModule(filename) {
+    const normalized = this.os.fs.normalize(filename);
+    if (this.esmCache.has(normalized)) return this.esmCache.get(normalized).namespace;
+    if (normalized.endsWith(".json")) {
+      const jsonModule = {
+        id: normalized,
+        filename: normalized,
+        namespace: { default: JSON.parse(this.os.fs.readFile(normalized, "/", this.node.system)) },
+        loaded: true,
+      };
+      this.esmCache.set(normalized, jsonModule);
+      return jsonModule.namespace;
+    }
+    if (!this.node.isEsmFile(normalized)) {
+      return commonJsNamespace(super.loadModule(normalized));
+    }
+    const module = { id: normalized, filename: normalized, namespace: {}, loaded: false };
+    this.esmCache.set(normalized, module);
+    const source = this.os.fs.readFile(normalized, "/", this.node.system);
+    await this.executeModuleSource(source, normalized, module);
+    module.loaded = true;
+    return module.namespace;
+  }
+
+  async executeModuleSource(source, filename, module) {
+    const transformed = transformEsmSource(source);
+    const moduleImport = (specifier) => this.importModule(specifier, filename);
+    const moduleExport = (values) => Object.assign(module.namespace, values);
+    try {
+      const run = new AsyncFunction(
+        "__import",
+        "__export",
+        "process",
+        "console",
+        "Buffer",
+        `${transformed}\n//# sourceURL=dindbos://${encodeURI(filename)}`,
+      );
+      await run(moduleImport, moduleExport, this.process, this.console, this.buffer);
+    } catch (error) {
+      if (error?.code === "DINDOS_PROCESS_EXIT" && error.exitCode === 0) return;
+      throw error;
+    }
+  }
+
+  async importModule(specifier, fromFilename) {
+    const resolved = this.node.resolveModule(specifier, fromFilename, this.processContext.cwd, { condition: "import" });
+    if (resolved.type === "builtin") return commonJsNamespace(this.builtins[resolved.id]);
+    return this.loadModule(resolved.path);
+  }
+
+  require(specifier, fromFilename) {
+    const resolved = this.node.resolveModule(specifier, fromFilename, this.processContext.cwd, { condition: "require" });
+    if (resolved.type === "builtin") return this.builtins[resolved.id];
+    return CommonJsRuntime.prototype.loadModule.call(this, resolved.path);
+  }
+}
+
 function splitPackageSpecifier(specifier) {
   const parts = String(specifier || "").split("/");
   if (parts[0]?.startsWith("@")) {
@@ -299,15 +400,107 @@ function splitPackageSpecifier(specifier) {
   };
 }
 
-function stringEntry(exportsField) {
+function stringEntry(exportsField, condition = "require") {
   if (typeof exportsField === "string") return exportsField;
   if (exportsField && typeof exportsField === "object") {
-    if (typeof exportsField.require === "string") return exportsField.require;
+    const keys = condition === "import"
+      ? ["import", "module", "browser", "default", "require"]
+      : ["require", "default", "import", "module", "browser"];
+    for (const key of keys) {
+      if (typeof exportsField[key] === "string") return exportsField[key];
+    }
     if (typeof exportsField.default === "string") return exportsField.default;
     if (typeof exportsField["."] === "string") return exportsField["."];
-    if (exportsField["."]) return stringEntry(exportsField["."]);
+    if (exportsField["."]) return stringEntry(exportsField["."], condition);
   }
   return "";
+}
+
+function packageEntry(manifest, condition = "require") {
+  if (condition === "import") return manifest.module || manifest.main || "index.js";
+  return manifest.main || manifest.module || "index.js";
+}
+
+function transformEsmSource(source) {
+  const state = { importIndex: 0, exportedNames: [], defaultExportAssigned: false };
+  let code = transformImportStatements(String(source), state);
+  code = code.replace(/^\s*export\s+default\s+(async\s+function|function|class)\s*/gm, (_, declaration) => {
+    state.defaultExportAssigned = true;
+    return `const __default_export__ = ${declaration} `;
+  });
+  code = code.replace(/^\s*export\s+default\s+([^;\n]+);?/gm, (_, expression) => {
+    state.defaultExportAssigned = true;
+    return `const __default_export__ = ${expression};`;
+  });
+  code = code.replace(/^\s*export\s+(async\s+function|function|class)\s+([A-Za-z_$][\w$]*)/gm, (_, declaration, name) => {
+    state.exportedNames.push(name);
+    return `${declaration} ${name}`;
+  });
+  code = code.replace(/^\s*export\s+(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+);?/gm, (_, declaration, name, expression) => {
+    state.exportedNames.push(name);
+    return `${declaration} ${name} = ${expression};`;
+  });
+  code = code.replace(/^\s*export\s*\{([^}]+)\};?/gm, (_, specifiers) => `__export({ ${exportObjectProperties(specifiers)} });`);
+  const footer = [];
+  if (state.exportedNames.length) footer.push(`__export({ ${[...new Set(state.exportedNames)].join(", ")} });`);
+  if (state.defaultExportAssigned) footer.push("__export({ default: __default_export__ });");
+  return `${code}\n${footer.join("\n")}`;
+}
+
+function transformImportStatements(source, state) {
+  let code = source.replace(/^\s*import\s+["']([^"']+)["'];?/gm, (_, specifier) => `await __import(${JSON.stringify(specifier)});`);
+  code = code.replace(/^\s*import\s+(.+?)\s+from\s+["']([^"']+)["'];?/gm, (_, clause, specifier) => importClauseToCode(clause.trim(), specifier, state.importIndex++));
+  code = code.replace(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g, (_, specifier) => `__import(${JSON.stringify(specifier)})`);
+  return code;
+}
+
+function importClauseToCode(clause, specifier, index) {
+  const serializedSpecifier = JSON.stringify(specifier);
+  if (clause.startsWith("* as ")) {
+    return `const ${clause.slice(5).trim()} = await __import(${serializedSpecifier});`;
+  }
+  if (clause.startsWith("{")) {
+    return `const { ${importDestructureProperties(clause.slice(1, -1))} } = await __import(${serializedSpecifier});`;
+  }
+  if (clause.includes(",")) {
+    const [defaultName, rest] = splitImportClause(clause);
+    const moduleName = `__esm_import_${index}`;
+    const lines = [`const ${moduleName} = await __import(${serializedSpecifier});`, `const ${defaultName.trim()} = ${moduleName}.default;`];
+    const named = rest.trim();
+    if (named.startsWith("{")) lines.push(`const { ${importDestructureProperties(named.slice(1, -1))} } = ${moduleName};`);
+    else if (named.startsWith("* as ")) lines.push(`const ${named.slice(5).trim()} = ${moduleName};`);
+    return lines.join("\n");
+  }
+  return `const ${clause} = (await __import(${serializedSpecifier})).default;`;
+}
+
+function splitImportClause(clause) {
+  const commaIndex = clause.indexOf(",");
+  return [clause.slice(0, commaIndex), clause.slice(commaIndex + 1)];
+}
+
+function importDestructureProperties(specifiers) {
+  return specifiers.split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.replace(/\s+as\s+/g, ": "))
+    .join(", ");
+}
+
+function exportObjectProperties(specifiers) {
+  return specifiers.split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [local, exported] = part.split(/\s+as\s+/);
+      return exported ? `${exported.trim()}: ${local.trim()}` : part;
+    })
+    .join(", ");
+}
+
+function commonJsNamespace(exports) {
+  if (exports && typeof exports === "object") return { default: exports, ...exports };
+  return { default: exports };
 }
 
 function safeJson(content, fallback) {
