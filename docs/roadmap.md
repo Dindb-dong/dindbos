@@ -27,7 +27,9 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - Terminal `mount-local` and `umount`
 - Files.app `Mount Local`
 - `storage persist` and quota estimate
-- remaining: OPFS file content backend, move from snapshot storage to per-file inode records, persisted directory handles in IndexedDB, import/export, drag and drop upload, binary-safe file reads/writes
+- persisted directory handles in IndexedDB
+- `mount-local --list`, `mount-local --restore`, `mount-local --forget`
+- remaining: OPFS file content backend, move from snapshot storage to per-file inode records, import/export, drag and drop upload, binary-safe file reads/writes, richer local mount permission UX
 
 ## 3. Package System
 
