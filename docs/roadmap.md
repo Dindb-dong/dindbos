@@ -20,6 +20,8 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - IndexedDB storage backend
 - OPFS snapshot backend
 - OPFS per-file content records
+- OPFS inode metadata records
+- dirty-file-only and dirty-inode-only writes
 - VFS snapshot load before boot
 - file state survives reloads
 - storage status command
@@ -31,7 +33,7 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - `storage persist` and quota estimate
 - persisted directory handles in IndexedDB
 - `mount-local --list`, `mount-local --restore`, `mount-local --forget`
-- remaining: OPFS inode metadata records, dirty-file-only persistence, import/export, drag and drop upload, binary-safe file reads/writes, richer local mount permission UX
+- remaining: debounce/coalesce persistence, import/export, drag and drop upload, binary-safe file reads/writes, richer local mount permission UX
 
 ## 3. Package System
 

@@ -13,7 +13,8 @@ DindbOS uses browser storage as a layered disk model.
 Current implementation:
 
 - VFS metadata is stored through `PersistentStorage`.
-- OPFS is preferred when available. It stores the VFS tree as a manifest and stores each file's content as a separate OPFS record.
+- OPFS is preferred when available. It stores a tiny root manifest, separate inode metadata records, and content-addressed file records.
+- Saves compare record hashes and only rewrite dirty inode/content records.
 - IndexedDB, localStorage, and memory remain fallbacks for snapshot storage.
 - `storage` reports backend, saved bytes, and browser quota estimates when available.
 - `storage persist` requests persistent browser storage.
@@ -42,7 +43,7 @@ Local folder mounts are intentionally opt-in. DindbOS cannot and should not sile
 
 Planned storage stack:
 
-- OPFS for internal file contents and future inode metadata records
+- OPFS for internal file contents and inode metadata records
 - IndexedDB for package records, structured handles, and browser objects that OPFS cannot store
 - Cache API for npm tarballs, registry responses, documents, and image caches
 - File System Access API for external local folder mounts
@@ -51,7 +52,7 @@ Planned storage stack:
 Known limits:
 
 - binary-safe copy/export is pending
-- inode metadata is still manifest-based; only file contents are split into per-file OPFS records
-- every save currently serializes the tree; dirty-file-only writes are pending
+- persistence still walks the in-memory tree to compute record hashes
+- debounce/coalescing for bursty filesystem changes is pending
 - directory copy between OPFS and local mounts is pending
 - browser support is strongest in Chromium-based browsers
