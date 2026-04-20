@@ -344,7 +344,7 @@ async function hashHex(bytes, algorithm) {
 
 async function digest(bytes, algorithm) {
   const webAlgorithm = algorithm.toUpperCase().replace("SHA", "SHA-");
-  if (globalThis.crypto?.subtle && algorithm !== "sha1") {
+  if (globalThis.crypto?.subtle) {
     return new Uint8Array(await globalThis.crypto.subtle.digest(webAlgorithm, bytes));
   }
   const crypto = await import("node:crypto");
