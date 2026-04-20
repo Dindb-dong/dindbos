@@ -1,8 +1,8 @@
-import { AppRegistry } from "./app-registry.js";
-import { DesktopShell } from "./desktop-shell.js";
-import { EventBus } from "./event-bus.js";
-import { VirtualFileSystem } from "./vfs.js";
-import { WindowManager } from "./window-manager.js";
+import { AppRegistry } from "./app-registry.js?v=20260420-stateful-terminal";
+import { DesktopShell } from "./desktop-shell.js?v=20260420-stateful-terminal";
+import { EventBus } from "./event-bus.js?v=20260420-stateful-terminal";
+import { VirtualFileSystem } from "./vfs.js?v=20260420-stateful-terminal";
+import { WindowManager } from "./window-manager.js?v=20260420-stateful-terminal";
 
 export class DindbOS {
   constructor(options) {
