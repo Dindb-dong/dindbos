@@ -4,6 +4,7 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 
 ## 1. Shell
 
+- 1차 구현 완료
 - `PATH` based command lookup
 - environment variables: `HOME`, `USER`, `SHELL`, `PATH`, `PWD`
 - `export`, `env`, variable expansion
@@ -11,25 +12,28 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - pipes: `cat file | grep text`
 - `man`, `which`, `chmod`, `df`, `mount`
 - keyboard history with up/down
+- remaining: advanced shell edge cases, script execution, precise exit code semantics
 
 ## 2. IndexedDB Filesystem
 
+- 1차 구현 완료
 - IndexedDB storage backend
 - VFS snapshot load before boot
 - file state survives reloads
 - storage status command
 - reset command
-- future: per-file records, directory index, import/export, drag and drop uploads
+- remaining: move from snapshot storage to per-file records, import/export, drag and drop upload
 
 ## 3. Package System
 
+- 1차 구현 완료
 - `dindbos.app.json` manifest schema
 - app entry loader
 - permissions and filesystem scopes
 - install/uninstall
 - `/usr/share/applications/*.app`
 - `/opt/<package>`
-- future: `pkg install ./some-app`
+- remaining: remote repositories, dependency resolution, package signatures, richer app lifecycle hooks
 
 ## 4. Activity Monitor
 
