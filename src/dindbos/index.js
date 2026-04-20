@@ -1,12 +1,12 @@
-import { AppRegistry } from "./app-registry.js?v=20260420-runtime-kernel";
-import { AppSandbox } from "./app-sandbox.js?v=20260420-runtime-kernel";
-import { DesktopShell } from "./desktop-shell.js?v=20260420-runtime-kernel";
-import { EventBus } from "./event-bus.js?v=20260420-runtime-kernel";
-import { PermissionPolicy } from "./permission-policy.js?v=20260420-runtime-kernel";
-import { PersistentStorage } from "./persistent-storage.js?v=20260420-runtime-kernel";
-import { ProcessManager } from "./process-manager.js?v=20260420-runtime-kernel";
-import { VirtualFileSystem } from "./vfs.js?v=20260420-runtime-kernel";
-import { WindowManager } from "./window-manager.js?v=20260420-runtime-kernel";
+import { AppRegistry } from "./app-registry.js?v=20260420-shell-indexeddb";
+import { AppSandbox } from "./app-sandbox.js?v=20260420-shell-indexeddb";
+import { DesktopShell } from "./desktop-shell.js?v=20260420-shell-indexeddb";
+import { EventBus } from "./event-bus.js?v=20260420-shell-indexeddb";
+import { PermissionPolicy } from "./permission-policy.js?v=20260420-shell-indexeddb";
+import { PersistentStorage } from "./persistent-storage.js?v=20260420-shell-indexeddb";
+import { ProcessManager } from "./process-manager.js?v=20260420-shell-indexeddb";
+import { VirtualFileSystem } from "./vfs.js?v=20260420-shell-indexeddb";
+import { WindowManager } from "./window-manager.js?v=20260420-shell-indexeddb";
 
 export class DindbOS {
   constructor(options) {
@@ -15,16 +15,25 @@ export class DindbOS {
     this.bus = new EventBus();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
-    const storedFileSystem = this.storage.loadFileSystem();
-    this.fs = new VirtualFileSystem(storedFileSystem || options.fileSystem, {
-      home: this.session.home,
-      policy: this.permissions,
-      onChange: () => this.persistFileSystem(),
-    });
+    this.initialFileSystem = options.fileSystem;
+    this.fs = this.createFileSystem(options.fileSystem);
     this.shell = new DesktopShell(this);
     this.windows = new WindowManager(this);
     this.processes = new ProcessManager(this);
     this.apps = new AppRegistry(this);
+  }
+
+  createFileSystem(rootNode) {
+    return new VirtualFileSystem(rootNode, {
+      home: this.session.home,
+      policy: this.permissions,
+      onChange: () => this.persistFileSystem(),
+    });
+  }
+
+  async loadPersistentFileSystem() {
+    const storedFileSystem = await this.storage.loadFileSystem();
+    if (storedFileSystem) this.fs = this.createFileSystem(storedFileSystem);
   }
 
   boot() {

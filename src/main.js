@@ -1,6 +1,6 @@
-import { DindbOS } from "./dindbos/index.js?v=20260420-runtime-kernel";
-import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-runtime-kernel";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-runtime-kernel";
+import { DindbOS } from "./dindbos/index.js?v=20260420-shell-indexeddb";
+import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-shell-indexeddb";
+import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-shell-indexeddb";
 
 const os = new DindbOS({
   root: "#dindbos-root",
@@ -11,6 +11,7 @@ const os = new DindbOS({
   },
 });
 
+await os.loadPersistentFileSystem();
 installBuiltinApps(os, { portfolioData });
 os.boot();
 

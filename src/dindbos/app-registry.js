@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-runtime-kernel";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-shell-indexeddb";
 
 export class AppRegistry {
   constructor(os) {

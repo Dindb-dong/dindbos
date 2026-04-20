@@ -64,7 +64,7 @@ Terminal commands currently include read and write operations against the shared
 ```text
 help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
 mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
-manifest, ps, kill, storage, resetfs
+export, env, which, man, chmod, df, mount, manifest, ps, kill, storage, resetfs
 ```
 
 Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
@@ -77,7 +77,8 @@ DindbOS.js now has browser-native OS primitives:
 - `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
 - `AppSandbox` gives each app a scoped runtime instead of the raw OS object.
 - `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
-- `PersistentStorage` saves the VFS snapshot to `localStorage`; `resetfs` clears it and reloads.
+- `ShellSession` handles `PATH`, environment variables, pipes, redirection, and shell builtins.
+- `PersistentStorage` saves the VFS snapshot to IndexedDB with localStorage and memory fallback; `resetfs` clears it and reloads.
 
 The current model is still a browser runtime, not a Linux kernel emulator, but app execution now flows through process, manifest, sandbox, permission, and storage layers.
 
