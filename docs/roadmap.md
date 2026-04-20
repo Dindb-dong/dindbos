@@ -32,9 +32,13 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - permissions and filesystem scopes
 - install/uninstall
 - remote manifest URL install
+- remote registry search/install
+- package update from recorded source
+- npm dependency records through browser ESM modules
+- sha256 file integrity checks
 - `/usr/share/applications/*.app`
 - `/opt/<package>`
-- remaining: remote repositories, dependency resolution, package signatures, richer app lifecycle hooks
+- remaining: dependency version solving, public-key package signatures, richer app lifecycle hooks, npm bundle caching
 
 ## 4. Activity Monitor
 

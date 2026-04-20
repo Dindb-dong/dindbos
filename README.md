@@ -67,7 +67,7 @@ Terminal commands currently include read and write operations against the shared
 help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
 mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
 export, env, which, man, chmod, df, mount, manifest, ps, kill, storage, resetfs
-pkg list, pkg info, pkg install, pkg remove
+pkg list, pkg info, pkg install, pkg search, pkg registry, pkg update, pkg deps, pkg npm, pkg remove
 ```
 
 Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
@@ -79,7 +79,7 @@ DindbOS.js now has browser-native OS primitives:
 
 - `ProcessManager` assigns PIDs to launched apps and exposes `ps`/`kill`.
 - `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
-- `PackageManager` installs local or remote `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
+- `PackageManager` installs local, remote, or registry-backed `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
 - `AppSandbox` gives each app a scoped runtime instead of the raw OS object.
 - `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
 - `ShellSession` handles `PATH`, environment variables, pipes, redirection, and shell builtins.
@@ -96,6 +96,7 @@ Try the sample package:
 ```text
 pkg list
 pkg info hello-notes
+pkg deps hello-notes
 open "/usr/share/applications/Hello Notes.app"
 ```
 
@@ -104,6 +105,18 @@ Remote packages install the same way when the server allows browser CORS:
 ```text
 pkg install https://example.com/dindbos-packages/hello-notes/dindbos.app.json
 ```
+
+Registry and dependency commands:
+
+```text
+pkg search notes
+pkg registry add community https://example.com/dindbos-registry.json
+pkg install hello-notes
+pkg update hello-notes
+pkg npm add hello-notes lodash-es@4.17.21
+```
+
+Package apps can execute `/opt/<package>/app.js` when the manifest sets `app.entry`. npm dependencies are installed as browser ESM dependency records and loaded at runtime through `imports.npm("package-name")`; this is not a Node.js `npm install` or native binary execution path.
 
 ## Goal
 
