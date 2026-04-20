@@ -1,16 +1,16 @@
-import { AppRegistry } from "./app-registry.js?v=20260421-local-mount";
-import { AppSandbox } from "./app-sandbox.js?v=20260421-local-mount";
-import { DesktopShell } from "./desktop-shell.js?v=20260421-local-mount";
-import { EventBus } from "./event-bus.js?v=20260421-local-mount";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-local-mount";
-import { NodeCompat } from "./node-compat.js?v=20260421-local-mount";
-import { NpmInstaller } from "./npm-installer.js?v=20260421-local-mount";
-import { PackageManager } from "./package-manager.js?v=20260421-local-mount";
-import { PermissionPolicy } from "./permission-policy.js?v=20260421-local-mount";
-import { PersistentStorage } from "./persistent-storage.js?v=20260421-local-mount";
-import { ProcessManager } from "./process-manager.js?v=20260421-local-mount";
-import { VirtualFileSystem } from "./vfs.js?v=20260421-local-mount";
-import { WindowManager } from "./window-manager.js?v=20260421-local-mount";
+import { AppRegistry } from "./app-registry.js?v=20260421-persisted-mount";
+import { AppSandbox } from "./app-sandbox.js?v=20260421-persisted-mount";
+import { DesktopShell } from "./desktop-shell.js?v=20260421-persisted-mount";
+import { EventBus } from "./event-bus.js?v=20260421-persisted-mount";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-persisted-mount";
+import { NodeCompat } from "./node-compat.js?v=20260421-persisted-mount";
+import { NpmInstaller } from "./npm-installer.js?v=20260421-persisted-mount";
+import { PackageManager } from "./package-manager.js?v=20260421-persisted-mount";
+import { PermissionPolicy } from "./permission-policy.js?v=20260421-persisted-mount";
+import { PersistentStorage } from "./persistent-storage.js?v=20260421-persisted-mount";
+import { ProcessManager } from "./process-manager.js?v=20260421-persisted-mount";
+import { VirtualFileSystem } from "./vfs.js?v=20260421-persisted-mount";
+import { WindowManager } from "./window-manager.js?v=20260421-persisted-mount";
 
 export class DindbOS {
   constructor(options) {
@@ -42,6 +42,7 @@ export class DindbOS {
   async loadPersistentFileSystem() {
     const storedFileSystem = await this.storage.loadFileSystem();
     if (storedFileSystem) this.fs = this.createFileSystem(storedFileSystem);
+    await this.localMounts.restorePersistedMounts();
   }
 
   boot() {

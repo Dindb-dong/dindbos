@@ -16,7 +16,7 @@ const BUILTIN_MANUALS = {
   manifest: "manifest [app] - show app manifests",
   mkdir: "mkdir [-p] <path> - create directories",
   mount: "mount - print mounted virtual filesystems",
-  "mount-local": "mount-local [name] - mount a user-selected local folder under /mnt",
+  "mount-local": "mount-local [name|--list|--restore|--forget path] - manage local folder mounts",
   mv: "mv <source> <destination> - move or rename files",
   node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
@@ -31,7 +31,7 @@ const BUILTIN_MANUALS = {
   storage: "storage [persist] - show quota status or request persistent storage",
   touch: "touch <path> - create or update a file",
   tree: "tree [path] - render a directory tree",
-  umount: "umount <path> - unmount a local folder",
+  umount: "umount [--forget] <path> - unmount a local folder",
   which: "which <command> - locate a command through PATH",
 };
 
@@ -592,17 +592,26 @@ export class ShellSession {
   }
 
   mountLocal(args) {
-    const [name] = args;
+    const [first, second] = args;
+    if (first === "--list") return this.os.localMounts.status().then(formatMountStatus);
+    if (first === "--restore") return this.os.localMounts.restorePersistedMounts({ request: true }).then(formatMountRestore);
+    if (first === "--forget") {
+      const path = second;
+      if (!path) return "mount-local: usage: mount-local --forget <path>";
+      return this.os.localMounts.forgetMount(this.os.fs.normalize(path, this.cwd)).then((result) => `forgot ${result.path}`);
+    }
+    const name = first || "";
     if (!this.os.localMounts?.supported()) return "mount-local: File System Access API is not available in this browser";
     return this.os.localMounts.mountLocal(name)
       .then((mount) => `mounted ${mount.handleName} at ${mount.path}`);
   }
 
   umount(args) {
-    const [path] = args;
-    if (!path) return "umount: usage: umount <path>";
-    const mount = this.os.localMounts.unmount(this.os.fs.normalize(path, this.cwd));
-    return `unmounted ${mount.path}`;
+    const forget = args[0] === "--forget";
+    const path = forget ? args[1] : args[0];
+    if (!path) return "umount: usage: umount [--forget] <path>";
+    return this.os.localMounts.unmount(this.os.fs.normalize(path, this.cwd), { forget })
+      .then((mount) => `unmounted ${mount.path}${forget ? " and forgot persisted handle" : ""}`);
   }
 
   kill(args) {
@@ -783,6 +792,7 @@ function formatStorage(status) {
   return [
     `key=${status.key}`,
     `backend=${status.backend || "memory"}`,
+    `structuredBackend=${status.structuredBackend || "memory"}`,
     `enabled=${status.enabled}`,
     `persisted=${status.persisted}`,
     `persistentPermission=${status.persistentPermission || false}`,
@@ -790,6 +800,28 @@ function formatStorage(status) {
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
   ].join("\n");
+}
+
+function formatMountStatus(mounts) {
+  if (!mounts.length) return "no local mounts";
+  return mounts.map((mount) => {
+    const suffix = mount.error ? ` (${mount.error})` : "";
+    return [
+      mount.path,
+      mount.type,
+      mount.status || "unknown",
+      mount.persisted ? "persisted" : "runtime",
+      mount.handleName || mount.name,
+    ].join(" ") + suffix;
+  }).join("\n");
+}
+
+function formatMountRestore(mounts) {
+  if (!mounts.length) return "no persisted local mounts";
+  return mounts.map((mount) => {
+    const suffix = mount.error ? ` (${mount.error})` : "";
+    return `${mount.status || "unknown"} ${mount.path}${suffix}`;
+  }).join("\n");
 }
 
 function formatNodeResult(result) {

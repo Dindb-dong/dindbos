@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260421-local-mount";
+import { ShellSession } from "../shell.js?v=20260421-persisted-mount";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({

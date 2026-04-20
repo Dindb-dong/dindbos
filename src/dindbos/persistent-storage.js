@@ -13,6 +13,7 @@ export class PersistentStorage {
     this.lastStatus = {
       key: this.key,
       backend: this.indexedDB ? "indexedDB" : this.adapter ? "localStorage" : "memory",
+      structuredBackend: this.indexedDB ? "indexedDB" : "memory",
       enabled: Boolean(this.indexedDB || this.adapter),
       bytes: 0,
       persisted: false,
@@ -74,6 +75,47 @@ export class PersistentStorage {
       persistentPermission: Boolean(granted),
     };
     return this.status();
+  }
+
+  async readValue(key) {
+    if (this.indexedDB) {
+      try {
+        return await this.idbGet(key);
+      } catch {
+        return this.memory.get(key) ?? null;
+      }
+    }
+    return this.memory.get(key) ?? null;
+  }
+
+  writeValue(key, value) {
+    if (this.indexedDB) {
+      this.writeQueue = this.writeQueue
+        .catch(() => {})
+        .then(() => this.idbSet(key, value))
+        .catch(() => {
+          this.memory.set(key, value);
+        });
+      return;
+    }
+    this.memory.set(key, value);
+  }
+
+  removeValue(key) {
+    if (this.indexedDB) {
+      this.writeQueue = this.writeQueue
+        .catch(() => {})
+        .then(() => this.idbDelete(key))
+        .catch(() => {
+          this.memory.delete(key);
+        });
+      return;
+    }
+    this.memory.delete(key);
+  }
+
+  async flush() {
+    await this.writeQueue;
   }
 
   async read(key) {

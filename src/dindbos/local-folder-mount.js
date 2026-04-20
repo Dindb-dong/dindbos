@@ -2,6 +2,8 @@ export class LocalFolderMountManager {
   constructor(os, options = {}) {
     this.os = os;
     this.picker = options.picker || globalThis.showDirectoryPicker?.bind(globalThis) || null;
+    this.storageKey = options.storageKey || "dindbos:local-folder-mounts";
+    this.defaultMode = options.mode || "readwrite";
     this.mounts = new Map();
     this.encoder = new TextEncoder();
   }
@@ -14,31 +16,166 @@ export class LocalFolderMountManager {
     if (!this.supported() && !options.handle) throw new Error("mount-local: File System Access API is not available");
     const handle = options.handle || await this.picker({ mode: options.mode || "readwrite" });
     if (!handle || handle.kind !== "directory") throw new Error("mount-local: directory handle required");
-    await requestDirectoryPermission(handle, options.mode || "readwrite");
+    const mode = options.mode || this.defaultMode;
+    await requestDirectoryPermission(handle, mode);
+    return this.attachMount(name || handle.name || "local", handle, {
+      mode,
+      persist: options.persist !== false,
+    });
+  }
+
+  async attachMount(name, handle, options = {}) {
     const mountName = sanitizeMountName(name || handle.name || "local");
-    const path = this.allocateMountPath(`/mnt/${mountName}`);
+    const requestedPath = options.path ? this.os.fs.normalize(options.path) : "";
+    const path = requestedPath || this.allocateMountPath(`/mnt/${mountName}`);
     this.ensureMountRoot();
     const node = this.os.fs.createMount(path, {
-      handleName: handle.name || mountName,
+      handleName: options.handleName || handle.name || mountName,
       owner: this.os.session.user || "guest",
       group: "users",
     });
-    const record = { id: path, path: node.path, name: mountName, handle, handleName: handle.name || mountName };
+    const record = {
+      id: node.path,
+      path: node.path,
+      name: mountName,
+      handle,
+      handleName: options.handleName || handle.name || mountName,
+      mode: options.mode || this.defaultMode,
+    };
     this.mounts.set(node.path, record);
     await this.syncDirectory(node.path);
-    return this.summary(record);
+    if (options.persist !== false) await this.persistMount(record);
+    return this.summary(record, { persisted: options.persist !== false, status: "mounted" });
   }
 
-  unmount(path) {
-    const mount = this.mountFor(path);
-    if (!mount || mount.path !== this.os.fs.normalize(path)) throw new Error(`umount: ${path}: not a mount root`);
+  async unmount(path, options = {}) {
+    const normalized = this.os.fs.normalize(path);
+    const mount = this.mountFor(normalized);
+    if (!mount || mount.path !== normalized) throw new Error(`umount: ${path}: not a mount root`);
     this.mounts.delete(mount.path);
     if (this.os.fs.exists(mount.path)) this.os.fs.remove(mount.path, "/", { recursive: true }, this.os.permissions.systemPrincipal());
-    return this.summary(mount);
+    if (options.forget) await this.forgetMount(mount.path);
+    return this.summary(mount, { persisted: !options.forget, status: "unmounted" });
   }
 
   listMounts() {
     return [...this.mounts.values()].map((mount) => this.summary(mount));
+  }
+
+  async listPersistedMounts() {
+    const records = await this.loadPersistedRecords();
+    return Promise.all(records.map(async (record) => {
+      try {
+        const status = this.mounts.has(record.path)
+          ? "mounted"
+          : await directoryPermissionState(record.handle, record.mode || this.defaultMode);
+        return this.summary(record, { persisted: true, status });
+      } catch (error) {
+        return this.summary(record, {
+          persisted: true,
+          status: "error",
+          error: error?.message || String(error),
+        });
+      }
+    }));
+  }
+
+  async status() {
+    const byPath = new Map();
+    const persisted = await this.listPersistedMounts();
+    const persistedPaths = new Set(persisted.map((mount) => mount.path));
+    persisted.forEach((mount) => byPath.set(mount.path, mount));
+    this.listMounts().forEach((mount) => byPath.set(mount.path, { ...mount, persisted: persistedPaths.has(mount.path), status: "mounted" }));
+    return [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  async restorePersistedMounts(options = {}) {
+    const records = await this.loadPersistedRecords();
+    const results = [];
+    for (const record of records) {
+      const path = this.os.fs.normalize(record.path || `/mnt/${sanitizeMountName(record.name || record.handleName || "local")}`);
+      const mode = record.mode || this.defaultMode;
+      try {
+        if (!record.handle || record.handle.kind !== "directory") {
+          results.push(this.summary({ ...record, path }, { persisted: true, status: "invalid" }));
+          continue;
+        }
+        if (this.mounts.has(path)) {
+          results.push(this.summary({ ...record, path }, { persisted: true, status: "mounted" }));
+          continue;
+        }
+        const permission = await directoryPermissionState(record.handle, mode);
+        if (permission !== "granted") {
+          if (!options.request) {
+            results.push(this.summary({ ...record, path }, { persisted: true, status: permission }));
+            continue;
+          }
+          await requestDirectoryPermission(record.handle, mode);
+        }
+        this.ensureMountRoot();
+        if (this.os.fs.exists(path)) {
+          results.push(this.summary({ ...record, path }, { persisted: true, status: "conflict" }));
+          continue;
+        }
+        const mounted = await this.attachMount(record.name || record.handleName || "local", record.handle, {
+          path,
+          handleName: record.handleName,
+          mode,
+          persist: false,
+        });
+        results.push({ ...mounted, persisted: true, status: "mounted" });
+      } catch (error) {
+        results.push(this.summary({ ...record, path }, {
+          persisted: true,
+          status: "error",
+          error: error?.message || String(error),
+        }));
+      }
+    }
+    return results;
+  }
+
+  async persistMount(mount) {
+    const records = await this.loadPersistedRecords();
+    const path = this.os.fs.normalize(mount.path);
+    const record = {
+      id: path,
+      path,
+      name: mount.name,
+      handleName: mount.handleName,
+      mode: mount.mode || this.defaultMode,
+      handle: mount.handle,
+      savedAt: new Date().toISOString(),
+    };
+    await this.savePersistedRecords([
+      ...records.filter((entry) => this.os.fs.normalize(entry.path) !== path),
+      record,
+    ]);
+    return this.summary(record, { persisted: true, status: "saved" });
+  }
+
+  async forgetMount(path) {
+    const normalized = this.os.fs.normalize(path);
+    const records = await this.loadPersistedRecords();
+    await this.savePersistedRecords(records.filter((entry) => this.os.fs.normalize(entry.path) !== normalized));
+    if (this.mounts.has(normalized)) await this.unmount(normalized);
+    return { path: normalized, status: "forgotten" };
+  }
+
+  async loadPersistedRecords() {
+    const payload = await this.os.storage?.readValue?.(this.storageKey);
+    if (!payload || payload.version !== 1 || !Array.isArray(payload.mounts)) return [];
+    return payload.mounts.filter((mount) => mount?.path && mount?.handle);
+  }
+
+  async savePersistedRecords(records) {
+    const payload = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      mounts: records,
+    };
+    this.os.storage?.writeValue?.(this.storageKey, payload);
+    await this.os.storage?.flush?.();
   }
 
   isMountedPath(path, cwd = "/") {
@@ -152,12 +289,13 @@ export class LocalFolderMountManager {
     return this.listMounts().map((mount) => `${mount.name} ${mount.path} local-folder rw 0 0`);
   }
 
-  summary(mount) {
+  summary(mount, extra = {}) {
     return {
       name: mount.name,
       path: mount.path,
       handleName: mount.handleName,
       type: "local-folder",
+      ...extra,
     };
   }
 
@@ -255,14 +393,20 @@ export class LocalFolderMountManager {
 }
 
 async function requestDirectoryPermission(handle, mode) {
-  if (typeof handle.queryPermission === "function") {
-    const current = await handle.queryPermission({ mode });
-    if (current === "granted") return;
-  }
+  const current = await directoryPermissionState(handle, mode);
+  if (current === "granted") return;
   if (typeof handle.requestPermission === "function") {
     const next = await handle.requestPermission({ mode });
     if (next !== "granted") throw new Error("mount-local: permission denied");
+    return;
   }
+  throw new Error("mount-local: permission denied");
+}
+
+async function directoryPermissionState(handle, mode) {
+  if (typeof handle.queryPermission === "function") return handle.queryPermission({ mode });
+  if (typeof handle.requestPermission === "function") return "prompt";
+  return "granted";
 }
 
 async function getChildHandle(parentHandle, name) {
