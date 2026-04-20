@@ -17,6 +17,7 @@ const BUILTIN_MANUALS = {
   mkdir: "mkdir [-p] <path> - create directories",
   mount: "mount - print mounted virtual filesystems",
   mv: "mv <source> <destination> - move or rename files",
+  npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
   pkg: "pkg list|info|install|remove|search|registry|update|deps|npm - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
@@ -212,6 +213,7 @@ export class ShellSession {
     if (command === "export") return this.export(args);
     if (command === "which") return this.which(args[0]);
     if (command === "man") return BUILTIN_MANUALS[args[0]] || `man: ${args[0] || ""}: no manual entry`;
+    if (command === "npm") return this.npm(args);
     if (command === "df") return this.df();
     if (command === "mount") return this.mount();
     throw new Error(`command not found: ${command}`);
@@ -434,6 +436,17 @@ export class ShellSession {
       return `npm dependency added ${packageId} ${dependency.name}@${dependency.version}`;
     }
     return "pkg: usage: pkg npm add <package> <npm-package[@version]>";
+  }
+
+  npm(args) {
+    const [action, ...packages] = args;
+    if (action === "install" || action === "i" || (!action && !packages.length)) {
+      if (!action || !packages.length) return "npm: usage: npm install <package...>";
+      return this.os.npm.install(packages, this.cwd)
+        .then((records) => records.map((record) => `+ ${record.name}@${record.version} (${record.fileCount} files)`).join("\n"));
+    }
+    if (action === "root") return this.os.fs.join(this.cwd, "node_modules");
+    return "npm: usage: npm install <package...> | npm root";
   }
 
   kill(args) {

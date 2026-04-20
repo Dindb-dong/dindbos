@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260420-package-app-runtime";
+import { ShellSession } from "../shell.js?v=20260420-npm-installer";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -53,6 +53,7 @@ export function installBuiltinApps(os, { portfolioData }) {
         "storage.manage",
         "package.read",
         "package.manage",
+        "npm.install",
       ],
       fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp", "/opt", "/usr/share/applications", "/var/lib/dindbos/packages"] },
     },
