@@ -7,14 +7,16 @@ export class PersistentStorage {
     this.dbName = options.dbName || "dindbos";
     this.adapter = options.adapter || safeLocalStorage();
     this.indexedDB = options.indexedDB || safeIndexedDB();
+    this.opfsProvider = options.opfsProvider || (options.opfsRoot ? async () => options.opfsRoot : safeOpfsProvider());
+    this.opfsRootPromise = null;
     this.memory = new Map();
     this.dbPromise = null;
     this.writeQueue = Promise.resolve();
     this.lastStatus = {
       key: this.key,
-      backend: this.indexedDB ? "indexedDB" : this.adapter ? "localStorage" : "memory",
+      backend: this.opfsProvider ? "opfs" : this.indexedDB ? "indexedDB" : this.adapter ? "localStorage" : "memory",
       structuredBackend: this.indexedDB ? "indexedDB" : "memory",
-      enabled: Boolean(this.indexedDB || this.adapter),
+      enabled: Boolean(this.opfsProvider || this.indexedDB || this.adapter),
       bytes: 0,
       persisted: false,
     };
@@ -119,6 +121,12 @@ export class PersistentStorage {
   }
 
   async read(key) {
+    if (this.opfsProvider) {
+      try {
+        const value = await this.opfsGet(key);
+        if (value) return value;
+      } catch {}
+    }
     if (this.indexedDB) {
       try {
         return await this.idbGet(key);
@@ -130,6 +138,13 @@ export class PersistentStorage {
   }
 
   write(key, value) {
+    if (this.opfsProvider) {
+      this.writeQueue = this.writeQueue
+        .catch(() => {})
+        .then(() => this.opfsSet(key, value))
+        .catch(() => this.writeDurableFallback(key, value));
+      return;
+    }
     if (this.indexedDB) {
       this.writeQueue = this.writeQueue
         .catch(() => {})
@@ -141,6 +156,16 @@ export class PersistentStorage {
   }
 
   remove(key) {
+    if (this.opfsProvider) {
+      this.writeQueue = this.writeQueue
+        .catch(() => {})
+        .then(async () => {
+          await this.opfsDelete(key);
+          await this.removeDurableFallback(key);
+        })
+        .catch(() => this.removeDurableFallback(key));
+      return;
+    }
     if (this.indexedDB) {
       this.writeQueue = this.writeQueue
         .catch(() => {})
@@ -170,6 +195,53 @@ export class PersistentStorage {
       return;
     }
     this.adapter.removeItem(key);
+  }
+
+  async writeDurableFallback(key, value) {
+    if (this.indexedDB) {
+      try {
+        await this.idbSet(key, value);
+        return;
+      } catch {}
+    }
+    this.writeFallback(key, value);
+  }
+
+  async removeDurableFallback(key) {
+    if (this.indexedDB) {
+      try {
+        await this.idbDelete(key);
+      } catch {}
+    }
+    this.removeFallback(key);
+  }
+
+  async opfsGet(key) {
+    const root = await this.openOpfsRoot();
+    const handle = await root.getFileHandle(opfsFileName(key));
+    const file = await handle.getFile();
+    return file.text();
+  }
+
+  async opfsSet(key, value) {
+    const root = await this.openOpfsRoot();
+    const handle = await root.getFileHandle(opfsFileName(key), { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(String(value ?? ""));
+    await writable.close();
+  }
+
+  async opfsDelete(key) {
+    const root = await this.openOpfsRoot();
+    try {
+      await root.removeEntry(opfsFileName(key));
+    } catch {}
+  }
+
+  openOpfsRoot() {
+    if (!this.opfsProvider) throw new Error("OPFS is not available");
+    if (!this.opfsRootPromise) this.opfsRootPromise = this.opfsProvider();
+    return this.opfsRootPromise;
   }
 
   async idbGet(key) {
@@ -235,6 +307,19 @@ function safeIndexedDB() {
   } catch {
     return null;
   }
+}
+
+function safeOpfsProvider() {
+  try {
+    const getDirectory = globalThis.navigator?.storage?.getDirectory;
+    return typeof getDirectory === "function" ? getDirectory.bind(globalThis.navigator.storage) : null;
+  } catch {
+    return null;
+  }
+}
+
+function opfsFileName(key) {
+  return `${String(key || "dindbos").replace(/[^A-Za-z0-9._-]+/g, "_")}.json`;
 }
 
 function safeLocalStorage() {
