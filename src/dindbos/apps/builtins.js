@@ -1,3 +1,5 @@
+import { ShellSession } from "../shell.js?v=20260420-shell-indexeddb";
+
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
     id: "portfolio",
@@ -353,8 +355,7 @@ function renderViewer(content, node) {
 }
 
 function renderTerminal(os, content) {
-  let cwd = os.session.home || "/";
-  const history = [];
+  const shell = new ShellSession(os);
   content.innerHTML = `
     <section class="terminal-app">
       <pre></pre>
@@ -368,72 +369,19 @@ function renderTerminal(os, content) {
   const input = content.querySelector("input");
   const prompt = content.querySelector("[data-prompt]");
   const updatePrompt = () => {
-    prompt.textContent = `${cwd} $`;
+    prompt.textContent = shell.prompt();
   };
   const print = (line = "") => {
+    if (!line) return;
     output.textContent += `${line}\n`;
     output.scrollTop = output.scrollHeight;
   };
   const run = (commandLine) => {
-    const tokens = tokenizeCommand(commandLine);
-    const [command, ...args] = tokens;
-    print(`${cwd} $ ${commandLine}`);
-    if (!command) return;
-    history.push(commandLine.trim());
+    print(`${shell.prompt()} ${commandLine}`);
     try {
-      if (command === "help") print([
-        "help, history, clear",
-        "pwd, cd [path], ls [-la] [path], tree [path], find [path] [name]",
-        "cat [path], grep <text> <file>, stat [path], readlink [path]",
-        "mkdir [-p] <path>, touch <path>, rm [-r] <path>, cp [-r] <src> <dest>, mv <src> <dest>",
-        "echo <text>, echo <text> > <file>, echo <text> >> <file>",
-        "open [path], apps, manifest [app], ps, kill <pid>, storage, resetfs",
-        "whoami, id, uname, neofetch, date",
-      ].join("\n"));
-      else if (command === "whoami") print(os.session.user || "guest");
-      else if (command === "id") print(`uid=${os.session.user || "guest"} gid=${(os.session.groups || ["users"]).join(",")}`);
-      else if (command === "uname") print("DindbOS.js browser-runtime 0.1.0");
-      else if (command === "date") print(new Date().toString());
-      else if (command === "history") history.forEach((entry, index) => print(`${String(index + 1).padStart(4)}  ${entry}`));
-      else if (command === "neofetch") print([
-        "DindbOS.js",
-        `User: ${os.session.user || "guest"}`,
-        `Home: ${os.session.home || "/home/guest"}`,
-        `Apps: ${os.apps.list().length}`,
-        "Shell: /bin/dindbsh",
-      ].join("\n"));
-      else if (command === "pwd") print(cwd);
-      else if (command === "ls") runLs(os, cwd, args, print);
-      else if (command === "tree") print(renderTree(os, args[0] || cwd, cwd));
-      else if (command === "cd") {
-        const next = os.fs.resolve(args[0] || os.session.home || "/", cwd);
-        if (next?.type === "directory") cwd = next.path;
-        else print(`cd: no such directory: ${args[0] || ""}`);
-      }
-      else if (command === "open") os.openPath(resolveTerminalPath(os, args[0] || cwd, cwd));
-      else if (command === "cat") print(readTerminalFile(os, args[0] || cwd, cwd));
-      else if (command === "grep") print(runGrep(os, cwd, args));
-      else if (command === "stat") print(formatStat(os.fs.stat(args[0] || cwd, cwd)));
-      else if (command === "readlink") print(os.fs.lstat(args[0] || cwd, cwd)?.target || "");
-      else if (command === "mkdir") runMkdir(os, cwd, args);
-      else if (command === "touch") runTouch(os, cwd, args);
-      else if (command === "rm") runRm(os, cwd, args);
-      else if (command === "cp") runCp(os, cwd, args);
-      else if (command === "mv") runMv(os, cwd, args);
-      else if (command === "echo") runEcho(os, cwd, args, print);
-      else if (command === "find") print(runFind(os, cwd, args));
-      else if (command === "apps") os.apps.list().forEach((app) => print(`${app.id} - ${app.name}`));
-      else if (command === "manifest") print(formatManifest(os, args[0]));
-      else if (command === "ps") print(os.processes.table());
-      else if (command === "kill") print(runKill(os, args));
-      else if (command === "storage") print(formatStorage(os.storage.status()));
-      else if (command === "resetfs") {
-        os.storage.resetFileSystem();
-        print("persistent filesystem cleared; reloading");
-        window.setTimeout(() => window.location.reload(), 250);
-      }
-      else if (command === "clear") output.textContent = "";
-      else print(`command not found: ${command}`);
+      const result = shell.execute(commandLine);
+      if (result.clear) output.textContent = "";
+      print(result.output);
     } catch (error) {
       print(error.message);
     }
@@ -445,6 +393,16 @@ function renderTerminal(os, content) {
     event.preventDefault();
     run(input.value);
     input.value = "";
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowUp") {
+      input.value = shell.previousHistory();
+      event.preventDefault();
+    }
+    if (event.key === "ArrowDown") {
+      input.value = shell.nextHistory();
+      event.preventDefault();
+    }
   });
   input.focus();
 }
@@ -492,7 +450,7 @@ function renderSettings(os, content) {
         <div><dt>Home</dt><dd>${escapeHtml(os.session.home || "/home/guest")}</dd></div>
         <div><dt>Apps</dt><dd>${os.apps.list().length}</dd></div>
         <div><dt>Processes</dt><dd>${processes.length}</dd></div>
-        <div><dt>Storage</dt><dd>${storage.enabled ? "localStorage" : "memory"} · ${storage.persisted ? `${formatBytes(storage.bytes)} saved` : "not saved"}</dd></div>
+        <div><dt>Storage</dt><dd>${escapeHtml(storage.backend || "memory")} · ${storage.persisted ? `${formatBytes(storage.bytes)} saved` : "not saved"}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(os.fs.join(os.session.home || "/home/guest", "Desktop"))}</dd></div>
         <div><dt>Mounts</dt><dd>/, /mnt/portfolio</dd></div>
       </dl>

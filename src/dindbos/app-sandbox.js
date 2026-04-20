@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-runtime-kernel";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-shell-indexeddb";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -102,9 +102,26 @@ export class AppSandbox {
         this.assertFileSystem(destination, "write");
         return this.os.fs.move(source, destination, "/", this.principal);
       },
-      stat: (path, cwd = this.process.cwd) => this.os.fs.stat(path, cwd),
-      lstat: (path, cwd = this.process.cwd) => this.os.fs.lstat(path, cwd),
-      exists: (path, cwd = this.process.cwd) => this.os.fs.exists(path, cwd),
+      chmod: (path, permissions, cwd = this.process.cwd) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.chmod(normalized, permissions, "/", this.principal);
+      },
+      stat: (path, cwd = this.process.cwd) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "read");
+        return this.os.fs.stat(normalized);
+      },
+      lstat: (path, cwd = this.process.cwd) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "read");
+        return this.os.fs.lstat(normalized);
+      },
+      exists: (path, cwd = this.process.cwd) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "read");
+        return this.os.fs.exists(normalized);
+      },
       isLink: (node) => this.os.fs.isLink(node),
       normalize: (path, cwd = this.process.cwd) => this.os.fs.normalize(path, cwd),
       join: (base, name) => this.os.fs.join(base, name),

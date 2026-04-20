@@ -182,6 +182,21 @@ export class VirtualFileSystem {
     return this.withPath(node, normalizedDestination);
   }
 
+  chmod(path, permissions, cwd = "/", principal = this.systemPrincipal) {
+    if (!/^[-dlbcps]?r?[w-]?[x-]?r?[w-]?[x-]?r?[w-]?[x-]?$/.test(permissions) && !/^[0-7]{3,4}$/.test(permissions)) {
+      throw new Error(`chmod: invalid mode: ${permissions}`);
+    }
+    const node = this.resolve(path, cwd);
+    if (!node) throw new Error(`chmod: ${path}: no such file or directory`);
+    if (!principal.system && principal.user !== "root" && principal.user !== (node.owner || "root")) {
+      throw new Error(`chmod: ${path}: permission denied`);
+    }
+    node.permissions = normalizePermissions(permissions, node);
+    node.modified = new Date().toISOString();
+    this.emitChange("chmod", node.path);
+    return this.withPath(node, node.path);
+  }
+
   stat(path, cwd = "/") {
     const node = this.resolve(path, cwd);
     if (!node) return null;
@@ -314,6 +329,26 @@ function defaultPermissions(node) {
   if (node.type === "app") return "-rwxr-xr-x";
   if (node.type === "link" || node.type === "symlink") return "lrwxrwxrwx";
   return "-rw-r--r--";
+}
+
+function normalizePermissions(value, node) {
+  if (/^[0-7]{3,4}$/.test(value)) return `${typePrefix(node)}${octalToPermissions(value.slice(-3))}`;
+  if (value.length === 9) return `${typePrefix(node)}${value}`;
+  return value;
+}
+
+function typePrefix(node) {
+  if (node.type === "directory") return "d";
+  if (node.type === "link" || node.type === "symlink") return "l";
+  if (node.type === "device") return "c";
+  return "-";
+}
+
+function octalToPermissions(octal) {
+  return octal.split("").map((digit) => {
+    const value = Number(digit);
+    return `${value & 4 ? "r" : "-"}${value & 2 ? "w" : "-"}${value & 1 ? "x" : "-"}`;
+  }).join("");
 }
 
 function mimeForNode(node) {
