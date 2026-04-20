@@ -10,6 +10,7 @@ It is not a Linux kernel emulator. It is a small OS-style runtime for the browse
 - app manifests
 - process-scoped app sandbox
 - persistent filesystem snapshots
+- local folder mounts through File System Access API
 - app registry
 - package manager
 - window manager
@@ -53,6 +54,7 @@ The demo now boots with a Linux-like tree:
   home/guest/Desktop/   user desktop symlinks
   lib/dindbos/          runtime docs
   mnt/portfolio/        mounted portfolio projects and decks
+  mnt/<local-folder>/   optional user-selected local folders
   proc/                 runtime status files
   usr/share/applications/
   var/lib/dindbos/      installed package records
@@ -67,6 +69,7 @@ Terminal commands currently include read and write operations against the shared
 help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
 mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
 export, env, which, man, chmod, df, mount, manifest, ps, kill, storage, resetfs
+mount-local, umount, storage persist
 pkg list, pkg info, pkg install, pkg search, pkg registry, pkg update, pkg deps, pkg npm, pkg remove
 npm install, npm root, node -e, node --input-type=module -e, node <file>
 ```
@@ -87,6 +90,16 @@ DindbOS.js now has browser-native OS primitives:
 - `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
 - `ShellSession` handles `PATH`, environment variables, pipes, redirection, and shell builtins.
 - `PersistentStorage` saves the VFS snapshot to IndexedDB with localStorage and memory fallback; `resetfs` clears it and reloads.
+- `LocalFolderMountManager` mounts user-selected folders under `/mnt` with File System Access API so files can move between DindbOS and the local computer.
+
+Local folder mounts are opt-in and transient. Use `mount-local mydisk` from Terminal or `Mount Local` in Files.app, then copy files both ways:
+
+```text
+mount-local mydisk
+cp ~/Documents/todo.md /mnt/mydisk/todo.md
+cp /mnt/mydisk/input.txt ~/Documents/input.txt
+storage persist
+```
 
 The current model is still a browser runtime, not a Linux kernel emulator, but app execution now flows through process, manifest, sandbox, permission, and storage layers.
 

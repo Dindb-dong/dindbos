@@ -14,7 +14,7 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - keyboard history with up/down
 - remaining: advanced shell edge cases, script execution, precise exit code semantics
 
-## 2. IndexedDB Filesystem
+## 2. Storage And Filesystem
 
 - 1차 구현 완료
 - IndexedDB storage backend
@@ -22,7 +22,12 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - file state survives reloads
 - storage status command
 - reset command
-- remaining: move from snapshot storage to per-file records, import/export, drag and drop upload
+- File System Access API local folder mount
+- `/mnt/<name>` external disk model
+- Terminal `mount-local` and `umount`
+- Files.app `Mount Local`
+- `storage persist` and quota estimate
+- remaining: OPFS file content backend, move from snapshot storage to per-file inode records, persisted directory handles in IndexedDB, import/export, drag and drop upload, binary-safe file reads/writes
 
 ## 3. Package System
 
@@ -89,6 +94,7 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 
 ## 7. Files.app
 
+- local folder mount button
 - rename
 - duplicate
 - copy/paste
