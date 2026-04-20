@@ -798,8 +798,11 @@ function formatStorage(status) {
     `persisted=${status.persisted}`,
     `persistentPermission=${status.persistentPermission || false}`,
     `bytes=${status.bytes}`,
+    `inodeRecords=${status.inodeRecords || 0}`,
     `fileRecords=${status.fileRecords || 0}`,
     `contentBytes=${status.contentBytes || 0}`,
+    `dirtyInodes=${status.dirtyInodes || 0}`,
+    `dirtyFiles=${status.dirtyFiles || 0}`,
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
   ].join("\n");

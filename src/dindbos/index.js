@@ -1,16 +1,16 @@
-import { AppRegistry } from "./app-registry.js?v=20260421-persisted-mount";
-import { AppSandbox } from "./app-sandbox.js?v=20260421-persisted-mount";
-import { DesktopShell } from "./desktop-shell.js?v=20260421-persisted-mount";
-import { EventBus } from "./event-bus.js?v=20260421-persisted-mount";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-persisted-mount";
-import { NodeCompat } from "./node-compat.js?v=20260421-persisted-mount";
-import { NpmInstaller } from "./npm-installer.js?v=20260421-persisted-mount";
-import { PackageManager } from "./package-manager.js?v=20260421-persisted-mount";
-import { PermissionPolicy } from "./permission-policy.js?v=20260421-persisted-mount";
-import { PersistentStorage } from "./persistent-storage.js?v=20260421-persisted-mount";
-import { ProcessManager } from "./process-manager.js?v=20260421-persisted-mount";
-import { VirtualFileSystem } from "./vfs.js?v=20260421-persisted-mount";
-import { WindowManager } from "./window-manager.js?v=20260421-persisted-mount";
+import { AppRegistry } from "./app-registry.js?v=20260421-opfs-inodes";
+import { AppSandbox } from "./app-sandbox.js?v=20260421-opfs-inodes";
+import { DesktopShell } from "./desktop-shell.js?v=20260421-opfs-inodes";
+import { EventBus } from "./event-bus.js?v=20260421-opfs-inodes";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-opfs-inodes";
+import { NodeCompat } from "./node-compat.js?v=20260421-opfs-inodes";
+import { NpmInstaller } from "./npm-installer.js?v=20260421-opfs-inodes";
+import { PackageManager } from "./package-manager.js?v=20260421-opfs-inodes";
+import { PermissionPolicy } from "./permission-policy.js?v=20260421-opfs-inodes";
+import { PersistentStorage } from "./persistent-storage.js?v=20260421-opfs-inodes";
+import { ProcessManager } from "./process-manager.js?v=20260421-opfs-inodes";
+import { VirtualFileSystem } from "./vfs.js?v=20260421-opfs-inodes";
+import { WindowManager } from "./window-manager.js?v=20260421-opfs-inodes";
 
 export class DindbOS {
   constructor(options) {

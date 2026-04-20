@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-persisted-mount";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-opfs-inodes";
 
 export class AppSandbox {
   constructor(os, process) {

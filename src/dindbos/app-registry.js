@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-persisted-mount";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-opfs-inodes";
 
 export class AppRegistry {
   constructor(os) {

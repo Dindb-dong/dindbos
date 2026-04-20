@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260421-persisted-mount";
+import { ShellSession } from "../shell.js?v=20260421-opfs-inodes";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({

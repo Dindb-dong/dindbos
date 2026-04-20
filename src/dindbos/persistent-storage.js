@@ -1,6 +1,7 @@
 const STORAGE_VERSION = 2;
 const STORE_NAME = "kv";
 const FILE_RECORD_FORMAT = "opfs-file-records";
+const INODE_RECORD_FORMAT = "opfs-inode-records";
 
 export class PersistentStorage {
   constructor(options = {}) {
@@ -10,6 +11,8 @@ export class PersistentStorage {
     this.indexedDB = options.indexedDB || safeIndexedDB();
     this.opfsProvider = options.opfsProvider || (options.opfsRoot ? async () => options.opfsRoot : safeOpfsProvider());
     this.opfsRootPromise = null;
+    this.savedInodeHashes = new Map();
+    this.savedContentHashes = new Map();
     this.memory = new Map();
     this.dbPromise = null;
     this.writeQueue = Promise.resolve();
@@ -30,15 +33,40 @@ export class PersistentStorage {
     try {
       const payload = JSON.parse(raw);
       if (payload.version !== STORAGE_VERSION) return null;
+      if (payload.format === INODE_RECORD_FORMAT) {
+        this.rememberRecordHashes(payload);
+        this.lastStatus = {
+          ...this.lastStatus,
+          storageFormat: INODE_RECORD_FORMAT,
+          inodeRecords: payload.inodeRecords?.length || 0,
+          fileRecords: payload.fileRecords?.length || 0,
+          contentBytes: payload.contentBytes || 0,
+          dirtyInodes: 0,
+          dirtyFiles: 0,
+        };
+        return await this.hydrateInodeRecordTree(payload.rootRef || stableInodeRef("/"));
+      }
       if (payload.format === FILE_RECORD_FORMAT) {
         this.lastStatus = {
           ...this.lastStatus,
           storageFormat: FILE_RECORD_FORMAT,
+          inodeRecords: 0,
           fileRecords: payload.fileRecords?.length || 0,
           contentBytes: payload.contentBytes || 0,
+          dirtyInodes: 0,
+          dirtyFiles: 0,
         };
         return await this.hydrateFileRecordTree(payload.root || null);
       }
+      this.lastStatus = {
+        ...this.lastStatus,
+        storageFormat: "snapshot",
+        inodeRecords: 0,
+        fileRecords: 0,
+        contentBytes: 0,
+        dirtyInodes: 0,
+        dirtyFiles: 0,
+      };
       return payload.root || null;
     } catch {
       return null;
@@ -47,15 +75,18 @@ export class PersistentStorage {
 
   saveFileSystem(root) {
     if (this.opfsProvider) {
-      const recordPayload = this.createFileRecordPayload(root);
+      const recordPayload = this.createInodeRecordPayload(root);
       this.updateStatus(recordPayload.manifest, {
-        storageFormat: FILE_RECORD_FORMAT,
-        fileRecords: recordPayload.records.length,
+        storageFormat: INODE_RECORD_FORMAT,
+        inodeRecords: recordPayload.inodeRecords.length,
+        fileRecords: recordPayload.fileRecords.length,
         contentBytes: recordPayload.contentBytes,
+        dirtyInodes: recordPayload.dirtyInodeRecords.length,
+        dirtyFiles: recordPayload.dirtyFileRecords.length,
       });
       this.writeQueue = this.writeQueue
         .catch(() => {})
-        .then(() => this.writeFileRecordPayload(recordPayload))
+        .then(() => this.writeInodeRecordPayload(recordPayload))
         .catch(() => this.writeSnapshotFallback(root));
       return;
     }
@@ -64,12 +95,14 @@ export class PersistentStorage {
       savedAt: new Date().toISOString(),
       root,
     });
-    this.updateStatus(payload, { storageFormat: "snapshot", fileRecords: 0, contentBytes: 0 });
+    this.updateStatus(payload, { storageFormat: "snapshot", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
     this.write(this.key, payload);
   }
 
   clearFileSystem() {
-    this.updateStatus("");
+    this.updateStatus("", { inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
+    this.savedInodeHashes = new Map();
+    this.savedContentHashes = new Map();
     this.remove(this.key);
   }
 
@@ -184,7 +217,10 @@ export class PersistentStorage {
         .catch(() => {})
         .then(async () => {
           await this.opfsDelete(key);
-          if (key === this.key) await this.cleanupOpfsFileRecords(new Set());
+          if (key === this.key) {
+            await this.cleanupOpfsFileRecords(new Set());
+            await this.cleanupOpfsInodeRecords(new Set());
+          }
           await this.removeDurableFallback(key);
         })
         .catch(() => this.removeDurableFallback(key));
@@ -238,6 +274,123 @@ export class PersistentStorage {
       } catch {}
     }
     this.removeFallback(key);
+  }
+
+  createInodeRecordPayload(root) {
+    const inodeRecords = [];
+    const fileRecordsByRef = new Map();
+    const rootRef = this.serializeInodeRecordNode(root, "/", inodeRecords, fileRecordsByRef);
+    const fileRecords = [...fileRecordsByRef.values()];
+    const dirtyInodeRecords = inodeRecords.filter((record) => this.savedInodeHashes.get(record.ref) !== record.hash);
+    const dirtyFileRecords = fileRecords.filter((record) => this.savedContentHashes.get(record.ref) !== record.hash);
+    const manifestPayload = {
+      version: STORAGE_VERSION,
+      format: INODE_RECORD_FORMAT,
+      savedAt: new Date().toISOString(),
+      rootRef,
+      inodeRecords: inodeRecords.map(({ metadata, ...record }) => record),
+      fileRecords: fileRecords.map(({ content, ...record }) => record),
+      contentBytes: fileRecords.reduce((total, record) => total + record.size, 0),
+    };
+    return {
+      manifest: JSON.stringify(manifestPayload),
+      inodeRecords,
+      fileRecords,
+      dirtyInodeRecords,
+      dirtyFileRecords,
+      contentBytes: manifestPayload.contentBytes,
+    };
+  }
+
+  serializeInodeRecordNode(node, path, inodeRecords, fileRecordsByRef) {
+    if (!node) return "";
+    const { path: _path, content, children, ...snapshot } = node;
+    const nodePath = path === "/" ? "/" : path;
+    const ref = stableInodeRef(nodePath);
+    let metadata;
+    if (node.type === "file") {
+      const text = String(content ?? "");
+      const contentRef = contentRecordRef(text);
+      const contentKey = this.fileRecordKey(contentRef);
+      const size = byteLength(text);
+      if (!fileRecordsByRef.has(contentRef)) {
+        fileRecordsByRef.set(contentRef, {
+          ref: contentRef,
+          key: contentKey,
+          path: nodePath,
+          size,
+          hash: contentRef,
+          content: text,
+        });
+      }
+      metadata = {
+        ...snapshot,
+        size,
+        contentRef,
+        contentEncoding: "utf-8",
+      };
+    } else {
+      metadata = {
+        ...snapshot,
+        children: children
+          ?.filter((child) => !child.transient)
+          .map((child) => this.serializeInodeRecordNode(child, joinPath(nodePath, child.name), inodeRecords, fileRecordsByRef))
+          .filter(Boolean),
+      };
+    }
+    const serialized = JSON.stringify(metadata);
+    inodeRecords.push({
+      ref,
+      key: this.inodeRecordKey(ref),
+      path: nodePath,
+      type: node.type,
+      hash: hashString(serialized),
+      size: byteLength(serialized),
+      metadata: serialized,
+    });
+    return ref;
+  }
+
+  async hydrateInodeRecordTree(ref) {
+    const raw = await this.opfsGet(this.inodeRecordKey(ref));
+    const node = JSON.parse(raw);
+    const { children, contentRef, contentEncoding: _encoding, ...snapshot } = node;
+    if (node.type === "file") {
+      let content = "";
+      try {
+        content = contentRef ? await this.opfsGet(this.fileRecordKey(contentRef)) : "";
+      } catch {
+        content = node.content || "";
+      }
+      return {
+        ...snapshot,
+        content,
+        size: node.size ?? byteLength(content),
+      };
+    }
+    return {
+      ...snapshot,
+      children: children ? await Promise.all(children.map((childRef) => this.hydrateInodeRecordTree(childRef))) : children,
+    };
+  }
+
+  async writeInodeRecordPayload(payload) {
+    for (const record of payload.dirtyFileRecords) {
+      await this.opfsSet(record.key, record.content);
+    }
+    for (const record of payload.dirtyInodeRecords) {
+      await this.opfsSet(record.key, record.metadata);
+    }
+    await this.opfsSet(this.key, payload.manifest);
+    await this.cleanupOpfsFileRecords(new Set(payload.fileRecords.map((record) => opfsFileName(record.key))));
+    await this.cleanupOpfsInodeRecords(new Set(payload.inodeRecords.map((record) => opfsFileName(record.key))));
+    this.savedInodeHashes = new Map(payload.inodeRecords.map((record) => [record.ref, record.hash]));
+    this.savedContentHashes = new Map(payload.fileRecords.map((record) => [record.ref, record.hash]));
+  }
+
+  rememberRecordHashes(payload) {
+    this.savedInodeHashes = new Map((payload.inodeRecords || []).map((record) => [record.ref, record.hash]));
+    this.savedContentHashes = new Map((payload.fileRecords || []).map((record) => [record.ref, record.hash]));
   }
 
   createFileRecordPayload(root) {
@@ -327,14 +480,25 @@ export class PersistentStorage {
       savedAt: new Date().toISOString(),
       root,
     });
-    this.updateStatus(payload, { storageFormat: "snapshot-fallback", fileRecords: 0, contentBytes: 0 });
+    this.updateStatus(payload, { storageFormat: "snapshot-fallback", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
+    try {
+      await this.opfsDelete(this.key);
+    } catch {}
     await this.writeDurableFallback(this.key, payload);
   }
 
   async cleanupOpfsFileRecords(activeNames) {
+    await this.cleanupOpfsRecords("file", activeNames);
+  }
+
+  async cleanupOpfsInodeRecords(activeNames) {
+    await this.cleanupOpfsRecords("inode", activeNames);
+  }
+
+  async cleanupOpfsRecords(kind, activeNames) {
     const root = await this.openOpfsRoot();
     if (typeof root.entries !== "function") return;
-    const prefix = opfsFileName(this.fileRecordKey("")).replace(/\.json$/, "");
+    const prefix = opfsFileName(this.recordKey(kind, "")).replace(/\.json$/, "");
     for await (const [name] of root.entries()) {
       if (name.startsWith(prefix) && !activeNames.has(name)) {
         try {
@@ -345,7 +509,15 @@ export class PersistentStorage {
   }
 
   fileRecordKey(ref) {
-    return `${this.key}:file:${ref}`;
+    return this.recordKey("file", ref);
+  }
+
+  inodeRecordKey(ref) {
+    return this.recordKey("inode", ref);
+  }
+
+  recordKey(kind, ref) {
+    return `${this.key}:${kind}:${ref}`;
   }
 
   async opfsGet(key) {
@@ -457,12 +629,26 @@ function opfsFileName(key) {
 
 function stableFileRef(path) {
   const value = String(path || "/");
+  return `${hashString(value)}-${value.length}`;
+}
+
+function stableInodeRef(path) {
+  return stableFileRef(path);
+}
+
+function contentRecordRef(content) {
+  const text = String(content ?? "");
+  return `${hashString(text)}-${byteLength(text)}`;
+}
+
+function hashString(value) {
+  const text = String(value ?? "");
   let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return `${(hash >>> 0).toString(36)}-${value.length}`;
+  return (hash >>> 0).toString(36);
 }
 
 function joinPath(base, name) {
