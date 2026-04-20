@@ -13,7 +13,7 @@ DindbOS uses browser storage as a layered disk model.
 Current implementation:
 
 - VFS snapshots are stored through `PersistentStorage`.
-- IndexedDB is preferred, with localStorage and memory fallbacks.
+- OPFS is preferred for VFS snapshots when available, with IndexedDB, localStorage, and memory fallbacks.
 - `storage` reports backend, saved bytes, and browser quota estimates when available.
 - `storage persist` requests persistent browser storage.
 - `mount-local [name]` uses File System Access API to mount a user-selected folder under `/mnt`.
@@ -50,5 +50,6 @@ Planned storage stack:
 Known limits:
 
 - binary-safe copy/export is pending
+- per-file OPFS inode records are pending; current OPFS support stores the VFS snapshot as one durable document
 - directory copy between OPFS and local mounts is pending
 - browser support is strongest in Chromium-based browsers
