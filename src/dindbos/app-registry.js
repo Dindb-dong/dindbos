@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-binary-io";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-native-bytes";
 
 export class AppRegistry {
   constructor(os) {

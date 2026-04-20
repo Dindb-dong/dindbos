@@ -1,4 +1,4 @@
-import { fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent } from "./file-data.js?v=20260421-binary-io";
+import { cloneFileContent, fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent, normalizeFileContentAsync } from "./file-data.js?v=20260421-native-bytes";
 
 export class VirtualFileSystem {
   constructor(rootNode, options = {}) {
@@ -77,6 +77,10 @@ export class VirtualFileSystem {
     return this.writeFile(path, normalizeFileContent(bytes, options), cwd, principal);
   }
 
+  async writeFileBlob(path, blob, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.writeFile(path, await normalizeFileContentAsync(blob, options), cwd, principal);
+  }
+
   appendFile(path, content, cwd = "/", principal = this.systemPrincipal) {
     const current = this.exists(path, cwd) ? this.readFile(path, cwd, principal) : "";
     return this.writeOrCreateFile(path, `${current}${content}`, cwd, {}, principal);
@@ -107,6 +111,10 @@ export class VirtualFileSystem {
 
   writeOrCreateFileBytes(path, bytes, cwd = "/", options = {}, principal = this.systemPrincipal) {
     return this.writeOrCreateFile(path, normalizeFileContent(bytes, options), cwd, options, principal);
+  }
+
+  async writeOrCreateFileBlob(path, blob, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.writeOrCreateFile(path, await normalizeFileContentAsync(blob, options), cwd, options, principal);
   }
 
   createDirectory(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
@@ -431,6 +439,7 @@ function mimeForNode(node) {
 function cloneNode(node) {
   return {
     ...node,
+    content: node.type === "file" ? cloneFileContent(node.content) : node.content,
     children: node.children?.map((child) => cloneNode(child)),
   };
 }

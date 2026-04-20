@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-binary-io";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-native-bytes";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -77,6 +77,11 @@ export class AppSandbox {
         this.assertFileSystem(normalized, "write");
         return this.os.fs.writeFileBytes(normalized, bytes, "/", options, this.principal);
       },
+      writeFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.writeFileBlob(normalized, blob, "/", options, this.principal);
+      },
       appendFile: (path, content, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
@@ -91,6 +96,11 @@ export class AppSandbox {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
         return this.os.fs.writeOrCreateFileBytes(normalized, bytes, "/", options, this.principal);
+      },
+      writeOrCreateFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.writeOrCreateFileBlob(normalized, blob, "/", options, this.principal);
       },
       createFile: (path, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
@@ -327,6 +337,10 @@ export class AppSandbox {
       writeFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
         this.assertCapability("localMount.manage");
         return this.os.localMounts.writeFileBytes(path, bytes, cwd, options);
+      },
+      writeFileBlob: (path, blob, cwd = this.process.cwd, options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.writeFileBlob(path, blob, cwd, options);
       },
       createDirectory: (path, cwd = this.process.cwd, options = {}) => {
         this.assertCapability("localMount.manage");

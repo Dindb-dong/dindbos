@@ -1,16 +1,16 @@
-import { AppRegistry } from "./app-registry.js?v=20260421-binary-io";
-import { AppSandbox } from "./app-sandbox.js?v=20260421-binary-io";
-import { DesktopShell } from "./desktop-shell.js?v=20260421-binary-io";
-import { EventBus } from "./event-bus.js?v=20260421-binary-io";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-binary-io";
-import { NodeCompat } from "./node-compat.js?v=20260421-binary-io";
-import { NpmInstaller } from "./npm-installer.js?v=20260421-binary-io";
-import { PackageManager } from "./package-manager.js?v=20260421-binary-io";
-import { PermissionPolicy } from "./permission-policy.js?v=20260421-binary-io";
-import { PersistentStorage } from "./persistent-storage.js?v=20260421-binary-io";
-import { ProcessManager } from "./process-manager.js?v=20260421-binary-io";
-import { VirtualFileSystem } from "./vfs.js?v=20260421-binary-io";
-import { WindowManager } from "./window-manager.js?v=20260421-binary-io";
+import { AppRegistry } from "./app-registry.js?v=20260421-native-bytes";
+import { AppSandbox } from "./app-sandbox.js?v=20260421-native-bytes";
+import { DesktopShell } from "./desktop-shell.js?v=20260421-native-bytes";
+import { EventBus } from "./event-bus.js?v=20260421-native-bytes";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-native-bytes";
+import { NodeCompat } from "./node-compat.js?v=20260421-native-bytes";
+import { NpmInstaller } from "./npm-installer.js?v=20260421-native-bytes";
+import { PackageManager } from "./package-manager.js?v=20260421-native-bytes";
+import { PermissionPolicy } from "./permission-policy.js?v=20260421-native-bytes";
+import { PersistentStorage } from "./persistent-storage.js?v=20260421-native-bytes";
+import { ProcessManager } from "./process-manager.js?v=20260421-native-bytes";
+import { VirtualFileSystem } from "./vfs.js?v=20260421-native-bytes";
+import { WindowManager } from "./window-manager.js?v=20260421-native-bytes";
 
 export class DindbOS {
   constructor(options = {}) {

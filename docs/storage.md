@@ -17,6 +17,7 @@ Current implementation:
 - Saves compare record hashes and only rewrite dirty inode/content records.
 - Filesystem changes are debounced and coalesced so bursts of writes produce one persisted snapshot.
 - VFS exposes binary-safe byte read/write APIs while keeping text APIs compatible.
+- In-memory binary file nodes use native `Uint8Array`; base64 is only used at persistence/export boundaries.
 - Files.app supports browser file import, DindbOS archive export/import, and drag and drop upload.
 - IndexedDB, localStorage, and memory remain fallbacks for snapshot storage.
 - `storage` reports backend, saved bytes, and browser quota estimates when available.
@@ -55,7 +56,7 @@ Planned storage stack:
 
 Known limits:
 
-- native Blob/Uint8Array file nodes are planned after the compatibility layer is stable
+- Blob/File inputs are normalized into in-memory `Uint8Array` nodes before persistence
 - persistence still walks the in-memory tree to compute record hashes
 - page unload flushing is best-effort because browsers may stop asynchronous storage work during shutdown
 - directory copy between OPFS and local mounts is pending

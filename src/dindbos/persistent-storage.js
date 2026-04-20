@@ -1,4 +1,4 @@
-import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260421-binary-io";
+import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260421-native-bytes";
 
 const STORAGE_VERSION = 2;
 const STORE_NAME = "kv";
@@ -69,7 +69,7 @@ export class PersistentStorage {
         dirtyInodes: 0,
         dirtyFiles: 0,
       };
-      return payload.root || null;
+      return this.hydrateSnapshotTree(payload.root || null);
     } catch {
       return null;
     }
@@ -95,7 +95,7 @@ export class PersistentStorage {
     const payload = JSON.stringify({
       version: STORAGE_VERSION,
       savedAt: new Date().toISOString(),
-      root,
+      root: this.serializeSnapshotTree(root),
     });
     this.updateStatus(payload, { storageFormat: "snapshot", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
     this.write(this.key, payload);
@@ -367,7 +367,7 @@ export class PersistentStorage {
       return {
         ...snapshot,
         content,
-        size: node.size ?? byteLength(content),
+        size: node.size ?? fileContentByteLength(content),
       };
     }
     return {
@@ -459,7 +459,7 @@ export class PersistentStorage {
       return {
         ...snapshot,
         content,
-        size: node.size ?? byteLength(content),
+        size: node.size ?? fileContentByteLength(content),
       };
     }
     return {
@@ -480,13 +480,50 @@ export class PersistentStorage {
     const payload = JSON.stringify({
       version: STORAGE_VERSION,
       savedAt: new Date().toISOString(),
-      root,
+      root: this.serializeSnapshotTree(root),
     });
     this.updateStatus(payload, { storageFormat: "snapshot-fallback", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
     try {
       await this.opfsDelete(this.key);
     } catch {}
     await this.writeDurableFallback(this.key, payload);
+  }
+
+  serializeSnapshotTree(node) {
+    if (!node) return null;
+    const { content, children, ...snapshot } = node;
+    if (node.type === "file") {
+      return {
+        ...snapshot,
+        content: serializeFileContentRecord(content),
+        contentEncoding: "dindbos-content-record-v1",
+        size: fileContentByteLength(content),
+      };
+    }
+    return {
+      ...snapshot,
+      children: children
+        ?.filter((child) => !child.transient)
+        .map((child) => this.serializeSnapshotTree(child))
+        .filter(Boolean),
+    };
+  }
+
+  hydrateSnapshotTree(node) {
+    if (!node) return null;
+    const { children, content, contentEncoding: _encoding, ...snapshot } = node;
+    if (node.type === "file") {
+      const parsedContent = parseFileContentRecord(content);
+      return {
+        ...snapshot,
+        content: parsedContent,
+        size: node.size ?? fileContentByteLength(parsedContent),
+      };
+    }
+    return {
+      ...snapshot,
+      children: children?.map((child) => this.hydrateSnapshotTree(child)),
+    };
   }
 
   async cleanupOpfsFileRecords(activeNames) {

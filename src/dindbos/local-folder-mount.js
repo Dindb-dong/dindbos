@@ -262,6 +262,17 @@ export class LocalFolderMountManager {
     return this.stat(normalized);
   }
 
+  async writeFileBlob(path, blob, cwd = "/", options = {}) {
+    const normalized = this.os.fs.normalize(path, cwd);
+    const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
+    const handle = await parentHandle.getFileHandle(name, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    await this.syncDirectory(this.os.fs.dirname(normalized));
+    return this.stat(normalized);
+  }
+
   async appendFile(path, content, cwd = "/") {
     const normalized = this.os.fs.normalize(path, cwd);
     const current = await this.exists(normalized) ? await this.readFile(normalized) : "";

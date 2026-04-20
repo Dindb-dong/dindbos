@@ -1,5 +1,5 @@
-import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260421-binary-io";
-import { ShellSession } from "../shell.js?v=20260421-binary-io";
+import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260421-native-bytes";
+import { ShellSession } from "../shell.js?v=20260421-native-bytes";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -410,9 +410,8 @@ async function importDroppedFiles(os, currentPath, fileList) {
       continue;
     }
     const target = await allocateImportPath(os, currentPath, file.name || "upload.bin");
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.writeFileBytes(target, bytes, "/", { mime: file.type || mimeFromName(target) });
-    else os.fs.writeOrCreateFileBytes(target, bytes, "/", { mime: file.type || mimeFromName(target), owner: "guest", group: "users", permissions: "-rw-r--r--" });
+    if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.writeFileBlob(target, file, "/", { mime: file.type || mimeFromName(target) });
+    else await os.fs.writeOrCreateFileBlob(target, file, "/", { mime: file.type || mimeFromName(target), owner: "guest", group: "users", permissions: "-rw-r--r--" });
     imported.push(target);
   }
   return imported;

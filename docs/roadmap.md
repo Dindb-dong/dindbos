@@ -37,7 +37,8 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - binary-safe VFS read/write compatibility layer
 - Files.app import/export
 - Files.app drag and drop upload
-- next: native Blob/Uint8Array file model, richer local mount permission UX, stronger unload flush guarantees
+- native Uint8Array file nodes with Blob/File import adapters
+- next: richer local mount permission UX, stronger unload flush guarantees
 
 ## 3. Package System
 
