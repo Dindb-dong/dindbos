@@ -1,0 +1,19 @@
+{
+  "name": "dindbos",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Browser-native desktop runtime for portfolio and web OS demos.",
+  "scripts": {
+    "dev": "python3 -m http.server 5174 --bind 127.0.0.1",
+    "check": "node --check src/main.js && node --check src/dindbos/index.js && node --check src/dindbos/window-manager.js && node --check src/dindbos/apps/builtins.js"
+  },
+  "keywords": [
+    "web-os",
+    "desktop",
+    "portfolio",
+    "window-manager",
+    "virtual-filesystem"
+  ],
+  "license": "MIT"
+}
