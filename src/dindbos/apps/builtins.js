@@ -1,4 +1,5 @@
-import { ShellSession } from "../shell.js?v=20260421-persist-coalesce";
+import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260421-binary-io";
+import { ShellSession } from "../shell.js?v=20260421-binary-io";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -27,7 +28,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     height: 520,
     accepts: ["inode/directory"],
     manifest: {
-      capabilities: ["app.launch"],
+      capabilities: ["app.launch", "localMount.read", "localMount.manage"],
       fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
     },
     render: ({ os: runtime, content, context, window }) => (
@@ -55,6 +56,8 @@ export function installBuiltinApps(os, { portfolioData }) {
         "package.manage",
         "npm.install",
         "node.execute",
+        "localMount.read",
+        "localMount.manage",
       ],
       fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp", "/opt", "/usr/share/applications", "/var/lib/dindbos/packages"] },
     },
@@ -80,13 +83,14 @@ export function installBuiltinApps(os, { portfolioData }) {
     name: "Viewer",
     title: ({ node }) => node?.name || "Viewer",
     icon: "pdf",
-    accepts: ["application/pdf", "text/html"],
+    accepts: ["application/pdf", "text/html", "image/*"],
     width: 820,
     height: 560,
     manifest: {
+      capabilities: ["localMount.read"],
       fileSystem: { read: ["/"], write: [] },
     },
-    render: ({ content, context }) => renderViewer(content, context.node),
+    render: ({ os: runtime, content, context }) => renderViewer(runtime, content, context.node),
   });
 
   os.registerApp({
@@ -114,7 +118,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 520,
     height: 380,
     manifest: {
-      capabilities: ["process.read", "storage.read", "package.read"],
+      capabilities: ["process.read", "storage.read", "package.read", "localMount.read"],
       fileSystem: { read: ["/etc", "/proc", "/home/guest"], write: [] },
     },
     render: ({ content, os: runtime }) => renderSettings(runtime, content),
@@ -193,10 +197,15 @@ function renderFiles(os, content, path, windowApi) {
           <div class="files-toolbar">
             <button type="button" data-action="new-folder">New Folder</button>
             <button type="button" data-action="new-file">New File</button>
+            <button type="button" data-action="import">Import</button>
+            <button type="button" data-action="export">Export</button>
             <button type="button" data-action="mount-local">Mount Local</button>
             <button type="button" data-action="delete">Delete</button>
           </div>
-          <div class="files-column-view" role="tree">
+          <div class="files-dropzone">
+            Drop files here to import into ${escapeHtml(currentPath)}
+          </div>
+          <div class="files-column-view" role="tree" data-drop-target="true">
             ${columns.map((column) => `
               <div class="files-column" data-column="${escapeAttr(column.path)}">
                 ${column.entries.map((entry) => {
@@ -260,6 +269,27 @@ function renderFiles(os, content, path, windowApi) {
           windowApi.setTitle(`Files - ${error.message}`);
         }
       });
+    });
+    const dropTarget = content.querySelector("[data-drop-target]");
+    const dropzone = content.querySelector(".files-dropzone");
+    const setDragging = (value) => {
+      dropzone.classList.toggle("is-active", value);
+      dropTarget.classList.toggle("is-dragging", value);
+    };
+    dropTarget.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      setDragging(true);
+    });
+    dropTarget.addEventListener("dragleave", () => setDragging(false));
+    dropTarget.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      setDragging(false);
+      try {
+        const imported = await importDroppedFiles(os, currentPath, event.dataTransfer?.files || []);
+        await draw(currentPath, imported[0] || currentPath);
+      } catch (error) {
+        windowApi.setTitle(`Files - ${error.message}`);
+      }
     });
   };
   draw(path);
@@ -334,6 +364,15 @@ async function handleFileAction(os, currentPath, selectedPath, action) {
     os.fs.createFile(uniquePath(os, currentPath, "untitled.txt"), "/", { content: "" });
     return;
   }
+  if (action === "import") {
+    const imported = await importFilesWithPicker(os, currentPath);
+    return imported[0] || currentPath;
+  }
+  if (action === "export") {
+    if (selectedPath === currentPath) await exportPath(os, currentPath);
+    else await exportPath(os, selectedPath);
+    return selectedPath;
+  }
   if (action === "delete") {
     if (selectedPath === "/" || selectedPath === currentPath) throw new Error("Select an item to delete");
     if (os.localMounts?.isMountedPath(selectedPath)) {
@@ -343,6 +382,172 @@ async function handleFileAction(os, currentPath, selectedPath, action) {
     os.fs.remove(selectedPath, "/", { recursive: true });
   }
   return currentPath;
+}
+
+async function importFilesWithPicker(os, currentPath) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.style.display = "none";
+  document.body.appendChild(input);
+  try {
+    const files = await new Promise((resolve) => {
+      input.addEventListener("change", () => resolve(input.files || []), { once: true });
+      input.click();
+    });
+    return importDroppedFiles(os, currentPath, files);
+  } finally {
+    input.remove();
+  }
+}
+
+async function importDroppedFiles(os, currentPath, fileList) {
+  const files = [...fileList];
+  const imported = [];
+  for (const file of files) {
+    if (file.name.endsWith(".dindbos-export.json")) {
+      imported.push(...await importDindbArchive(os, currentPath, file));
+      continue;
+    }
+    const target = await allocateImportPath(os, currentPath, file.name || "upload.bin");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.writeFileBytes(target, bytes, "/", { mime: file.type || mimeFromName(target) });
+    else os.fs.writeOrCreateFileBytes(target, bytes, "/", { mime: file.type || mimeFromName(target), owner: "guest", group: "users", permissions: "-rw-r--r--" });
+    imported.push(target);
+  }
+  return imported;
+}
+
+async function importDindbArchive(os, currentPath, file) {
+  const archive = JSON.parse(await file.text());
+  if (archive?.kind !== "dindbos-export-v1" || !Array.isArray(archive.entries)) throw new Error("Invalid DindbOS export");
+  const imported = [];
+  for (const entry of archive.entries) {
+    const relative = sanitizeRelativePath(entry.path || entry.name || "file.bin");
+    const target = await allocateImportPath(os, currentPath, relative);
+    const bytes = base64ToBytes(entry.data || "");
+    if (os.localMounts?.isMountedPath(target)) await os.localMounts.writeFileBytes(target, bytes, "/", { mime: entry.mime || mimeFromName(target) });
+    else os.fs.writeOrCreateFileBytes(target, bytes, "/", {
+      mime: entry.mime || mimeFromName(target),
+      owner: entry.owner || "guest",
+      group: entry.group || "users",
+      permissions: entry.permissions || "-rw-r--r--",
+    });
+    imported.push(target);
+  }
+  return imported;
+}
+
+async function allocateImportPath(os, directory, relativePath) {
+  const relative = sanitizeRelativePath(relativePath);
+  const target = os.fs.normalize(relative, directory);
+  await ensureImportParent(os, os.fs.dirname(target));
+  if (!await importPathExists(os, target)) return target;
+  const parent = os.fs.dirname(target);
+  const name = os.fs.basename(target);
+  const dotIndex = name.lastIndexOf(".");
+  const base = dotIndex > 0 ? name.slice(0, dotIndex) : name;
+  const extension = dotIndex > 0 ? name.slice(dotIndex) : "";
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = os.fs.join(parent, `${base}-${index}${extension}`);
+    if (!await importPathExists(os, candidate)) return candidate;
+  }
+  throw new Error(`Cannot allocate a filename for ${relative}`);
+}
+
+async function ensureImportParent(os, directory) {
+  const normalized = os.fs.normalize(directory);
+  const parts = normalized.split("/").filter(Boolean);
+  let cursor = "/";
+  for (const part of parts) {
+    cursor = os.fs.join(cursor, part);
+    if (os.localMounts?.isMountedPath(cursor)) {
+      if (!await os.localMounts.exists(cursor)) await os.localMounts.createDirectory(cursor, "/", { parents: true });
+    } else if (!os.fs.exists(cursor)) {
+      os.fs.createDirectory(cursor);
+    }
+  }
+}
+
+async function importPathExists(os, path) {
+  if (os.localMounts?.isMountedPath(path)) return os.localMounts.exists(path);
+  return os.fs.exists(path);
+}
+
+async function exportPath(os, path) {
+  const normalized = os.fs.normalize(path);
+  const node = os.fs.resolve(normalized) || os.fs.lstat(normalized);
+  if (!node) throw new Error(`export: no such path: ${path}`);
+  if (node.type === "directory" || node.type === "mount") {
+    const entries = await collectExportEntries(os, normalized);
+    downloadBytes(`${os.fs.basename(normalized)}.dindbos-export.json`, new TextEncoder().encode(JSON.stringify({
+      kind: "dindbos-export-v1",
+      exportedAt: new Date().toISOString(),
+      root: normalized,
+      entries,
+    }, null, 2)), "application/json");
+    return;
+  }
+  const stat = os.fs.stat(normalized);
+  const bytes = os.localMounts?.isMountedPath(normalized)
+    ? await os.localMounts.readFileBytes(normalized)
+    : os.fs.readFileBytes(normalized);
+  downloadBytes(node.name || os.fs.basename(normalized), bytes, stat?.mime || "application/octet-stream");
+}
+
+async function collectExportEntries(os, rootPath) {
+  const root = os.fs.normalize(rootPath);
+  const entries = [];
+  const walk = async (path) => {
+    if (os.localMounts?.isMountedPath(path)) await os.localMounts.syncDirectory(path);
+    const node = os.fs.resolve(path);
+    if (!node || node.type === "mount") {
+      const localEntries = await os.localMounts.list(path);
+      for (const entry of localEntries) await walk(entry.path);
+      return;
+    }
+    if (node.type === "directory") {
+      for (const entry of os.fs.list(path)) await walk(entry.path);
+      return;
+    }
+    if (node.type !== "file") return;
+    const stat = os.fs.stat(path);
+    const bytes = os.localMounts?.isMountedPath(path)
+      ? await os.localMounts.readFileBytes(path)
+      : os.fs.readFileBytes(path);
+    entries.push({
+      path: relativeArchivePath(root, path),
+      name: node.name,
+      mime: stat?.mime || node.mime || "application/octet-stream",
+      permissions: stat?.permissions || node.permissions || "-rw-r--r--",
+      owner: stat?.owner || node.owner || "guest",
+      group: stat?.group || node.group || "users",
+      data: bytesToBase64(bytes),
+    });
+  };
+  await walk(root);
+  return entries;
+}
+
+function downloadBytes(filename, bytes, mime) {
+  const blob = new Blob([bytes], { type: mime || "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function relativeArchivePath(root, path) {
+  const base = root.replace(/\/$/, "");
+  return path === base ? "" : path.slice(base.length + 1);
+}
+
+function sanitizeRelativePath(path) {
+  return String(path || "").split("/").filter((part) => part && part !== "." && part !== "..").join("/") || "file.bin";
 }
 
 function uniquePath(os, directory, name) {
@@ -393,14 +598,55 @@ function renderText(os, content, node, windowApi) {
   });
 }
 
-function renderViewer(content, node) {
+function renderViewer(os, content, node) {
   content.innerHTML = `
     <section class="viewer-app">
       <p class="dos-kicker">${escapeHtml(node?.mime || "document")}</p>
       <h2>${escapeHtml(node?.name || "Document")}</h2>
-      <pre>${escapeHtml(node?.content || "Preview adapter pending.")}</pre>
+      <pre>Loading preview...</pre>
     </section>
   `;
+  renderViewerBytes(os, content, node).catch((error) => {
+    content.innerHTML = `
+      <section class="viewer-app">
+        <p class="dos-kicker">Preview error</p>
+        <h2>${escapeHtml(node?.name || "Document")}</h2>
+        <pre>${escapeHtml(error.message)}</pre>
+      </section>
+    `;
+  });
+}
+
+async function renderViewerBytes(os, content, node) {
+  const mime = node?.mime || "application/octet-stream";
+  const bytes = node?.path
+    ? await readNodeBytes(os, node.path)
+    : null;
+  const url = bytes ? URL.createObjectURL(new Blob([bytes], { type: mime })) : "";
+  const preview = bytes ? previewBytes(bytes, mime) : (node?.content ? fileContentPreview(node.content) : "Preview adapter pending.");
+  content.innerHTML = `
+    <section class="viewer-app">
+      <p class="dos-kicker">${escapeHtml(mime)}</p>
+      <h2>${escapeHtml(node?.name || "Document")}</h2>
+      ${mime.startsWith("image/") && url ? `<img src="${escapeAttr(url)}" alt="${escapeAttr(node?.name || "Image")}" />` : ""}
+      ${mime === "application/pdf" && url ? `<iframe src="${escapeAttr(url)}" title="${escapeAttr(node?.name || "PDF")}"></iframe>` : ""}
+      ${!mime.startsWith("image/") && mime !== "application/pdf" ? `<pre>${escapeHtml(preview)}</pre>` : ""}
+    </section>
+  `;
+}
+
+async function readNodeBytes(os, path) {
+  if (os.localMounts?.isMountedPath(path)) return os.localMounts.readFileBytes(path);
+  return os.fs.readFileBytes(path);
+}
+
+function previewBytes(bytes, mime) {
+  if (!isTextMime(mime)) return `Binary file · ${formatBytes(bytes.byteLength)}`;
+  return new TextDecoder().decode(bytes);
+}
+
+function isTextMime(mime) {
+  return mime.startsWith("text/") || ["application/json", "application/javascript", "text/javascript"].includes(mime);
 }
 
 function renderTerminal(os, content) {
@@ -763,6 +1009,19 @@ function formatBytes(value) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function mimeFromName(name) {
+  if (/\.md$/i.test(name)) return "text/markdown";
+  if (/\.txt$/i.test(name)) return "text/plain";
+  if (/\.json$/i.test(name)) return "application/json";
+  if (/\.html?$/i.test(name)) return "text/html";
+  if (/\.pdf$/i.test(name)) return "application/pdf";
+  if (/\.png$/i.test(name)) return "image/png";
+  if (/\.jpe?g$/i.test(name)) return "image/jpeg";
+  if (/\.gif$/i.test(name)) return "image/gif";
+  if (/\.webp$/i.test(name)) return "image/webp";
+  return "application/octet-stream";
 }
 
 function shortTime(value) {

@@ -1,16 +1,16 @@
-import { AppRegistry } from "./app-registry.js?v=20260421-persist-coalesce";
-import { AppSandbox } from "./app-sandbox.js?v=20260421-persist-coalesce";
-import { DesktopShell } from "./desktop-shell.js?v=20260421-persist-coalesce";
-import { EventBus } from "./event-bus.js?v=20260421-persist-coalesce";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-persist-coalesce";
-import { NodeCompat } from "./node-compat.js?v=20260421-persist-coalesce";
-import { NpmInstaller } from "./npm-installer.js?v=20260421-persist-coalesce";
-import { PackageManager } from "./package-manager.js?v=20260421-persist-coalesce";
-import { PermissionPolicy } from "./permission-policy.js?v=20260421-persist-coalesce";
-import { PersistentStorage } from "./persistent-storage.js?v=20260421-persist-coalesce";
-import { ProcessManager } from "./process-manager.js?v=20260421-persist-coalesce";
-import { VirtualFileSystem } from "./vfs.js?v=20260421-persist-coalesce";
-import { WindowManager } from "./window-manager.js?v=20260421-persist-coalesce";
+import { AppRegistry } from "./app-registry.js?v=20260421-binary-io";
+import { AppSandbox } from "./app-sandbox.js?v=20260421-binary-io";
+import { DesktopShell } from "./desktop-shell.js?v=20260421-binary-io";
+import { EventBus } from "./event-bus.js?v=20260421-binary-io";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-binary-io";
+import { NodeCompat } from "./node-compat.js?v=20260421-binary-io";
+import { NpmInstaller } from "./npm-installer.js?v=20260421-binary-io";
+import { PackageManager } from "./package-manager.js?v=20260421-binary-io";
+import { PermissionPolicy } from "./permission-policy.js?v=20260421-binary-io";
+import { PersistentStorage } from "./persistent-storage.js?v=20260421-binary-io";
+import { ProcessManager } from "./process-manager.js?v=20260421-binary-io";
+import { VirtualFileSystem } from "./vfs.js?v=20260421-binary-io";
+import { WindowManager } from "./window-manager.js?v=20260421-binary-io";
 
 export class DindbOS {
   constructor(options = {}) {

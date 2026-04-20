@@ -1,6 +1,6 @@
-import { DindbOS } from "./dindbos/index.js?v=20260421-persist-coalesce";
-import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260421-persist-coalesce";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260421-persist-coalesce";
+import { DindbOS } from "./dindbos/index.js?v=20260421-binary-io";
+import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260421-binary-io";
+import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260421-binary-io";
 
 const os = new DindbOS({
   root: "#dindbos-root",

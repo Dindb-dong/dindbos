@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-persist-coalesce";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-binary-io";
 
 export class AppRegistry {
   constructor(os) {

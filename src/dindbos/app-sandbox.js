@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-persist-coalesce";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-binary-io";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -12,6 +12,7 @@ export class AppSandbox {
     this.npm = this.createNpmFacade();
     this.node = this.createNodeFacade();
     this.storage = this.createStorageFacade();
+    this.localMounts = this.createLocalMountFacade();
     this.session = Object.freeze({ ...os.session });
   }
 
@@ -61,10 +62,20 @@ export class AppSandbox {
         this.assertFileSystem(normalized, "read");
         return this.os.fs.readFile(normalized, "/", this.principal);
       },
+      readFileBytes: (path, cwd = this.process.cwd) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "read");
+        return this.os.fs.readFileBytes(normalized, "/", this.principal);
+      },
       writeFile: (path, content, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
         return this.os.fs.writeFile(normalized, content, "/", this.principal);
+      },
+      writeFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.writeFileBytes(normalized, bytes, "/", options, this.principal);
       },
       appendFile: (path, content, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
@@ -75,6 +86,11 @@ export class AppSandbox {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
         return this.os.fs.writeOrCreateFile(normalized, content, "/", options, this.principal);
+      },
+      writeOrCreateFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.writeOrCreateFileBytes(normalized, bytes, "/", options, this.principal);
       },
       createFile: (path, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
@@ -256,6 +272,71 @@ export class AppSandbox {
         if (typeof this.os.resetPersistentFileSystem === "function") this.os.resetPersistentFileSystem();
         else this.os.storage.clearFileSystem();
       },
+    };
+  }
+
+  createLocalMountFacade() {
+    return {
+      supported: () => Boolean(this.os.localMounts?.supported()),
+      mountLocal: (name = "", options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.mountLocal(name, options);
+      },
+      unmount: (path, options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.unmount(path, options);
+      },
+      listMounts: () => {
+        this.assertCapability("localMount.read");
+        return this.os.localMounts.listMounts();
+      },
+      status: () => {
+        this.assertCapability("localMount.read");
+        return this.os.localMounts.status();
+      },
+      restorePersistedMounts: (options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.restorePersistedMounts(options);
+      },
+      forgetMount: (path) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.forgetMount(path);
+      },
+      isMountedPath: (path, cwd = this.process.cwd) => this.os.localMounts.isMountedPath(path, cwd),
+      syncDirectory: (path) => this.os.localMounts.syncDirectory(path),
+      list: (path, cwd = this.process.cwd) => {
+        this.assertCapability("localMount.read");
+        return this.os.localMounts.list(path, cwd);
+      },
+      stat: (path, cwd = this.process.cwd) => {
+        this.assertCapability("localMount.read");
+        return this.os.localMounts.stat(path, cwd);
+      },
+      readFile: (path, cwd = this.process.cwd) => {
+        this.assertCapability("localMount.read");
+        return this.os.localMounts.readFile(path, cwd);
+      },
+      readFileBytes: (path, cwd = this.process.cwd) => {
+        this.assertCapability("localMount.read");
+        return this.os.localMounts.readFileBytes(path, cwd);
+      },
+      writeFile: (path, content, cwd = this.process.cwd) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.writeFile(path, content, cwd);
+      },
+      writeFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.writeFileBytes(path, bytes, cwd, options);
+      },
+      createDirectory: (path, cwd = this.process.cwd, options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.createDirectory(path, cwd, options);
+      },
+      remove: (path, cwd = this.process.cwd, options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.remove(path, cwd, options);
+      },
+      exists: (path, cwd = this.process.cwd) => this.os.localMounts.exists(path, cwd),
     };
   }
 }
