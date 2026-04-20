@@ -1,6 +1,6 @@
-import { DindbOS } from "./dindbos/index.js?v=20260420-package-system";
-import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-package-system";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-package-system";
+import { DindbOS } from "./dindbos/index.js?v=20260420-remote-packages";
+import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-remote-packages";
+import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-remote-packages";
 
 const os = new DindbOS({
   root: "#dindbos-root",

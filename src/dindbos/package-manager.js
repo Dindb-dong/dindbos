@@ -2,6 +2,8 @@ const APPLICATION_DIR = "/usr/share/applications";
 const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
 const PACKAGE_SOURCE_DIR = "/opt/dindbos/packages";
 const PACKAGE_INSTALL_ROOT = "/opt";
+const MAX_REMOTE_MANIFEST_BYTES = 512 * 1024;
+const MAX_REMOTE_FILE_BYTES = 1024 * 1024;
 
 const SAMPLE_PACKAGE = {
   id: "hello-notes",
@@ -70,10 +72,30 @@ export class PackageManager {
     });
   }
 
+  async installFromUrl(url, options = {}) {
+    const sourceUrl = normalizePackageUrl(url);
+    const fetcher = options.fetch || globalThis.fetch;
+    if (typeof fetcher !== "function") throw new Error("pkg: fetch is not available in this runtime");
+    const manifestText = await fetchText(fetcher, sourceUrl, MAX_REMOTE_MANIFEST_BYTES, "manifest");
+    const manifest = parseJson(manifestText, sourceUrl);
+    const record = this.normalizePackage(manifest, {
+      sourcePath: sourceUrl,
+      sourceUrl,
+    });
+    this.ensurePackageRoots();
+    this.ensurePackageDirectory(record);
+    await this.installDeclaredFiles(record, manifest.files || [], sourceUrl, fetcher);
+    this.writePackageRecord(record);
+    this.installLauncher(record);
+    this.registerPackageApp(record);
+    return record;
+  }
+
   install(manifest, options = {}) {
     const record = this.normalizePackage(manifest, options);
     this.ensurePackageRoots();
     this.ensurePackageDirectory(record);
+    this.installDeclaredInlineFiles(record, manifest.files || []);
     this.writePackageRecord(record);
     this.installLauncher(record);
     this.registerPackageApp(record);
@@ -119,6 +141,7 @@ export class PackageManager {
       sourcePath: options.sourcePath || manifest.sourcePath || "",
       installedAt: new Date().toISOString(),
       originalManifest: manifest,
+      files: [],
       app: {
         id: appId,
         name: String(app.name || name),
@@ -204,6 +227,70 @@ export class PackageManager {
     );
   }
 
+  installDeclaredInlineFiles(record, files) {
+    files.forEach((file) => {
+      if (file.url) throw new Error(`pkg: ${file.path || ""}: URL file entries require remote install`);
+      const content = contentFromInlineFile(file);
+      this.writePackageFile(record, file, content);
+    });
+  }
+
+  async installDeclaredFiles(record, files, sourceUrl, fetcher) {
+    for (const file of files) {
+      if (file.url) {
+        const fileUrl = normalizePackageUrl(new URL(file.url, sourceUrl).toString());
+        const content = await fetchText(fetcher, fileUrl, MAX_REMOTE_FILE_BYTES, `file ${file.path || fileUrl}`);
+        this.writePackageFile(record, { ...file, sourceUrl: fileUrl }, content);
+        continue;
+      }
+      this.writePackageFile(record, file, contentFromInlineFile(file));
+    }
+  }
+
+  writePackageFile(record, file, content) {
+    const path = this.resolvePackageFilePath(record, file.path);
+    this.ensureParentDirectories(path);
+    this.os.fs.writeOrCreateFile(
+      path,
+      content,
+      "/",
+      {
+        mime: file.mime || mimeFromName(path),
+        owner: "root",
+        group: "root",
+        permissions: file.permissions || "-rw-r--r--",
+      },
+      this.system,
+    );
+    record.files.push({
+      path,
+      mime: file.mime || mimeFromName(path),
+      sourceUrl: file.sourceUrl || "",
+      size: byteLength(content),
+    });
+  }
+
+  ensureParentDirectories(path) {
+    const directory = this.os.fs.dirname(path);
+    let cursor = "/";
+    directory.split("/").filter(Boolean).forEach((part) => {
+      cursor = this.os.fs.join(cursor, part);
+      if (!this.os.fs.exists(cursor)) {
+        this.os.fs.createDirectory(cursor, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, this.system);
+      }
+    });
+  }
+
+  resolvePackageFilePath(record, path) {
+    const relative = String(path || "").trim();
+    if (!relative || relative.startsWith("/") || relative.split("/").includes("..")) {
+      throw new Error(`pkg: invalid package file path: ${path || ""}`);
+    }
+    const resolved = this.os.fs.normalize(relative, record.installPath);
+    if (resolved !== record.installPath && resolved.startsWith(`${record.installPath}/`)) return resolved;
+    throw new Error(`pkg: file escapes package root: ${path}`);
+  }
+
   installLauncher(record) {
     this.os.fs.createApp(
       this.launcherPath(record),
@@ -284,7 +371,7 @@ function renderPackagedApp(content, runtime, record) {
       <dl>
         <div><dt>Install path</dt><dd>${escapeHtml(record.installPath)}</dd></div>
         <div><dt>Source</dt><dd>${escapeHtml(record.sourcePath || "-")}</dd></div>
-        <div><dt>Files</dt><dd>${escapeHtml(files.map((file) => file.name).join(", ") || "-")}</dd></div>
+        <div><dt>Files</dt><dd>${escapeHtml(record.files?.map((file) => runtime.fs.basename(file.path)).join(", ") || files.map((file) => file.name).join(", ") || "-")}</dd></div>
       </dl>
     </section>
   `;
@@ -306,6 +393,52 @@ function normalizePackageId(value) {
   return id;
 }
 
+function normalizePackageUrl(value) {
+  let url;
+  try {
+    url = new URL(String(value || ""));
+  } catch {
+    throw new Error(`pkg: invalid package URL: ${value || ""}`);
+  }
+  if (!["http:", "https:"].includes(url.protocol)) throw new Error(`pkg: unsupported URL protocol: ${url.protocol}`);
+  return url.toString();
+}
+
+async function fetchText(fetcher, url, maxBytes, label) {
+  const response = await fetcher(url, { headers: { Accept: "application/json, text/plain, */*" } });
+  if (!response?.ok) throw new Error(`pkg: failed to fetch ${label}: ${response?.status || "network error"}`);
+  const length = Number(response.headers?.get?.("content-length") || 0);
+  if (length > maxBytes) throw new Error(`pkg: ${label} is too large`);
+  const text = await response.text();
+  if (byteLength(text) > maxBytes) throw new Error(`pkg: ${label} is too large`);
+  return text;
+}
+
+function contentFromInlineFile(file) {
+  if (!file || typeof file !== "object") throw new Error("pkg: file entry must be an object");
+  if (typeof file.content === "string") return file.content;
+  if (typeof file.base64 === "string") return decodeBase64Text(file.base64);
+  throw new Error(`pkg: ${file.path || ""}: file entry needs content, base64, or url`);
+}
+
+function decodeBase64Text(value) {
+  if (typeof atob === "function") {
+    const binary = atob(value);
+    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+  }
+  return Buffer.from(value, "base64").toString("utf8");
+}
+
+function mimeFromName(path) {
+  if (/\.md$/i.test(path)) return "text/markdown";
+  if (/\.txt$/i.test(path)) return "text/plain";
+  if (/\.json$/i.test(path)) return "application/json";
+  if (/\.html?$/i.test(path)) return "text/html";
+  if (/\.css$/i.test(path)) return "text/css";
+  if (/\.js$/i.test(path)) return "text/javascript";
+  return "text/plain";
+}
+
 function normalizeAppId(value) {
   const id = String(value || "").trim();
   if (!/^[A-Za-z0-9._:-]+$/.test(id)) throw new Error(`pkg: invalid app id: ${value || ""}`);
@@ -314,6 +447,10 @@ function normalizeAppId(value) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean).map(String))];
+}
+
+function byteLength(value) {
+  return new TextEncoder().encode(String(value ?? "")).length;
 }
 
 function safeRead(reader, fallback) {

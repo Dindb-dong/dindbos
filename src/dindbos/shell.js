@@ -18,7 +18,7 @@ const BUILTIN_MANUALS = {
   mount: "mount - print mounted virtual filesystems",
   mv: "mv <source> <destination> - move or rename files",
   open: "open [path] - open a path with its associated app",
-  pkg: "pkg <list|info|install|remove> - manage DindbOS packages",
+  pkg: "pkg <list|info|install|remove> - manage DindbOS packages; install accepts local paths or https URLs",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -88,6 +88,32 @@ export class ShellSession {
     return { output: output.join("\n"), clear: false, reload: false, status: previousStatus };
   }
 
+  async executeAsync(commandLine) {
+    const line = commandLine.trim();
+    if (!line) return { output: "", clear: false, reload: false };
+    this.history.push(line);
+    this.historyIndex = this.history.length;
+    const expanded = expandVariables(line, this.env);
+    const commands = splitCommandList(expanded);
+    const output = [];
+    let previousStatus = 0;
+    for (const item of commands) {
+      if (!shouldExecute(item.operator, previousStatus)) continue;
+      let result;
+      try {
+        result = await this.executePipelineAsync(item.command);
+        previousStatus = result.status;
+      } catch (error) {
+        result = { output: error.message, clear: false, reload: false, status: 1 };
+        previousStatus = 1;
+      }
+      if (result.clear) return { output: "", clear: true, reload: false, status: previousStatus };
+      if (result.output) output.push(result.output);
+      if (result.reload) return { ...result, output: output.join("\n") };
+    }
+    return { output: output.join("\n"), clear: false, reload: false, status: previousStatus };
+  }
+
   executePipeline(commandLine) {
     const pipeline = splitPipeline(commandLine);
     let stdin = "";
@@ -100,12 +126,25 @@ export class ShellSession {
     return result;
   }
 
+  async executePipelineAsync(commandLine) {
+    const pipeline = splitPipeline(commandLine);
+    let stdin = "";
+    let result = { output: "", clear: false, reload: false, status: 0 };
+    for (const segment of pipeline) {
+      result = await this.executeSegmentAsync(segment, stdin);
+      stdin = result.output;
+      if (result.clear || result.reload) return result;
+    }
+    return result;
+  }
+
   executeSegment(segment, stdin = "") {
     const redirect = extractRedirect(segment);
     const tokens = tokenizeCommand(redirect.command);
     const [command, ...args] = tokens;
     if (!command) return { output: stdin, clear: false, reload: false, status: 0 };
     let output = this.dispatch(command, args, stdin);
+    if (isPromise(output)) throw new Error(`${command}: async command requires executeAsync`);
     if (redirect.target) {
       const value = output.endsWith("\n") ? output : `${output}\n`;
       if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd);
@@ -113,6 +152,25 @@ export class ShellSession {
       output = "";
     }
     return { output, clear: command === "clear", reload: command === "resetfs", status: 0 };
+  }
+
+  async executeSegmentAsync(segment, stdin = "") {
+    const redirect = extractRedirect(segment);
+    const tokens = tokenizeCommand(redirect.command);
+    const [command, ...args] = tokens;
+    if (!command) return { output: stdin, clear: false, reload: false, status: 0 };
+    let output = await this.dispatchAsync(command, args, stdin);
+    if (redirect.target) {
+      const value = output.endsWith("\n") ? output : `${output}\n`;
+      if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd);
+      else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd);
+      output = "";
+    }
+    return { output, clear: command === "clear", reload: command === "resetfs", status: 0 };
+  }
+
+  async dispatchAsync(command, args, stdin = "") {
+    return this.dispatch(command, args, stdin);
   }
 
   dispatch(command, args, stdin = "") {
@@ -310,6 +368,12 @@ export class ShellSession {
     }
     if (action === "install") {
       if (!operand) return "pkg: usage: pkg install <manifest-path>";
+      if (isHttpUrl(operand)) {
+        const installer = this.os.packages.installFromUrl || this.os.packages.installFromManifestUrl;
+        if (!installer) throw new Error("pkg: remote installs are not available in this runtime");
+        return installer.call(this.os.packages, operand)
+          .then((record) => `installed ${record.id} ${record.version} -> ${record.installPath}`);
+      }
       const record = this.os.packages.installFromManifestPath(operand, this.cwd);
       return `installed ${record.id} ${record.version} -> ${record.installPath}`;
     }
@@ -486,6 +550,19 @@ function formatStorage(status) {
     `persisted=${status.persisted}`,
     `bytes=${status.bytes}`,
   ].join("\n");
+}
+
+function isPromise(value) {
+  return Boolean(value && typeof value.then === "function");
+}
+
+function isHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function formatPackage(record) {

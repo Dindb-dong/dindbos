@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260420-package-system";
+import { ShellSession } from "../shell.js?v=20260420-remote-packages";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -402,14 +402,18 @@ function renderTerminal(os, content) {
     output.textContent += `${line}\n`;
     output.scrollTop = output.scrollHeight;
   };
-  const run = (commandLine) => {
+  const run = async (commandLine) => {
     print(`${shell.prompt()} ${commandLine}`);
+    input.disabled = true;
     try {
-      const result = shell.execute(commandLine);
+      const result = await shell.executeAsync(commandLine);
       if (result.clear) output.textContent = "";
       print(result.output);
     } catch (error) {
       print(error.message);
+    } finally {
+      input.disabled = false;
+      input.focus();
     }
     updatePrompt();
   };

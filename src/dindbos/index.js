@@ -1,13 +1,13 @@
-import { AppRegistry } from "./app-registry.js?v=20260420-package-system";
-import { AppSandbox } from "./app-sandbox.js?v=20260420-package-system";
-import { DesktopShell } from "./desktop-shell.js?v=20260420-package-system";
-import { EventBus } from "./event-bus.js?v=20260420-package-system";
-import { PackageManager } from "./package-manager.js?v=20260420-package-system";
-import { PermissionPolicy } from "./permission-policy.js?v=20260420-package-system";
-import { PersistentStorage } from "./persistent-storage.js?v=20260420-package-system";
-import { ProcessManager } from "./process-manager.js?v=20260420-package-system";
-import { VirtualFileSystem } from "./vfs.js?v=20260420-package-system";
-import { WindowManager } from "./window-manager.js?v=20260420-package-system";
+import { AppRegistry } from "./app-registry.js?v=20260420-remote-packages";
+import { AppSandbox } from "./app-sandbox.js?v=20260420-remote-packages";
+import { DesktopShell } from "./desktop-shell.js?v=20260420-remote-packages";
+import { EventBus } from "./event-bus.js?v=20260420-remote-packages";
+import { PackageManager } from "./package-manager.js?v=20260420-remote-packages";
+import { PermissionPolicy } from "./permission-policy.js?v=20260420-remote-packages";
+import { PersistentStorage } from "./persistent-storage.js?v=20260420-remote-packages";
+import { ProcessManager } from "./process-manager.js?v=20260420-remote-packages";
+import { VirtualFileSystem } from "./vfs.js?v=20260420-remote-packages";
+import { WindowManager } from "./window-manager.js?v=20260420-remote-packages";
 
 export class DindbOS {
   constructor(options) {

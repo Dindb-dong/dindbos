@@ -31,6 +31,7 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - app entry loader
 - permissions and filesystem scopes
 - install/uninstall
+- remote manifest URL install
 - `/usr/share/applications/*.app`
 - `/opt/<package>`
 - remaining: remote repositories, dependency resolution, package signatures, richer app lifecycle hooks

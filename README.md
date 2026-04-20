@@ -79,7 +79,7 @@ DindbOS.js now has browser-native OS primitives:
 
 - `ProcessManager` assigns PIDs to launched apps and exposes `ps`/`kill`.
 - `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
-- `PackageManager` installs `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
+- `PackageManager` installs local or remote `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
 - `AppSandbox` gives each app a scoped runtime instead of the raw OS object.
 - `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
 - `ShellSession` handles `PATH`, environment variables, pipes, redirection, and shell builtins.
@@ -97,6 +97,12 @@ Try the sample package:
 pkg list
 pkg info hello-notes
 open "/usr/share/applications/Hello Notes.app"
+```
+
+Remote packages install the same way when the server allows browser CORS:
+
+```text
+pkg install https://example.com/dindbos-packages/hello-notes/dindbos.app.json
 ```
 
 ## Goal

@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-package-system";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-remote-packages";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -179,6 +179,10 @@ export class AppSandbox {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
         return packageSummary(this.os.packages.installFromManifestPath(normalized), true);
+      },
+      installFromUrl: async (url) => {
+        this.assertCapability("package.manage");
+        return packageSummary(await this.os.packages.installFromUrl(url), true);
       },
       remove: (packageId) => {
         this.assertCapability("package.manage");

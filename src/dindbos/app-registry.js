@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-package-system";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-remote-packages";
 
 export class AppRegistry {
   constructor(os) {
