@@ -135,11 +135,12 @@ node -e "console.log(require('is-number')(7))"
 
 This fetches package metadata from the npm registry, resolves a version, downloads the `.tgz` tarball, verifies npm integrity, extracts files, updates `package.json`, and writes `package-lock.json`.
 Installed CommonJS packages can be loaded by the early NodeCompat runtime.
+Regular package `dependencies` are installed recursively and recorded in `package-lock.json`; compatible dependencies are hoisted, and version conflicts are nested under the dependent package.
 
 Current limits:
 
-- installs direct dependencies only
 - supports simple exact, `latest`, `^`, `~`, and `>=` ranges
+- installs regular `dependencies`, but not `devDependencies`, `peerDependencies`, or `optionalDependencies`
 - does not run lifecycle scripts
 - does not execute native addons
 - provides only a partial Node built-in surface

@@ -21,6 +21,8 @@ The installer performs real npm registry work:
 - write files into DindbOS VFS under `node_modules`
 - update `package.json`
 - write `package-lock.json`
+- recursively install regular package `dependencies`
+- hoist compatible dependencies and nest version conflicts under the dependent package
 
 Installed CommonJS packages can run through NodeCompat:
 
@@ -32,7 +34,7 @@ Installed CommonJS packages can run through NodeCompat:
 
 This is not full Node.js yet. Current limits:
 
-- direct dependencies only
+- no `devDependencies`, `peerDependencies`, or `optionalDependencies`
 - no lifecycle scripts
 - no native addons
 - no `node-gyp`
@@ -40,4 +42,4 @@ This is not full Node.js yet. Current limits:
 - partial Node built-ins only
 - no ESM package loader yet
 
-The next layer is recursive dependency installation, broader Node built-ins, ESM package loading, and JS-only lifecycle scripts.
+The next layer is broader Node built-ins, ESM package loading, optional dependency handling, and JS-only lifecycle scripts.
