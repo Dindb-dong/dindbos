@@ -68,7 +68,7 @@ help, history, clear, pwd, cd, ls, tree, find, cat, grep, stat, readlink
 mkdir, touch, rm, cp, mv, echo >, echo >>, open, apps, whoami, uname, neofetch, date
 export, env, which, man, chmod, df, mount, manifest, ps, kill, storage, resetfs
 pkg list, pkg info, pkg install, pkg search, pkg registry, pkg update, pkg deps, pkg npm, pkg remove
-npm install, npm root, node -e, node <file>
+npm install, npm root, node -e, node --input-type=module -e, node <file>
 ```
 
 Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
@@ -131,6 +131,7 @@ npm install is-number@7.0.0
 ls node_modules/is-number
 cat package-lock.json
 node -e "console.log(require('is-number')(7))"
+node --input-type=module -e "import isNumber from 'is-number'; console.log(isNumber(7))"
 ```
 
 This fetches package metadata from the npm registry, resolves a version, downloads the `.tgz` tarball, verifies npm integrity, extracts files, updates `package.json`, and writes `package-lock.json`.
@@ -144,7 +145,7 @@ Current limits:
 - does not run lifecycle scripts
 - does not execute native addons
 - provides only a partial Node built-in surface
-- does not support ESM package loading yet
+- supports only simple ESM import/export transforms
 
 ## Goal
 

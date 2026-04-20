@@ -9,6 +9,7 @@ ls node_modules/is-number
 cat package.json
 cat package-lock.json
 node -e "console.log(require('is-number')(7))"
+node --input-type=module -e "import isNumber from 'is-number'; console.log(isNumber(7))"
 ```
 
 The installer performs real npm registry work:
@@ -28,6 +29,9 @@ Installed CommonJS packages can run through NodeCompat:
 
 - `node <file>`
 - `node -e <code>`
+- `node --input-type=module -e <code>`
+- `.mjs` files with simple static `import`/`export`
+- `.js` files inside a `package.json` with `"type": "module"`
 - package lookup through parent `node_modules` folders
 - `package.json` `main` and simple `exports` resolution
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades
@@ -40,6 +44,6 @@ This is not full Node.js yet. Current limits:
 - no `node-gyp`
 - no `child_process`
 - partial Node built-ins only
-- no ESM package loader yet
+- simple ESM transform only, not full JavaScript module semantics
 
-The next layer is broader Node built-ins, ESM package loading, optional dependency handling, and JS-only lifecycle scripts.
+The next layer is broader Node built-ins, richer ESM semantics, optional dependency handling, and JS-only lifecycle scripts.

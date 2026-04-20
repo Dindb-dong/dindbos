@@ -55,9 +55,12 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - recursive regular dependency install
 - `node <file>` and `node -e <code>`
 - CommonJS `require`
+- `node --input-type=module -e <code>`
+- `.mjs` files with simple static import/export transforms
+- package `"type": "module"` detection
 - package `main` and simple `exports` resolution
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades
-- remaining: ESM resolver, richer package `exports` conditions, optional dependency handling, JS-only lifecycle scripts, broader Node built-in compatibility
+- remaining: richer ESM semantics, richer package `exports` conditions, optional dependency handling, JS-only lifecycle scripts, broader Node built-in compatibility
 
 ## 4. Activity Monitor
 
