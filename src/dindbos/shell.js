@@ -18,7 +18,7 @@ const BUILTIN_MANUALS = {
   mount: "mount - print mounted virtual filesystems",
   mv: "mv <source> <destination> - move or rename files",
   open: "open [path] - open a path with its associated app",
-  pkg: "pkg <list|info|install|remove> - manage DindbOS packages; install accepts local paths or https URLs",
+  pkg: "pkg list|info|install|remove|search|registry|update|deps|npm - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -354,7 +354,7 @@ export class ShellSession {
   }
 
   pkg(args) {
-    const [action, operand] = args;
+    const [action, operand, ...rest] = args;
     if (!action || action === "list") {
       const packages = this.os.packages.list();
       if (!packages.length) return "pkg: no packages installed";
@@ -374,15 +374,66 @@ export class ShellSession {
         return installer.call(this.os.packages, operand)
           .then((record) => `installed ${record.id} ${record.version} -> ${record.installPath}`);
       }
+      if (!operand.includes("/") && !operand.endsWith(".json")) {
+        return this.os.packages.installFromRegistry(operand)
+          .then((record) => `installed ${record.id} ${record.version} -> ${record.installPath}`);
+      }
       const record = this.os.packages.installFromManifestPath(operand, this.cwd);
       return `installed ${record.id} ${record.version} -> ${record.installPath}`;
+    }
+    if (action === "search") {
+      return this.os.packages.search(operand || "")
+        .then((results) => formatPackageSearch(results));
+    }
+    if (action === "registry" || action === "registries") {
+      return this.pkgRegistry(operand, rest);
+    }
+    if (action === "update") {
+      if (!operand) return "pkg: usage: pkg update <package>";
+      return this.os.packages.update(operand)
+        .then((record) => `updated ${record.id} ${record.version} -> ${record.installPath}`);
+    }
+    if (action === "deps") {
+      if (!operand) return "pkg: usage: pkg deps <package>";
+      return formatDependencies(this.os.packages.dependencies(operand));
+    }
+    if (action === "npm") {
+      return this.pkgNpm(operand, rest);
     }
     if (action === "remove" || action === "uninstall") {
       if (!operand) return `pkg: usage: pkg ${action} <package>`;
       const record = this.os.packages.remove(operand);
       return `removed ${record.id}`;
     }
-    return "pkg: usage: pkg list | pkg info <package> | pkg install <manifest-path> | pkg remove <package>";
+    return "pkg: usage: pkg list | info | install | search | registry | update | deps | npm | remove";
+  }
+
+  pkgRegistry(action, args) {
+    if (!action || action === "list") {
+      return this.os.packages.registries().map((registry) => `${registry.name} ${registry.url}`).join("\n");
+    }
+    if (action === "add") {
+      const [name, url] = args;
+      if (!name || !url) return "pkg: usage: pkg registry add <name> <index-url>";
+      const registry = this.os.packages.addRegistry(name, url);
+      return `registry added ${registry.name} ${registry.url}`;
+    }
+    if (action === "remove") {
+      const [name] = args;
+      if (!name) return "pkg: usage: pkg registry remove <name>";
+      return `registry removed ${this.os.packages.removeRegistry(name)}`;
+    }
+    return "pkg: usage: pkg registry list | add <name> <index-url> | remove <name>";
+  }
+
+  pkgNpm(action, args) {
+    if (action === "add") {
+      const [packageId, specifier] = args;
+      if (!packageId || !specifier) return "pkg: usage: pkg npm add <package> <npm-package[@version]>";
+      const dependency = this.os.packages.installNpmDependency(packageId, specifier);
+      return `npm dependency added ${packageId} ${dependency.name}@${dependency.version}`;
+    }
+    return "pkg: usage: pkg npm add <package> <npm-package[@version]>";
   }
 
   kill(args) {
@@ -575,10 +626,28 @@ function formatPackage(record) {
     `sourcePath=${record.sourcePath || "-"}`,
     `app.id=${record.app.id}`,
     `app.title=${record.app.title}`,
+    `app.entry=${record.app.entryPath || "-"}`,
     `capabilities=${record.permissions?.capabilities?.join(",") || record.app.capabilities?.join(",") || "-"}`,
     `fs.read=${record.permissions?.fileSystem?.read?.join(",") || record.app.fileSystem?.read?.join(",") || "-"}`,
     `fs.write=${record.permissions?.fileSystem?.write?.join(",") || record.app.fileSystem?.write?.join(",") || "-"}`,
+    `deps.packages=${Object.keys(record.dependencies?.packages || {}).join(",") || "-"}`,
+    `deps.npm=${Object.entries(record.dependencies?.npm || {}).map(([name, dep]) => `${name}@${dep.version}`).join(",") || "-"}`,
   ].join("\n");
+}
+
+function formatPackageSearch(results) {
+  if (!results.length) return "pkg: no registry results";
+  return results
+    .map((entry) => `${entry.id} ${entry.version} ${entry.registry} ${entry.manifestUrl}`)
+    .join("\n");
+}
+
+function formatDependencies(dependencies) {
+  const packageDeps = Object.entries(dependencies.packages || {})
+    .map(([name, dependency]) => `package ${name}@${dependency.version || "latest"} ${dependency.manifestUrl || ""}`);
+  const npmDeps = Object.entries(dependencies.npm || {})
+    .map(([name, dependency]) => `npm ${name}@${dependency.version || "latest"} ${dependency.url || ""}`);
+  return [...packageDeps, ...npmDeps].join("\n") || "pkg: no dependencies";
 }
 
 function walkNodes(os, path, visit) {
