@@ -906,6 +906,66 @@ button {
   white-space: pre-wrap;
 }
 
+/* Package app */
+.package-app {
+  display: grid;
+  gap: 12px;
+}
+
+/* Package heading */
+.package-app h2 {
+  margin: 0;
+}
+
+/* Package description */
+.package-app p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* Package content */
+.package-app pre {
+  min-height: 120px;
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  white-space: pre-wrap;
+}
+
+/* Package metadata */
+.package-app dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+/* Package metadata row */
+.package-app dl div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Package metadata term */
+.package-app dt {
+  color: var(--muted);
+}
+
+/* Package metadata value */
+.package-app dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Settings app */
 .settings-app {
   display: grid;

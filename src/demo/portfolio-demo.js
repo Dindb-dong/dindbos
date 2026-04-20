@@ -36,6 +36,7 @@ export const demoFileSystem = directory("", [
     command("mkdir", "Create directories"),
     command("mv", "Move or rename files"),
     command("open", "Open a file, folder, or app"),
+    command("pkg", "Install, remove, and inspect DindbOS packages"),
     command("pwd", "Print working directory"),
     command("rm", "Remove files or directories"),
     command("stat", "Show file metadata"),
@@ -138,6 +139,33 @@ export const demoFileSystem = directory("", [
   directory("opt", [
     directory("dindbos", [
       file("README.md", "text/markdown", "# /opt/dindbos\n\nOptional runtime assets and demos live here."),
+      directory("packages", [
+        directory("hello-notes", [
+          file("dindbos.app.json", "application/json", `${JSON.stringify({
+            id: "hello-notes",
+            name: "Hello Notes",
+            version: "0.1.0",
+            description: "A small packaged app installed from dindbos.app.json.",
+            app: {
+              id: "hello-notes",
+              name: "Hello Notes",
+              title: "Hello Notes.app",
+              icon: "text",
+              width: 560,
+              height: 380,
+              content: "# Hello Notes\n\nThis app was installed through the DindbOS package manager.",
+            },
+            permissions: {
+              capabilities: [],
+              fileSystem: {
+                read: ["/opt/hello-notes"],
+                write: [],
+              },
+            },
+          }, null, 2)}\n`),
+          file("README.md", "text/markdown", "# Hello Notes package\n\nInstall with `pkg install /opt/dindbos/packages/hello-notes/dindbos.app.json`.\n"),
+        ]),
+      ]),
     ]),
   ]),
   directory("proc", [
@@ -154,6 +182,7 @@ export const demoFileSystem = directory("", [
       symlink("cat", "/bin/cat", "terminal"),
       symlink("ls", "/bin/ls", "terminal"),
       symlink("open", "/bin/open", "terminal"),
+      symlink("pkg", "/bin/pkg", "terminal"),
       symlink("tree", "/bin/tree", "terminal"),
     ]),
     directory("share", [
@@ -170,6 +199,11 @@ export const demoFileSystem = directory("", [
     ]),
   ]),
   directory("var", [
+    directory("lib", [
+      directory("dindbos", [
+        directory("packages", []),
+      ]),
+    ]),
     directory("log", [
       file("boot.log", "text/plain", [
         "[ok] mounted rootfs",

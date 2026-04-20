@@ -116,6 +116,37 @@ export class VirtualFileSystem {
     return this.writeOrCreateFile(path, options.content || "", cwd, options, principal);
   }
 
+  createApp(path, appId, icon = "app", cwd = "/", options = {}, principal = this.systemPrincipal) {
+    const normalized = this.normalize(path, cwd);
+    const existing = this.resolve(normalized);
+    if (existing) {
+      if (existing.type !== "app") throw new Error(`app: ${normalized}: file exists`);
+      this.assertAccess(existing, "write", principal, normalized);
+      existing.appId = appId;
+      existing.icon = icon;
+      existing.packageId = options.packageId || existing.packageId || "";
+      existing.modified = new Date().toISOString();
+      this.emitChange("update-app", normalized);
+      return this.withPath(existing, normalized);
+    }
+    const parent = this.parentFor(normalized);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
+    const node = this.createNode({
+      name: this.basename(normalized),
+      type: "app",
+      appId,
+      icon,
+      packageId: options.packageId || "",
+      permissions: options.permissions || "-rwxr-xr-x",
+      owner: options.owner || "root",
+      group: options.group || "root",
+    });
+    parent.children.push(node);
+    this.emitChange("create-app", normalized);
+    return this.withPath(node, normalized);
+  }
+
   remove(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
     const normalized = this.normalize(path, cwd);
     if (normalized === "/") throw new Error("rm: cannot remove root");

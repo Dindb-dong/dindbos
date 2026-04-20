@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-text-save";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260420-package-system";
 
 export class AppRegistry {
   constructor(os) {
@@ -11,6 +11,21 @@ export class AppRegistry {
     const manifest = normalizeAppManifest(app);
     this.apps.set(app.id, { ...app, manifest });
     this.writeManifestFile(manifest);
+  }
+
+  unregister(appId) {
+    const app = this.apps.get(appId);
+    if (!app) return false;
+    this.apps.delete(appId);
+    const manifestPath = `/usr/share/dindbos/manifests/${appId}.json`;
+    if (this.os.fs.exists(manifestPath)) {
+      this.os.fs.remove(manifestPath, "/", {}, this.os.permissions.systemPrincipal());
+    }
+    return true;
+  }
+
+  has(appId) {
+    return this.apps.has(appId);
   }
 
   list() {

@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260420-text-save";
+import { ShellSession } from "../shell.js?v=20260420-package-system";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -45,8 +45,16 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 760,
     height: 460,
     manifest: {
-      capabilities: ["app.launch", "process.read", "process.manage", "storage.read", "storage.manage"],
-      fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
+      capabilities: [
+        "app.launch",
+        "process.read",
+        "process.manage",
+        "storage.read",
+        "storage.manage",
+        "package.read",
+        "package.manage",
+      ],
+      fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp", "/opt", "/usr/share/applications", "/var/lib/dindbos/packages"] },
     },
     render: ({ os: runtime, content }) => renderTerminal(runtime, content),
   });
@@ -104,7 +112,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 520,
     height: 380,
     manifest: {
-      capabilities: ["process.read", "storage.read"],
+      capabilities: ["process.read", "storage.read", "package.read"],
       fileSystem: { read: ["/etc", "/proc", "/home/guest"], write: [] },
     },
     render: ({ content, os: runtime }) => renderSettings(runtime, content),
@@ -459,6 +467,7 @@ function renderCalculator(content) {
 function renderSettings(os, content) {
   const processes = safeRead(() => os.processes.list(), []);
   const storage = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
+  const packages = safeRead(() => os.packages.list(), []);
   content.innerHTML = `
     <section class="settings-app">
       <p class="dos-kicker">System</p>
@@ -467,6 +476,7 @@ function renderSettings(os, content) {
         <div><dt>User</dt><dd>${escapeHtml(os.session.user || "guest")}</dd></div>
         <div><dt>Home</dt><dd>${escapeHtml(os.session.home || "/home/guest")}</dd></div>
         <div><dt>Apps</dt><dd>${os.apps.list().length}</dd></div>
+        <div><dt>Packages</dt><dd>${packages.length}</dd></div>
         <div><dt>Processes</dt><dd>${processes.length}</dd></div>
         <div><dt>Storage</dt><dd>${escapeHtml(storage.backend || "memory")} · ${storage.persisted ? `${formatBytes(storage.bytes)} saved` : "not saved"}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(os.fs.join(os.session.home || "/home/guest", "Desktop"))}</dd></div>

@@ -1,12 +1,13 @@
-import { AppRegistry } from "./app-registry.js?v=20260420-text-save";
-import { AppSandbox } from "./app-sandbox.js?v=20260420-text-save";
-import { DesktopShell } from "./desktop-shell.js?v=20260420-text-save";
-import { EventBus } from "./event-bus.js?v=20260420-text-save";
-import { PermissionPolicy } from "./permission-policy.js?v=20260420-text-save";
-import { PersistentStorage } from "./persistent-storage.js?v=20260420-text-save";
-import { ProcessManager } from "./process-manager.js?v=20260420-text-save";
-import { VirtualFileSystem } from "./vfs.js?v=20260420-text-save";
-import { WindowManager } from "./window-manager.js?v=20260420-text-save";
+import { AppRegistry } from "./app-registry.js?v=20260420-package-system";
+import { AppSandbox } from "./app-sandbox.js?v=20260420-package-system";
+import { DesktopShell } from "./desktop-shell.js?v=20260420-package-system";
+import { EventBus } from "./event-bus.js?v=20260420-package-system";
+import { PackageManager } from "./package-manager.js?v=20260420-package-system";
+import { PermissionPolicy } from "./permission-policy.js?v=20260420-package-system";
+import { PersistentStorage } from "./persistent-storage.js?v=20260420-package-system";
+import { ProcessManager } from "./process-manager.js?v=20260420-package-system";
+import { VirtualFileSystem } from "./vfs.js?v=20260420-package-system";
+import { WindowManager } from "./window-manager.js?v=20260420-package-system";
 
 export class DindbOS {
   constructor(options) {
@@ -21,6 +22,7 @@ export class DindbOS {
     this.windows = new WindowManager(this);
     this.processes = new ProcessManager(this);
     this.apps = new AppRegistry(this);
+    this.packages = new PackageManager(this);
   }
 
   createFileSystem(rootNode) {
@@ -49,6 +51,12 @@ export class DindbOS {
   registerApp(app) {
     this.apps.register(app);
     if (this.shell.refs.dock) this.shell.renderDock();
+  }
+
+  unregisterApp(appId) {
+    const removed = this.apps.unregister(appId);
+    if (removed && this.shell.refs.dock) this.shell.renderDock();
+    return removed;
   }
 
   launch(appId, context = {}) {
@@ -81,4 +89,4 @@ export class DindbOS {
   }
 }
 
-export { AppRegistry, AppSandbox, DesktopShell, EventBus, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
+export { AppRegistry, AppSandbox, DesktopShell, EventBus, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };

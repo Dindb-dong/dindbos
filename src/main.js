@@ -1,6 +1,6 @@
-import { DindbOS } from "./dindbos/index.js?v=20260420-text-save";
-import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-text-save";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-text-save";
+import { DindbOS } from "./dindbos/index.js?v=20260420-package-system";
+import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260420-package-system";
+import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260420-package-system";
 
 const os = new DindbOS({
   root: "#dindbos-root",
@@ -13,6 +13,7 @@ const os = new DindbOS({
 
 await os.loadPersistentFileSystem();
 installBuiltinApps(os, { portfolioData });
+os.packages.bootstrap();
 os.boot();
 
 window.dindbos = os;

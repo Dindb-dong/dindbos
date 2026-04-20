@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-text-save";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-package-system";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -8,6 +8,7 @@ export class AppSandbox {
     this.fs = this.createFileSystemFacade();
     this.apps = this.createAppFacade();
     this.processes = this.createProcessFacade();
+    this.packages = this.createPackageFacade();
     this.storage = this.createStorageFacade();
     this.session = Object.freeze({ ...os.session });
   }
@@ -162,6 +163,30 @@ export class AppSandbox {
     };
   }
 
+  createPackageFacade() {
+    return {
+      list: () => {
+        this.assertCapability("package.read");
+        return this.os.packages.list().map((record) => packageSummary(record));
+      },
+      info: (packageId) => {
+        this.assertCapability("package.read");
+        const record = this.os.packages.info(packageId);
+        return record ? packageSummary(record, true) : null;
+      },
+      installFromManifestPath: (path, cwd = this.process.cwd) => {
+        this.assertCapability("package.manage");
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "read");
+        return packageSummary(this.os.packages.installFromManifestPath(normalized), true);
+      },
+      remove: (packageId) => {
+        this.assertCapability("package.manage");
+        return packageSummary(this.os.packages.remove(packageId), true);
+      },
+    };
+  }
+
   createStorageFacade() {
     return {
       status: () => {
@@ -174,4 +199,31 @@ export class AppSandbox {
       },
     };
   }
+}
+
+function packageSummary(record, details = false) {
+  const summary = {
+    id: record.id,
+    name: record.name,
+    version: record.version,
+    description: record.description,
+    installPath: record.installPath,
+    sourcePath: record.sourcePath,
+    app: {
+      id: record.app.id,
+      name: record.app.name,
+      title: record.app.title,
+      icon: record.app.icon,
+    },
+  };
+  if (details) {
+    summary.permissions = {
+      capabilities: [...record.app.capabilities],
+      fileSystem: {
+        read: [...record.app.fileSystem.read],
+        write: [...record.app.fileSystem.write],
+      },
+    };
+  }
+  return summary;
 }

@@ -18,6 +18,7 @@ const BUILTIN_MANUALS = {
   mount: "mount - print mounted virtual filesystems",
   mv: "mv <source> <destination> - move or rename files",
   open: "open [path] - open a path with its associated app",
+  pkg: "pkg <list|info|install|remove> - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -139,6 +140,7 @@ export class ShellSession {
     }
     if (command === "apps") return this.os.apps.list().map((app) => `${app.id} - ${app.name}`).join("\n");
     if (command === "manifest") return this.manifest(args[0]);
+    if (command === "pkg") return this.pkg(args);
     if (command === "ps") return this.os.processes.table();
     if (command === "kill") return this.kill(args);
     if (command === "storage") return formatStorage(this.os.storage.status());
@@ -291,6 +293,32 @@ export class ShellSession {
       `fs.read=${manifest.fileSystem.read.join(",") || "-"}`,
       `fs.write=${manifest.fileSystem.write.join(",") || "-"}`,
     ].join("\n");
+  }
+
+  pkg(args) {
+    const [action, operand] = args;
+    if (!action || action === "list") {
+      const packages = this.os.packages.list();
+      if (!packages.length) return "pkg: no packages installed";
+      return packages.map((record) => `${record.id} ${record.version} ${record.name}`).join("\n");
+    }
+    if (action === "info") {
+      if (!operand) return "pkg: usage: pkg info <package>";
+      const record = this.os.packages.info(operand);
+      if (!record) return `pkg: ${operand}: package not installed`;
+      return formatPackage(record);
+    }
+    if (action === "install") {
+      if (!operand) return "pkg: usage: pkg install <manifest-path>";
+      const record = this.os.packages.installFromManifestPath(operand, this.cwd);
+      return `installed ${record.id} ${record.version} -> ${record.installPath}`;
+    }
+    if (action === "remove" || action === "uninstall") {
+      if (!operand) return `pkg: usage: pkg ${action} <package>`;
+      const record = this.os.packages.remove(operand);
+      return `removed ${record.id}`;
+    }
+    return "pkg: usage: pkg list | pkg info <package> | pkg install <manifest-path> | pkg remove <package>";
   }
 
   kill(args) {
@@ -457,6 +485,22 @@ function formatStorage(status) {
     `enabled=${status.enabled}`,
     `persisted=${status.persisted}`,
     `bytes=${status.bytes}`,
+  ].join("\n");
+}
+
+function formatPackage(record) {
+  return [
+    `id=${record.id}`,
+    `name=${record.name}`,
+    `version=${record.version}`,
+    `description=${record.description || "-"}`,
+    `installPath=${record.installPath}`,
+    `sourcePath=${record.sourcePath || "-"}`,
+    `app.id=${record.app.id}`,
+    `app.title=${record.app.title}`,
+    `capabilities=${record.permissions?.capabilities?.join(",") || record.app.capabilities?.join(",") || "-"}`,
+    `fs.read=${record.permissions?.fileSystem?.read?.join(",") || record.app.fileSystem?.read?.join(",") || "-"}`,
+    `fs.write=${record.permissions?.fileSystem?.write?.join(",") || record.app.fileSystem?.write?.join(",") || "-"}`,
   ].join("\n");
 }
 
