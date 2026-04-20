@@ -2,6 +2,9 @@ const APPLICATION_DIR = "/usr/share/applications";
 const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
 const PACKAGE_SOURCE_DIR = "/opt/dindbos/packages";
 const PACKAGE_INSTALL_ROOT = "/opt";
+const REGISTRY_CONFIG_PATH = "/etc/dindbos/package-registries.json";
+const LOCAL_REGISTRY_PATH = "/opt/dindbos/registry/index.json";
+const NPM_ESM_BASE_URL = "https://esm.sh";
 const MAX_REMOTE_MANIFEST_BYTES = 512 * 1024;
 const MAX_REMOTE_FILE_BYTES = 1024 * 1024;
 
@@ -17,6 +20,7 @@ const SAMPLE_PACKAGE = {
     icon: "text",
     width: 560,
     height: 380,
+    entry: "app.js",
     content: [
       "# Hello Notes",
       "",
@@ -24,6 +28,34 @@ const SAMPLE_PACKAGE = {
       "Try `pkg list`, `pkg info hello-notes`, or open `/usr/share/applications/Hello Notes.app`.",
     ].join("\n"),
   },
+  dependencies: {
+    npm: {
+      "lodash-es": "^4.17.21",
+    },
+  },
+  files: [
+    {
+      path: "app.js",
+      mime: "text/javascript",
+      content: [
+        "export function mount({ content, pkg, imports }) {",
+        "  content.innerHTML = `",
+        "    <section class=\"package-app\">",
+        "      <p class=\"dos-kicker\">Package ${pkg.id} ${pkg.version}</p>",
+        "      <h2>${pkg.name}</h2>",
+        "      <p>This UI was rendered by /opt/${pkg.id}/app.js.</p>",
+        "      <button type=\"button\" data-load-npm>Load lodash-es from npm</button>",
+        "      <pre data-output>Waiting for action.</pre>",
+        "    </section>",
+        "  `;",
+        "  content.querySelector('[data-load-npm]').addEventListener('click', async () => {",
+        "    const lodash = await imports.npm('lodash-es');",
+        "    content.querySelector('[data-output]').textContent = lodash.kebabCase('Hello Notes Package Runtime');",
+        "  });",
+        "}",
+      ].join("\n"),
+    },
+  ],
   permissions: {
     capabilities: [],
     fileSystem: {
@@ -42,7 +74,10 @@ export class PackageManager {
   bootstrap() {
     this.ensurePackageRoots();
     this.ensureSamplePackageSource();
-    if (!this.list().length) this.installFromManifestPath(`${PACKAGE_SOURCE_DIR}/hello-notes/dindbos.app.json`);
+    const packages = this.list();
+    if (!packages.length || !this.info("hello-notes")?.app?.entryPath) {
+      this.installFromManifestPath(`${PACKAGE_SOURCE_DIR}/hello-notes/dindbos.app.json`);
+    }
     this.registerInstalledPackages();
   }
 
@@ -102,6 +137,81 @@ export class PackageManager {
     return record;
   }
 
+  async installFromRegistry(packageId, options = {}) {
+    const match = (await this.search(packageId, options))
+      .find((entry) => entry.id === packageId || entry.name === packageId);
+    if (!match) throw new Error(`pkg: ${packageId}: package not found in registries`);
+    if (!match.manifestUrl) throw new Error(`pkg: ${packageId}: registry entry has no manifestUrl`);
+    if (isHttpUrl(match.manifestUrl)) return this.installFromUrl(match.manifestUrl, options);
+    return this.installFromManifestPath(match.manifestUrl);
+  }
+
+  async update(packageId, options = {}) {
+    const record = this.info(packageId);
+    if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    if (isHttpUrl(record.sourcePath)) return this.installFromUrl(record.sourcePath, options);
+    if (record.sourcePath) return this.installFromManifestPath(record.sourcePath);
+    throw new Error(`pkg: ${packageId}: no update source recorded`);
+  }
+
+  dependencies(packageId) {
+    const record = this.info(packageId);
+    if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    return cloneJson(record.dependencies || { packages: {}, npm: {} });
+  }
+
+  installNpmDependency(packageId, specifier) {
+    const record = this.info(packageId);
+    if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    const dependency = normalizeNpmDependencySpecifier(specifier);
+    record.dependencies = record.dependencies || { packages: {}, npm: {} };
+    record.dependencies.npm = record.dependencies.npm || {};
+    record.dependencies.npm[dependency.name] = dependency;
+    this.writeNpmDependencyRecords(record);
+    this.writePackageRecord(record);
+    this.registerPackageApp(record);
+    return dependency;
+  }
+
+  registries() {
+    this.ensurePackageRoots();
+    const config = parseJson(this.os.fs.readFile(REGISTRY_CONFIG_PATH, "/", this.system), REGISTRY_CONFIG_PATH);
+    return [...(config.registries || [])];
+  }
+
+  addRegistry(name, url) {
+    const registry = { name: normalizeRegistryName(name), url: normalizeRegistryUrl(url) };
+    const registries = this.registries().filter((entry) => entry.name !== registry.name);
+    registries.push(registry);
+    this.writeRegistryConfig(registries);
+    return registry;
+  }
+
+  removeRegistry(name) {
+    const registryName = normalizeRegistryName(name);
+    const registries = this.registries();
+    const next = registries.filter((entry) => entry.name !== registryName);
+    if (next.length === registries.length) throw new Error(`pkg: registry not found: ${name}`);
+    this.writeRegistryConfig(next);
+    return registryName;
+  }
+
+  async search(query = "", options = {}) {
+    const fetcher = options.fetch || globalThis.fetch;
+    const needle = String(query || "").toLowerCase();
+    const results = [];
+    for (const registry of this.registries()) {
+      const index = await this.readRegistryIndex(registry, fetcher);
+      (index.packages || []).forEach((entry) => {
+        const candidate = normalizeRegistryPackage(entry, registry);
+        if (!needle || [candidate.id, candidate.name, candidate.description].join(" ").toLowerCase().includes(needle)) {
+          results.push(candidate);
+        }
+      });
+    }
+    return results.sort((a, b) => `${a.id}@${a.version}`.localeCompare(`${b.id}@${b.version}`));
+  }
+
   remove(packageId) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
@@ -119,6 +229,24 @@ export class PackageManager {
     this.list().forEach((record) => this.registerPackageApp(record));
   }
 
+  async readRegistryIndex(registry, fetcher = globalThis.fetch) {
+    if (isHttpUrl(registry.url)) {
+      if (typeof fetcher !== "function") throw new Error("pkg: fetch is not available in this runtime");
+      return parseJson(await fetchText(fetcher, registry.url, MAX_REMOTE_MANIFEST_BYTES, `registry ${registry.name}`), registry.url);
+    }
+    return parseJson(this.os.fs.readFile(registry.url, "/", this.system), registry.url);
+  }
+
+  writeRegistryConfig(registries) {
+    this.os.fs.writeOrCreateFile(
+      REGISTRY_CONFIG_PATH,
+      `${JSON.stringify({ registries }, null, 2)}\n`,
+      "/",
+      { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+      this.system,
+    );
+  }
+
   normalizePackage(manifest, options = {}) {
     if (!manifest || typeof manifest !== "object") throw new Error("pkg: manifest must be an object");
     const id = normalizePackageId(manifest.id);
@@ -126,12 +254,14 @@ export class PackageManager {
     const appId = normalizeAppId(app.id || id);
     const name = String(manifest.name || app.name || id);
     const installPath = `${PACKAGE_INSTALL_ROOT}/${id}`;
+    const entry = normalizeOptionalRelativePath(app.entry || manifest.entry || "");
     const capabilities = [
       ...(manifest.permissions?.capabilities || []),
       ...(manifest.capabilities || []),
       ...(app.capabilities || []),
     ];
     const fileSystem = app.fileSystem || manifest.fileSystem || manifest.permissions?.fileSystem || {};
+    const dependencies = normalizeDependencies(manifest.dependencies || app.dependencies || {});
     return {
       id,
       name,
@@ -142,6 +272,7 @@ export class PackageManager {
       installedAt: new Date().toISOString(),
       originalManifest: manifest,
       files: [],
+      dependencies,
       app: {
         id: appId,
         name: String(app.name || name),
@@ -151,6 +282,8 @@ export class PackageManager {
         height: Number(app.height || manifest.height || 420),
         pinned: Boolean(app.pinned || manifest.pinned),
         accepts: [...(app.accepts || manifest.accepts || [])],
+        entry,
+        entryPath: entry ? `${installPath}/${entry}` : "",
         content: String(app.content || manifest.content || ""),
         capabilities: unique(capabilities),
         fileSystem: {
@@ -163,6 +296,8 @@ export class PackageManager {
 
   ensurePackageRoots() {
     [
+      "/etc",
+      "/etc/dindbos",
       "/var",
       "/var/lib",
       "/var/lib/dindbos",
@@ -170,6 +305,7 @@ export class PackageManager {
       PACKAGE_INSTALL_ROOT,
       "/opt/dindbos",
       PACKAGE_SOURCE_DIR,
+      "/opt/dindbos/registry",
       "/usr",
       "/usr/share",
       APPLICATION_DIR,
@@ -178,6 +314,8 @@ export class PackageManager {
         this.os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, this.system);
       }
     });
+    this.ensureRegistryConfig();
+    this.ensureLocalRegistryIndex();
   }
 
   ensureSamplePackageSource() {
@@ -186,12 +324,26 @@ export class PackageManager {
       this.os.fs.createDirectory(directory, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, this.system);
     }
     const manifestPath = `${directory}/dindbos.app.json`;
-    if (!this.os.fs.exists(manifestPath)) {
+    const currentManifest = this.os.fs.exists(manifestPath)
+      ? safeRead(() => this.os.fs.readFile(manifestPath, "/", this.system), "")
+      : "";
+    if (!currentManifest.includes('"entry": "app.js"')) {
       this.os.fs.writeOrCreateFile(
         manifestPath,
         `${JSON.stringify(SAMPLE_PACKAGE, null, 2)}\n`,
         "/",
         { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+        this.system,
+      );
+    }
+    const appPath = `${directory}/app.js`;
+    if (!this.os.fs.exists(appPath)) {
+      const appFile = SAMPLE_PACKAGE.files.find((file) => file.path === "app.js");
+      this.os.fs.writeOrCreateFile(
+        appPath,
+        appFile.content,
+        "/",
+        { mime: "text/javascript", owner: "root", group: "root", permissions: "-rw-r--r--" },
         this.system,
       );
     }
@@ -205,6 +357,39 @@ export class PackageManager {
         this.system,
       );
     }
+  }
+
+  ensureRegistryConfig() {
+    if (this.os.fs.exists(REGISTRY_CONFIG_PATH)) return;
+    this.os.fs.writeOrCreateFile(
+      REGISTRY_CONFIG_PATH,
+      `${JSON.stringify({ registries: [{ name: "local", url: LOCAL_REGISTRY_PATH }] }, null, 2)}\n`,
+      "/",
+      { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+      this.system,
+    );
+  }
+
+  ensureLocalRegistryIndex() {
+    if (this.os.fs.exists(LOCAL_REGISTRY_PATH)) return;
+    this.os.fs.writeOrCreateFile(
+      LOCAL_REGISTRY_PATH,
+      `${JSON.stringify({
+        name: "DindbOS Local Registry",
+        packages: [
+          {
+            id: "hello-notes",
+            name: "Hello Notes",
+            version: "0.1.0",
+            description: "Sample executable DindbOS package.",
+            manifestUrl: `${PACKAGE_SOURCE_DIR}/hello-notes/dindbos.app.json`,
+          },
+        ],
+      }, null, 2)}\n`,
+      "/",
+      { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+      this.system,
+    );
   }
 
   ensurePackageDirectory(record) {
@@ -225,6 +410,27 @@ export class PackageManager {
       { mime: "text/markdown", owner: "root", group: "root", permissions: "-rw-r--r--" },
       this.system,
     );
+    this.writeNpmDependencyRecords(record);
+  }
+
+  writeNpmDependencyRecords(record) {
+    Object.entries(record.dependencies?.npm || {}).forEach(([name, dependency]) => {
+      const path = this.resolvePackageFilePath(record, `node_modules/${name}/package.json`);
+      this.ensureParentDirectories(path);
+      this.os.fs.writeOrCreateFile(
+        path,
+        `${JSON.stringify({
+          name,
+          version: dependency.version,
+          provider: dependency.provider,
+          module: dependency.url,
+          installedBy: "dindbos",
+        }, null, 2)}\n`,
+        "/",
+        { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+        this.system,
+      );
+    });
   }
 
   installDeclaredInlineFiles(record, files) {
@@ -240,10 +446,13 @@ export class PackageManager {
       if (file.url) {
         const fileUrl = normalizePackageUrl(new URL(file.url, sourceUrl).toString());
         const content = await fetchText(fetcher, fileUrl, MAX_REMOTE_FILE_BYTES, `file ${file.path || fileUrl}`);
+        await verifyIntegrity(content, file.integrity, file.path || fileUrl);
         this.writePackageFile(record, { ...file, sourceUrl: fileUrl }, content);
         continue;
       }
-      this.writePackageFile(record, file, contentFromInlineFile(file));
+      const content = contentFromInlineFile(file);
+      await verifyIntegrity(content, file.integrity, file.path);
+      this.writePackageFile(record, file, content);
     }
   }
 
@@ -266,6 +475,7 @@ export class PackageManager {
       path,
       mime: file.mime || mimeFromName(path),
       sourceUrl: file.sourceUrl || "",
+      integrity: file.integrity || "",
       size: byteLength(content),
     });
   }
@@ -324,7 +534,7 @@ export class PackageManager {
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
       },
-      render: ({ content, os: runtime }) => renderPackagedApp(content, runtime, record),
+      render: ({ content, os: runtime, window }) => renderPackagedApp(content, runtime, record, window),
     });
   }
 
@@ -360,7 +570,11 @@ export class PackageManager {
   }
 }
 
-function renderPackagedApp(content, runtime, record) {
+function renderPackagedApp(content, runtime, record, windowApi) {
+  if (record.app.entryPath) {
+    mountPackageEntrypoint(content, runtime, record, windowApi);
+    return;
+  }
   const files = safeRead(() => runtime.fs.list(record.installPath), []);
   content.innerHTML = `
     <section class="package-app">
@@ -375,6 +589,79 @@ function renderPackagedApp(content, runtime, record) {
       </dl>
     </section>
   `;
+}
+
+async function mountPackageEntrypoint(content, runtime, record, windowApi) {
+  content.innerHTML = `
+    <section class="package-app">
+      <p class="dos-kicker">Package ${escapeHtml(record.id)} ${escapeHtml(record.version)}</p>
+      <h2>${escapeHtml(record.app.name)}</h2>
+      <p>Loading ${escapeHtml(record.app.entry)}.</p>
+    </section>
+  `;
+  try {
+    const source = runtime.fs.readFile(record.app.entryPath);
+    const moduleHandle = createModuleUrl(source);
+    const module = await import(moduleHandle.url);
+    moduleHandle.revoke();
+    const mount = module.mount || module.default;
+    if (typeof mount !== "function") throw new Error(`${record.app.entry} must export mount() or default()`);
+    content.innerHTML = "";
+    await mount({
+      content,
+      os: runtime,
+      pkg: packagePublicRecord(record),
+      package: packagePublicRecord(record),
+      imports: createImportFacade(record),
+      window: windowApi,
+    });
+  } catch (error) {
+    content.innerHTML = `
+      <section class="package-app">
+        <p class="dos-kicker">Package runtime error</p>
+        <h2>${escapeHtml(record.app.name)}</h2>
+        <pre>${escapeHtml(error.message)}</pre>
+      </section>
+    `;
+  }
+}
+
+function createImportFacade(record) {
+  return {
+    npm: async (name) => {
+      const dependency = record.dependencies?.npm?.[name];
+      if (!dependency) throw new Error(`npm dependency not declared: ${name}`);
+      return import(dependency.url);
+    },
+    url: async (url) => import(normalizePackageUrl(url)),
+  };
+}
+
+function packagePublicRecord(record) {
+  return Object.freeze({
+    id: record.id,
+    name: record.name,
+    version: record.version,
+    description: record.description,
+    installPath: record.installPath,
+    sourcePath: record.sourcePath,
+    dependencies: cloneJson(record.dependencies || {}),
+    files: [...(record.files || [])],
+  });
+}
+
+function createModuleUrl(source) {
+  if (
+    typeof window !== "undefined"
+    && typeof Blob !== "undefined"
+    && typeof URL !== "undefined"
+    && typeof URL.createObjectURL === "function"
+  ) {
+    const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+    return { url, revoke: () => URL.revokeObjectURL(url) };
+  }
+  const base64 = Buffer.from(source, "utf8").toString("base64");
+  return { url: `data:text/javascript;base64,${base64}`, revoke: () => {} };
 }
 
 function parseJson(text, path) {
@@ -393,6 +680,80 @@ function normalizePackageId(value) {
   return id;
 }
 
+function normalizeOptionalRelativePath(value) {
+  const path = String(value || "").trim().replace(/^\.\//, "");
+  if (!path) return "";
+  if (path.startsWith("/") || path.split("/").includes("..")) throw new Error(`pkg: invalid entry path: ${value}`);
+  return path;
+}
+
+function normalizeDependencies(dependencies) {
+  const npm = {};
+  Object.entries(dependencies.npm || {}).forEach(([name, declaration]) => {
+    npm[name] = normalizeNpmDependency(name, declaration);
+  });
+  const packages = {};
+  Object.entries(dependencies.packages || {}).forEach(([name, declaration]) => {
+    packages[normalizePackageId(name)] = typeof declaration === "string"
+      ? { version: declaration }
+      : { version: declaration.version || "latest", manifestUrl: declaration.manifestUrl || "" };
+  });
+  return { packages, npm };
+}
+
+function normalizeNpmDependency(name, declaration) {
+  const value = typeof declaration === "string" ? { version: declaration } : { ...declaration };
+  const version = String(value.version || "latest");
+  return {
+    name,
+    version,
+    provider: value.provider || "esm.sh",
+    url: value.url || npmEsmUrl(name, version),
+    integrity: value.integrity || "",
+  };
+}
+
+function normalizeNpmDependencySpecifier(specifier) {
+  const value = String(specifier || "").trim();
+  if (!value) throw new Error("pkg: missing npm package specifier");
+  const atIndex = value.startsWith("@") ? value.lastIndexOf("@") : value.indexOf("@");
+  const name = atIndex > 0 ? value.slice(0, atIndex) : value;
+  const version = atIndex > 0 ? value.slice(atIndex + 1) : "latest";
+  if (!/^(@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/i.test(name)) throw new Error(`pkg: invalid npm package: ${specifier}`);
+  return normalizeNpmDependency(name, version || "latest");
+}
+
+function npmEsmUrl(name, version) {
+  const encodedName = name.split("/").map((part) => encodeURIComponent(part)).join("/");
+  const suffix = version && version !== "latest" ? `@${encodeURIComponent(version)}` : "";
+  return `${NPM_ESM_BASE_URL}/${encodedName}${suffix}`;
+}
+
+function normalizeRegistryName(value) {
+  const name = String(value || "").trim();
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) throw new Error(`pkg: invalid registry name: ${value || ""}`);
+  return name;
+}
+
+function normalizeRegistryUrl(value) {
+  const url = String(value || "").trim();
+  if (isHttpUrl(url)) return normalizePackageUrl(url);
+  if (!url.startsWith("/")) throw new Error(`pkg: registry URL must be http(s) or an absolute VFS path: ${value || ""}`);
+  return url;
+}
+
+function normalizeRegistryPackage(entry, registry) {
+  const id = normalizePackageId(entry.id);
+  return {
+    id,
+    name: String(entry.name || id),
+    version: String(entry.version || "0.1.0"),
+    description: String(entry.description || ""),
+    manifestUrl: entry.manifestUrl || entry.url || "",
+    registry: registry.name,
+  };
+}
+
 function normalizePackageUrl(value) {
   let url;
   try {
@@ -402,6 +763,15 @@ function normalizePackageUrl(value) {
   }
   if (!["http:", "https:"].includes(url.protocol)) throw new Error(`pkg: unsupported URL protocol: ${url.protocol}`);
   return url.toString();
+}
+
+function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 async function fetchText(fetcher, url, maxBytes, label) {
@@ -429,6 +799,30 @@ function decodeBase64Text(value) {
   return Buffer.from(value, "base64").toString("utf8");
 }
 
+async function verifyIntegrity(content, integrity, label = "file") {
+  if (!integrity) return;
+  const match = /^sha256-([A-Za-z0-9+/=]+)$/.exec(integrity);
+  if (!match) throw new Error(`pkg: unsupported integrity format for ${label}`);
+  const digest = await sha256Base64(content);
+  if (digest !== match[1]) throw new Error(`pkg: integrity mismatch for ${label}`);
+}
+
+async function sha256Base64(content) {
+  if (globalThis.crypto?.subtle) {
+    const hash = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+    return base64FromBytes(new Uint8Array(hash));
+  }
+  const crypto = await import("node:crypto");
+  return crypto.createHash("sha256").update(content).digest("base64");
+}
+
+function base64FromBytes(bytes) {
+  if (typeof btoa === "function") {
+    return btoa(String.fromCharCode(...bytes));
+  }
+  return Buffer.from(bytes).toString("base64");
+}
+
 function mimeFromName(path) {
   if (/\.md$/i.test(path)) return "text/markdown";
   if (/\.txt$/i.test(path)) return "text/plain";
@@ -451,6 +845,10 @@ function unique(values) {
 
 function byteLength(value) {
   return new TextEncoder().encode(String(value ?? "")).length;
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value ?? {}));
 }
 
 function safeRead(reader, fallback) {

@@ -1,4 +1,4 @@
-import { ShellSession } from "../shell.js?v=20260420-remote-packages";
+import { ShellSession } from "../shell.js?v=20260420-package-app-runtime";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({

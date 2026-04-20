@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-remote-packages";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260420-package-app-runtime";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -174,15 +174,39 @@ export class AppSandbox {
         const record = this.os.packages.info(packageId);
         return record ? packageSummary(record, true) : null;
       },
+      dependencies: (packageId) => {
+        this.assertCapability("package.read");
+        return this.os.packages.dependencies(packageId);
+      },
+      registries: () => {
+        this.assertCapability("package.read");
+        return this.os.packages.registries();
+      },
+      search: async (query) => {
+        this.assertCapability("package.read");
+        return this.os.packages.search(query);
+      },
       installFromManifestPath: (path, cwd = this.process.cwd) => {
         this.assertCapability("package.manage");
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
         return packageSummary(this.os.packages.installFromManifestPath(normalized), true);
       },
+      installFromRegistry: async (packageId) => {
+        this.assertCapability("package.manage");
+        return packageSummary(await this.os.packages.installFromRegistry(packageId), true);
+      },
       installFromUrl: async (url) => {
         this.assertCapability("package.manage");
         return packageSummary(await this.os.packages.installFromUrl(url), true);
+      },
+      update: async (packageId) => {
+        this.assertCapability("package.manage");
+        return packageSummary(await this.os.packages.update(packageId), true);
+      },
+      addNpmDependency: (packageId, specifier) => {
+        this.assertCapability("package.manage");
+        return this.os.packages.installNpmDependency(packageId, specifier);
       },
       remove: (packageId) => {
         this.assertCapability("package.manage");
@@ -228,6 +252,7 @@ function packageSummary(record, details = false) {
         write: [...record.app.fileSystem.write],
       },
     };
+    summary.dependencies = JSON.parse(JSON.stringify(record.dependencies || { packages: {}, npm: {} }));
   }
   return summary;
 }

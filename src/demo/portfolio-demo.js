@@ -153,8 +153,25 @@ export const demoFileSystem = directory("", [
               icon: "text",
               width: 560,
               height: 380,
+              entry: "app.js",
               content: "# Hello Notes\n\nThis app was installed through the DindbOS package manager.",
             },
+            dependencies: {
+              npm: {
+                "lodash-es": "^4.17.21",
+              },
+            },
+            files: [
+              {
+                path: "app.js",
+                mime: "text/javascript",
+                content: [
+                  "export function mount({ content, pkg }) {",
+                  "  content.innerHTML = `<section class=\"package-app\"><p class=\"dos-kicker\">Package ${pkg.id}</p><h2>${pkg.name}</h2><p>Rendered from app.js.</p></section>`;",
+                  "}",
+                ].join("\n"),
+              },
+            ],
             permissions: {
               capabilities: [],
               fileSystem: {
@@ -163,8 +180,27 @@ export const demoFileSystem = directory("", [
               },
             },
           }, null, 2)}\n`),
+          file("app.js", "text/javascript", [
+            "export function mount({ content, pkg }) {",
+            "  content.innerHTML = `<section class=\"package-app\"><p class=\"dos-kicker\">Package ${pkg.id}</p><h2>${pkg.name}</h2><p>Rendered from app.js.</p></section>`;",
+            "}",
+          ].join("\n")),
           file("README.md", "text/markdown", "# Hello Notes package\n\nInstall with `pkg install /opt/dindbos/packages/hello-notes/dindbos.app.json`.\n"),
         ]),
+      ]),
+      directory("registry", [
+        file("index.json", "application/json", `${JSON.stringify({
+          name: "DindbOS Local Registry",
+          packages: [
+            {
+              id: "hello-notes",
+              name: "Hello Notes",
+              version: "0.1.0",
+              description: "Sample executable DindbOS package.",
+              manifestUrl: "/opt/dindbos/packages/hello-notes/dindbos.app.json",
+            },
+          ],
+        }, null, 2)}\n`),
       ]),
     ]),
   ]),
