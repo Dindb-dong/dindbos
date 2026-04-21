@@ -1,4 +1,4 @@
-import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260421-native-bytes";
+import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260421-files-app-2";
 
 const STORAGE_VERSION = 2;
 const STORE_NAME = "kv";

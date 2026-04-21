@@ -1,5 +1,5 @@
-import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260421-native-bytes";
-import { ShellSession } from "../shell.js?v=20260421-native-bytes";
+import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260421-files-app-2";
+import { ShellSession } from "../shell.js?v=20260421-files-app-2";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -151,6 +151,7 @@ function renderFiles(os, content, path, windowApi) {
       { label: "Desktop", path: os.fs.join(os.session.home || "/home/guest", "Desktop"), icon: "folder" },
       { label: "Documents", path: os.fs.join(os.session.home || "/home/guest", "Documents"), icon: "folder" },
       { label: "Downloads", path: os.fs.join(os.session.home || "/home/guest", "Downloads"), icon: "folder" },
+      { label: "Trash", path: os.fs.join(os.session.home || "/home/guest", ".Trash"), icon: "trash" },
       { label: "Applications", path: "/usr/share/applications", icon: "app" },
     ] },
     { section: "Locations", items: [
@@ -162,16 +163,21 @@ function renderFiles(os, content, path, windowApi) {
   ];
   let currentPath = os.fs.normalize(path);
   let selectedPath = currentPath;
+  let clipboard = null;
   let clickTimer = null;
+  let searchQuery = "";
+  let searchTimer = null;
 
-  const draw = async (nextPath, nextSelectedPath = null) => {
+  const draw = async (nextPath, nextSelectedPath = null, options = {}) => {
     currentPath = os.fs.normalize(nextPath);
     if (!os.fs.resolve(currentPath)) currentPath = os.session.home || "/";
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.syncDirectory(currentPath);
     selectedPath = nextSelectedPath ? os.fs.normalize(nextSelectedPath) : currentPath;
     const currentStat = os.fs.stat(currentPath);
     windowApi.setTitle(`Files - ${currentPath}`);
-    const columns = buildFileColumns(os, currentPath, selectedPath);
+    const query = searchQuery.trim();
+    const columns = query ? buildSearchColumns(os, currentPath, selectedPath, query) : buildFileColumns(os, currentPath, selectedPath);
+    const visibleCount = columns.reduce((total, column) => total + column.entries.length, 0);
     const selected = os.fs.lstat(selectedPath) || os.fs.stat(selectedPath);
     content.innerHTML = `
       <section class="files-app">
@@ -191,21 +197,29 @@ function renderFiles(os, content, path, windowApi) {
         <div class="files-main">
           <div class="pathbar">
             <button type="button" data-nav="${escapeAttr(os.fs.dirname(currentPath))}">Back</button>
-            <code>${escapeHtml(currentPath)}</code>
+            <nav class="files-breadcrumb" aria-label="Current folder">
+              ${renderBreadcrumb(os, currentPath)}
+            </nav>
             <span>${escapeHtml(currentStat?.permissions || "")}</span>
           </div>
           <div class="files-toolbar">
             <button type="button" data-action="new-folder">New Folder</button>
             <button type="button" data-action="new-file">New File</button>
+            <button type="button" data-action="rename">Rename</button>
+            <button type="button" data-action="duplicate">Duplicate</button>
+            <button type="button" data-action="copy">Copy</button>
+            <button type="button" data-action="paste">Paste</button>
+            <button type="button" data-action="trash">Trash</button>
             <button type="button" data-action="import">Import</button>
             <button type="button" data-action="export">Export</button>
             <button type="button" data-action="mount-local">Mount Local</button>
             <button type="button" data-action="delete">Delete</button>
+            <input type="search" data-files-search placeholder="Search" value="${escapeAttr(searchQuery)}" />
           </div>
           <div class="files-dropzone">
-            Drop files here to import into ${escapeHtml(currentPath)}
+            Drop files here to import into ${escapeHtml(currentPath)}. Drag rows to move them.
           </div>
-          <div class="files-column-view" role="tree" data-drop-target="true">
+          <div class="files-column-view" role="tree" data-drop-target="true" data-drop-path="${escapeAttr(currentPath)}">
             ${columns.map((column) => `
               <div class="files-column" data-column="${escapeAttr(column.path)}">
                 ${column.entries.map((entry) => {
@@ -218,7 +232,9 @@ function renderFiles(os, content, path, windowApi) {
                       class="files-row ${isSelected ? "is-selected" : ""}"
                       data-path="${escapeAttr(entry.path)}"
                       data-openable="${resolved.type === "directory" || resolved.type === "mount" ? "false" : "true"}"
+                      data-drop-path="${resolved.type === "directory" || resolved.type === "mount" ? escapeAttr(entry.path) : ""}"
                       data-icon="${escapeAttr(entry.icon || resolved.icon || resolved.type)}"
+                      draggable="true"
                     >
                       <span class="dos-mini-icon"></span>
                       <span>${escapeHtml(entry.name)}</span>
@@ -230,8 +246,8 @@ function renderFiles(os, content, path, windowApi) {
             `).join("")}
           </div>
           <div class="files-status">
-            <span>${os.fs.list(currentPath).length} items</span>
-            <span>${escapeHtml(currentPath)}</span>
+            <span>${query ? `${visibleCount} matches` : `${os.fs.list(currentPath).length} items`}</span>
+            <span>${clipboard ? `Clipboard: ${escapeHtml(os.fs.basename(clipboard.path))}` : escapeHtml(currentPath)}</span>
           </div>
         </div>
         <aside class="files-inspector">
@@ -241,6 +257,12 @@ function renderFiles(os, content, path, windowApi) {
     `;
     content.querySelectorAll("[data-nav]").forEach((button) => {
       button.addEventListener("click", () => draw(button.dataset.nav));
+    });
+    const searchInput = content.querySelector("[data-files-search]");
+    searchInput.addEventListener("input", () => {
+      searchQuery = searchInput.value;
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => draw(currentPath, selectedPath, { focusSearch: true }), 120);
     });
     content.querySelectorAll("[data-path]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -259,16 +281,38 @@ function renderFiles(os, content, path, windowApi) {
         clearTimeout(clickTimer);
         os.openPath(button.dataset.path);
       });
+      button.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        draw(currentPath, button.dataset.path).then(() => {
+          showFilesContextMenu(content, event, button.dataset.path, clipboard, runAction);
+        });
+      });
+      button.addEventListener("dragstart", (event) => {
+        event.dataTransfer.setData("application/x-dindbos-path", button.dataset.path);
+        event.dataTransfer.effectAllowed = "move";
+      });
+      if (button.dataset.dropPath) {
+        button.addEventListener("dragover", (event) => {
+          event.preventDefault();
+          button.classList.add("is-drop-target");
+        });
+        button.addEventListener("dragleave", () => button.classList.remove("is-drop-target"));
+        button.addEventListener("drop", async (event) => {
+          event.preventDefault();
+          button.classList.remove("is-drop-target");
+          await handleFilesDrop(os, event, button.dataset.dropPath, draw, windowApi);
+        });
+      }
     });
     content.querySelectorAll("[data-action]").forEach((button) => {
       button.addEventListener("click", async () => {
-        try {
-          const nextPath = await handleFileAction(os, currentPath, selectedPath, button.dataset.action);
-          draw(nextPath || currentPath, nextPath || currentPath);
-        } catch (error) {
-          windowApi.setTitle(`Files - ${error.message}`);
-        }
+        await runAction(button.dataset.action);
       });
+    });
+    content.addEventListener("contextmenu", (event) => {
+      if (event.target.closest("[data-path]")) return;
+      event.preventDefault();
+      showFilesContextMenu(content, event, currentPath, clipboard, runAction);
     });
     const dropTarget = content.querySelector("[data-drop-target]");
     const dropzone = content.querySelector(".files-dropzone");
@@ -284,13 +328,22 @@ function renderFiles(os, content, path, windowApi) {
     dropTarget.addEventListener("drop", async (event) => {
       event.preventDefault();
       setDragging(false);
-      try {
-        const imported = await importDroppedFiles(os, currentPath, event.dataTransfer?.files || []);
-        await draw(currentPath, imported[0] || currentPath);
-      } catch (error) {
-        windowApi.setTitle(`Files - ${error.message}`);
-      }
+      await handleFilesDrop(os, event, currentPath, draw, windowApi);
     });
+    if (options.focusSearch) {
+      const nextSearchInput = content.querySelector("[data-files-search]");
+      nextSearchInput.focus();
+      nextSearchInput.setSelectionRange(nextSearchInput.value.length, nextSearchInput.value.length);
+    }
+  };
+  const runAction = async (action, actionPath = selectedPath) => {
+    try {
+      const result = await handleFileAction(os, currentPath, actionPath, action, { clipboard });
+      if (Object.hasOwn(result, "clipboard")) clipboard = result.clipboard;
+      await draw(result.path || currentPath, result.selectedPath || result.path || currentPath);
+    } catch (error) {
+      windowApi.setTitle(`Files - ${error.message}`);
+    }
   };
   draw(path);
 }
@@ -309,6 +362,100 @@ function buildFileColumns(os, currentPath, selectedPath) {
     selectedPath: chain[index + 1] || selectedPath,
     entries: os.fs.list(columnPath),
   }));
+}
+
+function buildSearchColumns(os, currentPath, selectedPath, query) {
+  return [{
+    path: currentPath,
+    selectedPath,
+    entries: searchFileEntries(os, currentPath, query).slice(0, 200),
+  }];
+}
+
+function searchFileEntries(os, rootPath, query) {
+  const normalizedQuery = query.toLowerCase();
+  const results = [];
+  const visit = (directory, depth = 0) => {
+    if (depth > 8) return;
+    const entries = safeRead(() => os.fs.list(directory), []);
+    entries.forEach((entry) => {
+      if (entry.name.toLowerCase().includes(normalizedQuery) || entry.path.toLowerCase().includes(normalizedQuery)) {
+        results.push(entry);
+      }
+      const resolved = os.fs.resolveNode(entry);
+      if (resolved.type === "directory" || resolved.type === "mount") visit(entry.path, depth + 1);
+    });
+  };
+  visit(rootPath);
+  return results;
+}
+
+function renderBreadcrumb(os, currentPath) {
+  const normalized = os.fs.normalize(currentPath);
+  const parts = normalized.split("/").filter(Boolean);
+  const crumbs = [{ label: "/", path: "/" }];
+  let cursor = "/";
+  parts.forEach((part) => {
+    cursor = os.fs.join(cursor, part);
+    crumbs.push({ label: part, path: cursor });
+  });
+  return crumbs.map((crumb, index) => `
+    <button type="button" data-nav="${escapeAttr(crumb.path)}">
+      ${escapeHtml(crumb.label)}
+    </button>
+    ${index < crumbs.length - 1 ? "<span>/</span>" : ""}
+  `).join("");
+}
+
+function showFilesContextMenu(content, event, targetPath, clipboard, runAction) {
+  content.querySelector(".files-context-menu")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "files-context-menu";
+  menu.style.left = `${event.clientX}px`;
+  menu.style.top = `${event.clientY}px`;
+  menu.innerHTML = [
+    ["open", "Open"],
+    ["rename", "Rename"],
+    ["duplicate", "Duplicate"],
+    ["copy", "Copy"],
+    ["paste", clipboard ? `Paste ${escapeHtml(clipboard.name)}` : "Paste"],
+    ["trash", "Move to Trash"],
+    ["export", "Export"],
+    ["delete", "Delete Permanently"],
+  ].map(([action, label]) => `
+    <button type="button" data-context-action="${escapeAttr(action)}" ${action === "paste" && !clipboard ? "disabled" : ""}>
+      ${label}
+    </button>
+  `).join("");
+  content.appendChild(menu);
+  menu.querySelectorAll("[data-context-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      menu.remove();
+      await runAction(button.dataset.contextAction, targetPath);
+    });
+  });
+  window.setTimeout(() => {
+    const close = () => {
+      menu.remove();
+      document.removeEventListener("click", close);
+    };
+    document.addEventListener("click", close);
+  }, 0);
+}
+
+async function handleFilesDrop(os, event, destinationPath, draw, windowApi) {
+  try {
+    const sourcePath = event.dataTransfer?.getData("application/x-dindbos-path");
+    if (sourcePath) {
+      const moved = await movePathIntoDirectory(os, sourcePath, destinationPath);
+      await draw(destinationPath, moved);
+      return;
+    }
+    const imported = await importDroppedFiles(os, destinationPath, event.dataTransfer?.files || []);
+    await draw(destinationPath, imported[0] || destinationPath);
+  } catch (error) {
+    windowApi.setTitle(`Files - ${error.message}`);
+  }
 }
 
 function isWithinPath(path, rootPath) {
@@ -335,6 +482,7 @@ function renderInspector(stat) {
       <div><dt>Kind</dt><dd>${escapeHtml(stat.type)}</dd></div>
       ${stat.target ? `<div><dt>Target</dt><dd>${escapeHtml(stat.target)}</dd></div>` : ""}
       <div><dt>Mode</dt><dd>${escapeHtml(stat.permissions)}</dd></div>
+      <div><dt>Access</dt><dd>${escapeHtml(permissionSummary(stat.permissions))}</dd></div>
       <div><dt>Owner</dt><dd>${escapeHtml(`${stat.owner}:${stat.group}`)}</dd></div>
       <div><dt>Size</dt><dd>${escapeHtml(formatBytes(stat.size))}</dd></div>
       <div><dt>Modified</dt><dd>${escapeHtml(shortTime(stat.modified))}</dd></div>
@@ -342,46 +490,92 @@ function renderInspector(stat) {
   `;
 }
 
-async function handleFileAction(os, currentPath, selectedPath, action) {
+function permissionSummary(mode = "") {
+  const normalized = String(mode).padEnd(10, "-");
+  return [
+    `owner ${normalized.slice(1, 4)}`,
+    `group ${normalized.slice(4, 7)}`,
+    `other ${normalized.slice(7, 10)}`,
+  ].join(" · ");
+}
+
+async function handleFileAction(os, currentPath, selectedPath, action, state = {}) {
   if (action === "mount-local") {
     if (!os.localMounts?.supported()) throw new Error("File System Access API is not available");
     const mount = await os.localMounts.mountLocal();
-    return mount.path;
+    return { path: mount.path, selectedPath: mount.path };
   }
   if (action === "new-folder") {
+    const target = uniquePath(os, currentPath, "untitled-folder");
     if (os.localMounts?.isMountedPath(currentPath)) {
-      await os.localMounts.createDirectory(uniquePath(os, currentPath, "untitled-folder"));
-      return currentPath;
+      await os.localMounts.createDirectory(target);
+      return { path: currentPath, selectedPath: target };
     }
-    os.fs.createDirectory(uniquePath(os, currentPath, "untitled-folder"));
-    return;
+    os.fs.createDirectory(target);
+    return { path: currentPath, selectedPath: target };
   }
   if (action === "new-file") {
+    const target = uniquePath(os, currentPath, "untitled.txt");
     if (os.localMounts?.isMountedPath(currentPath)) {
-      await os.localMounts.writeFile(uniquePath(os, currentPath, "untitled.txt"), "");
-      return currentPath;
+      await os.localMounts.writeFile(target, "");
+      return { path: currentPath, selectedPath: target };
     }
-    os.fs.createFile(uniquePath(os, currentPath, "untitled.txt"), "/", { content: "" });
-    return;
+    os.fs.createFile(target, "/", { content: "" });
+    return { path: currentPath, selectedPath: target };
+  }
+  if (action === "open") {
+    const target = actionTarget(currentPath, selectedPath);
+    os.openPath(target);
+    return { path: currentPath, selectedPath: target };
+  }
+  if (action === "rename") {
+    const target = actionTarget(currentPath, selectedPath);
+    const currentName = os.fs.basename(target);
+    const nextName = prompt("Rename", currentName);
+    if (!nextName || nextName === currentName) return { path: currentPath, selectedPath: target };
+    const destination = os.fs.join(os.fs.dirname(target), sanitizeFileName(nextName));
+    await movePath(os, target, destination);
+    return { path: os.fs.dirname(destination), selectedPath: destination };
+  }
+  if (action === "duplicate") {
+    const target = actionTarget(currentPath, selectedPath);
+    const destination = await uniqueDestinationPath(os, os.fs.dirname(target), duplicateName(os.fs.basename(target)));
+    await copyPath(os, target, destination);
+    return { path: os.fs.dirname(destination), selectedPath: destination };
+  }
+  if (action === "copy") {
+    const target = actionTarget(currentPath, selectedPath);
+    return {
+      path: currentPath,
+      selectedPath: target,
+      clipboard: { action: "copy", path: target, name: os.fs.basename(target) },
+    };
+  }
+  if (action === "paste") {
+    if (!state.clipboard?.path) throw new Error("Clipboard is empty");
+    const pasted = await copyPathIntoDirectory(os, state.clipboard.path, currentPath);
+    return { path: currentPath, selectedPath: pasted, clipboard: state.clipboard };
+  }
+  if (action === "trash") {
+    const target = actionTarget(currentPath, selectedPath);
+    const trashed = await movePathToTrash(os, target);
+    return { path: currentPath, selectedPath: trashed };
   }
   if (action === "import") {
     const imported = await importFilesWithPicker(os, currentPath);
-    return imported[0] || currentPath;
+    return { path: currentPath, selectedPath: imported[0] || currentPath };
   }
   if (action === "export") {
     if (selectedPath === currentPath) await exportPath(os, currentPath);
     else await exportPath(os, selectedPath);
-    return selectedPath;
+    return { path: currentPath, selectedPath };
   }
   if (action === "delete") {
-    if (selectedPath === "/" || selectedPath === currentPath) throw new Error("Select an item to delete");
-    if (os.localMounts?.isMountedPath(selectedPath)) {
-      await os.localMounts.remove(selectedPath, "/", { recursive: true });
-      return currentPath;
-    }
-    os.fs.remove(selectedPath, "/", { recursive: true });
+    const target = actionTarget(currentPath, selectedPath);
+    await removePath(os, target);
+    return { path: currentPath, selectedPath: currentPath };
   }
-  return currentPath;
+  return { path: currentPath, selectedPath };
 }
 
 async function importFilesWithPicker(os, currentPath) {
@@ -471,6 +665,148 @@ async function ensureImportParent(os, directory) {
 async function importPathExists(os, path) {
   if (os.localMounts?.isMountedPath(path)) return os.localMounts.exists(path);
   return os.fs.exists(path);
+}
+
+function actionTarget(currentPath, selectedPath) {
+  if (!selectedPath || selectedPath === "/") throw new Error("Select an item first");
+  return selectedPath;
+}
+
+async function copyPathIntoDirectory(os, sourcePath, directoryPath) {
+  const destination = await uniqueDestinationPath(os, directoryPath, os.fs.basename(sourcePath));
+  await copyPath(os, sourcePath, destination);
+  return destination;
+}
+
+async function movePathIntoDirectory(os, sourcePath, directoryPath) {
+  const normalizedSource = os.fs.normalize(sourcePath);
+  const normalizedDirectory = os.fs.normalize(directoryPath);
+  if (normalizedSource === normalizedDirectory || normalizedDirectory.startsWith(`${normalizedSource}/`)) {
+    throw new Error("Cannot move a folder into itself");
+  }
+  const destination = await uniqueDestinationPath(os, normalizedDirectory, os.fs.basename(normalizedSource));
+  await movePath(os, normalizedSource, destination);
+  return destination;
+}
+
+async function copyPath(os, sourcePath, destinationPath) {
+  const sourceLocal = os.localMounts?.isMountedPath(sourcePath);
+  const destinationLocal = os.localMounts?.isMountedPath(destinationPath);
+  if (sourceLocal && destinationLocal) {
+    await os.localMounts.copy(sourcePath, destinationPath, "/", { recursive: true });
+    return;
+  }
+  if (!sourceLocal && !destinationLocal) {
+    os.fs.copy(sourcePath, destinationPath, "/", { recursive: true });
+    return;
+  }
+  if (sourceLocal) {
+    await copyLocalToVirtual(os, sourcePath, destinationPath);
+    return;
+  }
+  await copyVirtualToLocal(os, sourcePath, destinationPath);
+}
+
+async function movePath(os, sourcePath, destinationPath) {
+  const sourceLocal = os.localMounts?.isMountedPath(sourcePath);
+  const destinationLocal = os.localMounts?.isMountedPath(destinationPath);
+  if (sourceLocal && destinationLocal) {
+    await os.localMounts.move(sourcePath, destinationPath, "/", { recursive: true });
+    return;
+  }
+  if (!sourceLocal && !destinationLocal) {
+    os.fs.move(sourcePath, destinationPath, "/");
+    return;
+  }
+  await copyPath(os, sourcePath, destinationPath);
+  await removePath(os, sourcePath);
+}
+
+async function copyLocalToVirtual(os, sourcePath, destinationPath) {
+  const stat = await os.localMounts.stat(sourcePath);
+  if (stat.type === "directory" || stat.type === "mount") {
+    os.fs.createDirectory(destinationPath, "/", {
+      owner: stat.owner || "guest",
+      group: stat.group || "users",
+      permissions: stat.permissions || "drwxr-xr-x",
+    });
+    const entries = await os.localMounts.list(sourcePath);
+    for (const entry of entries) {
+      await copyLocalToVirtual(os, entry.path, os.fs.join(destinationPath, entry.name));
+    }
+    return;
+  }
+  os.fs.writeOrCreateFileBytes(destinationPath, await os.localMounts.readFileBytes(sourcePath), "/", {
+    mime: stat.mime || mimeFromName(destinationPath),
+    owner: stat.owner || "guest",
+    group: stat.group || "users",
+    permissions: stat.permissions || "-rw-r--r--",
+  });
+}
+
+async function copyVirtualToLocal(os, sourcePath, destinationPath) {
+  const stat = os.fs.stat(sourcePath);
+  if (!stat) throw new Error(`copy: ${sourcePath}: no such file or directory`);
+  if (stat.type === "directory" || stat.type === "mount") {
+    await os.localMounts.createDirectory(destinationPath, "/", { parents: true });
+    for (const entry of os.fs.list(sourcePath)) {
+      await copyVirtualToLocal(os, entry.path, os.fs.join(destinationPath, entry.name));
+    }
+    return;
+  }
+  await os.localMounts.writeFileBytes(destinationPath, os.fs.readFileBytes(sourcePath), "/", { mime: stat.mime || mimeFromName(destinationPath) });
+}
+
+async function removePath(os, path) {
+  if (os.localMounts?.isMountedPath(path)) {
+    await os.localMounts.remove(path, "/", { recursive: true });
+    return;
+  }
+  os.fs.remove(path, "/", { recursive: true });
+}
+
+async function movePathToTrash(os, path) {
+  const trashRoot = os.fs.join(os.session.home || "/home/guest", ".Trash");
+  if (path === trashRoot || path.startsWith(`${trashRoot}/`)) throw new Error("Already in Trash");
+  ensureVirtualDirectory(os, trashRoot);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const destination = await uniqueDestinationPath(os, trashRoot, `${stamp}-${os.fs.basename(path)}`);
+  await movePath(os, path, destination);
+  return destination;
+}
+
+function ensureVirtualDirectory(os, path) {
+  const parts = os.fs.normalize(path).split("/").filter(Boolean);
+  let cursor = "/";
+  parts.forEach((part) => {
+    cursor = os.fs.join(cursor, part);
+    if (!os.fs.exists(cursor)) os.fs.createDirectory(cursor);
+  });
+}
+
+async function uniqueDestinationPath(os, directory, name) {
+  let candidate = os.fs.join(directory, sanitizeFileName(name));
+  if (!await importPathExists(os, candidate)) return candidate;
+  const dotIndex = name.lastIndexOf(".");
+  const base = dotIndex > 0 ? name.slice(0, dotIndex) : name;
+  const extension = dotIndex > 0 ? name.slice(dotIndex) : "";
+  for (let index = 2; index < 1000; index += 1) {
+    candidate = os.fs.join(directory, `${sanitizeFileName(base)}-${index}${extension}`);
+    if (!await importPathExists(os, candidate)) return candidate;
+  }
+  throw new Error(`Cannot allocate a filename in ${directory}`);
+}
+
+function duplicateName(name) {
+  const dotIndex = name.lastIndexOf(".");
+  if (dotIndex <= 0) return `${name} copy`;
+  return `${name.slice(0, dotIndex)} copy${name.slice(dotIndex)}`;
+}
+
+function sanitizeFileName(name) {
+  const cleaned = String(name || "").trim().replaceAll("/", "-");
+  if (!cleaned || cleaned === "." || cleaned === "..") throw new Error("Invalid filename");
+  return cleaned;
 }
 
 async function exportPath(os, path) {

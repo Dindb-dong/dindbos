@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-native-bytes";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-files-app-2";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -345,6 +345,14 @@ export class AppSandbox {
       createDirectory: (path, cwd = this.process.cwd, options = {}) => {
         this.assertCapability("localMount.manage");
         return this.os.localMounts.createDirectory(path, cwd, options);
+      },
+      copy: (sourcePath, destinationPath, cwd = this.process.cwd, options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.copy(sourcePath, destinationPath, cwd, options);
+      },
+      move: (sourcePath, destinationPath, cwd = this.process.cwd, options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.move(sourcePath, destinationPath, cwd, options);
       },
       remove: (path, cwd = this.process.cwd, options = {}) => {
         this.assertCapability("localMount.manage");

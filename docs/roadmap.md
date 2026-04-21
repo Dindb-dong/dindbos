@@ -105,6 +105,7 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 
 ## 7. Files.app
 
+- 2차 구현 완료
 - local folder mount button
 - rename
 - duplicate
@@ -115,6 +116,7 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - permission inspector
 - breadcrumb
 - search
+- future: OS-level local mount rename through a native companion/helper instead of browser copy-delete
 
 ## 8. Window Manager
 
@@ -143,4 +145,4 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 
 ## Current Priority
 
-Start with Shell and IndexedDB filesystem. They make DindbOS feel like a stateful runtime: commands mutate real files, and those files survive reloads.
+Files.app and local mount UX. The filesystem now stores real bytes, so the next proof point is making files feel movable, searchable, inspectable, and recoverable through the desktop.

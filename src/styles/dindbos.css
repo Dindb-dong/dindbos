@@ -546,16 +546,24 @@ button {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* Path bar code */
-.pathbar code {
+/* Files breadcrumb */
+.files-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Files breadcrumb separator */
+.files-breadcrumb span {
+  color: var(--muted);
+}
+
 /* Path bar button */
-.pathbar button {
+.pathbar button,
+.files-breadcrumb button {
   min-height: 30px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -563,22 +571,43 @@ button {
   cursor: pointer;
 }
 
+/* Files breadcrumb button */
+.files-breadcrumb button {
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  padding: 0 9px;
+  text-overflow: ellipsis;
+}
+
 /* Files toolbar */
 .files-toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(11, max-content) minmax(130px, 1fr);
   gap: 8px;
   padding: 0 12px 10px;
+  overflow: auto hidden;
 }
 
 /* Files toolbar button */
-.files-toolbar button {
+.files-toolbar button,
+.files-toolbar input {
   min-height: 32px;
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+}
+
+/* Files toolbar button */
+.files-toolbar button {
   cursor: pointer;
+}
+
+/* Files search */
+.files-toolbar input {
+  min-width: 130px;
 }
 
 /* Files drop target hint */
@@ -635,6 +664,13 @@ button {
 /* Files selected row */
 .files-row.is-selected {
   background: rgba(59, 130, 246, 0.2);
+}
+
+/* Files row drop target */
+.files-row.is-drop-target {
+  outline: 1px solid rgba(59, 130, 246, 0.72);
+  outline-offset: -2px;
+  background: rgba(59, 130, 246, 0.16);
 }
 
 /* Files row label */
@@ -706,6 +742,11 @@ button {
   background: linear-gradient(160deg, #171b14, #4a5544);
 }
 
+/* Mini trash icon */
+[data-icon="trash"] .dos-mini-icon {
+  background: linear-gradient(160deg, #eef2e5, #697264);
+}
+
 /* Files status */
 .files-status {
   display: flex;
@@ -758,6 +799,37 @@ button {
   color: var(--muted);
   font-size: 11px;
   text-transform: uppercase;
+}
+
+/* Files context menu */
+.files-context-menu {
+  position: fixed;
+  z-index: 200;
+  display: grid;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(14, 18, 12, 0.94);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(20px);
+}
+
+/* Files context action */
+.files-context-menu button {
+  min-height: 30px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Files disabled context action */
+.files-context-menu button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 /* Files inspector value */

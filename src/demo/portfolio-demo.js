@@ -104,6 +104,7 @@ export const demoFileSystem = directory("", [
         ].join("\n")),
       ], { owner: "guest", group: "users" }),
       directory("Downloads", [], { owner: "guest", group: "users" }),
+      directory(".Trash", [], { owner: "guest", group: "users" }),
       file("README.md", "text/markdown", [
         "# guest home",
         "",

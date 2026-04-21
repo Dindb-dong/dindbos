@@ -300,6 +300,53 @@ export class LocalFolderMountManager {
     await this.syncDirectory(this.os.fs.dirname(normalized));
   }
 
+  async copy(sourcePath, destinationPath, cwd = "/", options = {}) {
+    const source = this.os.fs.normalize(sourcePath, cwd);
+    const destinationInput = this.os.fs.normalize(destinationPath, cwd);
+    const sourceStat = await this.stat(source);
+    if (!sourceStat) throw new Error(`cp: ${source}: no such file or directory`);
+    if ((sourceStat.type === "directory" || sourceStat.type === "mount") && !options.recursive) throw new Error(`cp: ${source}: is a directory`);
+    const destinationStat = await this.stat(destinationInput).catch(() => null);
+    const destination = destinationStat && (destinationStat.type === "directory" || destinationStat.type === "mount")
+      ? this.os.fs.join(destinationInput, this.os.fs.basename(source))
+      : destinationInput;
+    if (destination === source || destination.startsWith(`${source}/`)) throw new Error(`cp: cannot copy ${source} into itself`);
+    if (await this.exists(destination)) throw new Error(`cp: ${destination}: file exists`);
+    await this.copyEntry(source, destination, sourceStat);
+    await this.syncDirectory(this.os.fs.dirname(destination));
+    return this.stat(destination);
+  }
+
+  async move(sourcePath, destinationPath, cwd = "/", options = {}) {
+    const source = this.os.fs.normalize(sourcePath, cwd);
+    const destinationInput = this.os.fs.normalize(destinationPath, cwd);
+    const sourceStat = await this.stat(source);
+    if (!sourceStat) throw new Error(`mv: ${source}: no such file or directory`);
+    const destinationStat = await this.stat(destinationInput).catch(() => null);
+    const destination = destinationStat && (destinationStat.type === "directory" || destinationStat.type === "mount")
+      ? this.os.fs.join(destinationInput, this.os.fs.basename(source))
+      : destinationInput;
+    if (destination === source || destination.startsWith(`${source}/`)) throw new Error(`mv: cannot move ${source} into itself`);
+    if (await this.exists(destination)) throw new Error(`mv: ${destination}: file exists`);
+    await this.copyEntry(source, destination, sourceStat);
+    await this.remove(source, "/", { recursive: true });
+    await this.syncDirectory(this.os.fs.dirname(destination));
+    return this.stat(destination);
+  }
+
+  async copyEntry(source, destination, sourceStat = null) {
+    const stat = sourceStat || await this.stat(source);
+    if (stat.type === "directory" || stat.type === "mount") {
+      await this.createDirectory(destination, "/", { parents: true });
+      const entries = await this.list(source);
+      for (const entry of entries) {
+        await this.copyEntry(entry.path, this.os.fs.join(destination, entry.name), entry);
+      }
+      return;
+    }
+    await this.writeFileBytes(destination, await this.readFileBytes(source), "/", { mime: stat.mime || "application/octet-stream" });
+  }
+
   async exists(path, cwd = "/") {
     try {
       await this.stat(path, cwd);
