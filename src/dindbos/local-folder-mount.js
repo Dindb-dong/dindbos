@@ -6,6 +6,8 @@ export class LocalFolderMountManager {
     this.defaultMode = options.mode || "readwrite";
     this.mounts = new Map();
     this.encoder = new TextEncoder();
+    this.operations = [];
+    this.operationSeq = 0;
   }
 
   supported() {
@@ -85,8 +87,39 @@ export class LocalFolderMountManager {
     const persisted = await this.listPersistedMounts();
     const persistedPaths = new Set(persisted.map((mount) => mount.path));
     persisted.forEach((mount) => byPath.set(mount.path, mount));
-    this.listMounts().forEach((mount) => byPath.set(mount.path, { ...mount, persisted: persistedPaths.has(mount.path), status: "mounted" }));
+    const mounted = await Promise.all([...this.mounts.values()].map(async (mount) => {
+      const permission = await directoryPermissionState(mount.handle, mount.mode || this.defaultMode).catch(() => "error");
+      return this.summary(mount, {
+        persisted: persistedPaths.has(mount.path),
+        permission,
+        status: permission === "granted" ? "mounted" : permission,
+      });
+    }));
+    mounted.forEach((mount) => byPath.set(mount.path, mount));
     return [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  async requestAccess(path, options = {}) {
+    const normalized = this.os.fs.normalize(path);
+    const mounted = this.mountFor(normalized);
+    if (mounted) {
+      await requestDirectoryPermission(mounted.handle, mounted.mode || this.defaultMode);
+      await this.syncDirectory(mounted.path);
+      const records = await this.loadPersistedRecords();
+      const persisted = records.some((entry) => this.os.fs.normalize(entry.path) === mounted.path);
+      return this.summary(mounted, { persisted, permission: "granted", status: "mounted" });
+    }
+    const records = await this.loadPersistedRecords();
+    const record = records.find((entry) => this.os.fs.normalize(entry.path) === normalized);
+    if (!record) throw new Error(`mount-local: no persisted handle for ${normalized}`);
+    await requestDirectoryPermission(record.handle, record.mode || this.defaultMode);
+    const mountedRecord = await this.attachMount(record.name || record.handleName || "local", record.handle, {
+      path: normalized,
+      handleName: record.handleName,
+      mode: record.mode || this.defaultMode,
+      persist: options.persist !== false,
+    });
+    return { ...mountedRecord, persisted: true, permission: "granted", status: "mounted" };
   }
 
   async restorePersistedMounts(options = {}) {
@@ -312,7 +345,16 @@ export class LocalFolderMountManager {
       : destinationInput;
     if (destination === source || destination.startsWith(`${source}/`)) throw new Error(`cp: cannot copy ${source} into itself`);
     if (await this.exists(destination)) throw new Error(`cp: ${destination}: file exists`);
-    await this.copyEntry(source, destination, sourceStat);
+    const operation = this.beginOperation("copy", source, destination, options);
+    try {
+      operation.total = await this.countEntries(source, sourceStat);
+      this.reportProgress(operation, { detail: source });
+      await this.copyEntry(source, destination, sourceStat, operation);
+      this.finishOperation(operation);
+    } catch (error) {
+      this.finishOperation(operation, error);
+      throw error;
+    }
     await this.syncDirectory(this.os.fs.dirname(destination));
     return this.stat(destination);
   }
@@ -328,23 +370,83 @@ export class LocalFolderMountManager {
       : destinationInput;
     if (destination === source || destination.startsWith(`${source}/`)) throw new Error(`mv: cannot move ${source} into itself`);
     if (await this.exists(destination)) throw new Error(`mv: ${destination}: file exists`);
-    await this.copyEntry(source, destination, sourceStat);
-    await this.remove(source, "/", { recursive: true });
+    const operation = this.beginOperation("move", source, destination, options);
+    try {
+      operation.total = await this.countEntries(source, sourceStat);
+      this.reportProgress(operation, { detail: source });
+      await this.copyEntry(source, destination, sourceStat, operation);
+      await this.remove(source, "/", { recursive: true });
+      this.finishOperation(operation);
+    } catch (error) {
+      this.finishOperation(operation, error);
+      throw error;
+    }
     await this.syncDirectory(this.os.fs.dirname(destination));
     return this.stat(destination);
   }
 
-  async copyEntry(source, destination, sourceStat = null) {
+  async copyEntry(source, destination, sourceStat = null, operation = null) {
     const stat = sourceStat || await this.stat(source);
     if (stat.type === "directory" || stat.type === "mount") {
       await this.createDirectory(destination, "/", { parents: true });
+      this.reportProgress(operation, { detail: source, increment: 1 });
       const entries = await this.list(source);
       for (const entry of entries) {
-        await this.copyEntry(entry.path, this.os.fs.join(destination, entry.name), entry);
+        await this.copyEntry(entry.path, this.os.fs.join(destination, entry.name), entry, operation);
       }
       return;
     }
     await this.writeFileBytes(destination, await this.readFileBytes(source), "/", { mime: stat.mime || "application/octet-stream" });
+    this.reportProgress(operation, { detail: source, increment: 1 });
+  }
+
+  async countEntries(path, stat = null) {
+    const node = stat || await this.stat(path);
+    if (!node || (node.type !== "directory" && node.type !== "mount")) return 1;
+    const entries = await this.list(path);
+    let total = 1;
+    for (const entry of entries) total += await this.countEntries(entry.path, entry);
+    return total;
+  }
+
+  beginOperation(kind, source, destination, options = {}) {
+    const operation = {
+      id: ++this.operationSeq,
+      kind,
+      source,
+      destination,
+      startedAt: new Date().toISOString(),
+      finishedAt: "",
+      done: 0,
+      total: 0,
+      detail: source,
+      status: "running",
+      onProgress: options.onProgress || null,
+    };
+    this.operations = [operation, ...this.operations].slice(0, 8);
+    options.onProgress?.({ ...operation });
+    return operation;
+  }
+
+  reportProgress(operation, patch = {}) {
+    if (!operation) return;
+    if (patch.increment) operation.done += patch.increment;
+    if (patch.detail) operation.detail = patch.detail;
+    operation.updatedAt = new Date().toISOString();
+    operation.onProgress?.({ ...operation });
+  }
+
+  finishOperation(operation, error = null) {
+    if (!operation) return;
+    operation.status = error ? "error" : "complete";
+    operation.error = error?.message || "";
+    operation.finishedAt = new Date().toISOString();
+    operation.updatedAt = operation.finishedAt;
+    operation.onProgress?.({ ...operation });
+  }
+
+  operationStatus() {
+    return this.operations.map(({ onProgress: _onProgress, ...operation }) => ({ ...operation }));
   }
 
   async exists(path, cwd = "/") {
@@ -363,7 +465,7 @@ export class LocalFolderMountManager {
   }
 
   mountLines() {
-    return this.listMounts().map((mount) => `${mount.name} ${mount.path} local-folder rw 0 0`);
+    return this.listMounts().map((mount) => `${mount.name} ${mount.path} local-folder ${mount.mode === "read" ? "ro" : "rw"} 0 0`);
   }
 
   summary(mount, extra = {}) {
@@ -371,6 +473,8 @@ export class LocalFolderMountManager {
       name: mount.name,
       path: mount.path,
       handleName: mount.handleName,
+      mode: mount.mode || this.defaultMode,
+      access: mount.mode === "read" ? "read-only" : "read-write",
       type: "local-folder",
       ...extra,
     };

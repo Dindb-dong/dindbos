@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260421-files-app-2";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260422-storage-ux";
 
 export class AppRegistry {
   constructor(os) {

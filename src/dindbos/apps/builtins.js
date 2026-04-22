@@ -1,5 +1,5 @@
-import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260421-files-app-2";
-import { ShellSession } from "../shell.js?v=20260421-files-app-2";
+import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260422-storage-ux";
+import { ShellSession } from "../shell.js?v=20260422-storage-ux";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -28,7 +28,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     height: 520,
     accepts: ["inode/directory"],
     manifest: {
-      capabilities: ["app.launch", "localMount.read", "localMount.manage"],
+      capabilities: ["app.launch", "storage.manage", "localMount.read", "localMount.manage"],
       fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
     },
     render: ({ os: runtime, content, context, window }) => (
@@ -73,6 +73,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 720,
     height: 520,
     manifest: {
+      capabilities: ["storage.manage", "localMount.read", "localMount.manage"],
       fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
     },
     render: ({ os: runtime, content, context, window }) => renderText(runtime, content, context.node, window),
@@ -118,7 +119,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 520,
     height: 380,
     manifest: {
-      capabilities: ["process.read", "storage.read", "package.read", "localMount.read"],
+      capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage"],
       fileSystem: { read: ["/etc", "/proc", "/home/guest"], write: [] },
     },
     render: ({ content, os: runtime }) => renderSettings(runtime, content),
@@ -167,6 +168,7 @@ function renderFiles(os, content, path, windowApi) {
   let clickTimer = null;
   let searchQuery = "";
   let searchTimer = null;
+  let fileOperation = null;
 
   const draw = async (nextPath, nextSelectedPath = null, options = {}) => {
     currentPath = os.fs.normalize(nextPath);
@@ -179,6 +181,11 @@ function renderFiles(os, content, path, windowApi) {
     const columns = query ? buildSearchColumns(os, currentPath, selectedPath, query) : buildFileColumns(os, currentPath, selectedPath);
     const visibleCount = columns.reduce((total, column) => total + column.entries.length, 0);
     const selected = os.fs.lstat(selectedPath) || os.fs.stat(selectedPath);
+    const mountStatus = await mountStatusForPath(os, currentPath);
+    const latestMountOperation = safeRead(() => os.localMounts.operations()[0], null);
+    const visibleOperation = latestMountOperation?.status === "running"
+      ? latestMountOperation
+      : fileOperation || latestMountOperation;
     content.innerHTML = `
       <section class="files-app">
         <aside class="files-sidebar">
@@ -219,6 +226,8 @@ function renderFiles(os, content, path, windowApi) {
           <div class="files-dropzone">
             Drop files here to import into ${escapeHtml(currentPath)}. Drag rows to move them.
           </div>
+          ${mountStatus ? renderMountStatusBanner(mountStatus) : ""}
+          ${renderFilesOperation(visibleOperation)}
           <div class="files-column-view" role="tree" data-drop-target="true" data-drop-path="${escapeAttr(currentPath)}">
             ${columns.map((column) => `
               <div class="files-column" data-column="${escapeAttr(column.path)}">
@@ -300,13 +309,18 @@ function renderFiles(os, content, path, windowApi) {
         button.addEventListener("drop", async (event) => {
           event.preventDefault();
           button.classList.remove("is-drop-target");
-          await handleFilesDrop(os, event, button.dataset.dropPath, draw, windowApi);
+          await handleFilesDrop(os, event, button.dataset.dropPath, draw, windowApi, content);
         });
       }
     });
     content.querySelectorAll("[data-action]").forEach((button) => {
       button.addEventListener("click", async () => {
         await runAction(button.dataset.action);
+      });
+    });
+    content.querySelectorAll("[data-mount-action]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        await runAction(button.dataset.mountAction, button.dataset.mountPath || currentPath);
       });
     });
     content.addEventListener("contextmenu", (event) => {
@@ -328,7 +342,7 @@ function renderFiles(os, content, path, windowApi) {
     dropTarget.addEventListener("drop", async (event) => {
       event.preventDefault();
       setDragging(false);
-      await handleFilesDrop(os, event, currentPath, draw, windowApi);
+      await handleFilesDrop(os, event, currentPath, draw, windowApi, content);
     });
     if (options.focusSearch) {
       const nextSearchInput = content.querySelector("[data-files-search]");
@@ -337,12 +351,17 @@ function renderFiles(os, content, path, windowApi) {
     }
   };
   const runAction = async (action, actionPath = selectedPath) => {
+    const reporter = createFilesOperationReporter(content, operationLabel(action));
     try {
-      const result = await handleFileAction(os, currentPath, actionPath, action, { clipboard });
+      const result = await handleFileAction(os, currentPath, actionPath, action, { clipboard, reporter });
       if (Object.hasOwn(result, "clipboard")) clipboard = result.clipboard;
+      await os.storage?.flush?.();
+      if (reporter.started) fileOperation = reporter.complete("Complete");
       await draw(result.path || currentPath, result.selectedPath || result.path || currentPath);
     } catch (error) {
+      if (reporter.started) fileOperation = reporter.fail(error);
       windowApi.setTitle(`Files - ${error.message}`);
+      updateFilesOperation(content, fileOperation);
     }
   };
   draw(path);
@@ -407,6 +426,146 @@ function renderBreadcrumb(os, currentPath) {
   `).join("");
 }
 
+async function mountStatusForPath(os, currentPath) {
+  if (!os.localMounts?.isMountedPath(currentPath)) return null;
+  const normalized = os.fs.normalize(currentPath);
+  const statuses = await os.localMounts.status();
+  return statuses.find((mount) => (
+    normalized === mount.path || normalized.startsWith(`${mount.path}/`)
+  )) || null;
+}
+
+function renderMountStatusBanner(mount) {
+  const status = mount.status || mount.permission || "mounted";
+  const needsAccess = status !== "mounted" || (mount.permission && mount.permission !== "granted");
+  return `
+    <div class="files-mount-banner" data-mount-status="${escapeAttr(status)}">
+      <div>
+        <strong>${escapeHtml(mount.handleName || mount.name || mount.path)}</strong>
+        <span>${escapeHtml(mount.path)} · ${escapeHtml(mount.access || mount.mode || "local folder")} · ${escapeHtml(status)}</span>
+        ${mount.error ? `<small>${escapeHtml(mount.error)}</small>` : ""}
+      </div>
+      <div>
+        ${needsAccess ? `<button type="button" data-mount-action="remount-mount" data-mount-path="${escapeAttr(mount.path)}">Allow Access</button>` : ""}
+        <button type="button" data-mount-action="remount-mount" data-mount-path="${escapeAttr(mount.path)}">Sync</button>
+        <button type="button" data-mount-action="forget-mount" data-mount-path="${escapeAttr(mount.path)}">Forget</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderFilesOperation(operation) {
+  if (!operation) return `<div class="files-operation" data-empty="true"></div>`;
+  const total = Number(operation.total || 0);
+  const done = Number(operation.done || 0);
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  const status = operation.status || "running";
+  const label = operation.label || operation.kind || "operation";
+  const detail = operation.error || operation.detail || operation.source || "";
+  return `
+    <div class="files-operation" data-operation-status="${escapeAttr(status)}">
+      <div>
+        <strong>${escapeHtml(label)}</strong>
+        <span>${total > 0 ? `${done}/${total}` : status} · ${escapeHtml(detail)}</span>
+      </div>
+      <div class="files-operation-meter" aria-label="${escapeAttr(label)} progress">
+        <span style="width:${percent}%"></span>
+      </div>
+    </div>
+  `;
+}
+
+function updateFilesOperation(content, operation) {
+  const target = content.querySelector(".files-operation");
+  if (target) target.outerHTML = renderFilesOperation(operation);
+}
+
+function createFilesOperationReporter(content, label) {
+  const reporter = {
+    label,
+    started: false,
+    state: null,
+    start(total = 0, detail = "") {
+      this.started = true;
+      this.state = {
+        id: `files-${Date.now()}`,
+        label: this.label,
+        kind: this.label,
+        total,
+        done: 0,
+        detail,
+        status: "running",
+        startedAt: new Date().toISOString(),
+      };
+      updateFilesOperation(content, this.state);
+      return this.state;
+    },
+    progress(operation = {}) {
+      if (!this.started) this.start(operation.total || 0, operation.detail || operation.source || "");
+      this.state = {
+        ...this.state,
+        ...operation,
+        label: this.label,
+        status: operation.status || this.state.status || "running",
+      };
+      updateFilesOperation(content, this.state);
+      return this.state;
+    },
+    step(detail = "", increment = 1) {
+      if (!this.started) this.start(0, detail);
+      this.state = {
+        ...this.state,
+        done: Number(this.state.done || 0) + increment,
+        detail: detail || this.state.detail,
+        status: "running",
+      };
+      updateFilesOperation(content, this.state);
+      return this.state;
+    },
+    complete(detail = "Complete") {
+      if (!this.started) this.start(1, detail);
+      this.state = {
+        ...this.state,
+        done: this.state.total || this.state.done || 1,
+        detail,
+        status: "complete",
+        finishedAt: new Date().toISOString(),
+      };
+      updateFilesOperation(content, this.state);
+      return this.state;
+    },
+    fail(error) {
+      if (!this.started) this.start(1, error?.message || "Failed");
+      this.state = {
+        ...this.state,
+        detail: error?.message || String(error),
+        error: error?.message || String(error),
+        status: "error",
+        finishedAt: new Date().toISOString(),
+      };
+      updateFilesOperation(content, this.state);
+      return this.state;
+    },
+  };
+  return reporter;
+}
+
+function operationLabel(action) {
+  return ({
+    copy: "Copy",
+    paste: "Paste",
+    duplicate: "Duplicate",
+    trash: "Move to Trash",
+    delete: "Delete",
+    import: "Import",
+    export: "Export",
+    rename: "Rename",
+    "mount-local": "Mount Local Folder",
+    "remount-mount": "Request Folder Access",
+    "forget-mount": "Forget Folder Mount",
+  })[action] || action;
+}
+
 function showFilesContextMenu(content, event, targetPath, clipboard, runAction) {
   content.querySelector(".files-context-menu")?.remove();
   const menu = document.createElement("div");
@@ -443,17 +602,21 @@ function showFilesContextMenu(content, event, targetPath, clipboard, runAction) 
   }, 0);
 }
 
-async function handleFilesDrop(os, event, destinationPath, draw, windowApi) {
+async function handleFilesDrop(os, event, destinationPath, draw, windowApi, content) {
+  const reporter = createFilesOperationReporter(content, "Drop");
   try {
     const sourcePath = event.dataTransfer?.getData("application/x-dindbos-path");
     if (sourcePath) {
-      const moved = await movePathIntoDirectory(os, sourcePath, destinationPath);
+      const moved = await movePathIntoDirectory(os, sourcePath, destinationPath, reporter);
+      reporter.complete("Complete");
       await draw(destinationPath, moved);
       return;
     }
-    const imported = await importDroppedFiles(os, destinationPath, event.dataTransfer?.files || []);
+    const imported = await importDroppedFiles(os, destinationPath, event.dataTransfer?.files || [], reporter);
+    reporter.complete("Complete");
     await draw(destinationPath, imported[0] || destinationPath);
   } catch (error) {
+    reporter.fail(error);
     windowApi.setTitle(`Files - ${error.message}`);
   }
 }
@@ -500,10 +663,25 @@ function permissionSummary(mode = "") {
 }
 
 async function handleFileAction(os, currentPath, selectedPath, action, state = {}) {
+  const reporter = state.reporter || null;
   if (action === "mount-local") {
     if (!os.localMounts?.supported()) throw new Error("File System Access API is not available");
+    reporter?.start(1, "Waiting for folder picker");
     const mount = await os.localMounts.mountLocal();
+    reporter?.step(mount.path);
     return { path: mount.path, selectedPath: mount.path };
+  }
+  if (action === "remount-mount") {
+    reporter?.start(1, selectedPath);
+    const mount = await os.localMounts.requestAccess(selectedPath);
+    reporter?.step(mount.path);
+    return { path: mount.path, selectedPath: mount.path };
+  }
+  if (action === "forget-mount") {
+    reporter?.start(1, selectedPath);
+    await os.localMounts.forgetMount(selectedPath);
+    reporter?.step(selectedPath);
+    return { path: os.session.home || "/", selectedPath: os.session.home || "/" };
   }
   if (action === "new-folder") {
     const target = uniquePath(os, currentPath, "untitled-folder");
@@ -534,13 +712,13 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
     const nextName = prompt("Rename", currentName);
     if (!nextName || nextName === currentName) return { path: currentPath, selectedPath: target };
     const destination = os.fs.join(os.fs.dirname(target), sanitizeFileName(nextName));
-    await movePath(os, target, destination);
+    await movePath(os, target, destination, reporter);
     return { path: os.fs.dirname(destination), selectedPath: destination };
   }
   if (action === "duplicate") {
     const target = actionTarget(currentPath, selectedPath);
     const destination = await uniqueDestinationPath(os, os.fs.dirname(target), duplicateName(os.fs.basename(target)));
-    await copyPath(os, target, destination);
+    await copyPath(os, target, destination, reporter);
     return { path: os.fs.dirname(destination), selectedPath: destination };
   }
   if (action === "copy") {
@@ -553,32 +731,32 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
   }
   if (action === "paste") {
     if (!state.clipboard?.path) throw new Error("Clipboard is empty");
-    const pasted = await copyPathIntoDirectory(os, state.clipboard.path, currentPath);
+    const pasted = await copyPathIntoDirectory(os, state.clipboard.path, currentPath, reporter);
     return { path: currentPath, selectedPath: pasted, clipboard: state.clipboard };
   }
   if (action === "trash") {
     const target = actionTarget(currentPath, selectedPath);
-    const trashed = await movePathToTrash(os, target);
+    const trashed = await movePathToTrash(os, target, reporter);
     return { path: currentPath, selectedPath: trashed };
   }
   if (action === "import") {
-    const imported = await importFilesWithPicker(os, currentPath);
+    const imported = await importFilesWithPicker(os, currentPath, reporter);
     return { path: currentPath, selectedPath: imported[0] || currentPath };
   }
   if (action === "export") {
-    if (selectedPath === currentPath) await exportPath(os, currentPath);
-    else await exportPath(os, selectedPath);
+    if (selectedPath === currentPath) await exportPath(os, currentPath, reporter);
+    else await exportPath(os, selectedPath, reporter);
     return { path: currentPath, selectedPath };
   }
   if (action === "delete") {
     const target = actionTarget(currentPath, selectedPath);
-    await removePath(os, target);
+    await removePath(os, target, reporter);
     return { path: currentPath, selectedPath: currentPath };
   }
   return { path: currentPath, selectedPath };
 }
 
-async function importFilesWithPicker(os, currentPath) {
+async function importFilesWithPicker(os, currentPath, reporter = null) {
   const input = document.createElement("input");
   input.type = "file";
   input.multiple = true;
@@ -589,32 +767,36 @@ async function importFilesWithPicker(os, currentPath) {
       input.addEventListener("change", () => resolve(input.files || []), { once: true });
       input.click();
     });
-    return importDroppedFiles(os, currentPath, files);
+    return importDroppedFiles(os, currentPath, files, reporter);
   } finally {
     input.remove();
   }
 }
 
-async function importDroppedFiles(os, currentPath, fileList) {
+async function importDroppedFiles(os, currentPath, fileList, reporter = null) {
   const files = [...fileList];
   const imported = [];
+  if (files.length) reporter?.start(files.length, `Importing ${files.length} file${files.length === 1 ? "" : "s"}`);
   for (const file of files) {
     if (file.name.endsWith(".dindbos-export.json")) {
       imported.push(...await importDindbArchive(os, currentPath, file));
+      reporter?.step(file.name);
       continue;
     }
     const target = await allocateImportPath(os, currentPath, file.name || "upload.bin");
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.writeFileBlob(target, file, "/", { mime: file.type || mimeFromName(target) });
     else await os.fs.writeOrCreateFileBlob(target, file, "/", { mime: file.type || mimeFromName(target), owner: "guest", group: "users", permissions: "-rw-r--r--" });
     imported.push(target);
+    reporter?.step(target);
   }
   return imported;
 }
 
-async function importDindbArchive(os, currentPath, file) {
+async function importDindbArchive(os, currentPath, file, reporter = null) {
   const archive = JSON.parse(await file.text());
   if (archive?.kind !== "dindbos-export-v1" || !Array.isArray(archive.entries)) throw new Error("Invalid DindbOS export");
   const imported = [];
+  if (!reporter?.started) reporter?.start(archive.entries.length, file.name || "archive");
   for (const entry of archive.entries) {
     const relative = sanitizeRelativePath(entry.path || entry.name || "file.bin");
     const target = await allocateImportPath(os, currentPath, relative);
@@ -627,6 +809,7 @@ async function importDindbArchive(os, currentPath, file) {
       permissions: entry.permissions || "-rw-r--r--",
     });
     imported.push(target);
+    reporter?.step(target);
   }
   return imported;
 }
@@ -672,57 +855,69 @@ function actionTarget(currentPath, selectedPath) {
   return selectedPath;
 }
 
-async function copyPathIntoDirectory(os, sourcePath, directoryPath) {
+async function copyPathIntoDirectory(os, sourcePath, directoryPath, reporter = null) {
   const destination = await uniqueDestinationPath(os, directoryPath, os.fs.basename(sourcePath));
-  await copyPath(os, sourcePath, destination);
+  await copyPath(os, sourcePath, destination, reporter);
   return destination;
 }
 
-async function movePathIntoDirectory(os, sourcePath, directoryPath) {
+async function movePathIntoDirectory(os, sourcePath, directoryPath, reporter = null) {
   const normalizedSource = os.fs.normalize(sourcePath);
   const normalizedDirectory = os.fs.normalize(directoryPath);
   if (normalizedSource === normalizedDirectory || normalizedDirectory.startsWith(`${normalizedSource}/`)) {
     throw new Error("Cannot move a folder into itself");
   }
   const destination = await uniqueDestinationPath(os, normalizedDirectory, os.fs.basename(normalizedSource));
-  await movePath(os, normalizedSource, destination);
+  await movePath(os, normalizedSource, destination, reporter);
   return destination;
 }
 
-async function copyPath(os, sourcePath, destinationPath) {
+async function copyPath(os, sourcePath, destinationPath, reporter = null) {
   const sourceLocal = os.localMounts?.isMountedPath(sourcePath);
   const destinationLocal = os.localMounts?.isMountedPath(destinationPath);
   if (sourceLocal && destinationLocal) {
-    await os.localMounts.copy(sourcePath, destinationPath, "/", { recursive: true });
+    await os.localMounts.copy(sourcePath, destinationPath, "/", {
+      recursive: true,
+      onProgress: (operation) => reporter?.progress(operation),
+    });
     return;
   }
   if (!sourceLocal && !destinationLocal) {
+    reporter?.start(countVirtualEntries(os, sourcePath), sourcePath);
     os.fs.copy(sourcePath, destinationPath, "/", { recursive: true });
+    reporter?.complete(destinationPath);
     return;
   }
   if (sourceLocal) {
-    await copyLocalToVirtual(os, sourcePath, destinationPath);
+    reporter?.start(await countLocalEntries(os, sourcePath), sourcePath);
+    await copyLocalToVirtual(os, sourcePath, destinationPath, reporter);
     return;
   }
-  await copyVirtualToLocal(os, sourcePath, destinationPath);
+  reporter?.start(countVirtualEntries(os, sourcePath), sourcePath);
+  await copyVirtualToLocal(os, sourcePath, destinationPath, reporter);
 }
 
-async function movePath(os, sourcePath, destinationPath) {
+async function movePath(os, sourcePath, destinationPath, reporter = null) {
   const sourceLocal = os.localMounts?.isMountedPath(sourcePath);
   const destinationLocal = os.localMounts?.isMountedPath(destinationPath);
   if (sourceLocal && destinationLocal) {
-    await os.localMounts.move(sourcePath, destinationPath, "/", { recursive: true });
+    await os.localMounts.move(sourcePath, destinationPath, "/", {
+      recursive: true,
+      onProgress: (operation) => reporter?.progress(operation),
+    });
     return;
   }
   if (!sourceLocal && !destinationLocal) {
+    reporter?.start(countVirtualEntries(os, sourcePath), sourcePath);
     os.fs.move(sourcePath, destinationPath, "/");
+    reporter?.complete(destinationPath);
     return;
   }
-  await copyPath(os, sourcePath, destinationPath);
-  await removePath(os, sourcePath);
+  await copyPath(os, sourcePath, destinationPath, reporter);
+  await removePath(os, sourcePath, reporter);
 }
 
-async function copyLocalToVirtual(os, sourcePath, destinationPath) {
+async function copyLocalToVirtual(os, sourcePath, destinationPath, reporter = null) {
   const stat = await os.localMounts.stat(sourcePath);
   if (stat.type === "directory" || stat.type === "mount") {
     os.fs.createDirectory(destinationPath, "/", {
@@ -730,9 +925,10 @@ async function copyLocalToVirtual(os, sourcePath, destinationPath) {
       group: stat.group || "users",
       permissions: stat.permissions || "drwxr-xr-x",
     });
+    reporter?.step(sourcePath);
     const entries = await os.localMounts.list(sourcePath);
     for (const entry of entries) {
-      await copyLocalToVirtual(os, entry.path, os.fs.join(destinationPath, entry.name));
+      await copyLocalToVirtual(os, entry.path, os.fs.join(destinationPath, entry.name), reporter);
     }
     return;
   }
@@ -742,36 +938,59 @@ async function copyLocalToVirtual(os, sourcePath, destinationPath) {
     group: stat.group || "users",
     permissions: stat.permissions || "-rw-r--r--",
   });
+  reporter?.step(sourcePath);
 }
 
-async function copyVirtualToLocal(os, sourcePath, destinationPath) {
+async function copyVirtualToLocal(os, sourcePath, destinationPath, reporter = null) {
   const stat = os.fs.stat(sourcePath);
   if (!stat) throw new Error(`copy: ${sourcePath}: no such file or directory`);
   if (stat.type === "directory" || stat.type === "mount") {
     await os.localMounts.createDirectory(destinationPath, "/", { parents: true });
+    reporter?.step(sourcePath);
     for (const entry of os.fs.list(sourcePath)) {
-      await copyVirtualToLocal(os, entry.path, os.fs.join(destinationPath, entry.name));
+      await copyVirtualToLocal(os, entry.path, os.fs.join(destinationPath, entry.name), reporter);
     }
     return;
   }
   await os.localMounts.writeFileBytes(destinationPath, os.fs.readFileBytes(sourcePath), "/", { mime: stat.mime || mimeFromName(destinationPath) });
+  reporter?.step(sourcePath);
 }
 
-async function removePath(os, path) {
+function countVirtualEntries(os, path) {
+  const stat = os.fs.stat(path);
+  if (!stat) return 0;
+  if (stat.type !== "directory" && stat.type !== "mount") return 1;
+  return 1 + os.fs.list(path).reduce((total, entry) => total + countVirtualEntries(os, entry.path), 0);
+}
+
+async function countLocalEntries(os, path) {
+  const stat = await os.localMounts.stat(path);
+  if (!stat || (stat.type !== "directory" && stat.type !== "mount")) return 1;
+  const entries = await os.localMounts.list(path);
+  let total = 1;
+  for (const entry of entries) total += await countLocalEntries(os, entry.path);
+  return total;
+}
+
+async function removePath(os, path, reporter = null) {
+  const ownsProgress = reporter && !reporter.started;
+  if (ownsProgress) reporter.start(1, path);
   if (os.localMounts?.isMountedPath(path)) {
     await os.localMounts.remove(path, "/", { recursive: true });
+    if (ownsProgress) reporter.step(path);
     return;
   }
   os.fs.remove(path, "/", { recursive: true });
+  if (ownsProgress) reporter.step(path);
 }
 
-async function movePathToTrash(os, path) {
+async function movePathToTrash(os, path, reporter = null) {
   const trashRoot = os.fs.join(os.session.home || "/home/guest", ".Trash");
   if (path === trashRoot || path.startsWith(`${trashRoot}/`)) throw new Error("Already in Trash");
   ensureVirtualDirectory(os, trashRoot);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const destination = await uniqueDestinationPath(os, trashRoot, `${stamp}-${os.fs.basename(path)}`);
-  await movePath(os, path, destination);
+  await movePath(os, path, destination, reporter);
   return destination;
 }
 
@@ -809,12 +1028,16 @@ function sanitizeFileName(name) {
   return cleaned;
 }
 
-async function exportPath(os, path) {
+async function exportPath(os, path, reporter = null) {
   const normalized = os.fs.normalize(path);
   const node = os.fs.resolve(normalized) || os.fs.lstat(normalized);
   if (!node) throw new Error(`export: no such path: ${path}`);
+  const exportTotal = node.type === "directory" || node.type === "mount"
+    ? (os.localMounts?.isMountedPath(normalized) ? await countLocalEntries(os, normalized) : countVirtualEntries(os, normalized))
+    : 1;
+  reporter?.start(exportTotal, normalized);
   if (node.type === "directory" || node.type === "mount") {
-    const entries = await collectExportEntries(os, normalized);
+    const entries = await collectExportEntries(os, normalized, reporter);
     downloadBytes(`${os.fs.basename(normalized)}.dindbos-export.json`, new TextEncoder().encode(JSON.stringify({
       kind: "dindbos-export-v1",
       exportedAt: new Date().toISOString(),
@@ -828,20 +1051,23 @@ async function exportPath(os, path) {
     ? await os.localMounts.readFileBytes(normalized)
     : os.fs.readFileBytes(normalized);
   downloadBytes(node.name || os.fs.basename(normalized), bytes, stat?.mime || "application/octet-stream");
+  reporter?.step(normalized);
 }
 
-async function collectExportEntries(os, rootPath) {
+async function collectExportEntries(os, rootPath, reporter = null) {
   const root = os.fs.normalize(rootPath);
   const entries = [];
   const walk = async (path) => {
     if (os.localMounts?.isMountedPath(path)) await os.localMounts.syncDirectory(path);
     const node = os.fs.resolve(path);
     if (!node || node.type === "mount") {
+      reporter?.step(path);
       const localEntries = await os.localMounts.list(path);
       for (const entry of localEntries) await walk(entry.path);
       return;
     }
     if (node.type === "directory") {
+      reporter?.step(path);
       for (const entry of os.fs.list(path)) await walk(entry.path);
       return;
     }
@@ -859,6 +1085,7 @@ async function collectExportEntries(os, rootPath) {
       group: stat?.group || node.group || "users",
       data: bytesToBase64(bytes),
     });
+    reporter?.step(path);
   };
   await walk(root);
   return entries;
@@ -899,8 +1126,32 @@ function uniquePath(os, directory, name) {
 }
 
 function renderText(os, content, node, windowApi) {
-  const stat = os.fs.stat(node.path);
-  const initialContent = node?.path ? os.fs.readFile(node.path) : node?.content || "";
+  content.innerHTML = `
+    <section class="text-app">
+      <textarea spellcheck="false" disabled>Loading...</textarea>
+      <footer>
+        <span>${escapeHtml(node?.path || "")}</span>
+        <button type="button" disabled>Save</button>
+      </footer>
+    </section>
+  `;
+  renderTextEditor(os, content, node, windowApi).catch((error) => {
+    content.innerHTML = `
+      <section class="text-app">
+        <textarea spellcheck="false" disabled>${escapeHtml(error.message)}</textarea>
+        <footer><span>${escapeHtml(error.message)}</span></footer>
+      </section>
+    `;
+    windowApi.setTitle(`${node?.name || "TextEdit"} - load failed`);
+  });
+}
+
+async function renderTextEditor(os, content, node, windowApi) {
+  const isLocal = Boolean(node?.path && os.localMounts?.isMountedPath(node.path));
+  const stat = isLocal ? await os.localMounts.stat(node.path) : os.fs.stat(node.path);
+  const initialContent = node?.path
+    ? (isLocal ? await os.localMounts.readFile(node.path) : os.fs.readFile(node.path))
+    : node?.content || "";
   content.innerHTML = `
     <section class="text-app">
       <textarea spellcheck="false">${escapeHtml(initialContent)}</textarea>
@@ -912,11 +1163,17 @@ function renderText(os, content, node, windowApi) {
   `;
   const textarea = content.querySelector("textarea");
   const footer = content.querySelector("footer span");
-  const save = () => {
+  const save = async () => {
     try {
-      os.fs.writeFile(node.path, textarea.value);
-      node.content = os.fs.readFile(node.path);
-      const nextStat = os.fs.stat(node.path);
+      if (isLocal) {
+        await os.localMounts.writeFile(node.path, textarea.value);
+        node.content = textarea.value;
+      } else {
+        os.fs.writeFile(node.path, textarea.value);
+        node.content = os.fs.readFile(node.path);
+        await os.storage?.flush?.();
+      }
+      const nextStat = isLocal ? await os.localMounts.stat(node.path) : os.fs.stat(node.path);
       footer.textContent = `${node.path} · ${nextStat?.permissions || ""} · saved ${shortTime(nextStat?.modified)}`;
       windowApi.setTitle(`${node.name} - saved`);
     } catch (error) {
@@ -1073,10 +1330,30 @@ function renderCalculator(content) {
 }
 
 function renderSettings(os, content) {
+  content.innerHTML = `
+    <section class="settings-app">
+      <p class="dos-kicker">System</p>
+      <h2>DindbOS.js Runtime</h2>
+      <p class="settings-muted">Loading runtime status...</p>
+    </section>
+  `;
+  renderSettingsContent(os, content).catch((error) => {
+    content.innerHTML = `
+      <section class="settings-app">
+        <p class="dos-kicker">System</p>
+        <h2>DindbOS.js Runtime</h2>
+        <pre>${escapeHtml(error.message)}</pre>
+      </section>
+    `;
+  });
+}
+
+async function renderSettingsContent(os, content) {
   const processes = safeRead(() => os.processes.list(), []);
-  const storage = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
+  const storageStatus = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
+  const storage = await safeReadAsync(() => os.storage.estimate(), storageStatus);
   const packages = safeRead(() => os.packages.list(), []);
-  const mounts = ["/", "/mnt/portfolio", ...safeRead(() => os.localMounts.listMounts().map((mount) => mount.path), [])];
+  const mounts = await safeReadAsync(() => os.localMounts.status(), []);
   content.innerHTML = `
     <section class="settings-app">
       <p class="dos-kicker">System</p>
@@ -1087,17 +1364,94 @@ function renderSettings(os, content) {
         <div><dt>Apps</dt><dd>${os.apps.list().length}</dd></div>
         <div><dt>Packages</dt><dd>${packages.length}</dd></div>
         <div><dt>Processes</dt><dd>${processes.length}</dd></div>
-        <div><dt>Storage</dt><dd>${escapeHtml(storage.backend || "memory")} · ${storage.persisted ? `${formatBytes(storage.bytes)} saved` : "not saved"}</dd></div>
+        <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(storage)}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(os.fs.join(os.session.home || "/home/guest", "Desktop"))}</dd></div>
-        <div><dt>Mounts</dt><dd>${escapeHtml(mounts.join(", "))}</dd></div>
+        <div><dt>Local Mounts</dt><dd>${mounts.length ? `${mounts.length} folder${mounts.length === 1 ? "" : "s"}` : "none"}</dd></div>
       </dl>
+      <section class="settings-panel">
+        <header>
+          <h3>Save Engine</h3>
+          <button type="button" data-settings-action="flush-storage">Flush now</button>
+        </header>
+        <p>${escapeHtml(formatStorageState(storage))}</p>
+      </section>
+      <section class="settings-panel">
+        <header>
+          <h3>Local Folders</h3>
+          <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
+        </header>
+        ${renderSettingsMounts(mounts)}
+      </section>
     </section>
+  `;
+  content.querySelectorAll("[data-settings-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        if (button.dataset.settingsAction === "flush-storage") await os.storage.flush();
+        if (button.dataset.settingsAction === "restore-mounts") await os.localMounts.restorePersistedMounts({ request: true });
+        if (button.dataset.settingsAction === "remount") await os.localMounts.requestAccess(button.dataset.mountPath);
+        if (button.dataset.settingsAction === "forget") await os.localMounts.forgetMount(button.dataset.mountPath);
+      } finally {
+        renderSettings(os, content);
+      }
+    });
+  });
+}
+
+function renderSettingsStorageStatus(storage) {
+  return [
+    escapeHtml(storage.backend || "memory"),
+    storage.writePending || storage.persistPending || storage.persistInFlight ? "pending" : "idle",
+    storage.persisted || storage.persistLastFlushedAt ? `${formatBytes(storage.bytes || storage.usage)} saved` : "not saved",
+    storage.quota ? `${formatBytes(storage.usage)} / ${formatBytes(storage.quota)}` : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function formatStorageState(storage) {
+  return [
+    `backend=${storage.backend || "memory"}`,
+    `format=${storage.storageFormat || "unknown"}`,
+    `pending=${Boolean(storage.writePending || storage.persistPending || storage.persistInFlight)}`,
+    `flushes=${storage.persistFlushes || 0}`,
+    storage.lastWriteCompletedAt ? `lastWrite=${shortTime(storage.lastWriteCompletedAt)}` : "",
+    storage.persistLastFlushedAt ? `lastFlush=${shortTime(storage.persistLastFlushedAt)} (${storage.persistLastFlushDurationMs || 0}ms)` : "",
+    storage.lastWriteError || storage.persistLastFlushError ? `error=${storage.lastWriteError || storage.persistLastFlushError}` : "",
+  ].filter(Boolean).join(" · ");
+}
+
+function renderSettingsMounts(mounts) {
+  if (!mounts.length) return `<p class="settings-muted">No local folders are saved yet.</p>`;
+  return `
+    <div class="settings-mount-list">
+      ${mounts.map((mount) => `
+        <article class="settings-mount-card" data-mount-status="${escapeAttr(mount.status || "")}">
+          <div>
+            <strong>${escapeHtml(mount.handleName || mount.name || mount.path)}</strong>
+            <span>${escapeHtml(mount.path)} · ${escapeHtml(mount.access || mount.mode || "local folder")} · ${escapeHtml(mount.status || "unknown")}</span>
+            ${mount.error ? `<small>${escapeHtml(mount.error)}</small>` : ""}
+          </div>
+          <div>
+            <button type="button" data-settings-action="remount" data-mount-path="${escapeAttr(mount.path)}">Allow</button>
+            <button type="button" data-settings-action="forget" data-mount-path="${escapeAttr(mount.path)}">Forget</button>
+          </div>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 
 function safeRead(reader, fallback) {
   try {
     return reader();
+  } catch {
+    return fallback;
+  }
+}
+
+async function safeReadAsync(reader, fallback) {
+  try {
+    return await reader();
   } catch {
     return fallback;
   }

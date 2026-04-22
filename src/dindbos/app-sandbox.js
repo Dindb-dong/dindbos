@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260421-files-app-2";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260422-storage-ux";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -275,7 +275,15 @@ export class AppSandbox {
     return {
       status: () => {
         this.assertCapability("storage.read");
-        return this.os.storage.status();
+        return { ...this.os.storage.status(), ...this.os.persistenceStatus?.() };
+      },
+      estimate: async () => {
+        this.assertCapability("storage.read");
+        return { ...await this.os.storage.estimate(), ...this.os.persistenceStatus?.() };
+      },
+      flush: async () => {
+        this.assertCapability("storage.manage");
+        return this.os.flushPersistentFileSystem?.();
       },
       resetFileSystem: () => {
         this.assertCapability("storage.manage");
@@ -308,9 +316,17 @@ export class AppSandbox {
         this.assertCapability("localMount.manage");
         return this.os.localMounts.restorePersistedMounts(options);
       },
+      requestAccess: (path, options = {}) => {
+        this.assertCapability("localMount.manage");
+        return this.os.localMounts.requestAccess(path, options);
+      },
       forgetMount: (path) => {
         this.assertCapability("localMount.manage");
         return this.os.localMounts.forgetMount(path);
+      },
+      operations: () => {
+        this.assertCapability("localMount.read");
+        return this.os.localMounts.operationStatus();
       },
       isMountedPath: (path, cwd = this.process.cwd) => this.os.localMounts.isMountedPath(path, cwd),
       syncDirectory: (path) => this.os.localMounts.syncDirectory(path),

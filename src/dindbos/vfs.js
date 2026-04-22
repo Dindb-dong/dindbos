@@ -1,4 +1,4 @@
-import { cloneFileContent, fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent, normalizeFileContentAsync } from "./file-data.js?v=20260421-files-app-2";
+import { cloneFileContent, fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent, normalizeFileContentAsync } from "./file-data.js?v=20260422-storage-ux";
 
 export class VirtualFileSystem {
   constructor(rootNode, options = {}) {
