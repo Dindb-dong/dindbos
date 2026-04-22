@@ -19,10 +19,12 @@ Current implementation:
 - VFS exposes binary-safe byte read/write APIs while keeping text APIs compatible.
 - In-memory binary file nodes use native `Uint8Array`; base64 is only used at persistence/export boundaries.
 - Files.app supports browser file import, DindbOS archive export/import, and drag and drop upload.
+- Files.app shows local mount permission state, reconnect/sync/forget actions, and copy/move/import/export progress.
 - IndexedDB, localStorage, and memory remain fallbacks for snapshot storage.
 - `storage` reports backend, saved bytes, and browser quota estimates when available.
 - `storage persist` requests persistent browser storage.
 - `storage flush` forces pending filesystem writes to commit immediately.
+- Settings.app exposes storage quota, pending write state, manual flush, and local mount management.
 - `mount-local [name]` uses File System Access API to mount a user-selected folder under `/mnt`.
 - `mount-local --list` reports persisted and runtime local mounts.
 - `mount-local --restore` requests permission again and reconnects persisted local mounts.
@@ -59,5 +61,5 @@ Known limits:
 - Blob/File inputs are normalized into in-memory `Uint8Array` nodes before persistence
 - persistence still walks the in-memory tree to compute record hashes
 - page unload flushing is best-effort because browsers may stop asynchronous storage work during shutdown
-- directory copy between OPFS and local mounts is pending
+- directory copy between internal VFS paths and local mounts works, but large trees still run on the main thread
 - browser support is strongest in Chromium-based browsers

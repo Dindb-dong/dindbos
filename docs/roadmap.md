@@ -38,7 +38,11 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 - Files.app import/export
 - Files.app drag and drop upload
 - native Uint8Array file nodes with Blob/File import adapters
-- next: richer local mount permission UX, stronger unload flush guarantees
+- Files.app local mount permission banner with reconnect/sync/forget controls
+- Files.app copy/move/import/export progress reporting
+- Settings storage flush, quota, persistence, and local mount management panel
+- lifecycle flush status and write-pending status
+- remaining: stronger browser shutdown guarantees, Cache API package/document cache, Storage Buckets where available
 
 ## 3. Package System
 
@@ -145,4 +149,4 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 
 ## Current Priority
 
-Files.app and local mount UX. The filesystem now stores real bytes, so the next proof point is making files feel movable, searchable, inspectable, and recoverable through the desktop.
+Storage and local mount UX are now usable enough for daily testing. The next proof point is process/activity visibility and app lifecycle polish so DindbOS feels like a runtime, not only a filesystem demo.
