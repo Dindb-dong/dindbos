@@ -1,16 +1,16 @@
-import { AppRegistry } from "./app-registry.js?v=20260421-files-app-2";
-import { AppSandbox } from "./app-sandbox.js?v=20260421-files-app-2";
-import { DesktopShell } from "./desktop-shell.js?v=20260421-files-app-2";
-import { EventBus } from "./event-bus.js?v=20260421-files-app-2";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260421-files-app-2";
-import { NodeCompat } from "./node-compat.js?v=20260421-files-app-2";
-import { NpmInstaller } from "./npm-installer.js?v=20260421-files-app-2";
-import { PackageManager } from "./package-manager.js?v=20260421-files-app-2";
-import { PermissionPolicy } from "./permission-policy.js?v=20260421-files-app-2";
-import { PersistentStorage } from "./persistent-storage.js?v=20260421-files-app-2";
-import { ProcessManager } from "./process-manager.js?v=20260421-files-app-2";
-import { VirtualFileSystem } from "./vfs.js?v=20260421-files-app-2";
-import { WindowManager } from "./window-manager.js?v=20260421-files-app-2";
+import { AppRegistry } from "./app-registry.js?v=20260422-storage-ux";
+import { AppSandbox } from "./app-sandbox.js?v=20260422-storage-ux";
+import { DesktopShell } from "./desktop-shell.js?v=20260422-storage-ux";
+import { EventBus } from "./event-bus.js?v=20260422-storage-ux";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260422-storage-ux";
+import { NodeCompat } from "./node-compat.js?v=20260422-storage-ux";
+import { NpmInstaller } from "./npm-installer.js?v=20260422-storage-ux";
+import { PackageManager } from "./package-manager.js?v=20260422-storage-ux";
+import { PermissionPolicy } from "./permission-policy.js?v=20260422-storage-ux";
+import { PersistentStorage } from "./persistent-storage.js?v=20260422-storage-ux";
+import { ProcessManager } from "./process-manager.js?v=20260422-storage-ux";
+import { VirtualFileSystem } from "./vfs.js?v=20260422-storage-ux";
+import { WindowManager } from "./window-manager.js?v=20260422-storage-ux";
 
 export class DindbOS {
   constructor(options = {}) {
@@ -31,7 +31,10 @@ export class DindbOS {
       flushed: 0,
       lastAction: "",
       lastPath: "",
+      lastFlushStartedAt: "",
       lastFlushedAt: "",
+      lastFlushDurationMs: 0,
+      lastFlushError: "",
     };
     this.initialFileSystem = options.fileSystem;
     this.fs = this.createFileSystem(options.fileSystem);
@@ -128,6 +131,9 @@ export class DindbOS {
       return this.persistenceStatus();
     }
     this.persisting = true;
+    const startedAt = Date.now();
+    this.persistenceStats.lastFlushStartedAt = new Date(startedAt).toISOString();
+    this.persistenceStats.lastFlushError = "";
     try {
       do {
         this.persistRequestedDuringFlush = false;
@@ -140,9 +146,14 @@ export class DindbOS {
         await this.storage.flush?.();
         this.persistenceStats.flushed += 1;
         this.persistenceStats.lastFlushedAt = new Date().toISOString();
+        this.persistenceStats.lastFlushDurationMs = Date.now() - startedAt;
       } while (this.persistRequestedDuringFlush || this.persistPending);
+    } catch (error) {
+      this.persistenceStats.lastFlushError = error?.message || String(error);
+      throw error;
     } finally {
       this.persisting = false;
+      this.persistenceStats.lastFlushDurationMs = Date.now() - startedAt;
     }
     return this.persistenceStatus();
   }
@@ -161,12 +172,16 @@ export class DindbOS {
     return {
       persistDelayMs: this.persistDelayMs,
       persistPending: this.persistPending || Boolean(this.persistTimer),
+      persistInFlight: this.persisting,
       persistScheduled: this.persistenceStats.scheduled,
       persistCoalesced: this.persistenceStats.coalesced,
       persistFlushes: this.persistenceStats.flushed,
       persistLastAction: this.persistenceStats.lastAction,
       persistLastPath: this.persistenceStats.lastPath,
+      persistLastFlushStartedAt: this.persistenceStats.lastFlushStartedAt,
       persistLastFlushedAt: this.persistenceStats.lastFlushedAt,
+      persistLastFlushDurationMs: this.persistenceStats.lastFlushDurationMs,
+      persistLastFlushError: this.persistenceStats.lastFlushError,
     };
   }
 
@@ -177,6 +192,7 @@ export class DindbOS {
       this.flushPersistentFileSystem();
     };
     globalThis.window.addEventListener("pagehide", flush);
+    globalThis.window.addEventListener("beforeunload", flush);
     globalThis.document?.addEventListener?.("visibilitychange", () => {
       if (globalThis.document.visibilityState === "hidden") flush();
     });

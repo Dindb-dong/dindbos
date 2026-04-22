@@ -1,4 +1,4 @@
-import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260421-files-app-2";
+import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260422-storage-ux";
 
 const STORAGE_VERSION = 2;
 const STORE_NAME = "kv";
@@ -25,6 +25,10 @@ export class PersistentStorage {
       enabled: Boolean(this.opfsProvider || this.indexedDB || this.adapter),
       bytes: 0,
       persisted: false,
+      writePending: false,
+      lastWriteQueuedAt: "",
+      lastWriteCompletedAt: "",
+      lastWriteError: "",
     };
   }
 
@@ -86,10 +90,15 @@ export class PersistentStorage {
         dirtyInodes: recordPayload.dirtyInodeRecords.length,
         dirtyFiles: recordPayload.dirtyFileRecords.length,
       });
+      this.markWriteQueued();
       this.writeQueue = this.writeQueue
         .catch(() => {})
         .then(() => this.writeInodeRecordPayload(recordPayload))
-        .catch(() => this.writeSnapshotFallback(root));
+        .then(() => this.markWriteComplete())
+        .catch((error) => {
+          this.markWriteError(error);
+          return this.writeSnapshotFallback(root);
+        });
       return;
     }
     const payload = JSON.stringify({
@@ -150,11 +159,14 @@ export class PersistentStorage {
 
   writeValue(key, value) {
     if (this.indexedDB) {
+      this.markWriteQueued();
       this.writeQueue = this.writeQueue
         .catch(() => {})
         .then(() => this.idbSet(key, value))
+        .then(() => this.markWriteComplete())
         .catch(() => {
           this.memory.set(key, value);
+          this.markWriteComplete();
         });
       return;
     }
@@ -163,11 +175,14 @@ export class PersistentStorage {
 
   removeValue(key) {
     if (this.indexedDB) {
+      this.markWriteQueued();
       this.writeQueue = this.writeQueue
         .catch(() => {})
         .then(() => this.idbDelete(key))
+        .then(() => this.markWriteComplete())
         .catch(() => {
           this.memory.delete(key);
+          this.markWriteComplete();
         });
       return;
     }
@@ -197,17 +212,28 @@ export class PersistentStorage {
 
   write(key, value) {
     if (this.opfsProvider) {
+      this.markWriteQueued();
       this.writeQueue = this.writeQueue
         .catch(() => {})
         .then(() => this.opfsSet(key, value))
-        .catch(() => this.writeDurableFallback(key, value));
+        .then(() => this.markWriteComplete())
+        .catch((error) => {
+          this.markWriteError(error);
+          return this.writeDurableFallback(key, value);
+        });
       return;
     }
     if (this.indexedDB) {
+      this.markWriteQueued();
       this.writeQueue = this.writeQueue
         .catch(() => {})
         .then(() => this.idbSet(key, value))
-        .catch(() => this.writeFallback(key, value));
+        .then(() => this.markWriteComplete())
+        .catch((error) => {
+          this.markWriteError(error);
+          this.writeFallback(key, value);
+          this.markWriteComplete();
+        });
       return;
     }
     this.writeFallback(key, value);
@@ -215,6 +241,7 @@ export class PersistentStorage {
 
   remove(key) {
     if (this.opfsProvider) {
+      this.markWriteQueued();
       this.writeQueue = this.writeQueue
         .catch(() => {})
         .then(async () => {
@@ -225,14 +252,24 @@ export class PersistentStorage {
           }
           await this.removeDurableFallback(key);
         })
-        .catch(() => this.removeDurableFallback(key));
+        .then(() => this.markWriteComplete())
+        .catch((error) => {
+          this.markWriteError(error);
+          return this.removeDurableFallback(key);
+        });
       return;
     }
     if (this.indexedDB) {
+      this.markWriteQueued();
       this.writeQueue = this.writeQueue
         .catch(() => {})
         .then(() => this.idbDelete(key))
-        .catch(() => this.removeFallback(key));
+        .then(() => this.markWriteComplete())
+        .catch((error) => {
+          this.markWriteError(error);
+          this.removeFallback(key);
+          this.markWriteComplete();
+        });
       return;
     }
     this.removeFallback(key);
@@ -487,6 +524,32 @@ export class PersistentStorage {
       await this.opfsDelete(this.key);
     } catch {}
     await this.writeDurableFallback(this.key, payload);
+    this.markWriteComplete();
+  }
+
+  markWriteQueued() {
+    this.lastStatus = {
+      ...this.lastStatus,
+      writePending: true,
+      lastWriteQueuedAt: new Date().toISOString(),
+      lastWriteError: "",
+    };
+  }
+
+  markWriteComplete() {
+    this.lastStatus = {
+      ...this.lastStatus,
+      writePending: false,
+      lastWriteCompletedAt: new Date().toISOString(),
+    };
+  }
+
+  markWriteError(error) {
+    this.lastStatus = {
+      ...this.lastStatus,
+      writePending: false,
+      lastWriteError: error?.message || String(error),
+    };
   }
 
   serializeSnapshotTree(node) {
