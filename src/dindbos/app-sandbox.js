@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260422-storage-ux";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260422-activity-monitor";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -175,10 +175,18 @@ export class AppSandbox {
 
   createProcessFacade() {
     return {
-      current: () => ({ ...this.process }),
+      current: () => this.os.processes.get(this.process.pid) || { ...this.process },
       list: () => {
         this.assertCapability("process.read");
         return this.os.processes.list();
+      },
+      get: (pid) => {
+        this.assertCapability("process.read");
+        return this.os.processes.get(pid);
+      },
+      log: (pid) => {
+        this.assertCapability("process.read");
+        return this.os.processes.readLog(pid);
       },
       kill: (pid) => {
         this.assertCapability("process.manage");

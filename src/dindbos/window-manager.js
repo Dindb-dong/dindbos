@@ -85,6 +85,7 @@ export class WindowManager {
     makeResizable(frame);
 
     config.render(content, api);
+    this.os.processes.markReady?.(config.pid);
     this.focus(config.id);
     this.renderTasks();
     return api;
@@ -97,6 +98,7 @@ export class WindowManager {
     task.minimized = false;
     task.frame.style.zIndex = `${++this.z}`;
     this.windows.forEach((item) => item.frame.classList.toggle("is-active", item === task));
+    this.os.processes.updateWindowState?.(task.pid, "focused", { windowId: id });
     this.renderTasks();
   }
 
@@ -105,6 +107,7 @@ export class WindowManager {
     if (!task) return;
     task.minimized = true;
     task.frame.hidden = true;
+    this.os.processes.updateWindowState?.(task.pid, "minimized", { windowId: id });
     this.renderTasks();
   }
 
@@ -121,12 +124,14 @@ export class WindowManager {
     if (!task) return;
     task.maximized = !task.maximized;
     task.frame.classList.toggle("is-maximized", task.maximized);
+    this.os.processes.updateWindowState?.(task.pid, task.maximized ? "maximized" : "restored", { windowId: id });
     this.focus(id);
   }
 
   close(id, options = {}) {
     const task = this.windows.get(id);
     if (!task) return;
+    this.os.processes.updateWindowState?.(task.pid, "closing", { windowId: id });
     task.frame.remove();
     this.windows.delete(id);
     if (!options.skipOnClose) task.onClose?.();

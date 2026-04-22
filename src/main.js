@@ -1,6 +1,6 @@
-import { DindbOS } from "./dindbos/index.js?v=20260422-storage-ux";
-import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260422-storage-ux";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260422-storage-ux";
+import { DindbOS } from "./dindbos/index.js?v=20260422-activity-monitor";
+import { installBuiltinApps } from "./dindbos/apps/builtins.js?v=20260422-activity-monitor";
+import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260422-activity-monitor";
 
 const os = new DindbOS({
   root: "#dindbos-root",

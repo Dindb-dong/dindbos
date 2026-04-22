@@ -1,4 +1,4 @@
-import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260422-storage-ux";
+import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260422-activity-monitor";
 
 const STORAGE_VERSION = 2;
 const STORE_NAME = "kv";

@@ -1,16 +1,16 @@
-import { AppRegistry } from "./app-registry.js?v=20260422-storage-ux";
-import { AppSandbox } from "./app-sandbox.js?v=20260422-storage-ux";
-import { DesktopShell } from "./desktop-shell.js?v=20260422-storage-ux";
-import { EventBus } from "./event-bus.js?v=20260422-storage-ux";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260422-storage-ux";
-import { NodeCompat } from "./node-compat.js?v=20260422-storage-ux";
-import { NpmInstaller } from "./npm-installer.js?v=20260422-storage-ux";
-import { PackageManager } from "./package-manager.js?v=20260422-storage-ux";
-import { PermissionPolicy } from "./permission-policy.js?v=20260422-storage-ux";
-import { PersistentStorage } from "./persistent-storage.js?v=20260422-storage-ux";
-import { ProcessManager } from "./process-manager.js?v=20260422-storage-ux";
-import { VirtualFileSystem } from "./vfs.js?v=20260422-storage-ux";
-import { WindowManager } from "./window-manager.js?v=20260422-storage-ux";
+import { AppRegistry } from "./app-registry.js?v=20260422-activity-monitor";
+import { AppSandbox } from "./app-sandbox.js?v=20260422-activity-monitor";
+import { DesktopShell } from "./desktop-shell.js?v=20260422-activity-monitor";
+import { EventBus } from "./event-bus.js?v=20260422-activity-monitor";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260422-activity-monitor";
+import { NodeCompat } from "./node-compat.js?v=20260422-activity-monitor";
+import { NpmInstaller } from "./npm-installer.js?v=20260422-activity-monitor";
+import { PackageManager } from "./package-manager.js?v=20260422-activity-monitor";
+import { PermissionPolicy } from "./permission-policy.js?v=20260422-activity-monitor";
+import { PersistentStorage } from "./persistent-storage.js?v=20260422-activity-monitor";
+import { ProcessManager } from "./process-manager.js?v=20260422-activity-monitor";
+import { VirtualFileSystem } from "./vfs.js?v=20260422-activity-monitor";
+import { WindowManager } from "./window-manager.js?v=20260422-activity-monitor";
 
 export class DindbOS {
   constructor(options = {}) {

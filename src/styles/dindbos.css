@@ -192,6 +192,11 @@ button {
   background: linear-gradient(160deg, #11150f, #2d3628);
 }
 
+/* Activity icon art */
+[data-icon="activity"] .dos-icon-art {
+  background: linear-gradient(160deg, #121711, #3b82f6 48%, #8ac66a 49%);
+}
+
 /* Portfolio icon art */
 [data-icon="portfolio"] .dos-icon-art {
   background: linear-gradient(160deg, #eef2e5, #3b82f6);
@@ -832,6 +837,11 @@ button {
   background: linear-gradient(160deg, #11150f, #2d3628);
 }
 
+/* Mini activity icon */
+[data-icon="activity"] .dos-mini-icon {
+  background: linear-gradient(160deg, #121711, #3b82f6 48%, #8ac66a 49%);
+}
+
 /* Mini text icon */
 [data-icon="text"] .dos-mini-icon {
   background: linear-gradient(180deg, #eef2e5, #bdc8ae);
@@ -1028,6 +1038,212 @@ button {
   background: transparent;
   color: inherit;
   font: inherit;
+}
+
+/* Activity Monitor app */
+.activity-app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  height: 100%;
+  min-height: 360px;
+}
+
+/* Activity header */
+.activity-app > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+/* Activity heading */
+.activity-app h2,
+.activity-app h3 {
+  margin: 0;
+}
+
+/* Activity summary */
+.activity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Activity summary chip */
+.activity-summary span {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Activity main grid */
+.activity-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Activity process list */
+.activity-table {
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+}
+
+/* Activity row */
+.activity-row {
+  display: grid;
+  grid-template-columns: 58px minmax(120px, 1fr) 86px 78px 82px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(230, 235, 218, 0.08);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Activity table header row */
+.activity-row-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(10, 12, 9, 0.94);
+  color: var(--muted);
+  cursor: default;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+/* Activity selected row */
+.activity-row.is-selected {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+/* Activity row cells */
+.activity-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Activity empty state */
+.activity-empty {
+  margin: 0;
+  padding: 14px;
+  color: var(--muted);
+}
+
+/* Activity process detail */
+.activity-detail {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  background: rgba(9, 12, 8, 0.36);
+}
+
+/* Activity detail header */
+.activity-detail-header {
+  display: grid;
+  gap: 10px;
+}
+
+/* Activity detail actions */
+.activity-detail-header div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Activity action button */
+.activity-detail button {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+/* Activity metadata list */
+.activity-detail dl {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+/* Activity metadata row */
+.activity-detail dl div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+}
+
+/* Activity metadata term */
+.activity-detail dt {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+/* Activity metadata value */
+.activity-detail dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Activity log output */
+.activity-detail pre {
+  min-height: 120px;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+}
+
+/* Crash app */
+.crash-app {
+  display: grid;
+  gap: 12px;
+}
+
+/* Crash app heading */
+.crash-app h2 {
+  margin: 0;
+}
+
+/* Crash app output */
+.crash-app pre {
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgba(225, 88, 69, 0.44);
+  border-radius: var(--radius);
+  background: rgba(225, 88, 69, 0.12);
+  white-space: pre-wrap;
 }
 
 /* Text app */
@@ -1442,6 +1658,29 @@ button {
   /* Mobile files column view */
   .files-column-view {
     grid-auto-columns: minmax(180px, 82vw);
+  }
+
+  /* Mobile activity layout */
+  .activity-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Mobile activity table */
+  .activity-table {
+    max-height: 230px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* Mobile activity row */
+  .activity-row {
+    grid-template-columns: 48px minmax(90px, 1fr) 76px;
+  }
+
+  /* Mobile activity trimmed cells */
+  .activity-row span:nth-child(4),
+  .activity-row span:nth-child(5) {
+    display: none;
   }
 
   /* Mobile files mount banner */

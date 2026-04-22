@@ -1,4 +1,4 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260422-storage-ux";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260422-activity-monitor";
 
 export class AppRegistry {
   constructor(os) {
@@ -11,6 +11,7 @@ export class AppRegistry {
     const manifest = normalizeAppManifest(app);
     this.apps.set(app.id, { ...app, manifest });
     this.writeManifestFile(manifest);
+    this.writeApplicationFile(app, manifest);
   }
 
   unregister(appId) {
@@ -49,7 +50,22 @@ export class AppRegistry {
       width: app.width || 760,
       height: app.height || 520,
       singleton: app.singleton,
-      render: (content, windowApi) => app.render({ os: sandbox, content, window: windowApi, context }),
+      render: (content, windowApi) => {
+        try {
+          return app.render({ os: sandbox, content, window: windowApi, context });
+        } catch (error) {
+          this.os.processes.crash(process.pid, error);
+          content.innerHTML = `
+            <section class="crash-app">
+              <p class="dos-kicker">Process crashed</p>
+              <h2>${escapeHtml(app.name || app.id)}</h2>
+              <pre>${escapeHtml(error.message)}</pre>
+            </section>
+          `;
+          windowApi.setTitle(`${app.name || app.id} - crashed`);
+          return null;
+        }
+      },
       onClose: () => this.os.processes.kill(process.pid, "exited"),
     });
   }
@@ -93,9 +109,36 @@ export class AppRegistry {
       system,
     );
   }
+
+  writeApplicationFile(app, manifest) {
+    if (!this.os.fs.exists("/usr/share/applications")) return;
+    const system = this.os.permissions.systemPrincipal();
+    const appName = sanitizeLauncherName(typeof app.name === "string" && app.name ? app.name : manifest.name);
+    this.os.fs.createApp(
+      `/usr/share/applications/${appName}.app`,
+      manifest.id,
+      app.icon || "app",
+      "/",
+      { owner: "root", group: "root", permissions: "-rwxr-xr-x" },
+      system,
+    );
+  }
 }
 
 function matchesMime(value = "", matcher = "") {
   if (matcher.endsWith("/*")) return value.startsWith(matcher.slice(0, -1));
   return value === matcher;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function sanitizeLauncherName(value) {
+  const name = String(value || "App").trim().replace(/[\\/]+/g, "-");
+  return name && name !== "." && name !== ".." ? name : "App";
 }

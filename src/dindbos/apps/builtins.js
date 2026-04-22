@@ -1,5 +1,5 @@
-import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260422-storage-ux";
-import { ShellSession } from "../shell.js?v=20260422-storage-ux";
+import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260422-activity-monitor";
+import { ShellSession } from "../shell.js?v=20260422-activity-monitor";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -62,6 +62,22 @@ export function installBuiltinApps(os, { portfolioData }) {
       fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp", "/opt", "/usr/share/applications", "/var/lib/dindbos/packages"] },
     },
     render: ({ os: runtime, content }) => renderTerminal(runtime, content),
+  });
+
+  os.registerApp({
+    id: "activity-monitor",
+    name: "Activity Monitor",
+    title: "Activity Monitor.app",
+    icon: "activity",
+    pinned: true,
+    singleton: true,
+    width: 780,
+    height: 520,
+    manifest: {
+      capabilities: ["app.launch", "process.read", "process.manage"],
+      fileSystem: { read: ["/proc"], write: [] },
+    },
+    render: ({ os: runtime, content }) => renderActivityMonitor(runtime, content),
   });
 
   os.registerApp({
@@ -1298,6 +1314,112 @@ function renderTerminal(os, content) {
   input.focus();
 }
 
+function renderActivityMonitor(os, content) {
+  let selectedPid = os.processes.current()?.pid || null;
+  let refreshTimer = null;
+  const draw = () => {
+    if (!content.isConnected) {
+      window.clearInterval(refreshTimer);
+      return;
+    }
+    const processes = safeRead(() => os.processes.list(), []);
+    if (!processes.some((process) => process.pid === selectedPid)) selectedPid = processes[0]?.pid || null;
+    const selected = selectedPid ? processes.find((process) => process.pid === selectedPid) : null;
+    const processLog = selected ? safeRead(() => os.processes.log(selected.pid), "") : "";
+    content.innerHTML = `
+      <section class="activity-app">
+        <header>
+          <div>
+            <p class="dos-kicker">Runtime processes</p>
+            <h2>Activity Monitor</h2>
+          </div>
+          <div class="activity-summary">
+            <span>${processes.length} running</span>
+            <span>${formatBytes(processes.reduce((total, process) => total + Number(process.runtimeBytes || 0), 0))} runtime</span>
+          </div>
+        </header>
+        <div class="activity-grid">
+          <div class="activity-table" role="table" aria-label="Processes">
+            <div class="activity-row activity-row-head" role="row">
+              <span>PID</span>
+              <span>App</span>
+              <span>State</span>
+              <span>Uptime</span>
+              <span>Runtime</span>
+            </div>
+            ${processes.map((process) => `
+              <button type="button" class="activity-row ${process.pid === selectedPid ? "is-selected" : ""}" data-pid="${process.pid}" role="row">
+                <span>${process.pid}</span>
+                <span>${escapeHtml(process.appId)}</span>
+                <span>${escapeHtml(process.state)}</span>
+                <span>${escapeHtml(formatDuration(process.uptimeMs))}</span>
+                <span>${escapeHtml(formatBytes(process.runtimeBytes))}</span>
+              </button>
+            `).join("") || `<p class="activity-empty">No running processes.</p>`}
+          </div>
+          <aside class="activity-detail">
+            ${selected ? renderActivityDetail(selected, processLog) : "<p>No process selected.</p>"}
+          </aside>
+        </div>
+      </section>
+    `;
+    content.querySelectorAll("[data-pid]").forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedPid = Number(button.dataset.pid);
+        draw();
+      });
+    });
+    content.querySelectorAll("[data-process-action]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const pid = Number(button.dataset.pid);
+        const process = safeRead(() => os.processes.get(pid), null);
+        try {
+          if (button.dataset.processAction === "open-proc") os.openPath(`/proc/${pid}`);
+          if (button.dataset.processAction === "kill") os.processes.kill(pid);
+          if (button.dataset.processAction === "restart" && process?.appId) {
+            os.processes.kill(pid);
+            os.launch(process.appId);
+          }
+        } finally {
+          selectedPid = selectedPid === pid && button.dataset.processAction !== "open-proc"
+            ? os.processes.current()?.pid || null
+            : selectedPid;
+          draw();
+        }
+      });
+    });
+  };
+  draw();
+  refreshTimer = window.setInterval(draw, 1000);
+}
+
+function renderActivityDetail(process, processLog) {
+  return `
+    <div class="activity-detail-header">
+      <div>
+        <p class="dos-kicker">PID ${process.pid}</p>
+        <h3>${escapeHtml(process.name)}</h3>
+      </div>
+      <div>
+        <button type="button" data-process-action="open-proc" data-pid="${process.pid}">Open /proc</button>
+        <button type="button" data-process-action="restart" data-pid="${process.pid}">Restart</button>
+        <button type="button" data-process-action="kill" data-pid="${process.pid}">Kill</button>
+      </div>
+    </div>
+    <dl>
+      <div><dt>App</dt><dd>${escapeHtml(process.appId)}</dd></div>
+      <div><dt>User</dt><dd>${escapeHtml(process.user)}</dd></div>
+      <div><dt>State</dt><dd>${escapeHtml(process.state)} · ${escapeHtml(process.windowState || "-")}</dd></div>
+      <div><dt>Window</dt><dd>${escapeHtml(process.windowId || "-")}</dd></div>
+      <div><dt>Started</dt><dd>${escapeHtml(shortTime(process.startedAt))}</dd></div>
+      <div><dt>Active</dt><dd>${escapeHtml(shortTime(process.lastActiveAt))}</dd></div>
+      <div><dt>Uptime</dt><dd>${escapeHtml(formatDuration(process.uptimeMs))}</dd></div>
+      <div><dt>Runtime</dt><dd>${escapeHtml(formatBytes(process.runtimeBytes))} · ${process.logLines || 0} logs</dd></div>
+    </dl>
+    <pre>${escapeHtml(processLog || "No process log yet.")}</pre>
+  `;
+}
+
 function renderCalculator(content) {
   content.innerHTML = `
     <section class="calculator-app">
@@ -1698,6 +1820,15 @@ function formatBytes(value) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDuration(ms) {
+  const seconds = Math.floor(Number(ms || 0) / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  if (hours) return `${hours}h ${minutes % 60}m`;
+  if (minutes) return `${minutes}m ${seconds % 60}s`;
+  return `${seconds}s`;
 }
 
 function mimeFromName(name) {
