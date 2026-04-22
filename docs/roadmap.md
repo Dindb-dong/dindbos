@@ -84,11 +84,14 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 
 ## 4. Activity Monitor
 
+- 1차 구현 완료
 - process table UI
 - PID, app, user, state, uptime, window
 - kill/restart controls
 - `/proc` viewer
 - process logs
+- `/proc/processes`, `/proc/processes.json`, `/proc/<pid>/status`, `/proc/<pid>/cmdline`, `/proc/<pid>/log`
+- remaining: CPU sampling model, app crash recovery policy, process tree/parent pid, persisted crash reports
 
 ## 5. Browser.app
 
@@ -149,4 +152,4 @@ DindbOS.js should behave like a browser-native OS runtime, not an OS-themed port
 
 ## Current Priority
 
-Storage and local mount UX are now usable enough for daily testing. The next proof point is process/activity visibility and app lifecycle polish so DindbOS feels like a runtime, not only a filesystem demo.
+Process/activity visibility is now in place. The next proof point is Browser.app and document viewers, because the portfolio demo needs real URL/document workloads running inside the OS shell.

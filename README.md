@@ -82,6 +82,7 @@ Shell syntax supports command chaining with `&&`, `||`, and `;`, plus pipes and 
 DindbOS.js now has browser-native OS primitives:
 
 - `ProcessManager` assigns PIDs to launched apps and exposes `ps`/`kill`.
+- `Activity Monitor.app` reads the process table, process logs, and `/proc/<pid>` status files, then can kill or restart apps.
 - `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
 - `PackageManager` installs local, remote, or registry-backed `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
 - `NpmInstaller` fetches npm registry metadata and tarballs, verifies integrity, and writes pure JavaScript packages into VFS-backed `node_modules`.
