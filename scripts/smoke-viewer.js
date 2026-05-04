@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { AppRegistry } from "../src/dindbos/app-registry.js";
 import { AppSandbox } from "../src/dindbos/app-sandbox.js";
-import { cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerMarkup, viewerPdfAdapterStatus, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue, wirePdfJsViewer } from "../src/dindbos/apps/builtins.js";
+import { buildViewerDiagnostics, cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerMarkup, viewerPdfAdapterStatus, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue, wirePdfJsViewer } from "../src/dindbos/apps/builtins.js";
 import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
@@ -36,6 +36,22 @@ assert(!viewerHtml.includes("<script>"), "viewer markdown markup emitted script 
 assert(viewerHtml.includes("viewer-toolbar"), "viewer toolbar was not rendered");
 assert(viewerHtml.includes('data-viewer-action="zoom-in"'), "viewer zoom-in action missing");
 assert(viewerHtml.includes('data-viewer-action="copy-path"'), "viewer copy path action missing");
+const diagnosticHtml = viewerMarkup({
+  mime: "text/markdown",
+  name: "README.md",
+  path: "/home/guest/README.md",
+  preview: markdown,
+  url: "",
+  diagnostics: buildViewerDiagnostics({
+    node: { path: "/home/guest/README.md", size: 12 },
+    mime: "text/markdown",
+    bytes: new TextEncoder().encode(markdown),
+    previewState: { status: "Text preview · 12 B" },
+    cacheStatus: { hits: 1, writes: 1 },
+  }),
+});
+assert(diagnosticHtml.includes("data-viewer-diagnostics"), "viewer diagnostics markup missing");
+assert(diagnosticHtml.includes("Preview bytes are cacheable"), "viewer diagnostics advice missing");
 const pdfHtml = viewerMarkup({
   mime: "application/pdf",
   name: "paper.pdf",
@@ -46,9 +62,18 @@ const pdfHtml = viewerMarkup({
 assert(pdfHtml.includes("data-viewer-pdf-canvas"), "viewer PDF markup did not include PDF.js canvas");
 assert(pdfHtml.includes('data-viewer-action="page-prev"'), "viewer PDF previous page action missing");
 assert(pdfHtml.includes('data-viewer-action="page-next"'), "viewer PDF next page action missing");
+assert(!pdfHtml.includes("data-viewer-diagnostics"), "viewer diagnostics rendered when not requested");
 assert(viewerPdfAdapterStatus(null).includes("deployment-provided, not bundled"), "PDF.js missing status did not document deployment-provided policy");
 assert(viewerPdfAdapterStatus(fakePdfJsLib()).includes("PDF.js adapter available"), "PDF.js available status missing");
 assert(viewerPdfAdapterStatus(null, { failed: true }).includes("adapter failed"), "PDF.js failure status missing");
+const pdfDiagnostics = buildViewerDiagnostics({
+  node: { path: "/home/guest/paper.pdf", size: 4 },
+  mime: "application/pdf",
+  bytes: new Uint8Array([37, 80, 68, 70]),
+  status: viewerPdfAdapterStatus(null),
+});
+assert(pdfDiagnostics.pdfAdapter === "native", "viewer diagnostics did not classify native PDF fallback");
+assert(pdfDiagnostics.advice.includes("PDF.js adapter is not bundled"), `PDF diagnostics advice mismatch: ${pdfDiagnostics.advice}`);
 assert(viewerZoomValue(1, "zoom-in") === 1.1, "viewer zoom-in value mismatch");
 assert(viewerZoomValue(0.5, "zoom-out") === 0.5, "viewer zoom lower clamp mismatch");
 assert(viewerZoomValue(2.8, "zoom-in") === 2.9, "viewer zoom high value mismatch");
@@ -59,9 +84,28 @@ const largePreview = viewerPreviewForBytes(largeText, "text/plain");
 assert(largePreview.status.includes("Large text preview"), "large text preview status missing");
 assert(largePreview.preview.includes("Preview truncated"), "large text preview did not include truncation notice");
 assert(largePreview.preview.length < largeText.byteLength, "large text preview was not bounded");
+const largeDiagnostics = buildViewerDiagnostics({
+  node: { path: "/home/guest/large.txt", size: largeText.byteLength },
+  mime: "text/plain",
+  bytes: largeText,
+  previewState: largePreview,
+  cacheStatus: { hits: 2, writes: 3 },
+});
+assert(largeDiagnostics.truncated === true, "viewer diagnostics did not flag large text truncation");
+assert(largeDiagnostics.cacheable === true, "viewer diagnostics did not mark text cacheable");
+assert(largeDiagnostics.advice.includes("Large text is bounded"), `large diagnostics advice mismatch: ${largeDiagnostics.advice}`);
 const binaryPreview = viewerPreviewForBytes(new Uint8Array([1, 2, 3, 4]), "application/octet-stream");
 assert(binaryPreview.preview.includes("Binary file"), "binary preview text missing");
 assert(binaryPreview.status.includes("Binary preview"), "binary preview status missing");
+const binaryDiagnostics = buildViewerDiagnostics({
+  node: { path: "/home/guest/payload.bin", size: 4 },
+  mime: "application/octet-stream",
+  bytes: new Uint8Array([1, 2, 3, 4]),
+  previewState: binaryPreview,
+});
+assert(binaryDiagnostics.binary === true, "viewer diagnostics did not flag binary fallback");
+assert(binaryDiagnostics.cacheable === false, "viewer diagnostics unexpectedly cached binary fallback");
+assert(binaryDiagnostics.advice.includes("No text renderer"), `binary diagnostics advice mismatch: ${binaryDiagnostics.advice}`);
 const deckPreview = viewerPreviewForBytes(new TextEncoder().encode("<section>Slide</section><script>alert(1)</script>"), "application/x-dindbos-deck");
 assert(deckPreview.preview.includes("<section>Slide</section>"), "deck preview did not decode HTML source");
 assert(deckPreview.status.includes("Text preview"), "deck preview was not treated as bounded text");

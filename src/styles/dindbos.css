@@ -1598,6 +1598,52 @@ button {
   white-space: nowrap;
 }
 
+/* Viewer diagnostics surface */
+.viewer-diagnostics {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Viewer diagnostics list */
+.viewer-diagnostics dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+/* Viewer diagnostics item */
+.viewer-diagnostics div {
+  min-width: 0;
+}
+
+/* Viewer diagnostics label */
+.viewer-diagnostics dt {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+/* Viewer diagnostics value */
+.viewer-diagnostics dd {
+  margin: 2px 0 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Viewer diagnostics advice */
+.viewer-diagnostics p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* Viewer preview surface */
 .viewer-preview {
   min-height: 0;
