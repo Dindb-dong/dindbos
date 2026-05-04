@@ -341,9 +341,10 @@ Already present:
 - `npm run smoke:viewer` verifies preview cache namespace, writes, hits, and byte preservation.
 - Storage Buckets are evaluated as a future physical isolation layer: `os.storageBucketPolicy()` reports support detection and records the current decision to keep OPFS/IndexedDB/Cache as the active storage stack while disk policies mark `/tmp` as session, `/var/cache` as cache, and durable areas as durable bucket intent.
 - `npm run smoke:boot` verifies storage bucket policy reporting, disk-policy bucket intent for `/tmp` and `/var/cache`, and boot diagnostics persistence.
+- Local mount directory copy conflicts are defined at the runtime boundary: default `error`, destructive `replace`, non-destructive `merge`, `skip`, `rename`, and caller-resolved `prompt`.
+- `npm run smoke:local-mounts` verifies local directory copy policy reporting, default conflict rejection, merge preservation, replace overwrite, skip preservation, and prompt rename behavior.
 
 Remaining:
-- Define copy semantics for local mount directories: overwrite, merge, skip, or prompt.
 - Add mount rename through a native helper/companion later, instead of browser copy-delete.
 
 Completion criteria:
