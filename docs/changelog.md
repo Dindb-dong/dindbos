@@ -74,6 +74,7 @@ Added:
 - Explicit `app:*` lifecycle events for install, update, first-run, launch, ready, focus, suspend, resume, crash, close, uninstall-cleanup, and uninstall.
 - Window minimize now uses a stable delayed-hide animation state and cancels that state cleanly on focus/restore/close.
 - App-facing API docs, app lifecycle docs, Browser companion docs, first app guide, package signature docs, and support policy docs.
+- GitHub Pages demo workflow now runs `npm run smoke` before deploying the static runtime root, with smoke coverage for workflow wiring and runtime demo cache-busters.
 - GitHub issue templates and PR verification checklist.
 
 Changed:
