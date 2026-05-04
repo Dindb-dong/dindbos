@@ -178,18 +178,32 @@ assert(typeof apiModule.mount === "function", "API Lab sample entry did not expo
 const apiWindow = os.apps.launch("api-lab");
 await apiWindow.rendered;
 await waitFor(() => apiWindow.content.innerHTML.includes("package=api-lab"), `API Lab sample did not render sandbox API report: ${apiWindow.content.innerHTML}`);
-assert(os.fs.readFile("/home/guest/DindbOS API Lab/report.txt").includes("version=0.1.0"), "API Lab sample did not write report through sandbox fs");
+assert(os.fs.readFile("/home/guest/DindbOS API Lab/report.txt").includes("launches=1"), "API Lab sample did not write first app-state value through sandbox fs");
 const apiProcess = os.processes.get(apiWindow.pid);
 assert(apiProcess.logs.some((entry) => entry.message.includes("api-lab wrote")), "API Lab sample did not log through process facade");
+assert(os.fs.readFile("/var/lib/dindbos/app-state/api-lab.json").includes('"launches": 1'), "API Lab sample did not persist app state under app-state");
+const apiWindowAgain = os.apps.launch("api-lab");
+await apiWindowAgain.rendered;
+await waitFor(() => apiWindowAgain.content.innerHTML.includes("launches=2"), `API Lab sample did not restore app state on relaunch: ${apiWindowAgain.content.innerHTML}`);
+const reloadedOs = bootOs(os.fs.snapshot());
+const reloadedPackages = new PackageManager(reloadedOs);
+reloadedOs.packages = reloadedPackages;
+reloadedPackages.registerInstalledPackages();
+const reloadedApiWindow = reloadedOs.apps.launch("api-lab");
+await reloadedApiWindow.rendered;
+await waitFor(() => reloadedApiWindow.content.innerHTML.includes("launches=3"), `API Lab sample did not restore app state after VFS reload: ${reloadedApiWindow.content.innerHTML}`);
+const removedApiLab = packages.remove("api-lab");
+assert(removedApiLab.id === "api-lab", "API Lab package remove returned wrong id");
+assert(!os.fs.exists("/var/lib/dindbos/app-state/api-lab.json"), "API Lab app state remained after package remove");
 
-console.log("packages smoke ok transaction rollback launch run remove");
+console.log("packages smoke ok transaction rollback launch run state remove");
 
-function bootOs() {
+function bootOs(root = null) {
   const permissions = new PermissionPolicy();
-  const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
+  const fs = new VirtualFileSystem(root, { home: "/home/guest", policy: permissions });
   const system = permissions.systemPrincipal();
-  fs.createDirectory("/home", "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, system);
-  fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users", permissions: "drwxr-xr-x" }, system);
+  if (!fs.exists("/home")) fs.createDirectory("/home", "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, system);
+  if (!fs.exists("/home/guest")) fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users", permissions: "drwxr-xr-x" }, system);
   const os = {
     fs,
     permissions,

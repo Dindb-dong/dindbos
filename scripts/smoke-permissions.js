@@ -31,6 +31,17 @@ const process = {
 };
 const sandbox = new AppSandbox(os, process);
 sandbox.fs.readFile("/home/guest/readable.txt");
+sandbox.state.set("prefs", { theme: "dark", count: 1 });
+assert(sandbox.state.path() === "/var/lib/dindbos/app-state/limited.json", "app state path was not namespaced by app id");
+assert(sandbox.state.get("prefs").theme === "dark", "app state did not read back its own value");
+assert(sandbox.state.keys().includes("prefs"), "app state keys did not include saved key");
+const sameAppSandbox = new AppSandbox(os, { ...process, pid: 101 });
+assert(sameAppSandbox.state.get("prefs").count === 1, "app state did not persist across same-app sandbox instances");
+const otherAppSandbox = new AppSandbox(os, { ...process, pid: 102, appId: "other" });
+assert(otherAppSandbox.state.get("prefs", "missing") === "missing", "app state leaked across app ids");
+assert(sandbox.state.remove("prefs") === true, "app state remove did not report existing key");
+assert(!sandbox.state.keys().includes("prefs"), "app state key remained after remove");
+await assertRejects(() => sandbox.state.set("bad", undefined), "JSON serializable");
 await assertRejects(() => sandbox.fs.readFile("/root/secret.txt"), "sandbox denied");
 await assertRejects(() => sandbox.fs.writeOrCreateFile("/root/new.txt", "nope"), "sandbox denied");
 await assertRejects(() => sandbox.processes.list(), "capability denied: process.read");

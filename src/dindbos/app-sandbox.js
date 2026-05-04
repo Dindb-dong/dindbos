@@ -1,5 +1,8 @@
 import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260422-browserd";
 
+const APP_STATE_DIR = "/var/lib/dindbos/app-state";
+const MAX_APP_STATE_VALUE_BYTES = 64 * 1024;
+
 export class AppSandbox {
   constructor(os, process) {
     this.os = os;
@@ -12,6 +15,7 @@ export class AppSandbox {
     this.npm = this.createNpmFacade();
     this.node = this.createNodeFacade();
     this.storage = this.createStorageFacade();
+    this.state = this.createStateFacade();
     this.localMounts = this.createLocalMountFacade();
     this.session = Object.freeze({ ...os.session });
   }
@@ -308,6 +312,83 @@ export class AppSandbox {
     };
   }
 
+  createStateFacade() {
+    return {
+      get: (key, fallback = null) => {
+        const normalizedKey = normalizeStateKey(key);
+        const record = this.readStateRecord();
+        return Object.hasOwn(record.values, normalizedKey) ? cloneJson(record.values[normalizedKey]) : cloneJson(fallback);
+      },
+      set: (key, value) => {
+        const normalizedKey = normalizeStateKey(key);
+        const record = this.readStateRecord();
+        record.values[normalizedKey] = normalizeStateValue(value);
+        this.writeStateRecord(record);
+        return cloneJson(record.values[normalizedKey]);
+      },
+      remove: (key) => {
+        const normalizedKey = normalizeStateKey(key);
+        const record = this.readStateRecord();
+        const existed = Object.hasOwn(record.values, normalizedKey);
+        delete record.values[normalizedKey];
+        this.writeStateRecord(record);
+        return existed;
+      },
+      keys: () => Object.keys(this.readStateRecord().values).sort(),
+      snapshot: () => cloneJson(this.readStateRecord().values),
+      clear: () => {
+        this.writeStateRecord(this.emptyStateRecord());
+        return true;
+      },
+      path: () => this.statePath(),
+    };
+  }
+
+  statePath() {
+    return appStatePath(this.process.appId);
+  }
+
+  emptyStateRecord() {
+    return {
+      version: 1,
+      appId: this.process.appId,
+      updatedAt: "",
+      values: {},
+    };
+  }
+
+  readStateRecord() {
+    const path = this.statePath();
+    if (!this.os.fs.exists(path)) return this.emptyStateRecord();
+    const parsed = safeParseJson(this.os.fs.readFile(path, "/", this.os.permissions.systemPrincipal()), path);
+    if (!parsed || parsed.version !== 1 || parsed.appId !== this.process.appId || !isPlainObject(parsed.values)) {
+      return this.emptyStateRecord();
+    }
+    return {
+      version: 1,
+      appId: this.process.appId,
+      updatedAt: String(parsed.updatedAt || ""),
+      values: cloneJson(parsed.values),
+    };
+  }
+
+  writeStateRecord(record) {
+    ensureStateDirectory(this.os);
+    const payload = {
+      version: 1,
+      appId: this.process.appId,
+      updatedAt: new Date().toISOString(),
+      values: cloneJson(record.values || {}),
+    };
+    this.os.fs.writeOrCreateFile(
+      this.statePath(),
+      `${JSON.stringify(payload, null, 2)}\n`,
+      "/",
+      { mime: "application/json", owner: "root", group: "root", permissions: "-rw-------" },
+      this.os.permissions.systemPrincipal(),
+    );
+  }
+
   createLocalMountFacade() {
     return {
       supported: () => Boolean(this.os.localMounts?.supported()),
@@ -392,6 +473,59 @@ export class AppSandbox {
       exists: (path, cwd = this.process.cwd) => this.os.localMounts.exists(path, cwd),
     };
   }
+}
+
+export function appStatePath(appId) {
+  const safeId = encodeURIComponent(String(appId || "app"));
+  return `${APP_STATE_DIR}/${safeId && safeId !== "." && safeId !== ".." ? safeId : "app"}.json`;
+}
+
+export function removeAppState(os, appId) {
+  const path = appStatePath(appId);
+  if (os.fs.exists(path)) os.fs.remove(path, "/", {}, os.permissions.systemPrincipal());
+  return path;
+}
+
+function ensureStateDirectory(os) {
+  const system = os.permissions.systemPrincipal();
+  ["/var", "/var/lib", "/var/lib/dindbos", APP_STATE_DIR].forEach((path) => {
+    if (!os.fs.exists(path)) {
+      os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, system);
+    }
+  });
+}
+
+function normalizeStateKey(key) {
+  const value = String(key ?? "").trim();
+  if (!value) throw new Error("app state key is required");
+  if (value.length > 128) throw new Error("app state key is too long");
+  return value;
+}
+
+function normalizeStateValue(value) {
+  const text = JSON.stringify(value);
+  if (text === undefined) throw new Error("app state value must be JSON serializable");
+  if (new TextEncoder().encode(text).byteLength > MAX_APP_STATE_VALUE_BYTES) {
+    throw new Error("app state value exceeds 64 KiB");
+  }
+  return JSON.parse(text);
+}
+
+function safeParseJson(text, path) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { version: 1, appId: "", updatedAt: "", values: {}, source: path };
+  }
+}
+
+function cloneJson(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function packageSummary(record, details = false) {

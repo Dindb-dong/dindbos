@@ -132,14 +132,15 @@ Already present:
 - TextEdit saves into shared VFS.
 - Viewer.app opens real file bytes through object URLs.
 - API Lab sample package installs from `/opt/dindbos/packages/api-lab/dindbos.app.json` and proves third-party access to sandboxed filesystem writes, package metadata reads, current-process reads, and process logging.
-- `docs/app-apis.md` documents app-facing filesystem, process, storage, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
+- App sandbox exposes per-app `os.state` JSON persistence under `/var/lib/dindbos/app-state/<appId>.json`; state survives close, relaunch, update, and VFS reload while package uninstall cleanup removes the app state record.
+- `docs/app-apis.md` documents app-facing filesystem, process, storage, app state, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
 - App capability and filesystem-scope failures throw explicit `capability denied` or `sandbox denied` errors; `npm run smoke:permissions` verifies these messages for process, package, local mount, and filesystem denials.
-- `npm run smoke:packages` launches API Lab through AppRegistry and verifies its rendered output, `/home/guest/DindbOS API Lab/report.txt` write, package metadata read, and process log side effect.
+- `npm run smoke:packages` launches API Lab through AppRegistry and verifies its rendered output, `/home/guest/DindbOS API Lab/report.txt` write, package metadata read, process log side effect, app state relaunch restore, app state VFS reload restore, and uninstall cleanup.
+- `npm run smoke:permissions` verifies app state namespace isolation and JSON-serializable value enforcement.
 
 Remaining:
 
 - Remove privileged shortcuts where built-in apps bypass sandbox boundaries unnecessarily.
-- Add app state persistence.
 
 ### Stage 5: External Capability Bridges
 
@@ -379,10 +380,7 @@ Already present:
 - Package signature verification enforces the `docs/package-signatures.md` model: Ed25519 public key format, canonical manifest signing, trusted publisher store, file integrity binding, trust states, and fail-closed verification before filesystem mutation.
 - `pkg trust list|add|remove` manages trusted publishers in `/etc/dindbos/trusted-publishers.json`; `npm run smoke:shell` verifies the command surface.
 - Package lifecycle metadata and events distinguish install, update, first-run, uninstall-cleanup, and uninstall; `docs/app-lifecycle.md` and `npm run smoke:packages` cover the contract.
-
-Remaining:
-
-- Add package/app state persistence beyond lifecycle metadata.
+- Package app state persists separately from lifecycle metadata through app-scoped `os.state`, and package uninstall cleanup removes `/var/lib/dindbos/app-state/<appId>.json`.
 
 Completion criteria:
 
@@ -725,8 +723,7 @@ Goal: Third-party DindbOS apps can be built, installed, updated, and debugged.
 
 Tasks:
 
-- Add app state persistence.
-- Add sample apps that exercise real package flows.
+- Remove privileged shortcuts where built-in apps bypass sandbox boundaries unnecessarily.
 
 ### Milestone E: Desktop Polish
 

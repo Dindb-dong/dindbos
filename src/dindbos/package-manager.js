@@ -1,3 +1,5 @@
+import { removeAppState } from "./app-sandbox.js?v=20260422-browserd";
+
 const APPLICATION_DIR = "/usr/share/applications";
 const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
 const PACKAGE_SOURCE_DIR = "/opt/dindbos/packages";
@@ -89,9 +91,11 @@ const SAMPLE_API_PACKAGE = {
         "  const workspace = '/home/guest/DindbOS API Lab';",
         "  if (!os.fs.exists(workspace)) os.fs.createDirectory(workspace);",
         "  const reportPath = os.fs.join(workspace, 'report.txt');",
+        "  const launches = Number(os.state.get('launches', 0)) + 1;",
+        "  os.state.set('launches', launches);",
         "  const process = os.processes.current();",
         "  const info = os.packages.info(pkg.id);",
-        "  const report = 'package=' + pkg.id + '\\nprocess=' + process.pid + '\\nversion=' + info.version + '\\n';",
+        "  const report = 'package=' + pkg.id + '\\nprocess=' + process.pid + '\\nversion=' + info.version + '\\nlaunches=' + launches + '\\n';",
         "  os.fs.writeOrCreateFile(reportPath, report);",
         "  os.processes.logSelf(`api-lab wrote ${reportPath}`);",
         "  content.innerHTML = '<main data-api-lab><h2>' + pkg.name + '</h2><p>' + os.fs.readFile(reportPath) + '</p></main>';",
@@ -294,7 +298,12 @@ export class PackageManager {
   remove(packageId) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
-    const cleanup = { installPath: record.installPath, launcher: this.launcherPath(record), recordPath: this.packageRecordPath(record.id) };
+    const cleanup = {
+      installPath: record.installPath,
+      launcher: this.launcherPath(record),
+      recordPath: this.packageRecordPath(record.id),
+      appStatePath: removeAppState(this.os, record.app.id),
+    };
     const launcher = this.launcherPath(record);
     if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
     if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
