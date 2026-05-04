@@ -527,11 +527,12 @@ Already present:
 - `npm run smoke:viewer` verifies deck MIME detection, deck file association, sandboxed deck markup, and bounded deck text preview behavior.
 - Viewer.app document/image preview bytes use the runtime Cache API store with memory fallback and stale-key protection from path, MIME type, size, and modified time.
 - `npm run smoke:viewer` verifies preview cache namespace, image cache writes/hits, markdown document cache writes, and byte preservation.
+- Viewer.app includes an optional PDF.js adapter hook: when a deployment provides `globalThis.pdfjsLib`, PDFs render to a canvas with page previous/next controls; otherwise Viewer.app safely falls back to the native iframe preview.
+- `npm run smoke:viewer` verifies the PDF.js canvas surface, fake PDF.js page rendering, page state, and page-control enable/disable behavior.
 
 Remaining:
 
-- Add PDF.js based PDF Viewer if native iframe PDF behavior is not consistent enough.
-- Add real PDF page navigation after PDF.js is introduced; native iframe preview cannot expose reliable page controls.
+- Decide whether to bundle PDF.js worker/assets for offline deployments or keep PDF.js as a deployment-provided optional adapter.
 
 Completion criteria:
 

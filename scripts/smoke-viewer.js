@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { AppRegistry } from "../src/dindbos/app-registry.js";
 import { AppSandbox } from "../src/dindbos/app-sandbox.js";
-import { cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerMarkup, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue } from "../src/dindbos/apps/builtins.js";
+import { cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerMarkup, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue, wirePdfJsViewer } from "../src/dindbos/apps/builtins.js";
 import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
@@ -36,6 +36,16 @@ assert(!viewerHtml.includes("<script>"), "viewer markdown markup emitted script 
 assert(viewerHtml.includes("viewer-toolbar"), "viewer toolbar was not rendered");
 assert(viewerHtml.includes('data-viewer-action="zoom-in"'), "viewer zoom-in action missing");
 assert(viewerHtml.includes('data-viewer-action="copy-path"'), "viewer copy path action missing");
+const pdfHtml = viewerMarkup({
+  mime: "application/pdf",
+  name: "paper.pdf",
+  path: "/home/guest/paper.pdf",
+  preview: "",
+  url: "blob:paper",
+});
+assert(pdfHtml.includes("data-viewer-pdf-canvas"), "viewer PDF markup did not include PDF.js canvas");
+assert(pdfHtml.includes('data-viewer-action="page-prev"'), "viewer PDF previous page action missing");
+assert(pdfHtml.includes('data-viewer-action="page-next"'), "viewer PDF next page action missing");
 assert(viewerZoomValue(1, "zoom-in") === 1.1, "viewer zoom-in value mismatch");
 assert(viewerZoomValue(0.5, "zoom-out") === 0.5, "viewer zoom lower clamp mismatch");
 assert(viewerZoomValue(2.8, "zoom-in") === 2.9, "viewer zoom high value mismatch");
@@ -63,6 +73,17 @@ assert(deckHtml.includes("viewer-deck"), "viewer markup did not render deck ifra
 assert(deckHtml.includes("sandbox=\"\""), "deck iframe is not sandboxed");
 assert(deckHtml.includes("srcdoc="), "deck iframe did not use srcdoc");
 assert(!deckHtml.includes("<script>"), "deck markup emitted raw executable script tag");
+
+const pdfContent = fakePdfContent();
+const pdfState = await wirePdfJsViewer(pdfContent, new Uint8Array([37, 80, 68, 70]), "paper.pdf", fakePdfJsLib());
+assert(pdfState.page === 1 && pdfState.pageCount === 2, "PDF.js viewer did not initialize page state");
+assert(pdfContent.canvas.hidden === false, "PDF.js viewer did not reveal canvas");
+assert(pdfContent.nativeFrame.hidden === true, "PDF.js viewer did not hide native PDF iframe");
+assert(pdfContent.status.textContent === "Page 1 of 2 · PDF.js", "PDF.js viewer status mismatch");
+assert(pdfContent.next.disabled === false, "PDF.js viewer kept next disabled on page one");
+await pdfContent.next.click();
+assert(pdfState.page === 2, "PDF.js viewer next page did not update state");
+assert(pdfContent.previous.disabled === false && pdfContent.next.disabled === true, "PDF.js viewer page button state mismatch");
 
 const revoked = [];
 const originalRevoke = globalThis.URL?.revokeObjectURL;
@@ -142,6 +163,67 @@ function resolve(os, name, mime) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function fakePdfJsLib() {
+  return {
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages: 2,
+        getPage: async (pageNumber) => ({
+          getViewport: ({ scale }) => ({ width: 200 * scale, height: 280 * scale }),
+          render: ({ canvasContext, viewport }) => {
+            canvasContext.rendered = { pageNumber, viewport };
+            return { promise: Promise.resolve() };
+          },
+        }),
+      }),
+    }),
+  };
+}
+
+function fakePdfContent() {
+  const status = { textContent: "" };
+  const canvas = {
+    hidden: true,
+    width: 0,
+    height: 0,
+    context: {},
+    getContext() {
+      return this.context;
+    },
+  };
+  const nativeFrame = { hidden: false };
+  const previous = fakeButton();
+  const next = fakeButton();
+  return {
+    status,
+    canvas,
+    nativeFrame,
+    previous,
+    next,
+    querySelector(selector) {
+      if (selector === "[data-viewer-pdf-canvas]") return canvas;
+      if (selector === "[data-viewer-object]") return nativeFrame;
+      if (selector === "[data-viewer-status]") return status;
+      if (selector === "[data-viewer-action='page-prev']") return previous;
+      if (selector === "[data-viewer-action='page-next']") return next;
+      return null;
+    },
+  };
+}
+
+function fakeButton() {
+  const listeners = [];
+  return {
+    disabled: false,
+    addEventListener(_type, listener) {
+      listeners.push(listener);
+    },
+    async click() {
+      await Promise.all(listeners.map((listener) => listener()));
+    },
+  };
 }
 
 function fakeProcesses() {

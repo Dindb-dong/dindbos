@@ -43,6 +43,7 @@ Added:
 - Settings.app runtime panels now have smoke coverage proving they read live storage, local mount, process, package, app, and session state.
 - Viewer.app toolbar controls, Browser.app handoff for HTML documents, bounded large text previews, and binary fallback messaging.
 - Viewer.app sandboxed `.deck.html` preview support for portfolio/demo HTML decks.
+- Viewer.app optional PDF.js adapter hook with canvas rendering and page previous/next controls when `globalThis.pdfjsLib` is available.
 - Shell script execution with shebang handling, `PATH` lookup, positional arguments, stdin pipeline support, execute-bit enforcement, escaped quote parsing, empty string arguments, input redirection, and redirected pipeline status.
 - Shell `su`/`sudo` placeholders now fail explicitly with browser-runtime fixed-session status instead of implying privilege escalation.
 - Package transaction rollback for failed install/update/remove paths.
@@ -83,7 +84,7 @@ Known limits:
 - Package signatures require Web Crypto Ed25519 support for trusted remote installs.
 - Browser.app clipboard and download routing policies are not complete.
 - Files.app still needs native-helper mount rename.
-- PDF viewing still relies on native iframe behavior until PDF.js is introduced.
+- PDF viewing falls back to native iframe behavior unless a deployment provides `globalThis.pdfjsLib`.
 - NodeCompat is intentionally a browser-safe subset and does not provide native Node addons, arbitrary filesystem access, or full Node runtime APIs.
 
 Release checklist before tagging:

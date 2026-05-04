@@ -2401,6 +2401,9 @@ async function renderViewerBytes(os, content, node) {
     status: previewState.status,
   });
   wireViewerToolbar(os, content, node, bytes || new Uint8Array(), mime);
+  if (mime === "application/pdf" && bytes?.byteLength) {
+    wirePdfJsViewer(content, bytes, node?.name || "PDF").catch(() => {});
+  }
   const object = content.querySelector("[data-viewer-object]");
   if (object && url) {
     const release = () => {
@@ -2436,7 +2439,7 @@ export function viewerMarkup({ mime, name, path = "", preview, url, status = "" 
       <p class="viewer-status" data-viewer-status>${escapeHtml(statusText)}</p>
       <div class="viewer-preview" data-viewer-preview style="--viewer-zoom: 1">
         ${mime.startsWith("image/") && url ? `<img data-viewer-object src="${escapeAttr(url)}" alt="${escapeAttr(name || "Image")}" />` : ""}
-        ${mime === "application/pdf" && url ? `<iframe data-viewer-object src="${escapeAttr(url)}" title="${escapeAttr(name || "PDF")}"></iframe>` : ""}
+        ${mime === "application/pdf" && url ? `<canvas class="viewer-pdf-canvas" data-viewer-pdf-canvas hidden></canvas><iframe data-viewer-object src="${escapeAttr(url)}" title="${escapeAttr(name || "PDF")}"></iframe>` : ""}
         ${mime === "application/x-dindbos-deck" ? `<iframe class="viewer-deck" sandbox="" srcdoc="${escapeAttr(preview)}" title="${escapeAttr(name || "Deck")}"></iframe>` : ""}
         ${mime === "text/markdown" ? `<article class="viewer-markdown">${renderMarkdownPreview(preview)}</article>` : ""}
         ${!mime.startsWith("image/") && mime !== "application/pdf" && mime !== "application/x-dindbos-deck" && mime !== "text/markdown" ? `<pre>${escapeHtml(preview)}</pre>` : ""}
@@ -2478,6 +2481,56 @@ function wireViewerToolbar(os, content, node, bytes, mime) {
       }
     });
   });
+}
+
+export async function wirePdfJsViewer(content, bytes, name = "PDF", pdfjsLib = globalThis.pdfjsLib) {
+  if (!pdfjsLib?.getDocument || !bytes?.byteLength) return null;
+  const canvas = content.querySelector?.("[data-viewer-pdf-canvas]");
+  const nativeFrame = content.querySelector?.("[data-viewer-object]");
+  const status = content.querySelector?.("[data-viewer-status]");
+  const previous = content.querySelector?.("[data-viewer-action='page-prev']");
+  const next = content.querySelector?.("[data-viewer-action='page-next']");
+  if (!canvas?.getContext) return null;
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes) });
+  const documentProxy = await loadingTask.promise;
+  const state = {
+    page: 1,
+    pageCount: Math.max(1, Number(documentProxy.numPages || 1)),
+    rendering: false,
+  };
+  const setStatus = (message) => {
+    if (status) status.textContent = message;
+  };
+  const render = async (pageNumber) => {
+    if (state.rendering) return;
+    state.rendering = true;
+    try {
+      state.page = clampPdfPage(pageNumber, state.pageCount);
+      setStatus(`Rendering ${name} page ${state.page} of ${state.pageCount}`);
+      const page = await documentProxy.getPage(state.page);
+      const viewport = page.getViewport({ scale: 1.5 });
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      canvas.hidden = false;
+      if (nativeFrame) nativeFrame.hidden = true;
+      if (previous) previous.disabled = state.page <= 1;
+      if (next) next.disabled = state.page >= state.pageCount;
+      setStatus(`Page ${state.page} of ${state.pageCount} · PDF.js`);
+    } finally {
+      state.rendering = false;
+    }
+  };
+  previous?.addEventListener?.("click", () => render(state.page - 1));
+  next?.addEventListener?.("click", () => render(state.page + 1));
+  if (previous) previous.disabled = true;
+  if (next) next.disabled = state.pageCount <= 1;
+  await render(1);
+  return state;
+}
+
+function clampPdfPage(page, pageCount) {
+  return Math.min(Math.max(1, Number(page || 1)), Math.max(1, Number(pageCount || 1)));
 }
 
 export function viewerZoomValue(current, action) {

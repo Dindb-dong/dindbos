@@ -1634,6 +1634,17 @@ button {
   object-fit: contain;
 }
 
+/* Viewer PDF.js canvas */
+.viewer-pdf-canvas {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 320px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: white;
+}
+
 /* Viewer deck frame */
 .viewer-deck {
   aspect-ratio: 16 / 10;
