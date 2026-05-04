@@ -41,11 +41,12 @@ Supported:
 - static default imports: `import value from "pkg"`
 - static named imports: `import { value } from "./module.mjs"`
 - static namespace imports: `import * as value from "./module.mjs"`
+- multiline static import lists
 - side-effect imports: `import "./setup.mjs"`
 - default exports: `export default value`
 - named declarations: `export const value = 1`, `export function run() {}`
-- export lists: `export { value }`
-- re-export barrels: `export { value } from "./module.mjs"` and `export * from "./module.mjs"`
+- export lists, including multiline lists and multiple variable declarations
+- re-export barrels: `export { value } from "./module.mjs"`, `export * from "./module.mjs"`, and `export * as namespace from "./module.mjs"`
 
 Unsupported:
 

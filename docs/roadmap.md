@@ -422,13 +422,14 @@ Already present:
 - `npm run smoke:npm-node` verifies NodeCompat `http`/`https` policy errors for CommonJS and ESM import paths.
 - ESM transform supports simple re-export barrels through `export { ... } from` and `export * from`, which covers common browser-safe package index modules without pretending to implement full Node loader semantics.
 - `npm run smoke:npm-node` verifies default, named, renamed, and star re-export behavior through a VFS-backed `.mjs` fixture.
+- ESM transform supports multiline static import/export lists, multiple variable declaration exports, and namespace re-export barrels through `export * as namespace from`, covering more real browser-safe package index modules without claiming full Node loader semantics.
+- `npm run smoke:npm-node` verifies multiline import lists, multiline re-export lists, namespace re-exports, and multiple declaration exports through VFS-backed `.mjs` fixtures.
 - `npm run smoke:npm-node` verifies package `"type": "module"`, `.cjs`, `.mjs`, JSON import, conditional root/subpath `exports`, and nested dependency conflict resolution.
 - `npm run smoke:npm-node` verifies peer dependency recording, optional dependency recording, and unsupported native/lifecycle warning metadata.
 - `docs/node-compat.md` documents the supported ESM subset, package resolution behavior, built-in module surface, and unsupported Node features.
 
 Remaining:
 
-- Implement richer ESM semantics where needed by real browser-safe packages.
 - Support JS-only lifecycle scripts only after sandbox policy is clear.
 
 Completion criteria:

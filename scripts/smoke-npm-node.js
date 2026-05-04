@@ -71,6 +71,10 @@ const reexportModule = await node.runFile("./reexport/consumer.mjs", cwd);
 assert(reexportModule.status === 0, `re-export module exited with ${reexportModule.status}`);
 assert(reexportModule.output.trim() === "core-value default-value default-value", `unexpected re-export output: ${reexportModule.output}`);
 
+const richEsmModule = await node.runFile("./esm-rich/consumer.mjs", cwd);
+assert(richEsmModule.status === 0, `rich ESM module exited with ${richEsmModule.status}`);
+assert(richEsmModule.output.trim() === "alpha-value beta-value extra-value alpha-value beta-value", `unexpected rich ESM output: ${richEsmModule.output}`);
+
 const nestedConflict = node.evaluate("const left = require('left'); const shared = require('shared'); console.log(left.shared, shared.name);", cwd);
 assert(nestedConflict.status === 0, `nested conflict exited with ${nestedConflict.status}`);
 assert(nestedConflict.output.trim() === "nested root", `unexpected nested conflict output: ${nestedConflict.output}`);
@@ -269,6 +273,7 @@ function writeFixtureFiles(os) {
   const system = os.permissions.systemPrincipal();
   mkdir(os, `${cwd}/type-module`, system);
   mkdir(os, `${cwd}/reexport`, system);
+  mkdir(os, `${cwd}/esm-rich`, system);
   mkdir(os, `${cwd}/node_modules/exports-pkg`, system);
   mkdir(os, `${cwd}/node_modules/shared`, system);
   mkdir(os, `${cwd}/node_modules/left`, system);
@@ -283,6 +288,27 @@ function writeFixtureFiles(os) {
   write(os, `${cwd}/reexport/core.mjs`, "export const core = 'core-value'; export default 'default-value';\n", system);
   write(os, `${cwd}/reexport/barrel.mjs`, "export * from './core.mjs'; export { default, default as renamed } from './core.mjs';\n", system);
   write(os, `${cwd}/reexport/consumer.mjs`, "import value, { core, renamed } from './barrel.mjs'; console.log(core, value, renamed);\n", system);
+  write(os, `${cwd}/esm-rich/source.mjs`, "const localAlpha = 'alpha-value'; const beta = 'beta-value'; export { localAlpha as alpha, beta };\n", system);
+  write(os, `${cwd}/esm-rich/extra.mjs`, "export const extra = 'extra-value', ignored = 'ignored-value';\n", system);
+  write(os, `${cwd}/esm-rich/barrel.mjs`, [
+    "export {",
+    "  alpha,",
+    "  beta as renamedBeta",
+    "} from './source.mjs';",
+    "export * as grouped from './source.mjs';",
+    "export {",
+    "  extra",
+    "} from './extra.mjs';",
+  ].join("\n"), system);
+  write(os, `${cwd}/esm-rich/consumer.mjs`, [
+    "import {",
+    "  alpha,",
+    "  renamedBeta,",
+    "  grouped,",
+    "  extra",
+    "} from './barrel.mjs';",
+    "console.log(alpha, renamedBeta, extra, grouped.alpha, grouped.beta);",
+  ].join("\n"), system);
   write(os, `${cwd}/node_modules/exports-pkg/package.json`, JSON.stringify({
     name: "exports-pkg",
     exports: {
