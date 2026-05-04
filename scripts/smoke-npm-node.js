@@ -121,6 +121,36 @@ const builtinImport = await node.evaluate(
 assert(builtinImport.status === 0, `builtin import exited with ${builtinImport.status}`);
 assert(builtinImport.output.trim() === "dindbos.local ok-2 function", `unexpected builtin import output: ${builtinImport.output}`);
 
+const perfHooksRequire = node.evaluate(
+  [
+    "const { performance, PerformanceObserver } = require('perf_hooks');",
+    "performance.mark('start', { startTime: 10 });",
+    "performance.mark('end', { startTime: 25 });",
+    "const measure = performance.measure('work', 'start', 'end');",
+    "const buffered = [];",
+    "new PerformanceObserver((list) => buffered.push(list.getEntries().length)).observe({ entryTypes: ['measure'], buffered: true });",
+    "console.log(measure.duration, performance.getEntriesByType('mark').length, performance.getEntriesByName('work')[0].entryType, buffered[0]);",
+  ].join("\n"),
+  cwd,
+);
+assert(perfHooksRequire.status === 0, `perf_hooks require exited with ${perfHooksRequire.status}`);
+assert(perfHooksRequire.output.trim() === "15 2 measure 1", `unexpected perf_hooks require output: ${perfHooksRequire.output}`);
+
+const perfHooksImport = await node.evaluate(
+  [
+    "import perfHooks, { performance, PerformanceObserver } from 'node:perf_hooks';",
+    "performance.mark('esm-start', { startTime: 1 });",
+    "performance.mark('esm-end', { startTime: 4 });",
+    "const measure = performance.measure('esm-work', 'esm-start', 'esm-end');",
+    "performance.clearMarks('esm-start');",
+    "console.log(measure.duration, performance.getEntriesByName('esm-start').length, PerformanceObserver.supportedEntryTypes.includes('measure'), typeof perfHooks.performance.now());",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(perfHooksImport.status === 0, `perf_hooks import exited with ${perfHooksImport.status}`);
+assert(perfHooksImport.output.trim() === "3 0 true number", `unexpected perf_hooks import output: ${perfHooksImport.output}`);
+
 const streamRequire = node.evaluate(
   [
     "const { Readable, Writable, PassThrough, pipeline } = require('stream');",

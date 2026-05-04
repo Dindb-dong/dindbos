@@ -16,6 +16,8 @@ const BUILTIN_MODULES = new Set([
   "node:util",
   "timers",
   "node:timers",
+  "perf_hooks",
+  "node:perf_hooks",
   "stream",
   "node:stream",
   "crypto",
@@ -216,6 +218,7 @@ class CommonJsRuntime {
       url: createUrlModule(),
       util: createUtilModule(),
       timers: createTimersModule(),
+      perf_hooks: createPerfHooksModule(),
       stream: createStreamModule(events),
       crypto: createCryptoModule(this.buffer),
       assert: createAssertModule(),
@@ -874,6 +877,116 @@ function createTimersModule() {
     setImmediate: (callback, ...args) => globalThis.setTimeout?.(() => callback(...args), 0),
     clearImmediate: globalThis.clearTimeout?.bind(globalThis),
   };
+}
+
+function createPerfHooksModule() {
+  const marks = [];
+  const measures = [];
+  const now = () => Number(globalThis.performance?.now?.() || Date.now());
+  const timeOrigin = Number(globalThis.performance?.timeOrigin || Date.now());
+  const toEntry = (entry) => ({
+    name: entry.name,
+    entryType: entry.entryType,
+    startTime: entry.startTime,
+    duration: entry.duration,
+    detail: entry.detail,
+    toJSON: () => ({ ...entry }),
+  });
+  const findMark = (name) => [...marks].reverse().find((entry) => entry.name === name);
+  const performance = {
+    get timeOrigin() {
+      return timeOrigin;
+    },
+    now,
+    mark: (name, options = {}) => {
+      const entry = toEntry({
+        name: String(name),
+        entryType: "mark",
+        startTime: options.startTime === undefined ? now() : Number(options.startTime),
+        duration: 0,
+        detail: options.detail,
+      });
+      marks.push(entry);
+      return entry;
+    },
+    measure: (name, startOrOptions, endMark) => {
+      const options = typeof startOrOptions === "object" && startOrOptions !== null ? startOrOptions : {};
+      const startName = typeof startOrOptions === "string" ? startOrOptions : options.start;
+      const endName = typeof endMark === "string" ? endMark : options.end;
+      const startTime = options.start === undefined && startName
+        ? findMark(startName)?.startTime
+        : Number(options.start ?? 0);
+      const endTime = options.end === undefined && endName
+        ? findMark(endName)?.startTime
+        : Number(options.end ?? now());
+      if (startName && startTime === undefined) throw new Error(`perf_hooks: mark not found: ${startName}`);
+      if (endName && endTime === undefined) throw new Error(`perf_hooks: mark not found: ${endName}`);
+      const entry = toEntry({
+        name: String(name),
+        entryType: "measure",
+        startTime: Number(startTime ?? 0),
+        duration: Math.max(0, Number(endTime ?? 0) - Number(startTime ?? 0)),
+        detail: options.detail,
+      });
+      measures.push(entry);
+      return entry;
+    },
+    clearMarks: (name) => clearEntries(marks, name),
+    clearMeasures: (name) => clearEntries(measures, name),
+    getEntries: () => [...marks, ...measures],
+    getEntriesByName: (name, type) => performance.getEntries().filter((entry) => entry.name === name && (!type || entry.entryType === type)),
+    getEntriesByType: (type) => performance.getEntries().filter((entry) => entry.entryType === type),
+  };
+  class PerformanceObserver {
+    constructor(callback) {
+      if (typeof callback !== "function") throw new Error("perf_hooks: observer callback must be a function");
+      this.callback = callback;
+      this.entryTypes = [];
+    }
+
+    observe(options = {}) {
+      this.entryTypes = Array.isArray(options.entryTypes) ? [...options.entryTypes] : [options.type].filter(Boolean);
+      if (options.buffered) {
+        const entries = performance.getEntries().filter((entry) => this.entryTypes.includes(entry.entryType));
+        this.callback({ getEntries: () => entries }, this);
+      }
+    }
+
+    disconnect() {
+      this.entryTypes = [];
+    }
+
+    takeRecords() {
+      return [];
+    }
+
+    static get supportedEntryTypes() {
+      return ["mark", "measure"];
+    }
+  }
+  return {
+    performance,
+    PerformanceObserver,
+    constants: {
+      NODE_PERFORMANCE_GC_MAJOR: 1,
+      NODE_PERFORMANCE_GC_MINOR: 2,
+      NODE_PERFORMANCE_GC_INCREMENTAL: 4,
+      NODE_PERFORMANCE_GC_WEAKCB: 8,
+    },
+    monitorEventLoopDelay: () => {
+      throw new Error("NodeCompat perf_hooks monitorEventLoopDelay is unavailable in the browser runtime.");
+    },
+  };
+}
+
+function clearEntries(entries, name) {
+  if (name === undefined) {
+    entries.splice(0, entries.length);
+    return;
+  }
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    if (entries[index].name === name) entries.splice(index, 1);
+  }
 }
 
 function createNetworkModule(protocol) {
