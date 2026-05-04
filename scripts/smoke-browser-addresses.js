@@ -4,9 +4,11 @@ import {
   activeBrowserTab,
   browserSessionSnapshot,
   browserChromeShortcut,
+  browserDiagnosticsMarkup,
   browserKeyEventPayload,
   browserTabNavigate,
   browserViewportMetrics,
+  buildBrowserDiagnostics,
   closeBrowserTab,
   createBrowserSessionState,
   createBrowserNewTab,
@@ -39,6 +41,13 @@ const remoteProviderSession = createBrowserSessionState({ browserProviderUrl: "w
 assert(remoteProviderSession.companionUrl === "wss://browser.example.test/session", "browser session did not accept remote provider URL");
 const remoteProviderSnapshot = browserSessionSnapshot(remoteProviderSession);
 assert(remoteProviderSnapshot.companionUrl === "wss://browser.example.test/session", "browser session snapshot did not preserve remote provider URL");
+const remoteDiagnostics = buildBrowserDiagnostics(remoteProviderSession, { connected: false });
+assert(remoteDiagnostics.provider === "remote provider", "browser diagnostics did not detect remote provider");
+assert(remoteDiagnostics.healthUrl === "https://browser.example.test/health", "browser diagnostics health URL mismatch");
+assert(remoteDiagnostics.stream === "cdp-screencast/binary-jpeg", "browser diagnostics stream policy mismatch");
+assert(remoteDiagnostics.advice.includes("WSS endpoint"), "browser diagnostics remote advice missing");
+const mismatchDiagnostics = buildBrowserDiagnostics({ status: "browserd stream mismatch" }, { connected: false });
+assert(mismatchDiagnostics.advice.includes("protocol contract"), "browser diagnostics mismatch advice missing");
 const restoredSession = createBrowserSessionState({ url: "new.example" }, {
   mode: "companion",
   status: "ready https://example.com",
@@ -59,6 +68,12 @@ assert(invalidSession.address === "/home/guest/page.html", "browser session drop
 const snapshot = browserSessionSnapshot({ mode: "local", status: "local document /x.html", address: "/x.html", title: "x.html", localHtml: "<h1>x</h1>" });
 assert(snapshot.mode === "local" && snapshot.localHtml.includes("<h1>x</h1>"), "browser session snapshot lost local state");
 assert(snapshot.tabs.length === 1 && snapshot.activeTabId === "tab-1", "browser session snapshot did not include default tab");
+const localDiagnostics = buildBrowserDiagnostics(snapshot, { connected: false });
+const localDiagnosticMarkup = browserDiagnosticsMarkup(localDiagnostics);
+assert(localDiagnostics.mode === "local", "browser diagnostics did not preserve local mode");
+assert(localDiagnostics.advice.includes("Local HTML is sandboxed"), "browser local diagnostics advice missing");
+assert(localDiagnosticMarkup.includes("data-browser-diagnostics-panel"), "browser diagnostics markup missing");
+assert(localDiagnosticMarkup.includes("cdp-screencast/binary-jpeg"), "browser diagnostics stream markup missing");
 
 const tabbedSession = createBrowserSessionState({}, {
   tabs: [
@@ -76,6 +91,10 @@ closeBrowserTab(tabbedSession);
 assert(tabbedSession.tabs.length === 2 && tabbedSession.closedTabs.length === 1, "browser close tab did not retain closed tab");
 reopenBrowserTab(tabbedSession);
 assert(tabbedSession.tabs.length === 3 && tabbedSession.address === "example.com", "browser reopen tab did not restore closed tab");
+const connectedDiagnostics = buildBrowserDiagnostics(tabbedSession, { connected: true });
+assert(connectedDiagnostics.connected === true, "browser diagnostics did not mark connected provider");
+assert(connectedDiagnostics.tabs === 3, "browser diagnostics tab count mismatch");
+assert(connectedDiagnostics.advice.includes("explicit Browser.app provider boundary"), "browser connected diagnostics advice missing");
 
 assert(browserChromeShortcut({ key: "l", ctrlKey: true }) === "focus-address", "ctrl-l did not focus browser address");
 assert(browserChromeShortcut({ key: "L", metaKey: true }) === "focus-address", "cmd-l did not focus browser address");

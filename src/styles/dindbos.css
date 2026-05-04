@@ -1349,7 +1349,7 @@ button {
 /* Browser app */
 .browser-app {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   height: 100%;
   min-height: 360px;
   margin: -18px;
@@ -1409,6 +1409,51 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Browser diagnostics surface */
+.browser-diagnostics {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Browser diagnostics list */
+.browser-diagnostics dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+/* Browser diagnostics item */
+.browser-diagnostics div {
+  min-width: 0;
+}
+
+/* Browser diagnostics label */
+.browser-diagnostics dt {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+/* Browser diagnostics value */
+.browser-diagnostics dd {
+  margin: 2px 0 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Browser diagnostics advice */
+.browser-diagnostics p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* Browser viewport */
@@ -2094,6 +2139,11 @@ button {
   /* Mobile browser status */
   .browser-status code {
     display: none;
+  }
+
+  /* Mobile browser diagnostics */
+  .browser-diagnostics dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /* Mobile browser viewport */

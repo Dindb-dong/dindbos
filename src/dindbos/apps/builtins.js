@@ -1,5 +1,11 @@
 import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260422-browserd";
-import { BrowserCompanionClient, pasteClipboardText } from "../browser-client.js?v=20260422-browserd";
+import {
+  BROWSERD_FRAME_ENCODING,
+  BROWSERD_FRAME_TRANSPORT,
+  BrowserCompanionClient,
+  browserProviderHealthUrl,
+  pasteClipboardText,
+} from "../browser-client.js?v=20260422-browserd";
 import { ShellSession } from "../shell.js?v=20260422-browserd";
 
 const FILES_OPERATION_HISTORY_LIMIT = 12;
@@ -1879,6 +1885,9 @@ function renderBrowser(os, content, context = {}, windowApi) {
         <span data-browser-status>${escapeHtml(state.status)}</span>
         <code>${escapeHtml(state.companionUrl)}</code>
       </div>
+      <div data-browser-diagnostics>
+        ${browserDiagnosticsMarkup(buildBrowserDiagnostics(state, { connected: client.connected }))}
+      </div>
       <div class="browser-viewport" tabindex="0" data-browser-viewport>
         <div class="browser-placeholder">
           <p class="dos-kicker">Local companion</p>
@@ -1895,6 +1904,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     form: content.querySelector(".browser-toolbar"),
     address: content.querySelector("[name='address']"),
     status: content.querySelector("[data-browser-status]"),
+    diagnostics: content.querySelector("[data-browser-diagnostics]"),
     viewport: content.querySelector("[data-browser-viewport]"),
     frame: content.querySelector("[data-browser-frame]"),
     local: content.querySelector("[data-browser-local]"),
@@ -1941,8 +1951,12 @@ function renderBrowser(os, content, context = {}, windowApi) {
     state.status = nextStatus;
     updateActiveBrowserTab(state, { status: nextStatus });
     refs.status.textContent = nextStatus;
+    updateDiagnostics();
     persistState();
     os.processes.logSelf?.(`browser ${nextStatus}`);
+  };
+  const updateDiagnostics = () => {
+    refs.diagnostics.innerHTML = browserDiagnosticsMarkup(buildBrowserDiagnostics(state, { connected: client.connected }));
   };
   const showFrame = (src) => {
     if (remoteFrameObjectUrl && remoteFrameObjectUrl !== src) URL.revokeObjectURL(remoteFrameObjectUrl);
@@ -1954,6 +1968,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     refs.local.hidden = true;
     refs.frame.hidden = false;
     refs.frame.src = src;
+    updateDiagnostics();
     persistState();
   };
   const queueFrame = (src) => {
@@ -2114,6 +2129,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
       await client.reconnect();
       refs.connect.textContent = "Connect";
       resizeRemote();
+      updateDiagnostics();
     }
     return client;
   }
@@ -2155,6 +2171,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     browserTabNavigate(state, normalized, { mode: "local", localHtml: html, title: node.name, status: `local document ${normalized}` });
     refs.address.value = normalized;
     setStatus(`local document ${normalized}`);
+    updateDiagnostics();
     windowApi.setTitle(`${node.name} - Browser`);
     renderTabs();
     persistState();
@@ -2174,6 +2191,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     syncBrowserStateFromActiveTab(state);
     refs.status.textContent = state.status;
     refs.address.value = state.address;
+    updateDiagnostics();
     if (state.title && state.title !== "Browser") windowApi.setTitle(`${state.title} - Browser`);
     if (state.mode === "local" && state.localHtml) {
       refs.placeholder.hidden = true;
@@ -2234,6 +2252,64 @@ function browserProviderUrl(os, context = {}) {
   } catch {
     return "ws://127.0.0.1:8787/browser";
   }
+}
+
+export function buildBrowserDiagnostics(state = {}, runtime = {}) {
+  const synced = syncBrowserStateFromActiveTab({ ...state, tabs: [...(state.tabs || [])] });
+  const providerUrl = browserProviderUrl(null, { companionUrl: synced.companionUrl });
+  const mode = sanitizeBrowserMode(synced.mode) || "idle";
+  const tabs = Array.isArray(synced.tabs) && synced.tabs.length ? synced.tabs : [activeBrowserTab(synced)];
+  const connected = Boolean(runtime.connected);
+  const providerKind = browserProviderKind(providerUrl);
+  const diagnostics = {
+    mode,
+    provider: providerKind,
+    providerUrl,
+    healthUrl: browserProviderHealthUrl(providerUrl),
+    connected,
+    stream: `${BROWSERD_FRAME_TRANSPORT}/${BROWSERD_FRAME_ENCODING}`,
+    tabs: tabs.length,
+    activeTab: synced.activeTabId || activeBrowserTab(synced).id,
+    address: synced.address || "",
+    status: synced.status || "browserd not connected",
+    advice: "",
+  };
+  diagnostics.advice = browserDiagnosticsAdvice(diagnostics);
+  return diagnostics;
+}
+
+function browserProviderKind(providerUrl = "") {
+  try {
+    const hostname = new URL(providerUrl).hostname;
+    return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(hostname) ? "local browserd" : "remote provider";
+  } catch {
+    return "local browserd";
+  }
+}
+
+function browserDiagnosticsAdvice(diagnostics = {}) {
+  const status = String(diagnostics.status || "").toLowerCase();
+  if (diagnostics.mode === "local") return "Local HTML is sandboxed; use Connect only for external URLs.";
+  if (status.includes("stream mismatch") || status.includes("protocol mismatch") || status.includes("missing capabilities")) {
+    return "Provider health metadata does not match the Browser.app protocol contract.";
+  }
+  if (diagnostics.connected) return "Remote browsing is active through the explicit Browser.app provider boundary.";
+  if (diagnostics.provider === "remote provider") return "Remote provider selected; verify the WSS endpoint and provider trust boundary.";
+  return "Start browserd or configure a browser provider before opening external URLs.";
+}
+
+export function browserDiagnosticsMarkup(diagnostics = {}) {
+  return `
+    <section class="browser-diagnostics" data-browser-diagnostics-panel>
+      <dl>
+        <div><dt>Provider</dt><dd>${escapeHtml(`${diagnostics.provider} · ${diagnostics.connected ? "connected" : "offline"}`)}</dd></div>
+        <div><dt>Health</dt><dd>${escapeHtml(diagnostics.healthUrl || "")}</dd></div>
+        <div><dt>Stream</dt><dd>${escapeHtml(diagnostics.stream || "")}</dd></div>
+        <div><dt>Tabs</dt><dd>${escapeHtml(`${diagnostics.tabs || 0} tabs · ${diagnostics.mode || "idle"}`)}</dd></div>
+      </dl>
+      <p>${escapeHtml(diagnostics.advice || "")}</p>
+    </section>
+  `;
 }
 
 export function createBrowserSessionState(context = {}, restored = null) {
