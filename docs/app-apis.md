@@ -133,6 +133,20 @@ Available as `os.storage`.
 
 Storage APIs report persistence backend state. They do not expose unrestricted browser storage primitives to apps.
 
+## App State
+
+Available as `os.state`.
+
+- `get(key, fallback)` reads a JSON-serializable value from the current app namespace.
+- `set(key, value)` writes a JSON-serializable value to the current app namespace.
+- `remove(key)` deletes a key from the current app namespace.
+- `keys()` lists saved keys for the current app namespace.
+- `snapshot()` returns the current namespace values.
+- `clear()` removes all keys for the current app namespace.
+- `path()` returns the VFS-backed state record path for diagnostics.
+
+App state is scoped by app id under `/var/lib/dindbos/app-state/<appId>.json`, survives close, relaunch, update, and VFS reload, and is removed during package uninstall cleanup. Apps cannot use this API to read another app's state.
+
 ## Disk Policy
 
 Available on the runtime object for built-in tools and trusted diagnostics:

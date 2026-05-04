@@ -47,6 +47,7 @@ Added:
 - Package manager now verifies signed remote manifests with Ed25519, manages trusted publishers through `pkg trust`, and fails closed before package filesystem mutation for missing, invalid, or untrusted signatures.
 - Package lifecycle events now distinguish install, update, first-run, uninstall-cleanup, and uninstall, with lifecycle metadata persisted in package records.
 - API Lab sample package now ships under `/opt/dindbos/packages/api-lab` and proves third-party use of sandboxed filesystem, package metadata, current-process, and process-log APIs through package smoke coverage.
+- App sandbox now exposes per-app `os.state` JSON persistence backed by `/var/lib/dindbos/app-state`, with relaunch/reload restoration and package uninstall cleanup coverage.
 - NodeCompat support for CommonJS, JSON modules, simple ESM transforms, simple `exports` resolution, nested dependency lookup, and `events`/`node:events`.
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
 - NodeCompat `stream` builtin facade for browser-safe `Readable`, `Writable`, `PassThrough`, and `pipeline` usage.

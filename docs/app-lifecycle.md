@@ -85,6 +85,8 @@ The runtime emits `app:ready` when the window manager marks the process ready. A
 
 Apps that perform async work should render an explicit loading state, then replace it when ready. Package runtime errors are shown in the app content area.
 
+Sandboxed apps can persist small JSON state through `os.state`. State is stored per app id under `/var/lib/dindbos/app-state`, survives close, relaunch, update, and VFS reload, and is removed during package uninstall cleanup.
+
 ### Focus
 
 Focus is currently owned by the window manager. The runtime emits `app:focus` when a window is focused, but apps do not receive a dedicated in-process focus callback yet.
