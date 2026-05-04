@@ -259,6 +259,38 @@ const fsCopyFileImport = await node.evaluate(
 assert(fsCopyFileImport.status === 0, `fs copyFile import exited with ${fsCopyFileImport.status}`);
 assert(fsCopyFileImport.output.trim() === "copy esm true", `unexpected fs copyFile import output: ${fsCopyFileImport.output}`);
 
+const fsMutationsRequire = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "fs.writeFileSync('./mut-src.txt', 'start');",
+    "fs.appendFileSync('./mut-src.txt', '-sync');",
+    "fs.appendFile('./mut-src.txt', '-cb', (appendErr) => {",
+    "  if (appendErr) throw appendErr;",
+    "  fs.rename('./mut-src.txt', './mut-dest.txt', (renameErr) => {",
+    "    if (renameErr) throw renameErr;",
+    "    console.log(fs.existsSync('./mut-src.txt'), fs.readFileSync('./mut-dest.txt', 'utf8'));",
+    "  });",
+    "});",
+  ].join("\n"),
+  cwd,
+);
+assert(fsMutationsRequire.status === 0, `fs mutations require exited with ${fsMutationsRequire.status}`);
+assert(fsMutationsRequire.output.trim() === "false start-sync-cb", `unexpected fs mutations require output: ${fsMutationsRequire.output}`);
+
+const fsMutationsImport = await node.evaluate(
+  [
+    "import { promises as fs, readFileSync, existsSync } from 'node:fs';",
+    "await fs.writeFile('./mut-esm-src.txt', 'esm');",
+    "await fs.appendFile('./mut-esm-src.txt', '-append');",
+    "await fs.rename('./mut-esm-src.txt', './mut-esm-dest.txt');",
+    "console.log(existsSync('./mut-esm-src.txt'), readFileSync('./mut-esm-dest.txt', 'utf8'));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsMutationsImport.status === 0, `fs mutations import exited with ${fsMutationsImport.status}`);
+assert(fsMutationsImport.output.trim() === "false esm-append", `unexpected fs mutations import output: ${fsMutationsImport.output}`);
+
 const fsStreamsRequire = node.evaluate(
   [
     "const fs = require('fs');",
