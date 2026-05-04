@@ -156,6 +156,8 @@ Already present:
 - `docs/browserd.md` defines the local companion trust boundary, optional-runtime rule, direct-third-party-access restriction, and future companion/provider separation.
 - Browser.app checks `browserd` health service, protocol version, required capabilities, and WebSocket subprotocol before opening the companion boundary.
 - `browserd` is explicitly browser-only: future file helper, download-save, local mount rename, and native-adjacent work must use separate companion identities/protocols instead of expanding the browser companion.
+- DindbOS accepts a configurable browser provider WebSocket URL so hosted deployments can point Browser.app at a browserd-compatible remote provider when a local companion is not available.
+- Browser.app persists the selected provider URL in its session snapshot and maps `ws`/`wss` provider endpoints to matching `http`/`https` health checks before opening the WebSocket.
 
 ### Stage 6: Desktop UX As A Runtime Client
 
@@ -220,6 +222,7 @@ Already present:
 - Browser.app companion frames use binary WebSocket payloads with JSON headers and object URLs instead of base64 data URL transport.
 - Browser.app companion identity checks verify health service, protocol version, required capabilities, and WebSocket subprotocol before accepting `browserd`.
 - Browser.app keyboard policy supports Ctrl/Cmd+L address focus, Escape back to remote viewport, Tab/Shift+Tab remote focus movement, and modifier shortcuts for remote text selection/copy/cut/paste.
+- Browser.app can be configured with a local or hosted browser provider WebSocket URL; session snapshots preserve that provider, and smoke coverage verifies remote `wss` provider URL persistence.
 
 Remaining:
 
@@ -489,10 +492,11 @@ Already present:
 - `npm run smoke:browser-addresses` verifies tab restore, active tab sync, new tab, close, reopen, and per-tab history behavior.
 - Binary frame transport sends Chromium JPEG screencast bytes over WebSocket binary messages and Browser.app renders them through object URLs, covered by `npm run smoke:browserd` and `npm run smoke:browser-client`.
 - Browser.app keyboard policy covers address focus, viewport focus restore, remote Tab/Shift+Tab focus movement, and remote modifier shortcuts, covered by `npm run smoke:browser-addresses` and `npm run smoke:browserd`.
+- Browser.app accepts configurable browser provider URLs through runtime options or launch context, preserving remote `wss` providers across window session snapshots.
+- Browser.app maps provider WebSocket URLs to `/health` using `http` for `ws` and `https` for `wss`, covered by `npm run smoke:browser-client`.
 
 Remaining:
 
-- Remote hosted provider option for deployments where a local companion is not available.
 - WebRTC/video stream investigation after CDP screencast is proven reliable.
 - Auth/session isolation per Browser.app session.
 - Better mobile behavior for browser viewport size and input.

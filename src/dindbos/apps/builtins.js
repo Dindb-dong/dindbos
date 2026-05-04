@@ -1731,9 +1731,10 @@ async function renderTextEditor(os, content, node, windowApi) {
 }
 
 function renderBrowser(os, content, context = {}, windowApi) {
-  const client = new BrowserCompanionClient();
+  const providerUrl = browserProviderUrl(os, context);
+  const client = new BrowserCompanionClient(providerUrl);
   const restoredState = windowApi?.getState?.("browser");
-  const state = createBrowserSessionState(context, restoredState);
+  const state = createBrowserSessionState({ ...context, companionUrl: providerUrl }, restoredState);
   content.innerHTML = `
     <section class="browser-app">
       <div class="browser-tabs" data-browser-tabs>
@@ -2096,6 +2097,18 @@ function initialBrowserAddress(context = {}) {
   return "";
 }
 
+function browserProviderUrl(os, context = {}) {
+  const value = String(context.browserProviderUrl || context.companionUrl || os?.browserProvider?.url || "ws://127.0.0.1:8787/browser").trim();
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") return "ws://127.0.0.1:8787/browser";
+    if (!parsed.pathname || parsed.pathname === "/") parsed.pathname = "/browser";
+    return parsed.toString();
+  } catch {
+    return "ws://127.0.0.1:8787/browser";
+  }
+}
+
 export function createBrowserSessionState(context = {}, restored = null) {
   const state = {
     mode: "idle",
@@ -2104,7 +2117,7 @@ export function createBrowserSessionState(context = {}, restored = null) {
     title: "Browser",
     frame: "",
     localHtml: "",
-    companionUrl: "ws://127.0.0.1:8787/browser",
+    companionUrl: browserProviderUrl(null, context),
     tabs: [],
     activeTabId: "",
     closedTabs: [],
@@ -2125,6 +2138,7 @@ export function createBrowserSessionState(context = {}, restored = null) {
     title: String(restored.title || state.title),
     frame: String(restored.frame || ""),
     localHtml: String(restored.localHtml || ""),
+    companionUrl: browserProviderUrl(null, { companionUrl: restored.companionUrl || state.companionUrl }),
     tabs: restoredTabs.length ? restoredTabs : [createBrowserTabState(restored, "tab-1")],
     activeTabId: String(restored.activeTabId || restoredTabs[0]?.id || "tab-1"),
     closedTabs: Array.isArray(restored.closedTabs)
@@ -2144,6 +2158,7 @@ export function browserSessionSnapshot(state = {}) {
     title: String(synced.title || "Browser"),
     frame: String(synced.frame || ""),
     localHtml: String(synced.localHtml || ""),
+    companionUrl: browserProviderUrl(null, { companionUrl: synced.companionUrl }),
     activeTabId: String(synced.activeTabId || ""),
     tabs: (synced.tabs || []).map(browserTabSnapshot),
     closedTabs: (synced.closedTabs || []).slice(0, BROWSER_CLOSED_TAB_LIMIT).map(browserTabSnapshot),

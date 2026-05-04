@@ -21,6 +21,7 @@ Added:
 - Browser.app clipboard paste forwarding from Ctrl/Cmd+V into remote companion pages through the explicit text insertion protocol.
 - Browser.app now snapshots address/title/status/frame/local-document state into the window state slot so minimize/focus/activate restore paths keep visible browser state.
 - Browser.app now keeps a tab session model with active tab state, close/reopen history, and per-tab navigation history in the window state slot.
+- Browser.app now accepts configurable local or hosted browser provider URLs and preserves the provider across session snapshots.
 - Browser.app companion frames now use binary WebSocket payloads plus object URLs instead of base64 data URL transport.
 - Browser.app companion identity checks now require the expected health service, protocol version, capabilities, and WebSocket subprotocol before connecting.
 - Browser.app keyboard policy now covers Ctrl/Cmd+L address focus, Escape viewport restore, remote Tab/Shift+Tab focus movement, and remote modifier shortcuts.
