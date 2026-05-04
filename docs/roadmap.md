@@ -411,6 +411,8 @@ Already present:
 - Browser-native `Buffer` fallback supports `from`, `alloc`, `concat`, `isBuffer`, `byteLength`, and common string encodings when host `Buffer` is unavailable; `npm run smoke:npm-node` verifies the no-host-Buffer path.
 - `events`/`EventEmitter` builtin facade is available through `events` and `node:events`; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
 - `url`, `util`, and `timers` builtin facades are available through bare and `node:` import paths; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
+- `util/types` is available through `util.types`, `util/types`, and `node:util/types` for browser-safe package feature probes covering ArrayBuffer, typed array, boxed primitive, collection, Date, RegExp, Promise, and Error checks.
+- `npm run smoke:npm-node` verifies `util/types` CommonJS and ESM import paths plus representative type probe behavior.
 - `perf_hooks` builtin facade supports CommonJS and ESM import paths for browser-safe performance marks, measures, observer shape, and package runtime probes.
 - `npm run smoke:npm-node` verifies `perf_hooks` and `node:perf_hooks` import paths, mark/measure entries, buffered observer behavior, clearing marks, supported entry types, and `performance.now()` shape.
 - `async_hooks` builtin facade supports CommonJS and ESM import paths for synchronous `AsyncLocalStorage`, `AsyncResource`, hook shape, and runtime probes used by browser-safe packages.

@@ -121,6 +121,30 @@ const builtinImport = await node.evaluate(
 assert(builtinImport.status === 0, `builtin import exited with ${builtinImport.status}`);
 assert(builtinImport.output.trim() === "dindbos.local ok-2 function", `unexpected builtin import output: ${builtinImport.output}`);
 
+const utilTypesRequire = node.evaluate(
+  [
+    "const types = require('util/types');",
+    "const util = require('util');",
+    "console.log(types.isArrayBuffer(new ArrayBuffer(1)), types.isTypedArray(new Uint8Array(1)), types.isDate(new Date()), types.isRegExp(/x/), types.isMap(new Map()), types.isSet(new Set()), types.isNativeError(new Error('x')), util.types.isUint8Array(new Uint8Array(1)));",
+  ].join("\n"),
+  cwd,
+);
+assert(utilTypesRequire.status === 0, `util/types require exited with ${utilTypesRequire.status}`);
+assert(utilTypesRequire.output.trim() === "true true true true true true true true", `unexpected util/types require output: ${utilTypesRequire.output}`);
+
+const utilTypesImport = await node.evaluate(
+  [
+    "import { isArrayBufferView, isDataView, isPromise } from 'node:util/types';",
+    "import util from 'node:util';",
+    "const view = new DataView(new ArrayBuffer(2));",
+    "console.log(isArrayBufferView(view), isDataView(view), isPromise(Promise.resolve()), util.types.isUint16Array(new Uint16Array(1)));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(utilTypesImport.status === 0, `util/types import exited with ${utilTypesImport.status}`);
+assert(utilTypesImport.output.trim() === "true true true true", `unexpected util/types import output: ${utilTypesImport.output}`);
+
 const hostBuffer = globalThis.Buffer;
 globalThis.Buffer = undefined;
 try {
