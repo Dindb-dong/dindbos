@@ -67,6 +67,10 @@ const importSubpathExports = await node.evaluate([
 assert(importSubpathExports.status === 0, `subpath exports import exited with ${importSubpathExports.status}`);
 assert(importSubpathExports.output.trim() === "feature-esm fallback-default", `unexpected subpath exports import output: ${importSubpathExports.output}`);
 
+const reexportModule = await node.runFile("./reexport/consumer.mjs", cwd);
+assert(reexportModule.status === 0, `re-export module exited with ${reexportModule.status}`);
+assert(reexportModule.output.trim() === "core-value default-value default-value", `unexpected re-export output: ${reexportModule.output}`);
+
 const nestedConflict = node.evaluate("const left = require('left'); const shared = require('shared'); console.log(left.shared, shared.name);", cwd);
 assert(nestedConflict.status === 0, `nested conflict exited with ${nestedConflict.status}`);
 assert(nestedConflict.output.trim() === "nested root", `unexpected nested conflict output: ${nestedConflict.output}`);
@@ -264,6 +268,7 @@ function bootOs() {
 function writeFixtureFiles(os) {
   const system = os.permissions.systemPrincipal();
   mkdir(os, `${cwd}/type-module`, system);
+  mkdir(os, `${cwd}/reexport`, system);
   mkdir(os, `${cwd}/node_modules/exports-pkg`, system);
   mkdir(os, `${cwd}/node_modules/shared`, system);
   mkdir(os, `${cwd}/node_modules/left`, system);
@@ -275,6 +280,9 @@ function writeFixtureFiles(os) {
   write(os, `${cwd}/type-module/package.json`, JSON.stringify({ type: "module" }, null, 2), system);
   write(os, `${cwd}/type-module/data.json`, JSON.stringify({ name: "type-module-json" }), system);
   write(os, `${cwd}/type-module/app.js`, "import data from './data.json'; console.log(data.name);\n", system);
+  write(os, `${cwd}/reexport/core.mjs`, "export const core = 'core-value'; export default 'default-value';\n", system);
+  write(os, `${cwd}/reexport/barrel.mjs`, "export * from './core.mjs'; export { default, default as renamed } from './core.mjs';\n", system);
+  write(os, `${cwd}/reexport/consumer.mjs`, "import value, { core, renamed } from './barrel.mjs'; console.log(core, value, renamed);\n", system);
   write(os, `${cwd}/node_modules/exports-pkg/package.json`, JSON.stringify({
     name: "exports-pkg",
     exports: {

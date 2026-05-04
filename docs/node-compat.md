@@ -45,12 +45,12 @@ Supported:
 - default exports: `export default value`
 - named declarations: `export const value = 1`, `export function run() {}`
 - export lists: `export { value }`
+- re-export barrels: `export { value } from "./module.mjs"` and `export * from "./module.mjs"`
 
 Unsupported:
 
 - top-level `await`
 - dynamic `import()`
-- re-export forms such as `export * from "./other.mjs"`
 - import assertions beyond JSON handling
 - live binding behavior that depends on full ESM evaluation order
 - Node loader hooks

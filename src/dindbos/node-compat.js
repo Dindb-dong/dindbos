@@ -498,21 +498,29 @@ function packageEntry(manifest, condition = "require") {
 function transformEsmSource(source) {
   const state = { importIndex: 0, exportedNames: [], defaultExportAssigned: false };
   let code = transformImportStatements(String(source), state);
-  code = code.replace(/^\s*export\s+default\s+(async\s+function|function|class)\s*/gm, (_, declaration) => {
+  code = code.replace(/\bexport\s+default\s+(async\s+function|function|class)\s*/g, (_, declaration) => {
     state.defaultExportAssigned = true;
     return `const __default_export__ = ${declaration} `;
   });
-  code = code.replace(/^\s*export\s+default\s+([^;\n]+);?/gm, (_, expression) => {
+  code = code.replace(/\bexport\s+default\s+([^;\n]+);?/g, (_, expression) => {
     state.defaultExportAssigned = true;
     return `const __default_export__ = ${expression};`;
   });
-  code = code.replace(/^\s*export\s+(async\s+function|function|class)\s+([A-Za-z_$][\w$]*)/gm, (_, declaration, name) => {
+  code = code.replace(/\bexport\s+(async\s+function|function|class)\s+([A-Za-z_$][\w$]*)/g, (_, declaration, name) => {
     state.exportedNames.push(name);
     return `${declaration} ${name}`;
   });
-  code = code.replace(/^\s*export\s+(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+);?/gm, (_, declaration, name, expression) => {
+  code = code.replace(/\bexport\s+(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+);?/g, (_, declaration, name, expression) => {
     state.exportedNames.push(name);
     return `${declaration} ${name} = ${expression};`;
+  });
+  code = code.replace(/\bexport\s*\{([^}]+)\}\s+from\s+["']([^"']+)["'];?/g, (_, specifiers, specifier) => {
+    const moduleName = `__esm_reexport_${state.importIndex++}`;
+    return `const ${moduleName} = await __import(${JSON.stringify(specifier)});\n__export({ ${exportFromProperties(specifiers, moduleName)} });`;
+  });
+  code = code.replace(/\bexport\s+\*\s+from\s+["']([^"']+)["'];?/g, (_, specifier) => {
+    const moduleName = `__esm_reexport_${state.importIndex++}`;
+    return `const ${moduleName} = await __import(${JSON.stringify(specifier)});\n__export(Object.fromEntries(Object.entries(${moduleName}).filter(([key]) => key !== "default")));`;
   });
   code = code.replace(/^\s*export\s*\{([^}]+)\};?/gm, (_, specifiers) => `__export({ ${exportObjectProperties(specifiers)} });`);
   const footer = [];
@@ -568,6 +576,19 @@ function exportObjectProperties(specifiers) {
     .map((part) => {
       const [local, exported] = part.split(/\s+as\s+/);
       return exported ? `${exported.trim()}: ${local.trim()}` : part;
+    })
+    .join(", ");
+}
+
+function exportFromProperties(specifiers, moduleName) {
+  return specifiers.split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [imported, exported] = part.split(/\s+as\s+/);
+      const local = imported.trim();
+      const name = exported ? exported.trim() : local;
+      return `${name}: ${moduleName}.${local}`;
     })
     .join(", ");
 }
