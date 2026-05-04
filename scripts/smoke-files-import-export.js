@@ -2,11 +2,15 @@
 import {
   assertFilesOperationActive,
   collectExportEntries,
+  copyPathIntoDirectory,
   filesActionTargets,
   importDroppedFiles,
+  movePathIntoDirectory,
   moveFilesKeyboardSelection,
   parseFilesSearchQuery,
   recordFilesOperationHistory,
+  resolveFilesConflict,
+  resolveFilesExportName,
   searchFileEntries,
   updateFilesSelection,
 } from "../src/dindbos/apps/builtins.js";
@@ -69,6 +73,77 @@ assert(imported.includes(`${importRoot}/nested/payload.bin`), "imported paths mi
 assert(imported.includes(`${importRoot}/note.txt`), "imported paths missing text file");
 assertBytes(os.fs.readFileBytes(`${importRoot}/nested/payload.bin`), binary, "imported binary bytes changed");
 assert(os.fs.readFile(`${importRoot}/note.txt`) === text, "imported text changed");
+
+os.fs.createDirectory("/home/guest/Documents/conflicts");
+os.fs.createDirectory("/home/guest/Documents/conflicts/source");
+os.fs.createDirectory("/home/guest/Documents/conflicts/target");
+os.fs.writeOrCreateFile("/home/guest/Documents/conflicts/source/note.txt", "copy source", "/", { mime: "text/plain" });
+os.fs.writeOrCreateFile("/home/guest/Documents/conflicts/target/note.txt", "copy existing", "/", { mime: "text/plain" });
+const renamedCopy = await copyPathIntoDirectory(
+  os,
+  "/home/guest/Documents/conflicts/source/note.txt",
+  "/home/guest/Documents/conflicts/target",
+  null,
+  { conflictPolicy: "rename" },
+);
+assert(renamedCopy === "/home/guest/Documents/conflicts/target/note-2.txt", `copy rename path mismatch: ${renamedCopy}`);
+assert(os.fs.readFile("/home/guest/Documents/conflicts/target/note.txt") === "copy existing", "copy rename overwrote existing file");
+assert(os.fs.readFile(renamedCopy) === "copy source", "copy rename did not preserve source bytes");
+
+os.fs.writeOrCreateFile("/home/guest/Documents/conflicts/source/replace.txt", "copy replacement", "/", { mime: "text/plain" });
+os.fs.writeOrCreateFile("/home/guest/Documents/conflicts/target/replace.txt", "copy old", "/", { mime: "text/plain" });
+const replacedCopy = await copyPathIntoDirectory(
+  os,
+  "/home/guest/Documents/conflicts/source/replace.txt",
+  "/home/guest/Documents/conflicts/target",
+  null,
+  { conflictPolicy: "replace" },
+);
+assert(replacedCopy === "/home/guest/Documents/conflicts/target/replace.txt", "copy replace path mismatch");
+assert(os.fs.readFile(replacedCopy) === "copy replacement", "copy replace did not overwrite target");
+
+os.fs.writeOrCreateFile("/home/guest/Documents/conflicts/source/skip.txt", "move source", "/", { mime: "text/plain" });
+os.fs.writeOrCreateFile("/home/guest/Documents/conflicts/target/skip.txt", "move existing", "/", { mime: "text/plain" });
+const skippedMove = await movePathIntoDirectory(
+  os,
+  "/home/guest/Documents/conflicts/source/skip.txt",
+  "/home/guest/Documents/conflicts/target",
+  null,
+  { conflictPolicy: "skip" },
+);
+assert(skippedMove === null, "move skip should return null");
+assert(os.fs.exists("/home/guest/Documents/conflicts/source/skip.txt"), "move skip removed the source");
+assert(os.fs.readFile("/home/guest/Documents/conflicts/target/skip.txt") === "move existing", "move skip changed existing target");
+
+const promptConflict = await resolveFilesConflict(os, "/home/guest/Documents/conflicts/target/note.txt", {
+  conflictPolicy: "prompt",
+  resolveConflict: () => "rename:manual-name.txt",
+});
+assert(promptConflict.action === "rename", "prompt conflict did not normalize rename action");
+assert(promptConflict.path === "/home/guest/Documents/conflicts/target/manual-name.txt", "prompt conflict custom rename path mismatch");
+
+const skippedUpload = await importDroppedFiles(os, importRoot, [fileLike("note.txt", "skipped upload")], null, {
+  conflictPolicy: "prompt",
+  resolveConflict: () => "skip",
+});
+assert(skippedUpload.length === 0, "import skip should not return imported paths");
+assert(os.fs.readFile(`${importRoot}/note.txt`) === text, "import skip overwrote existing import target");
+const renamedUpload = await importDroppedFiles(os, importRoot, [fileLike("note.txt", "renamed upload")], null, {
+  conflictPolicy: "prompt",
+  resolveConflict: () => "rename:uploaded-note.txt",
+});
+assert(renamedUpload[0] === `${importRoot}/uploaded-note.txt`, "import prompt rename path mismatch");
+assert(os.fs.readFile(`${importRoot}/uploaded-note.txt`) === "renamed upload", "import prompt rename content mismatch");
+const replacedUpload = await importDroppedFiles(os, importRoot, [fileLike("note.txt", "replaced upload")], null, {
+  conflictPolicy: "prompt",
+  resolveConflict: () => "replace",
+});
+assert(replacedUpload[0] === `${importRoot}/note.txt`, "import prompt replace path mismatch");
+assert(os.fs.readFile(`${importRoot}/note.txt`) === "replaced upload", "import prompt replace content mismatch");
+assert(resolveFilesExportName("source.dindbos-export.json", {
+  conflictPolicy: "prompt",
+  resolveExportName: () => "renamed-export.json",
+}) === "renamed-export.json", "export filename dialog result mismatch");
 
 const parsedSearch = parseFilesSearchQuery("payload type:file ext:bin min:10b max:1kb modified:>=2020-01-01");
 assert(parsedSearch.text[0] === "payload", "search text token parse mismatch");
@@ -180,6 +255,18 @@ function assertBytes(actual, expected, message) {
   for (let index = 0; index < expected.byteLength; index += 1) {
     assert(actual[index] === expected[index], `${message}: byte ${index} ${actual[index]} !== ${expected[index]}`);
   }
+}
+
+function fileLike(name, content, type = "text/plain") {
+  const bytes = new TextEncoder().encode(content);
+  return {
+    name,
+    size: bytes.byteLength,
+    type,
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
 }
 
 function assert(condition, message) {
