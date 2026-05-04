@@ -4,6 +4,8 @@ const BUILTIN_MODULES = new Set([
   "node:fs",
   "path",
   "node:path",
+  "path/posix",
+  "node:path/posix",
   "process",
   "node:process",
   "buffer",
@@ -243,6 +245,7 @@ class CommonJsRuntime {
       child_process: createChildProcessModule(),
       worker_threads: createWorkerThreadsModule(),
     };
+    this.builtins["path/posix"] = this.builtins.path.posix;
     this.builtins.module = this.createModuleModule();
   }
 
