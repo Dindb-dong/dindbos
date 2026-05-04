@@ -110,7 +110,7 @@ Current built-ins:
 - `child_process` / `worker_threads` policy facades
 - `zlib` policy facade
 
-The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
+The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem. The `fs.promises` facade wraps the same VFS operations for async package paths, including read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
 
 The `path` module exposes POSIX helpers used by the DindbOS VFS plus `path/posix` and `path/win32` subpath facades for package string probes. `path/win32` only performs browser-safe path string manipulation; it does not imply Windows host filesystem access.
 
