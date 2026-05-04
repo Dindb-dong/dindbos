@@ -11,6 +11,8 @@ const DEFAULT_CDP_PORT = 9223;
 const BROWSERD_SERVICE = "dindbos-browserd";
 const BROWSERD_PROTOCOL = "dindbos-browserd.v1";
 const BROWSERD_CAPABILITIES = [
+  "browser.capture",
+  "browser.history",
   "browser.navigate",
   "browser.input",
   "browser.frames.binary",

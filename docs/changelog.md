@@ -23,6 +23,7 @@ Added:
 - Browser.app companion frames now use binary WebSocket payloads plus object URLs instead of base64 data URL transport.
 - Browser.app companion identity checks now require the expected health service, protocol version, capabilities, and WebSocket subprotocol before connecting.
 - Browser.app keyboard policy now covers Ctrl/Cmd+L address focus, Escape viewport restore, remote Tab/Shift+Tab focus movement, and remote modifier shortcuts.
+- `browserd` capability scope is now explicitly browser-only; native-adjacent helpers must use separate companion identities and protocols.
 - Explicit runtime boot phase diagnostics for storage load, VFS mount, package registry load, app registry load, process init, and desktop render, persisted under `/var/log/dindbos`.
 - Recoverable storage-load and VFS mount restore failures now continue booting with `recovered` boot phase diagnostics.
 - Disk policy areas for `/home`, `/opt`, `/var`, `/var/cache`, `/tmp`, and `/mnt`, exposed through runtime APIs and `df`.
