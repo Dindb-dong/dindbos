@@ -192,6 +192,31 @@ const assertQueryImport = await node.evaluate(
 assert(assertQueryImport.status === 0, `assert/querystring import exited with ${assertQueryImport.status}`);
 assert(assertQueryImport.output.trim() === "assert-querystring-esm", `unexpected assert/querystring import output: ${assertQueryImport.output}`);
 
+const networkPolicyRequire = node.evaluate(
+  [
+    "const http = require('http');",
+    "const https = require('node:https');",
+    "for (const api of [http.request, https.get]) {",
+    "  try { api('https://example.com'); } catch (error) { console.log(error.message); }",
+    "}",
+  ].join("\n"),
+  cwd,
+);
+assert(networkPolicyRequire.status === 0, `network policy require exited with ${networkPolicyRequire.status}`);
+assert(networkPolicyRequire.output.includes("NodeCompat http networking is unavailable"), "http policy error missing");
+assert(networkPolicyRequire.output.includes("NodeCompat https networking is unavailable"), "https policy error missing");
+
+const networkPolicyImport = await node.evaluate(
+  [
+    "import { request } from 'node:http';",
+    "try { request('http://example.com'); } catch (error) { console.log(error.message); }",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(networkPolicyImport.status === 0, `network policy import exited with ${networkPolicyImport.status}`);
+assert(networkPolicyImport.output.trim() === "NodeCompat http networking is unavailable; use an explicit DindbOS network capability outside NodeCompat.", `unexpected network policy import output: ${networkPolicyImport.output}`);
+
 const policyInstaller = new NpmInstaller(os, { registry: "https://registry.example.test" });
 const policyFetch = countedFetch(fakePolicyFetch);
 const policyRecords = await policyInstaller.install(["policy-pkg@1.0.0"], `${cwd}/policy`, { fetch: policyFetch, maxPackages: 2 });
