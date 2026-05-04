@@ -30,7 +30,7 @@ It currently supports:
 - JSON modules
 - module cache
 - VFS-backed `fs.readFileSync`, `fs.writeFileSync`, `fs.existsSync`, `fs.statSync`, `fs.readdirSync`, `fs.mkdirSync`, and `fs.rmSync`
-- `path`, `process`, `events`, and `Buffer` facades
+- `path`, `path/posix`, `process`, `events`, and `Buffer` facades
 
 ## Supported ESM Subset
 
@@ -82,6 +82,7 @@ Current built-ins:
 
 - `fs`
 - `path`
+- `path/posix`
 - `process`
 - `buffer` / `Buffer`
 - `events` / `EventEmitter`

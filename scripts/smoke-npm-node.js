@@ -108,6 +108,13 @@ const browserSafeBuiltins = node.evaluate(
 assert(browserSafeBuiltins.status === 0, `browser-safe builtins exited with ${browserSafeBuiltins.status}`);
 assert(browserSafeBuiltins.output.trim() === "/docs 1 /home/guest/a b.txt v:7 function", `unexpected browser-safe builtins output: ${browserSafeBuiltins.output}`);
 
+const pathPosixRequire = node.evaluate(
+  "const posix = require('path/posix'); const path = require('path'); console.log(posix.join('/tmp', 'dindbos'), posix.basename('/tmp/file.txt'), path.posix === posix);",
+  cwd,
+);
+assert(pathPosixRequire.status === 0, `path/posix require exited with ${pathPosixRequire.status}`);
+assert(pathPosixRequire.output.trim() === "/tmp/dindbos file.txt true", `unexpected path/posix require output: ${pathPosixRequire.output}`);
+
 const builtinImport = await node.evaluate(
   [
     "import { URL } from 'node:url';",
@@ -120,6 +127,17 @@ const builtinImport = await node.evaluate(
 );
 assert(builtinImport.status === 0, `builtin import exited with ${builtinImport.status}`);
 assert(builtinImport.output.trim() === "dindbos.local ok-2 function", `unexpected builtin import output: ${builtinImport.output}`);
+
+const pathPosixImport = await node.evaluate(
+  [
+    "import posix, { dirname } from 'node:path/posix';",
+    "console.log(dirname('/home/guest/readme.md'), posix.extname('readme.md'));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(pathPosixImport.status === 0, `path/posix import exited with ${pathPosixImport.status}`);
+assert(pathPosixImport.output.trim() === "/home/guest .md", `unexpected path/posix import output: ${pathPosixImport.output}`);
 
 const utilTypesRequire = node.evaluate(
   [

@@ -410,6 +410,8 @@ Already present:
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
 - Browser-native `Buffer` fallback supports `from`, `alloc`, `concat`, `isBuffer`, `byteLength`, and common string encodings when host `Buffer` is unavailable; `npm run smoke:npm-node` verifies the no-host-Buffer path.
 - `events`/`EventEmitter` builtin facade is available through `events` and `node:events`; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
+- `path/posix` resolves through CommonJS and ESM import paths to the browser-safe POSIX path facade used by package feature probes.
+- `npm run smoke:npm-node` verifies `path/posix`, `node:path/posix`, and `path.posix` behavior.
 - `url`, `util`, and `timers` builtin facades are available through bare and `node:` import paths; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
 - `util/types` is available through `util.types`, `util/types`, and `node:util/types` for browser-safe package feature probes covering ArrayBuffer, typed array, boxed primitive, collection, Date, RegExp, Promise, and Error checks.
 - `npm run smoke:npm-node` verifies `util/types` CommonJS and ESM import paths plus representative type probe behavior.
