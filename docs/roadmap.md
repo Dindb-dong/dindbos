@@ -428,6 +428,8 @@ Already present:
 - `npm run smoke:npm-node` verifies `string_decoder` and `node:string_decoder` import paths plus `utf8`, `hex`, `latin1`, and `base64` decoding behavior.
 - `constants` builtin facade supports CommonJS and ESM import paths for common errno, signal, open flag, and file mode constants used by browser-safe package probes.
 - `npm run smoke:npm-node` verifies `constants` and `node:constants` import paths plus representative errno, signal, open flag, and file mode values.
+- `diagnostics_channel` builtin facade supports CommonJS and ESM import paths for in-runtime browser-safe instrumentation publish/subscribe hooks.
+- `npm run smoke:npm-node` verifies `diagnostics_channel` and `node:diagnostics_channel` import paths, named channel publish/subscribe, unsubscribe, has-subscriber reporting, and tracing channel object shape.
 - `http` and `https` policy facades support CommonJS and ESM import paths but fail with explicit DindbOS network capability guidance when used; network APIs belong to a future explicit app sandbox/capability boundary, not NodeCompat.
 - `npm run smoke:npm-node` verifies NodeCompat `http`/`https` policy errors for CommonJS and ESM import paths.
 - ESM transform supports simple re-export barrels through `export { ... } from` and `export * from`, which covers common browser-safe package index modules without pretending to implement full Node loader semantics.

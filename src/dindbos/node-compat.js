@@ -34,6 +34,8 @@ const BUILTIN_MODULES = new Set([
   "node:string_decoder",
   "constants",
   "node:constants",
+  "diagnostics_channel",
+  "node:diagnostics_channel",
   "http",
   "node:http",
   "https",
@@ -212,6 +214,7 @@ class CommonJsRuntime {
       tty: createTtyModule(),
       string_decoder: createStringDecoderModule(),
       constants: createConstantsModule(),
+      diagnostics_channel: createDiagnosticsChannelModule(),
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
     };
@@ -1192,6 +1195,52 @@ function createConstantsModule() {
     S_IRUSR: 256,
     S_IWUSR: 128,
     S_IXUSR: 64,
+  };
+}
+
+function createDiagnosticsChannelModule() {
+  const channels = new Map();
+  const getChannel = (name) => {
+    const key = String(name || "");
+    if (!channels.has(key)) channels.set(key, new DiagnosticsChannel(key));
+    return channels.get(key);
+  };
+  class DiagnosticsChannel {
+    constructor(name) {
+      this.name = name;
+      this.subscribers = new Set();
+    }
+
+    get hasSubscribers() {
+      return this.subscribers.size > 0;
+    }
+
+    publish(message) {
+      this.subscribers.forEach((subscriber) => subscriber(message, this.name));
+    }
+
+    subscribe(callback) {
+      if (typeof callback !== "function") throw new Error("diagnostics_channel: subscriber must be a function");
+      this.subscribers.add(callback);
+    }
+
+    unsubscribe(callback) {
+      this.subscribers.delete(callback);
+      return true;
+    }
+  }
+  return {
+    channel: getChannel,
+    hasSubscribers: (name) => getChannel(name).hasSubscribers,
+    subscribe: (name, callback) => getChannel(name).subscribe(callback),
+    unsubscribe: (name, callback) => getChannel(name).unsubscribe(callback),
+    tracingChannel: (name) => ({
+      start: getChannel(`${name}:start`),
+      end: getChannel(`${name}:end`),
+      asyncStart: getChannel(`${name}:asyncStart`),
+      asyncEnd: getChannel(`${name}:asyncEnd`),
+      error: getChannel(`${name}:error`),
+    }),
   };
 }
 
