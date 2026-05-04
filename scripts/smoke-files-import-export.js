@@ -3,6 +3,7 @@ import {
   assertFilesOperationActive,
   collectExportEntries,
   copyPathIntoDirectory,
+  createFilesOperationScheduler,
   filesActionTargets,
   importDroppedFiles,
   movePathIntoDirectory,
@@ -73,6 +74,43 @@ assert(imported.includes(`${importRoot}/nested/payload.bin`), "imported paths mi
 assert(imported.includes(`${importRoot}/note.txt`), "imported paths missing text file");
 assertBytes(os.fs.readFileBytes(`${importRoot}/nested/payload.bin`), binary, "imported binary bytes changed");
 assert(os.fs.readFile(`${importRoot}/note.txt`) === text, "imported text changed");
+
+os.fs.createDirectory("/home/guest/Documents/import-scheduled");
+const importSchedulerReporter = operationReporter("Scheduled Import");
+importSchedulerReporter.scheduler = createFilesOperationScheduler({
+  stepInterval: 1,
+  intervalMs: 0,
+  yield: async () => {
+    importSchedulerReporter.yields += 1;
+  },
+});
+await importDroppedFiles(os, "/home/guest/Documents/import-scheduled", [archiveFile], importSchedulerReporter);
+assert(importSchedulerReporter.yields >= 3, `large import did not yield often enough: ${importSchedulerReporter.yields}`);
+assertBytes(os.fs.readFileBytes("/home/guest/Documents/import-scheduled/nested/payload.bin"), binary, "scheduled import binary bytes changed");
+
+os.fs.createDirectory("/home/guest/Documents/large-source");
+os.fs.createDirectory("/home/guest/Documents/large-source/nested");
+os.fs.createDirectory("/home/guest/Documents/large-target");
+for (let index = 0; index < 6; index += 1) {
+  os.fs.writeOrCreateFile(`/home/guest/Documents/large-source/nested/file-${index}.txt`, `large-${index}`, "/", { mime: "text/plain" });
+}
+const schedulerReporter = operationReporter("Large Copy");
+schedulerReporter.scheduler = createFilesOperationScheduler({
+  stepInterval: 1,
+  intervalMs: 0,
+  yield: async () => {
+    schedulerReporter.yields += 1;
+  },
+});
+await copyPathIntoDirectory(
+  os,
+  "/home/guest/Documents/large-source",
+  "/home/guest/Documents/large-target",
+  schedulerReporter,
+  { conflictPolicy: "rename" },
+);
+assert(schedulerReporter.yields >= 3, `large copy did not yield often enough: ${schedulerReporter.yields}`);
+assert(os.fs.readFile("/home/guest/Documents/large-target/large-source/nested/file-5.txt") === "large-5", "large scheduled copy lost nested file bytes");
 
 os.fs.createDirectory("/home/guest/Documents/conflicts");
 os.fs.createDirectory("/home/guest/Documents/conflicts/source");
@@ -265,6 +303,36 @@ function fileLike(name, content, type = "text/plain") {
     type,
     async arrayBuffer() {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
+}
+
+function operationReporter(label) {
+  return {
+    label,
+    signal: null,
+    scheduler: null,
+    started: false,
+    state: null,
+    yields: 0,
+    start(total = 0, detail = "") {
+      this.started = true;
+      this.state = { label: this.label, total, done: 0, detail, status: "running" };
+    },
+    step(detail = "", increment = 1) {
+      if (!this.started) this.start(0, detail);
+      this.state.done += increment;
+      this.state.detail = detail || this.state.detail;
+    },
+    progress(operation = {}) {
+      if (!this.started) this.start(operation.total || 0, operation.detail || "");
+      this.state = { ...this.state, ...operation };
+    },
+    complete(detail = "Complete") {
+      if (!this.started) this.start(1, detail);
+      this.state.status = "complete";
+      this.state.detail = detail;
+      return this.state;
     },
   };
 }

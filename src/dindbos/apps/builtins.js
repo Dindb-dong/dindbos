@@ -3,6 +3,8 @@ import { BrowserCompanionClient, pasteClipboardText } from "../browser-client.js
 import { ShellSession } from "../shell.js?v=20260422-browserd";
 
 const FILES_OPERATION_HISTORY_LIMIT = 12;
+const FILES_OPERATION_YIELD_INTERVAL_MS = 12;
+const FILES_OPERATION_YIELD_STEP_INTERVAL = 24;
 const USER_DOCUMENT_READ_ROOTS = ["/home/guest", "/mnt/portfolio", "/tmp"];
 const USER_DOCUMENT_WRITE_ROOTS = ["/home/guest", "/mnt/portfolio", "/tmp"];
 export const BROWSER_LOCAL_HTML_SANDBOX = "allow-scripts allow-forms allow-popups";
@@ -785,6 +787,7 @@ function createFilesOperationReporter(content, label) {
   const reporter = {
     label,
     signal: controller.signal,
+    scheduler: createFilesOperationScheduler(),
     started: false,
     state: null,
     cancel(detail = "Cancelled") {
@@ -881,6 +884,32 @@ export function assertFilesOperationActive(signal, detail = "Files operation can
     error.name = "AbortError";
     throw error;
   }
+}
+
+export function createFilesOperationScheduler(options = {}) {
+  return {
+    intervalMs: Number(options.intervalMs ?? FILES_OPERATION_YIELD_INTERVAL_MS),
+    stepInterval: Number(options.stepInterval ?? FILES_OPERATION_YIELD_STEP_INTERVAL),
+    steps: 0,
+    lastYieldAt: Date.now(),
+    yield: typeof options.yield === "function" ? options.yield : null,
+  };
+}
+
+export async function scheduleFilesOperation(reporter = null, detail = "") {
+  assertFilesOperationActive(reporter?.signal);
+  const scheduler = reporter?.scheduler;
+  if (!scheduler) return false;
+  scheduler.steps = Number(scheduler.steps || 0) + 1;
+  const now = Date.now();
+  const stepDue = scheduler.stepInterval <= 1 || scheduler.steps % scheduler.stepInterval === 0;
+  const timeDue = now - Number(scheduler.lastYieldAt || 0) >= scheduler.intervalMs;
+  if (!stepDue && !timeDue) return false;
+  scheduler.lastYieldAt = now;
+  if (typeof scheduler.yield === "function") await scheduler.yield({ detail, steps: scheduler.steps });
+  else await new Promise((resolve) => setTimeout(resolve, 0));
+  assertFilesOperationActive(reporter?.signal);
+  return true;
 }
 
 function operationLabel(action) {
@@ -1126,17 +1155,20 @@ export async function importDroppedFiles(os, currentPath, fileList, reporter = n
     if (file.name.endsWith(".dindbos-export.json")) {
       imported.push(...await importDindbArchive(os, currentPath, file, reporter, options));
       reporter?.step(file.name);
+      await scheduleFilesOperation(reporter, file.name);
       continue;
     }
     const target = await allocateImportPath(os, currentPath, file.name || "upload.bin", { ...options, reporter });
     if (!target) {
       reporter?.step(file.name || "skipped");
+      await scheduleFilesOperation(reporter, file.name || "skipped");
       continue;
     }
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.writeFileBlob(target, file, "/", { mime: file.type || mimeFromName(target) });
     else await os.fs.writeOrCreateFileBlob(target, file, "/", { mime: file.type || mimeFromName(target), owner: "guest", group: "users", permissions: "-rw-r--r--" });
     imported.push(target);
     reporter?.step(target);
+    await scheduleFilesOperation(reporter, target);
   }
   return imported;
 }
@@ -1151,6 +1183,7 @@ export async function importDindbArchive(os, currentPath, file, reporter = null,
     const target = await allocateImportPath(os, currentPath, relative, { ...options, reporter });
     if (!target) {
       reporter?.step(relative);
+      await scheduleFilesOperation(reporter, relative);
       continue;
     }
     const bytes = base64ToBytes(entry.data || "");
@@ -1163,6 +1196,7 @@ export async function importDindbArchive(os, currentPath, file, reporter = null,
     });
     imported.push(target);
     reporter?.step(target);
+    await scheduleFilesOperation(reporter, target);
   }
   return imported;
 }
@@ -1239,7 +1273,7 @@ async function copyPath(os, sourcePath, destinationPath, reporter = null) {
   }
   if (!sourceLocal && !destinationLocal) {
     reporter?.start(countVirtualEntries(os, sourcePath), sourcePath);
-    os.fs.copy(sourcePath, destinationPath, "/", { recursive: true });
+    await copyVirtualToVirtual(os, sourcePath, destinationPath, reporter);
     reporter?.complete(destinationPath);
     return;
   }
@@ -1265,7 +1299,8 @@ async function movePath(os, sourcePath, destinationPath, reporter = null) {
   }
   if (!sourceLocal && !destinationLocal) {
     reporter?.start(countVirtualEntries(os, sourcePath), sourcePath);
-    os.fs.move(sourcePath, destinationPath, "/");
+    await copyVirtualToVirtual(os, sourcePath, destinationPath, reporter);
+    os.fs.remove(sourcePath, "/", { recursive: true });
     reporter?.complete(destinationPath);
     return;
   }
@@ -1283,6 +1318,7 @@ async function copyLocalToVirtual(os, sourcePath, destinationPath, reporter = nu
       permissions: stat.permissions || "drwxr-xr-x",
     });
     reporter?.step(sourcePath);
+    await scheduleFilesOperation(reporter, sourcePath);
     const entries = await os.localMounts.list(sourcePath);
     for (const entry of entries) {
       assertFilesOperationActive(reporter?.signal);
@@ -1297,6 +1333,7 @@ async function copyLocalToVirtual(os, sourcePath, destinationPath, reporter = nu
     permissions: stat.permissions || "-rw-r--r--",
   });
   reporter?.step(sourcePath);
+  await scheduleFilesOperation(reporter, sourcePath);
 }
 
 async function copyVirtualToLocal(os, sourcePath, destinationPath, reporter = null) {
@@ -1306,6 +1343,7 @@ async function copyVirtualToLocal(os, sourcePath, destinationPath, reporter = nu
   if (stat.type === "directory" || stat.type === "mount") {
     await os.localMounts.createDirectory(destinationPath, "/", { parents: true });
     reporter?.step(sourcePath);
+    await scheduleFilesOperation(reporter, sourcePath);
     for (const entry of os.fs.list(sourcePath)) {
       assertFilesOperationActive(reporter?.signal);
       await copyVirtualToLocal(os, entry.path, os.fs.join(destinationPath, entry.name), reporter);
@@ -1314,6 +1352,37 @@ async function copyVirtualToLocal(os, sourcePath, destinationPath, reporter = nu
   }
   await os.localMounts.writeFileBytes(destinationPath, os.fs.readFileBytes(sourcePath), "/", { mime: stat.mime || mimeFromName(destinationPath) });
   reporter?.step(sourcePath);
+  await scheduleFilesOperation(reporter, sourcePath);
+}
+
+async function copyVirtualToVirtual(os, sourcePath, destinationPath, reporter = null) {
+  assertFilesOperationActive(reporter?.signal);
+  const stat = os.fs.stat(sourcePath);
+  if (!stat) throw new Error(`copy: ${sourcePath}: no such file or directory`);
+  if (stat.type === "directory" || stat.type === "mount") {
+    if (!os.fs.exists(destinationPath)) {
+      os.fs.createDirectory(destinationPath, "/", {
+        owner: stat.owner || "guest",
+        group: stat.group || "users",
+        permissions: stat.permissions || "drwxr-xr-x",
+      });
+    }
+    reporter?.step(sourcePath);
+    await scheduleFilesOperation(reporter, sourcePath);
+    for (const entry of os.fs.list(sourcePath)) {
+      assertFilesOperationActive(reporter?.signal);
+      await copyVirtualToVirtual(os, entry.path, os.fs.join(destinationPath, entry.name), reporter);
+    }
+    return;
+  }
+  os.fs.writeOrCreateFileBytes(destinationPath, os.fs.readFileBytes(sourcePath), "/", {
+    mime: stat.mime || mimeFromName(destinationPath),
+    owner: stat.owner || "guest",
+    group: stat.group || "users",
+    permissions: stat.permissions || "-rw-r--r--",
+  });
+  reporter?.step(sourcePath);
+  await scheduleFilesOperation(reporter, sourcePath);
 }
 
 function countVirtualEntries(os, path) {
@@ -1509,6 +1578,7 @@ export async function collectExportEntries(os, rootPath, reporter = null) {
     const node = os.fs.resolve(path);
     if (!node || node.type === "mount") {
       reporter?.step(path);
+      await scheduleFilesOperation(reporter, path);
       const localEntries = await os.localMounts.list(path);
       for (const entry of localEntries) {
         assertFilesOperationActive(reporter?.signal);
@@ -1518,6 +1588,7 @@ export async function collectExportEntries(os, rootPath, reporter = null) {
     }
     if (node.type === "directory") {
       reporter?.step(path);
+      await scheduleFilesOperation(reporter, path);
       for (const entry of os.fs.list(path)) {
         assertFilesOperationActive(reporter?.signal);
         await walk(entry.path);
@@ -1539,6 +1610,7 @@ export async function collectExportEntries(os, rootPath, reporter = null) {
       data: bytesToBase64(bytes),
     });
     reporter?.step(path);
+    await scheduleFilesOperation(reporter, path);
   };
   await walk(root);
   return entries;
