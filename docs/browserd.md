@@ -8,6 +8,8 @@ It runs on the user's machine, launches Chromium with the Chrome DevTools Protoc
 Browser.app -> ws://127.0.0.1:8787/browser -> browserd -> Chromium CDP
 ```
 
+Browser.app can also be pointed at a browserd-compatible provider URL with the DindbOS `browserProviderUrl` option or a Browser.app launch context `browserProviderUrl`/`companionUrl`. A `wss://...` provider is health-checked through `https://.../health`; a `ws://...` provider is health-checked through `http://.../health`.
+
 Run it during development:
 
 ```text
@@ -43,7 +45,7 @@ Boundary rules:
 - Starting `browserd` is a user/developer action from the local machine. Web pages must not attempt to install or launch it automatically.
 - The companion can drive a local Chromium instance. Do not expose file helper, download, mount rename, or broader native-adjacent commands through this protocol until those commands have their own capability policy and failure UX.
 - The WebSocket protocol should stay narrow: browser navigation, viewport resize, input events, screenshots/frames, and status/error reporting.
-- Future hosted or remote browser providers must use a separate provider identity and trust model. Do not treat a remote provider as equivalent to `127.0.0.1` `browserd`.
+- Hosted or remote browser providers are a separate trust boundary from `127.0.0.1` `browserd`. The current Browser.app integration only accepts providers that advertise the expected service, protocol, and capabilities; deployment-level authentication, tenancy, and TLS policy still belong outside this v1 protocol.
 
 ## Companion Scope Decision
 

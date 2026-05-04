@@ -5,7 +5,7 @@ export const BROWSERD_REQUIRED_CAPABILITIES = ["browser.navigate", "browser.inpu
 export class BrowserCompanionClient {
   constructor(url = "ws://127.0.0.1:8787/browser") {
     this.url = url;
-    this.healthUrl = companionHealthUrl(url);
+    this.healthUrl = browserProviderHealthUrl(url);
     this.socket = null;
     this.connecting = null;
     this.closing = false;
@@ -218,7 +218,7 @@ async function socketMessageBytes(data) {
   throw new Error("browserd binary frame has unsupported payload type");
 }
 
-function companionHealthUrl(url) {
+export function browserProviderHealthUrl(url) {
   const parsed = new URL(url);
   parsed.protocol = parsed.protocol === "wss:" ? "https:" : "http:";
   parsed.pathname = "/health";

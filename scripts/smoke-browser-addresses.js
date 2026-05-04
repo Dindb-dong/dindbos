@@ -34,6 +34,10 @@ assert(!BROWSER_LOCAL_HTML_SANDBOX.includes("allow-top-navigation"), "local HTML
 
 const initialSession = createBrowserSessionState({ url: "example.com" });
 assert(initialSession.address === "example.com", "browser session did not use context URL");
+const remoteProviderSession = createBrowserSessionState({ browserProviderUrl: "wss://browser.example.test/session" });
+assert(remoteProviderSession.companionUrl === "wss://browser.example.test/session", "browser session did not accept remote provider URL");
+const remoteProviderSnapshot = browserSessionSnapshot(remoteProviderSession);
+assert(remoteProviderSnapshot.companionUrl === "wss://browser.example.test/session", "browser session snapshot did not preserve remote provider URL");
 const restoredSession = createBrowserSessionState({ url: "new.example" }, {
   mode: "companion",
   status: "ready https://example.com",
@@ -41,11 +45,13 @@ const restoredSession = createBrowserSessionState({ url: "new.example" }, {
   title: "Example Domain",
   frame: "data:image/jpeg;base64,abc",
   localHtml: "<main>cached</main>",
+  companionUrl: "wss://browser.example.test/browser",
 });
 assert(restoredSession.address === "https://example.com", "browser session did not preserve restored address");
 assert(restoredSession.title === "Example Domain", "browser session did not preserve restored title");
 assert(restoredSession.status === "ready https://example.com", "browser session did not preserve restored status");
 assert(restoredSession.mode === "companion", "browser session did not preserve restored mode");
+assert(restoredSession.companionUrl === "wss://browser.example.test/browser", "browser session did not preserve restored provider URL");
 const invalidSession = createBrowserSessionState({}, { mode: "invalid", address: "/home/guest/page.html" });
 assert(invalidSession.mode === "idle", "browser session accepted invalid restored mode");
 assert(invalidSession.address === "/home/guest/page.html", "browser session dropped restored local address");

@@ -6,9 +6,11 @@ import {
   BROWSERD_REQUIRED_CAPABILITIES,
   BROWSERD_SERVICE,
   BrowserCompanionClient,
+  browserProviderHealthUrl,
   pasteClipboardText,
 } from "../src/dindbos/browser-client.js";
 
+verifyProviderHealthUrlMapping();
 await verifyReconnectContract();
 await verifyBinaryFrameProtocol();
 await verifyPasteProtocol();
@@ -16,6 +18,17 @@ await verifyPasteHelper();
 await verifyHealthIdentityGuard();
 
 console.log("browser client smoke ok reconnect identity guard binary paste");
+
+function verifyProviderHealthUrlMapping() {
+  assert(
+    browserProviderHealthUrl("ws://127.0.0.1:8787/browser") === "http://127.0.0.1:8787/health",
+    "local browser provider health URL mismatch",
+  );
+  assert(
+    browserProviderHealthUrl("wss://browser.example.test/provider?token=redacted") === "https://browser.example.test/health",
+    "remote browser provider health URL mismatch",
+  );
+}
 
 async function verifyReconnectContract() {
   const originalFetch = globalThis.fetch;

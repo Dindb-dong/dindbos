@@ -39,6 +39,10 @@ export class DindbOS {
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
+    this.browserProvider = {
+      url: normalizeBrowserProviderUrl(options.browserProviderUrl),
+      label: options.browserProviderLabel || "Local browserd",
+    };
     this.persistDelayMs = options.persistDelayMs ?? 120;
     this.persistTimer = null;
     this.persistPending = false;
@@ -528,6 +532,19 @@ function normalizeHomePath(home, user) {
   const normalized = String(home).trim().replace(/\/+/g, "/").replace(/\/$/, "");
   if (!normalized || !normalized.startsWith("/") || normalized.includes("..")) return `/home/${user}`;
   return normalized === "/" ? `/home/${user}` : normalized;
+}
+
+function normalizeBrowserProviderUrl(url) {
+  const value = String(url || "ws://127.0.0.1:8787/browser").trim();
+  if (!value) return "ws://127.0.0.1:8787/browser";
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") return "ws://127.0.0.1:8787/browser";
+    if (!parsed.pathname || parsed.pathname === "/") parsed.pathname = "/browser";
+    return parsed.toString();
+  } catch {
+    return "ws://127.0.0.1:8787/browser";
+  }
 }
 
 export { AppRegistry, AppSandbox, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
