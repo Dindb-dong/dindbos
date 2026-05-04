@@ -8,6 +8,8 @@ export class LocalFolderMountManager {
     this.encoder = new TextEncoder();
     this.operations = [];
     this.operationSeq = 0;
+    this.syncSnapshots = new Map();
+    this.conflicts = new Map();
   }
 
   supported() {
@@ -92,6 +94,7 @@ export class LocalFolderMountManager {
       return this.summary(mount, {
         persisted: persistedPaths.has(mount.path),
         permission,
+        conflicts: this.conflictsForMount(mount.path),
         status: permission === "granted" ? "mounted" : permission,
       });
     }));
@@ -275,6 +278,7 @@ export class LocalFolderMountManager {
 
   async writeFile(path, content, cwd = "/") {
     const normalized = this.os.fs.normalize(path, cwd);
+    await this.assertNoSyncConflict(normalized, "write");
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
@@ -286,6 +290,7 @@ export class LocalFolderMountManager {
 
   async writeFileBytes(path, bytes, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
+    await this.assertNoSyncConflict(normalized, "write");
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
@@ -297,6 +302,7 @@ export class LocalFolderMountManager {
 
   async writeFileBlob(path, blob, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
+    await this.assertNoSyncConflict(normalized, "write");
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
@@ -326,6 +332,7 @@ export class LocalFolderMountManager {
 
   async remove(path, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
+    await this.assertNoSyncConflict(normalized, "remove");
     const mount = this.mountFor(normalized);
     if (!mount || normalized === mount.path) throw new Error(`rm: cannot remove mount root: ${normalized}`);
     const { parentHandle, name } = await this.parentHandleFor(normalized);
@@ -449,6 +456,13 @@ export class LocalFolderMountManager {
     return this.operations.map(({ onProgress: _onProgress, ...operation }) => ({ ...operation }));
   }
 
+  conflictStatus(path = "") {
+    const normalized = path ? this.os.fs.normalize(path) : "";
+    return [...this.conflicts.values()]
+      .filter((conflict) => !normalized || conflict.path === normalized || conflict.path.startsWith(`${normalized}/`))
+      .sort((left, right) => left.path.localeCompare(right.path));
+  }
+
   async exists(path, cwd = "/") {
     try {
       await this.stat(path, cwd);
@@ -564,13 +578,144 @@ export class LocalFolderMountManager {
   mirrorDirectory(path, entries) {
     const node = this.os.fs.resolve(path);
     if (!node || (node.type !== "mount" && node.type !== "directory")) return;
-    node.children = entries.map((entry) => ({
-      ...entry,
-      children: entry.type === "directory" ? entry.children || [] : undefined,
-    }));
+    const existingByName = new Map((node.children || []).map((child) => [child.name, child]));
+    const seenPaths = new Set(entries.map((entry) => entry.path));
+    const nextChildren = [];
+    for (const entry of entries) {
+      const existing = existingByName.get(entry.name);
+      const activeConflict = this.conflicts.get(entry.path);
+      if (activeConflict && existing) {
+        nextChildren.push(markConflictNode(existing, activeConflict));
+        continue;
+      }
+      const conflict = this.syncConflictFor(existing, entry);
+      if (conflict) {
+        this.recordSyncConflict(conflict);
+        nextChildren.push(markConflictNode(existing, conflict));
+        continue;
+      }
+      this.conflicts.delete(entry.path);
+      this.recordSyncSnapshot(entry);
+      nextChildren.push({
+        ...entry,
+        children: entry.type === "directory" ? entry.children || [] : undefined,
+      });
+    }
+    for (const child of node.children || []) {
+      if (seenPaths.has(child.path) || !child.external) continue;
+      const conflict = this.syncDeleteConflictFor(child);
+      if (conflict) {
+        this.recordSyncConflict(conflict);
+        nextChildren.push(markConflictNode(child, conflict));
+      } else {
+        this.syncSnapshots.delete(child.path);
+        this.conflicts.delete(child.path);
+      }
+    }
+    node.children = nextChildren.sort((a, b) => sortNodes(a, b));
     this.os.fs.emitChange("sync-mount", path);
   }
 
+  syncConflictFor(existing, external) {
+    if (!existing || !external || existing.type !== "file" || external.type !== "file") return null;
+    const previous = this.syncSnapshots.get(external.path);
+    if (!previous) return null;
+    const localChanged = nodeChangedSinceSnapshot(existing, previous);
+    const externalChanged = nodeChangedSinceSnapshot(external, previous);
+    if (!localChanged || !externalChanged) return null;
+    return this.syncConflictRecord(existing.path, "modified-both", {
+      previous,
+      local: nodeSnapshot(existing),
+      external: nodeSnapshot(external),
+    });
+  }
+
+  async assertNoSyncConflict(path, action) {
+    const previous = this.syncSnapshots.get(path);
+    if (!previous) return;
+    const external = await this.stat(path).catch(() => null);
+    if (!external || external.type !== "file" || !nodeChangedSinceSnapshot(external, previous)) return;
+    const conflict = this.syncConflictRecord(path, "modified-both", {
+      action,
+      previous,
+      local: { action, attemptedAt: new Date().toISOString() },
+      external: nodeSnapshot(external),
+    });
+    this.recordSyncConflict(conflict);
+    throw new Error(conflict.message);
+  }
+
+  syncDeleteConflictFor(existing) {
+    if (!existing || existing.type !== "file") return null;
+    const previous = this.syncSnapshots.get(existing.path);
+    if (!previous || !nodeChangedSinceSnapshot(existing, previous)) return null;
+    return this.syncConflictRecord(existing.path, "local-modified-external-deleted", {
+      previous,
+      local: nodeSnapshot(existing),
+      external: null,
+    });
+  }
+
+  syncConflictRecord(path, reason, details) {
+    return {
+      path,
+      reason,
+      status: "conflict",
+      message: `${path}: local mount sync conflict (${reason})`,
+      detectedAt: new Date().toISOString(),
+      ...details,
+    };
+  }
+
+  recordSyncConflict(conflict) {
+    const existing = this.conflicts.get(conflict.path);
+    const record = existing ? { ...existing, ...conflict, detectedAt: existing.detectedAt } : conflict;
+    this.conflicts.set(conflict.path, record);
+    if (!existing) {
+      const operation = this.beginOperation("sync-conflict", conflict.path, conflict.path);
+      operation.status = "conflict";
+      operation.error = conflict.message;
+      operation.detail = conflict.reason;
+      operation.finishedAt = new Date().toISOString();
+      operation.updatedAt = operation.finishedAt;
+      operation.onProgress?.({ ...operation });
+    }
+  }
+
+  recordSyncSnapshot(node) {
+    if (node?.type !== "file") return;
+    this.syncSnapshots.set(node.path, nodeSnapshot(node));
+  }
+
+  conflictsForMount(path) {
+    const normalized = this.os.fs.normalize(path);
+    return this.conflictStatus(normalized);
+  }
+
+}
+
+function markConflictNode(node, conflict) {
+  return {
+    ...node,
+    conflict: "local-mount",
+    localMountConflict: conflict,
+    children: node.type === "directory" ? node.children || [] : undefined,
+  };
+}
+
+function nodeSnapshot(node) {
+  return {
+    type: node?.type || "",
+    size: Number(node?.size || 0),
+    modified: String(node?.modified || ""),
+  };
+}
+
+function nodeChangedSinceSnapshot(node, snapshot) {
+  const current = nodeSnapshot(node);
+  return current.type !== snapshot.type
+    || current.size !== snapshot.size
+    || current.modified !== snapshot.modified;
 }
 
 async function requestDirectoryPermission(handle, mode) {

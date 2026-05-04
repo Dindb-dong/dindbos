@@ -88,12 +88,13 @@ Already present:
 - npm metadata/tarballs and remote package manifests/files use the runtime cache; `npm run smoke:npm-node` and `npm run smoke:packages` verify repeated installs avoid repeated fetches.
 - Flush/recovery status is exposed through runtime persistence status, Terminal/Settings storage surfaces, and pending-write unload prompts.
 - `npm run smoke:persistent-storage` verifies pending-write `beforeunload` prompting and fallback recovery paths.
+- Local mount writes check the last synced external file metadata before overwriting; if the file changed on disk, DindbOS blocks the write, preserves the external bytes, and reports a `sync-conflict` operation.
+- `npm run smoke:local-mounts` verifies local mount permission denial plus disk-change/write-conflict detection and reporting.
 
 Remaining:
 
 - Extend Cache API storage from package/npm fetches to documents and image previews.
 - Add large operation scheduling so file copies do not freeze the UI.
-- Add conflict handling for local mount sync.
 
 ### Stage 3: Scriptable Userland
 
@@ -331,13 +332,14 @@ Already present:
 - `npm run smoke:persistent-storage` verifies pending-write `beforeunload` prompting plus `pagehide` and hidden-tab flush triggers.
 - `npm run smoke:storage` verifies VFS text and binary byte preservation across copy, content-record serialization, and snapshot reload.
 - `npm run smoke:files` verifies Files.app import/export preserves nested binary files byte-for-byte.
+- Local mount writes detect when the external file changed after the last sync and report `sync-conflict` instead of silently overwriting disk changes.
+- `npm run smoke:local-mounts` verifies sync conflict detection, external byte preservation, conflict status, and operation reporting.
 
 Remaining:
 
 - Extend Cache API storage to document and image previews.
 - Evaluate Storage Buckets for `/tmp`, `/var/cache`, and durable app data separation where available.
 - Move large directory copy/import/export work off the main thread or chunk it with visible progress.
-- Add local mount conflict handling when a file changes both inside DindbOS and on disk.
 - Define copy semantics for local mount directories: overwrite, merge, skip, or prompt.
 - Add mount rename through a native helper/companion later, instead of browser copy-delete.
 
