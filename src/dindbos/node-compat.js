@@ -26,6 +26,8 @@ const BUILTIN_MODULES = new Set([
   "node:querystring",
   "os",
   "node:os",
+  "tty",
+  "node:tty",
   "http",
   "node:http",
   "https",
@@ -201,6 +203,7 @@ class CommonJsRuntime {
       assert: createAssertModule(),
       querystring: createQuerystringModule(),
       os: createOsModule(this.processContext),
+      tty: createTtyModule(),
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
     };
@@ -1014,6 +1017,58 @@ function createOsModule(processContext) {
       shell: "/bin/dindbsh",
     }),
     version: () => "DindbOS Browser Runtime",
+  };
+}
+
+function createTtyModule() {
+  class ReadStream {
+    constructor(fd = 0) {
+      this.fd = fd;
+      this.isTTY = false;
+      this.readable = true;
+    }
+
+    setRawMode() {
+      return this;
+    }
+  }
+  class WriteStream {
+    constructor(fd = 1) {
+      this.fd = fd;
+      this.isTTY = false;
+      this.writable = true;
+      this.columns = 80;
+      this.rows = 24;
+    }
+
+    clearLine() {
+      return false;
+    }
+
+    clearScreenDown() {
+      return false;
+    }
+
+    cursorTo() {
+      return false;
+    }
+
+    getColorDepth() {
+      return 1;
+    }
+
+    hasColors() {
+      return false;
+    }
+
+    moveCursor() {
+      return false;
+    }
+  }
+  return {
+    ReadStream,
+    WriteStream,
+    isatty: () => false,
   };
 }
 

@@ -221,6 +221,29 @@ const osImport = await node.evaluate(
 assert(osImport.status === 0, `os import exited with ${osImport.status}`);
 assert(osImport.output.trim() === "browser /tmp DindbOS true", `unexpected os import output: ${osImport.output}`);
 
+const ttyRequire = node.evaluate(
+  [
+    "const tty = require('tty');",
+    "const output = new tty.WriteStream(1);",
+    "console.log(tty.isatty(1), output.isTTY, output.columns, output.hasColors());",
+  ].join("\n"),
+  cwd,
+);
+assert(ttyRequire.status === 0, `tty require exited with ${ttyRequire.status}`);
+assert(ttyRequire.output.trim() === "false false 80 false", `unexpected tty require output: ${ttyRequire.output}`);
+
+const ttyImport = await node.evaluate(
+  [
+    "import { ReadStream, isatty } from 'node:tty';",
+    "const input = new ReadStream(0);",
+    "console.log(isatty(0), input.isTTY, input.setRawMode() === input);",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(ttyImport.status === 0, `tty import exited with ${ttyImport.status}`);
+assert(ttyImport.output.trim() === "false false true", `unexpected tty import output: ${ttyImport.output}`);
+
 const networkPolicyRequire = node.evaluate(
   [
     "const http = require('http');",
