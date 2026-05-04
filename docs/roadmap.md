@@ -408,6 +408,8 @@ Already present:
 - JSON modules.
 - Module cache.
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
+- `fs.promises` exposes browser-safe Promise wrappers for VFS-backed read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
+- `npm run smoke:npm-node` verifies `fs.promises` CommonJS shape plus ESM async mkdir/write/read/readdir/stat/access/rm behavior inside the DindbOS VFS.
 - NodeCompat `process` facade exposes browser-safe feature probe fields including `nextTick`, `hrtime`, `uptime`, `memoryUsage`, `release`, `title`, and `execPath`.
 - `npm run smoke:npm-node` verifies `process` CommonJS and ESM import paths for next-tick callbacks, high-resolution time shape, memory usage shape, and runtime identity fields.
 - Browser-native `Buffer` fallback supports `from`, `alloc`, `allocUnsafe`, `concat`, `compare`, `isBuffer`, `isEncoding`, `byteLength`, instance `equals`/`compare`, Array/ArrayBuffer slice inputs, and common string encodings when host `Buffer` is unavailable.

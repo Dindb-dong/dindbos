@@ -457,7 +457,7 @@ class CommonJsRuntime {
   }
 
   createFsModule() {
-    return {
+    const fsModule = {
       readFileSync: (path, encoding = null) => {
         const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
         if (encoding === "utf8" || encoding === "utf-8" || encoding?.encoding) {
@@ -489,6 +489,20 @@ class CommonJsRuntime {
       rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", options, this.node.system),
       unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", {}, this.node.system),
     };
+    fsModule.promises = {
+      readFile: async (path, encoding = null) => fsModule.readFileSync(path, encoding),
+      writeFile: async (path, data) => fsModule.writeFileSync(path, data),
+      readdir: async (path = ".", options = {}) => fsModule.readdirSync(path, options),
+      mkdir: async (path, options = {}) => fsModule.mkdirSync(path, options),
+      rm: async (path, options = {}) => fsModule.rmSync(path, options),
+      unlink: async (path) => fsModule.unlinkSync(path),
+      stat: async (path) => fsModule.statSync(path),
+      lstat: async (path) => fsModule.lstatSync(path),
+      access: async (path) => {
+        if (!fsModule.existsSync(path)) throw new Error(`ENOENT: no such file or directory, access '${path}'`);
+      },
+    };
+    return fsModule;
   }
 }
 

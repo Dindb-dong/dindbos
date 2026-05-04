@@ -158,6 +158,31 @@ const pathWin32Import = await node.evaluate(
 assert(pathWin32Import.status === 0, `path/win32 import exited with ${pathWin32Import.status}`);
 assert(pathWin32Import.output.trim() === "C:\\app\\file.md nested\\file.md", `unexpected path/win32 import output: ${pathWin32Import.output}`);
 
+const fsPromisesRequire = node.evaluate(
+  "const fs = require('fs'); console.log(typeof fs.promises.readFile, typeof fs.promises.readdir, typeof fs.promises.stat);",
+  cwd,
+);
+assert(fsPromisesRequire.status === 0, `fs promises require exited with ${fsPromisesRequire.status}`);
+assert(fsPromisesRequire.output.trim() === "function function function", `unexpected fs promises require output: ${fsPromisesRequire.output}`);
+
+const fsPromisesImport = await node.evaluate(
+  [
+    "import { promises as fs } from 'node:fs';",
+    "await fs.mkdir('./async-dir', { recursive: true });",
+    "await fs.writeFile('./async-dir/note.txt', 'async note');",
+    "const text = await fs.readFile('./async-dir/note.txt', 'utf8');",
+    "const entries = await fs.readdir('./async-dir');",
+    "const stat = await fs.stat('./async-dir/note.txt');",
+    "await fs.access('./async-dir/note.txt');",
+    "await fs.rm('./async-dir/note.txt');",
+    "console.log(text, entries[0], stat.isFile(), await fs.readdir('./async-dir'));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsPromisesImport.status === 0, `fs promises import exited with ${fsPromisesImport.status}`);
+assert(fsPromisesImport.output.trim() === "async note note.txt true []", `unexpected fs promises import output: ${fsPromisesImport.output}`);
+
 const processProbeRequire = node.evaluate(
   [
     "const processApi = require('process');",
