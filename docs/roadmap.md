@@ -408,6 +408,8 @@ Already present:
 - JSON modules.
 - Module cache.
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
+- Callback-style `fs` helpers expose browser-safe VFS-backed read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
+- `npm run smoke:npm-node` verifies callback-style `fs` read/write/readdir/stat/lstat/access/unlink behavior through CommonJS and ESM `node:fs` import paths.
 - `fs.promises` exposes browser-safe Promise wrappers for VFS-backed read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
 - `npm run smoke:npm-node` verifies `fs.promises` CommonJS shape plus ESM async mkdir/write/read/readdir/stat/access/rm behavior inside the DindbOS VFS.
 - `fs.createReadStream` and `fs.createWriteStream` expose browser-safe stream wrappers over VFS files for package compatibility probes.

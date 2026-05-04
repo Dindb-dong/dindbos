@@ -183,6 +183,49 @@ const fsPromisesImport = await node.evaluate(
 assert(fsPromisesImport.status === 0, `fs promises import exited with ${fsPromisesImport.status}`);
 assert(fsPromisesImport.output.trim() === "async note note.txt true []", `unexpected fs promises import output: ${fsPromisesImport.output}`);
 
+const fsCallbacksRequire = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "fs.mkdir('./cb-dir', { recursive: true }, (mkdirErr) => {",
+    "  if (mkdirErr) throw mkdirErr;",
+    "  fs.writeFile('./cb-dir/note.txt', 'callback note', (writeErr) => {",
+    "    if (writeErr) throw writeErr;",
+    "    fs.readFile('./cb-dir/note.txt', 'utf8', (readErr, text) => {",
+    "      if (readErr) throw readErr;",
+    "      fs.readdir('./cb-dir', (listErr, entries) => {",
+    "        if (listErr) throw listErr;",
+    "        fs.stat('./cb-dir/note.txt', (statErr, stat) => {",
+    "          if (statErr) throw statErr;",
+    "          fs.access('./cb-dir/missing.txt', (accessErr) => console.log(text, entries[0], stat.isFile(), accessErr instanceof Error));",
+    "        });",
+    "      });",
+    "    });",
+    "  });",
+    "});",
+  ].join("\n"),
+  cwd,
+);
+assert(fsCallbacksRequire.status === 0, `fs callbacks require exited with ${fsCallbacksRequire.status}`);
+assert(fsCallbacksRequire.output.trim() === "callback note note.txt true true", `unexpected fs callbacks require output: ${fsCallbacksRequire.output}`);
+
+const fsCallbacksImport = await node.evaluate(
+  [
+    "import { mkdir, writeFile, readFile, readdir, lstat, unlink } from 'node:fs';",
+    "const call = (fn, ...args) => new Promise((resolve, reject) => fn(...args, (error, value) => error ? reject(error) : resolve(value)));",
+    "await call(mkdir, './cb-esm-dir', { recursive: true });",
+    "await call(writeFile, './cb-esm-dir/note.txt', 'esm callback');",
+    "const text = await call(readFile, './cb-esm-dir/note.txt', 'utf8');",
+    "const entries = await call(readdir, './cb-esm-dir');",
+    "const stat = await call(lstat, './cb-esm-dir/note.txt');",
+    "await call(unlink, './cb-esm-dir/note.txt');",
+    "console.log(text, entries[0], stat.isFile());",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsCallbacksImport.status === 0, `fs callbacks import exited with ${fsCallbacksImport.status}`);
+assert(fsCallbacksImport.output.trim() === "esm callback note.txt true", `unexpected fs callbacks import output: ${fsCallbacksImport.output}`);
+
 const fsStreamsRequire = node.evaluate(
   [
     "const fs = require('fs');",
