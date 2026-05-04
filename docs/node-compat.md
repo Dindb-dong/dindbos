@@ -89,12 +89,16 @@ Current built-ins:
 - `timers`
 - `stream`
 - `crypto`
+- `assert`
+- `querystring`
 
 The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
 
 The `stream` module is a browser-safe subset for package compatibility. It supports `Readable.from`, `Writable`, `PassThrough`, `pipeline`, and `finished`, but it is not a full Node stream implementation.
 
 The `crypto` module is a browser-safe subset. It supports `createHash("sha256")`, `randomBytes`, `randomFillSync`, `randomUUID`, `getRandomValues`, and `webcrypto`; it does not expose OpenSSL, certificates, ciphers, signing, or key management APIs.
+
+The `assert` and `querystring` modules are browser-safe compatibility facades for packages that rely on Node's assertion helpers or legacy query string parsing/stringifying. They are not complete replacements for every edge case in Node core.
 
 This is not a full Node.js runtime. It does not provide POSIX syscalls, native addons, networking, child processes, worker threads, full ESM semantics, or lifecycle script execution.
 

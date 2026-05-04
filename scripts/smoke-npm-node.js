@@ -163,6 +163,35 @@ const cryptoImport = await node.evaluate(
 assert(cryptoImport.status === 0, `crypto import exited with ${cryptoImport.status}`);
 assert(cryptoImport.output.trim() === "2SxqgbL_UAlrzagIhUJ9H1miW19IP3BVUjUEkl0WqyM 3", `unexpected crypto import output: ${cryptoImport.output}`);
 
+const assertQueryRequire = node.evaluate(
+  [
+    "const assert = require('assert');",
+    "const querystring = require('querystring');",
+    "const parsed = querystring.parse('name=DindbOS+Runtime&tag=os&tag=browser');",
+    "assert.strictEqual(parsed.name, 'DindbOS Runtime');",
+    "assert.deepStrictEqual(parsed.tag, ['os', 'browser']);",
+    "assert.throws(() => assert.strictEqual(1, 2));",
+    "console.log(querystring.stringify({ q: 'browser os', tag: ['runtime', 'vfs'] }));",
+  ].join("\n"),
+  cwd,
+);
+assert(assertQueryRequire.status === 0, `assert/querystring require exited with ${assertQueryRequire.status}`);
+assert(assertQueryRequire.output.trim() === "q=browser%20os&tag=runtime&tag=vfs", `unexpected assert/querystring require output: ${assertQueryRequire.output}`);
+
+const assertQueryImport = await node.evaluate(
+  [
+    "import assert, { strictEqual } from 'node:assert';",
+    "import { parse, stringify } from 'querystring';",
+    "strictEqual(parse('mode=esm').mode, 'esm');",
+    "assert.ok(stringify({ ok: true }).includes('ok=true'));",
+    "console.log('assert-querystring-esm');",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(assertQueryImport.status === 0, `assert/querystring import exited with ${assertQueryImport.status}`);
+assert(assertQueryImport.output.trim() === "assert-querystring-esm", `unexpected assert/querystring import output: ${assertQueryImport.output}`);
+
 const policyInstaller = new NpmInstaller(os, { registry: "https://registry.example.test" });
 const policyFetch = countedFetch(fakePolicyFetch);
 const policyRecords = await policyInstaller.install(["policy-pkg@1.0.0"], `${cwd}/policy`, { fetch: policyFetch, maxPackages: 2 });

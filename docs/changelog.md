@@ -58,6 +58,7 @@ Added:
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
 - NodeCompat `stream` builtin facade for browser-safe `Readable`, `Writable`, `PassThrough`, and `pipeline` usage.
 - NodeCompat `crypto` builtin facade for browser-safe SHA-256 hashing and random APIs.
+- NodeCompat `assert` and `querystring` builtin facades for browser-safe package compatibility.
 - NodeCompat package `exports` resolution now supports explicit root/subpath maps with common `import`, `require`, `browser`, and `default` conditions.
 - Process manager activity sampling, crash reports, parent/child process links, and centralized restart behavior.
 - AppRegistry crash isolation renders a crash panel and reports failed app render paths to the process manager.

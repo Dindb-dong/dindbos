@@ -416,6 +416,7 @@ Already present:
 - `url`, `util`, and `timers` builtin facades are available through bare and `node:` import paths; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
 - `stream` builtin facade supports the browser-safe subset of `Readable.from`, `Writable`, `PassThrough`, `pipeline`, and `finished` through bare and `node:` import paths; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
 - `crypto` builtin facade supports browser-safe `createHash("sha256")`, `randomBytes`, `randomFillSync`, `randomUUID`, `getRandomValues`, and `webcrypto` through bare and `node:` import paths; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
+- `assert` and `querystring` builtin facades support CommonJS and ESM import paths for browser-safe package compatibility, covered by `npm run smoke:npm-node`.
 - `npm run smoke:npm-node` verifies package `"type": "module"`, `.cjs`, `.mjs`, JSON import, conditional root/subpath `exports`, and nested dependency conflict resolution.
 - `npm run smoke:npm-node` verifies peer dependency recording, optional dependency recording, and unsupported native/lifecycle warning metadata.
 - `docs/node-compat.md` documents the supported ESM subset, package resolution behavior, built-in module surface, and unsupported Node features.
