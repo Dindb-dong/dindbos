@@ -267,6 +267,29 @@ const moduleImport = await node.evaluate(
 assert(moduleImport.status === 0, `module import exited with ${moduleImport.status}`);
 assert(moduleImport.output.trim() === "true true true nested", `unexpected module import output: ${moduleImport.output}`);
 
+const stringDecoderRequire = node.evaluate(
+  [
+    "const { StringDecoder } = require('string_decoder');",
+    "const decoder = new StringDecoder('utf8');",
+    "console.log(decoder.write(Buffer.from('DindbOS')), decoder.end(), new StringDecoder('hex').write(Buffer.from('ok')));",
+  ].join("\n"),
+  cwd,
+);
+assert(stringDecoderRequire.status === 0, `string_decoder require exited with ${stringDecoderRequire.status}`);
+assert(stringDecoderRequire.output.trim() === "DindbOS  6f6b", `unexpected string_decoder require output: ${stringDecoderRequire.output}`);
+
+const stringDecoderImport = await node.evaluate(
+  [
+    "import { StringDecoder } from 'node:string_decoder';",
+    "const decoder = new StringDecoder('latin1');",
+    "console.log(decoder.write(new Uint8Array([65, 66, 67])), new StringDecoder('base64').write(Buffer.from('hi')));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(stringDecoderImport.status === 0, `string_decoder import exited with ${stringDecoderImport.status}`);
+assert(stringDecoderImport.output.trim() === "ABC aGk=", `unexpected string_decoder import output: ${stringDecoderImport.output}`);
+
 const networkPolicyRequire = node.evaluate(
   [
     "const http = require('http');",

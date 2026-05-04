@@ -30,6 +30,8 @@ const BUILTIN_MODULES = new Set([
   "node:tty",
   "module",
   "node:module",
+  "string_decoder",
+  "node:string_decoder",
   "http",
   "node:http",
   "https",
@@ -206,6 +208,7 @@ class CommonJsRuntime {
       querystring: createQuerystringModule(),
       os: createOsModule(this.processContext),
       tty: createTtyModule(),
+      string_decoder: createStringDecoderModule(),
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
     };
@@ -1115,6 +1118,40 @@ function createTtyModule() {
     WriteStream,
     isatty: () => false,
   };
+}
+
+function createStringDecoderModule() {
+  class StringDecoder {
+    constructor(encoding = "utf8") {
+      this.encoding = normalizeStringDecoderEncoding(encoding);
+      this.decoder = this.encoding === "utf16le"
+        ? new TextDecoder("utf-16le", { fatal: false })
+        : this.encoding === "utf8" ? new TextDecoder("utf-8", { fatal: false }) : null;
+    }
+
+    write(buffer = new Uint8Array()) {
+      const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || []);
+      if (this.encoding === "hex") return bytesToHex(bytes);
+      if (this.encoding === "base64") return bytesToBase64(bytes);
+      if (this.encoding === "latin1" || this.encoding === "binary" || this.encoding === "ascii") return [...bytes].map((byte) => String.fromCharCode(byte)).join("");
+      return this.decoder.decode(bytes, { stream: true });
+    }
+
+    end(buffer = new Uint8Array()) {
+      const tail = buffer && Number(buffer.byteLength || buffer.length || 0) ? this.write(buffer) : "";
+      const flush = this.decoder ? this.decoder.decode() : "";
+      return `${tail}${flush}`;
+    }
+  }
+  return { StringDecoder };
+}
+
+function normalizeStringDecoderEncoding(encoding) {
+  const normalized = String(encoding || "utf8").toLowerCase().replace(/[-_]/g, "");
+  if (normalized === "utf8" || normalized === "utf") return "utf8";
+  if (normalized === "ucs2" || normalized === "utf16le") return "utf16le";
+  if (["base64", "hex", "latin1", "binary", "ascii"].includes(normalized)) return normalized;
+  return "utf8";
 }
 
 function createStreamModule(eventsModule) {
