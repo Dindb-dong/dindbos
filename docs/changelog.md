@@ -35,6 +35,7 @@ Added:
 - Files.app multi-select with Ctrl/Cmd toggle, Shift range selection, and multi-item Trash/Delete targeting.
 - Files.app keyboard navigation for row movement, folder traversal, open, Trash, rename, and copy/paste shortcuts.
 - Files.app large tree operations now expose cancellation state and abort checks for recursive copy/move/export paths.
+- Settings.app runtime panels now have smoke coverage proving they read live storage, local mount, process, package, app, and session state.
 - Viewer.app toolbar controls, Browser.app handoff for HTML documents, bounded large text previews, and binary fallback messaging.
 - Viewer.app sandboxed `.deck.html` preview support for portfolio/demo HTML decks.
 - Shell script execution with shebang handling, `PATH` lookup, positional arguments, stdin pipeline support, execute-bit enforcement, escaped quote parsing, empty string arguments, input redirection, and redirected pipeline status.
@@ -56,7 +57,7 @@ Added:
 
 Changed:
 
-- `npm run smoke` is the main local confidence gate and includes boot, storage, persistent storage, Files.app, Viewer.app, Shell, permission, package, npm/node, process, local mount, app registry, window manager, browser address, Browser client, and browser companion checks.
+- `npm run smoke` is the main local confidence gate and includes boot, storage, persistent storage, Files.app, Settings.app, Viewer.app, Shell, permission, package, npm/node, process, local mount, app registry, window manager, browser address, Browser client, and browser companion checks.
 - App launcher files now require executable permission before launch.
 - Mobile window placement now starts windows maximized inside the viewport instead of restoring oversized desktop coordinates.
 - Persistent storage now warns before unload when filesystem writes are pending.
@@ -66,7 +67,7 @@ Known limits:
 - Package signatures are documented but not yet enforced.
 - Cache API-backed package/npm caching exists; document and image preview caching is not implemented.
 - Browser.app clipboard and download routing policies are not complete.
-- Files.app still needs conflict dialogs, large tree cancellation, and native-helper mount rename.
+- Files.app still needs conflict dialogs and native-helper mount rename.
 - PDF viewing still relies on native iframe behavior until PDF.js is introduced.
 - NodeCompat is intentionally a browser-safe subset and does not provide native Node addons, arbitrary filesystem access, or full Node runtime APIs.
 

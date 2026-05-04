@@ -166,7 +166,6 @@ Remaining:
 - Snap zones, alt-tab, keyboard shortcuts, mobile window policy, and persisted window placement.
 - Files.app keyboard navigation, conflict handling, cancellation, and remaining scale polish.
 - Viewer controls for documents and decks.
-- Settings panels that expose real runtime state, not decorative toggles.
 
 ## Status Legend
 
@@ -324,7 +323,7 @@ Already present:
 - Native `Uint8Array` file nodes with Blob/File import adapters.
 - Files.app local mount permission banner with reconnect/sync/forget controls.
 - Files.app copy/move/import/export progress reporting.
-- Settings storage flush, quota, persistence, and local mount management panel.
+- Settings storage flush, quota, persistence, process/package counts, and local mount management panel reads live runtime APIs; `npm run smoke:settings` verifies the runtime snapshot and rendered status markup.
 - Lifecycle flush status and write-pending status.
 - Runtime disk policy areas distinguish `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache`; `df` prints their policy, durability, and used bytes.
 - Runtime Cache API store caches npm metadata/tarballs and remote package manifests/files, with memory fallback when Cache API is unavailable.
@@ -738,4 +737,4 @@ Tasks:
 - Restore window positions.
 - Improve Files.app keyboard navigation, conflict handling, cancellation, and remaining scale polish.
 - Extend mobile polish beyond the initial maximized window placement policy.
-- Polish settings and troubleshooting flows.
+- Polish troubleshooting flows.

@@ -2474,41 +2474,8 @@ function renderSettings(os, content) {
 }
 
 async function renderSettingsContent(os, content) {
-  const processes = safeRead(() => os.processes.list(), []);
-  const storageStatus = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
-  const storage = await safeReadAsync(() => os.storage.estimate(), storageStatus);
-  const packages = safeRead(() => os.packages.list(), []);
-  const mounts = await safeReadAsync(() => os.localMounts.status(), []);
-  content.innerHTML = `
-    <section class="settings-app">
-      <p class="dos-kicker">System</p>
-      <h2>DindbOS.js Runtime</h2>
-      <dl>
-        <div><dt>User</dt><dd>${escapeHtml(os.session.user || "guest")}</dd></div>
-        <div><dt>Home</dt><dd>${escapeHtml(os.session.home || "/home/guest")}</dd></div>
-        <div><dt>Apps</dt><dd>${os.apps.list().length}</dd></div>
-        <div><dt>Packages</dt><dd>${packages.length}</dd></div>
-        <div><dt>Processes</dt><dd>${processes.length}</dd></div>
-        <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(storage)}</dd></div>
-        <div><dt>Desktop</dt><dd>${escapeHtml(os.fs.join(os.session.home || "/home/guest", "Desktop"))}</dd></div>
-        <div><dt>Local Mounts</dt><dd>${mounts.length ? `${mounts.length} folder${mounts.length === 1 ? "" : "s"}` : "none"}</dd></div>
-      </dl>
-      <section class="settings-panel">
-        <header>
-          <h3>Save Engine</h3>
-          <button type="button" data-settings-action="flush-storage">Flush now</button>
-        </header>
-        <p>${escapeHtml(formatStorageState(storage))}</p>
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Local Folders</h3>
-          <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
-        </header>
-        ${renderSettingsMounts(mounts)}
-      </section>
-    </section>
-  `;
+  const snapshot = await settingsRuntimeSnapshot(os);
+  content.innerHTML = settingsRuntimeMarkup(snapshot);
   content.querySelectorAll("[data-settings-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -2522,6 +2489,59 @@ async function renderSettingsContent(os, content) {
       }
     });
   });
+}
+
+export async function settingsRuntimeSnapshot(os) {
+  const user = safeRead(() => os.session.user, "guest");
+  const home = safeRead(() => os.session.home, "/home/guest");
+  const processes = safeRead(() => os.processes.list(), []);
+  const storageStatus = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
+  const storage = await safeReadAsync(() => os.storage.estimate(), storageStatus);
+  const packages = safeRead(() => os.packages.list(), []);
+  const mounts = await safeReadAsync(() => os.localMounts.status(), []);
+  return {
+    user,
+    home,
+    apps: safeRead(() => os.apps.list(), []),
+    packages,
+    processes,
+    storage: { ...storageStatus, ...storage },
+    desktop: safeRead(() => os.fs.join(home, "Desktop"), `${home}/Desktop`),
+    mounts,
+  };
+}
+
+export function settingsRuntimeMarkup(snapshot) {
+  return `
+    <section class="settings-app">
+      <p class="dos-kicker">System</p>
+      <h2>DindbOS.js Runtime</h2>
+      <dl>
+        <div><dt>User</dt><dd>${escapeHtml(snapshot.user || "guest")}</dd></div>
+        <div><dt>Home</dt><dd>${escapeHtml(snapshot.home || "/home/guest")}</dd></div>
+        <div><dt>Apps</dt><dd>${snapshot.apps.length}</dd></div>
+        <div><dt>Packages</dt><dd>${snapshot.packages.length}</dd></div>
+        <div><dt>Processes</dt><dd>${snapshot.processes.length}</dd></div>
+        <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(snapshot.storage)}</dd></div>
+        <div><dt>Desktop</dt><dd>${escapeHtml(snapshot.desktop)}</dd></div>
+        <div><dt>Local Mounts</dt><dd>${snapshot.mounts.length ? `${snapshot.mounts.length} folder${snapshot.mounts.length === 1 ? "" : "s"}` : "none"}</dd></div>
+      </dl>
+      <section class="settings-panel">
+        <header>
+          <h3>Save Engine</h3>
+          <button type="button" data-settings-action="flush-storage">Flush now</button>
+        </header>
+        <p>${escapeHtml(formatStorageState(snapshot.storage))}</p>
+      </section>
+      <section class="settings-panel">
+        <header>
+          <h3>Local Folders</h3>
+          <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
+        </header>
+        ${renderSettingsMounts(snapshot.mounts)}
+      </section>
+    </section>
+  `;
 }
 
 function renderSettingsStorageStatus(storage) {
