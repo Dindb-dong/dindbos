@@ -45,7 +45,7 @@ Installed CommonJS packages can run through NodeCompat:
 - `.js` files inside a `package.json` with `"type": "module"`
 - package lookup through parent `node_modules` folders
 - `package.json` `main` and simple `exports` resolution
-- VFS-backed `fs`, `path`, `process`, and `Buffer` facades
+- VFS-backed `fs`, `path`, `process`, `os`, and `Buffer` facades
 
 Policy for dependencies beyond regular `dependencies`:
 

@@ -24,6 +24,8 @@ const BUILTIN_MODULES = new Set([
   "node:assert",
   "querystring",
   "node:querystring",
+  "os",
+  "node:os",
   "http",
   "node:http",
   "https",
@@ -198,6 +200,7 @@ class CommonJsRuntime {
       crypto: createCryptoModule(this.buffer),
       assert: createAssertModule(),
       querystring: createQuerystringModule(),
+      os: createOsModule(this.processContext),
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
     };
@@ -965,6 +968,52 @@ function createQuerystringModule() {
     decode: parse,
     escape,
     unescape,
+  };
+}
+
+function createOsModule(processContext) {
+  const endianness = () => {
+    const bytes = new Uint8Array(new Uint16Array([0x00ff]).buffer);
+    return bytes[0] === 0xff ? "LE" : "BE";
+  };
+  return {
+    EOL: "\n",
+    constants: {
+      signals: {},
+      errno: {},
+      priority: {},
+    },
+    arch: () => "wasm32",
+    availableParallelism: () => Math.max(1, Number(globalThis.navigator?.hardwareConcurrency || 1)),
+    cpus: () => Array.from({ length: Math.max(1, Number(globalThis.navigator?.hardwareConcurrency || 1)) }, () => ({
+      model: "DindbOS Browser CPU",
+      speed: 0,
+      times: { user: 0, nice: 0, sys: 0, idle: 0, irq: 0 },
+    })),
+    devNull: "/dev/null",
+    endianness,
+    freemem: () => 0,
+    getPriority: () => 0,
+    homedir: () => processContext.env.HOME || "/home/guest",
+    hostname: () => "dindbos.local",
+    loadavg: () => [0, 0, 0],
+    machine: () => "wasm32",
+    networkInterfaces: () => ({}),
+    platform: () => "browser",
+    release: () => "0.0.0-dindbos",
+    setPriority: () => undefined,
+    tmpdir: () => "/tmp",
+    totalmem: () => 0,
+    type: () => "DindbOS",
+    uptime: () => Math.floor((globalThis.performance?.now?.() || 0) / 1000),
+    userInfo: () => ({
+      uid: -1,
+      gid: -1,
+      username: processContext.env.USER || "guest",
+      homedir: processContext.env.HOME || "/home/guest",
+      shell: "/bin/dindbsh",
+    }),
+    version: () => "DindbOS Browser Runtime",
   };
 }
 
