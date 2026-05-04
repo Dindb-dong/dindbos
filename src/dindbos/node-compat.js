@@ -489,6 +489,18 @@ class CommonJsRuntime {
       },
       rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", options, this.node.system),
       unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", {}, this.node.system),
+      readFile: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readFileSync(path, optionalOptions(options))),
+      writeFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.writeFileSync(path, data)),
+      readdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readdirSync(path, optionalOptions(options))),
+      mkdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.mkdirSync(path, optionalOptions(options))),
+      rm: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.rmSync(path, optionalOptions(options))),
+      unlink: (path, callback) => invokeFsCallback(callback, () => fsModule.unlinkSync(path)),
+      stat: (path, callback) => invokeFsCallback(callback, () => fsModule.statSync(path)),
+      lstat: (path, callback) => invokeFsCallback(callback, () => fsModule.lstatSync(path)),
+      access: (path, mode, callback) =>
+        invokeFsCallback(optionalCallback(mode, callback), () => {
+          if (!fsModule.existsSync(path)) throw new Error(`ENOENT: no such file or directory, access '${path}'`);
+        }),
       createReadStream: (path, options = {}) => {
         const streamOptions = normalizeStreamOptions(options);
         const data = fsModule.readFileSync(path, streamOptions.encoding || null);
@@ -2553,6 +2565,26 @@ function rotateRight(value, bits) {
 function stringifyFileData(data) {
   if (data instanceof Uint8Array) return new TextDecoder().decode(data);
   return String(data ?? "");
+}
+
+function optionalCallback(options, callback) {
+  return typeof options === "function" ? options : callback;
+}
+
+function optionalOptions(options) {
+  return typeof options === "function" || options === undefined ? undefined : options;
+}
+
+function invokeFsCallback(callback, operation) {
+  if (typeof callback !== "function") throw new Error("fs: callback must be a function");
+  let result;
+  try {
+    result = operation();
+  } catch (error) {
+    callback(error);
+    return;
+  }
+  callback(null, result);
 }
 
 function normalizeStreamOptions(options = {}) {
