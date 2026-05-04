@@ -191,6 +191,38 @@ const utilTypesImport = await node.evaluate(
 assert(utilTypesImport.status === 0, `util/types import exited with ${utilTypesImport.status}`);
 assert(utilTypesImport.output.trim() === "true true true true", `unexpected util/types import output: ${utilTypesImport.output}`);
 
+const utilDebuglogRequire = node.evaluate(
+  [
+    "process.env.NODE_DEBUG = 'dindbos';",
+    "const util = require('util');",
+    "const debug = util.debuglog('dindbos');",
+    "const legacy = util.deprecate((value) => `legacy-${value}`, 'legacy api', 'DIND001');",
+    "debug('trace %d', 7);",
+    "console.log(legacy('one'), legacy('two'));",
+  ].join("\n"),
+  cwd,
+);
+assert(utilDebuglogRequire.status === 0, `util debuglog require exited with ${utilDebuglogRequire.status}`);
+assert(
+  utilDebuglogRequire.output.trim() === "DINDBOS: trace 7\nDeprecationWarning [DIND001]: legacy api\nlegacy-one legacy-two",
+  `unexpected util debuglog require output: ${utilDebuglogRequire.output}`,
+);
+
+const utilDebuglogImport = await node.evaluate(
+  [
+    "import { debuglog, deprecate } from 'node:util';",
+    "process.env.NODE_DEBUG = '';",
+    "let callbackType = '';",
+    "debuglog('silent', (logger) => { callbackType = typeof logger; logger('hidden'); });",
+    "const passthrough = deprecate((left, right) => left + right, 'sum legacy');",
+    "console.log(callbackType, passthrough(2, 3));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(utilDebuglogImport.status === 0, `util debuglog import exited with ${utilDebuglogImport.status}`);
+assert(utilDebuglogImport.output.trim() === "DeprecationWarning: sum legacy\nfunction 5", `unexpected util debuglog import output: ${utilDebuglogImport.output}`);
+
 const hostBuffer = globalThis.Buffer;
 globalThis.Buffer = undefined;
 try {

@@ -223,7 +223,7 @@ class CommonJsRuntime {
       buffer: { Buffer: this.buffer },
       events,
       url: createUrlModule(),
-      util: createUtilModule(utilTypes),
+      util: createUtilModule(utilTypes, this.console, this.processContext),
       "util/types": utilTypes,
       timers: createTimersModule(),
       perf_hooks: createPerfHooksModule(),
@@ -934,7 +934,7 @@ function createUrlModule() {
   };
 }
 
-function createUtilModule(types = createUtilTypesModule()) {
+function createUtilModule(types = createUtilTypesModule(), consoleApi = null, processContext = null) {
   const format = (template, ...values) => {
     if (typeof template !== "string") return [template, ...values].map(formatConsoleValue).join(" ");
     let index = 0;
@@ -967,12 +967,43 @@ function createUtilModule(types = createUtilTypesModule()) {
     constructor.super_ = superConstructor;
     Object.setPrototypeOf(constructor.prototype, superConstructor.prototype);
   };
+  const debuglog = (section, callback) => {
+    const name = String(section || "").toUpperCase();
+    const pattern = String(processContext?.env?.NODE_DEBUG || "");
+    const enabled = pattern
+      .split(/[,\s]+/)
+      .filter(Boolean)
+      .some((entry) => {
+        const normalized = entry.toUpperCase();
+        return normalized === "*" || normalized === name;
+      });
+    const logger = (...values) => {
+      if (!enabled) return;
+      consoleApi?.error?.(`${name}: ${format(...values)}`);
+    };
+    if (typeof callback === "function") callback(logger);
+    return logger;
+  };
+  const deprecate = (fn, message, code) => {
+    if (typeof fn !== "function") throw new Error("util.deprecate: first argument must be a function");
+    let warned = false;
+    return function deprecatedWrapper(...args) {
+      if (!warned && !processContext?.noDeprecation) {
+        warned = true;
+        const suffix = code ? ` [${code}]` : "";
+        consoleApi?.warn?.(`DeprecationWarning${suffix}: ${message}`);
+      }
+      return fn.apply(this, args);
+    };
+  };
   return {
     format,
     inspect,
     promisify,
     callbackify,
     inherits,
+    debuglog,
+    deprecate,
     types,
   };
 }

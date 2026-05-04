@@ -415,6 +415,7 @@ Already present:
 - `path/posix` resolves through CommonJS and ESM import paths to the browser-safe POSIX path facade used by package feature probes.
 - `npm run smoke:npm-node` verifies `path/posix`, `node:path/posix`, and `path.posix` behavior.
 - `url`, `util`, and `timers` builtin facades are available through bare and `node:` import paths; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
+- `util.debuglog` and `util.deprecate` support browser-safe package diagnostics and legacy API wrappers without host Node access; `npm run smoke:npm-node` verifies enabled/disabled debug channels, callback shape, one-time deprecation warnings, and CommonJS/ESM import paths.
 - `util/types` is available through `util.types`, `util/types`, and `node:util/types` for browser-safe package feature probes covering ArrayBuffer, typed array, boxed primitive, collection, Date, RegExp, Promise, and Error checks.
 - `npm run smoke:npm-node` verifies `util/types` CommonJS and ESM import paths plus representative type probe behavior.
 - `perf_hooks` builtin facade supports CommonJS and ESM import paths for browser-safe performance marks, measures, observer shape, and package runtime probes.
