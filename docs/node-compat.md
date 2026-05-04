@@ -102,6 +102,7 @@ Current built-ins:
 - `dns` policy facade
 - `console`
 - `http` / `https` policy facades
+- `child_process` / `worker_threads` policy facades
 
 The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
 
@@ -130,6 +131,8 @@ The `dns` module is an explicit policy facade. Packages can import `dns`, inspec
 The `console` module exposes `Console` plus the standard log/warn/error helpers. By default output is captured into the NodeCompat result buffer; custom stream-like objects with `write()` are supported for package-local formatting probes.
 
 The `http` and `https` modules are explicit policy facades. They can be imported by packages that probe for Node built-ins, but `request()`, `get()`, `createServer()`, and constructor paths throw `NodeCompat <protocol> networking is unavailable`. Network access belongs to a future explicit DindbOS network capability or app sandbox grant, not the NodeCompat compatibility layer.
+
+The `child_process` and `worker_threads` modules are explicit policy facades. Packages can import them and inspect basic shape, but host process spawning and Node worker threads throw specific DindbOS capability errors instead of escaping the browser runtime.
 
 This is not a full Node.js runtime. It does not provide POSIX syscalls, native addons, unrestricted networking, child processes, worker threads, full ESM semantics, or lifecycle script execution.
 

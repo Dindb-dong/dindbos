@@ -46,6 +46,10 @@ const BUILTIN_MODULES = new Set([
   "node:http",
   "https",
   "node:https",
+  "child_process",
+  "node:child_process",
+  "worker_threads",
+  "node:worker_threads",
 ]);
 const AsyncFunction = Object.getPrototypeOf(async function createAsyncFunction() {}).constructor;
 
@@ -226,6 +230,8 @@ class CommonJsRuntime {
       console: createConsoleModule(this.output),
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
+      child_process: createChildProcessModule(),
+      worker_threads: createWorkerThreadsModule(),
     };
     this.builtins.module = this.createModuleModule();
   }
@@ -899,6 +905,73 @@ function createNetworkModule(protocol) {
     createServer: unsupported,
     STATUS_CODES: {},
     METHODS: [],
+  };
+}
+
+function createChildProcessModule() {
+  const unsupported = () => {
+    throw new Error("NodeCompat child_process is unavailable; browser-safe packages must use DindbOS app capabilities instead of spawning host processes.");
+  };
+  class ChildProcess {
+    constructor() {
+      unsupported();
+    }
+  }
+  return {
+    ChildProcess,
+    exec: unsupported,
+    execFile: unsupported,
+    fork: unsupported,
+    spawn: unsupported,
+    execSync: unsupported,
+    execFileSync: unsupported,
+    spawnSync: unsupported,
+  };
+}
+
+function createWorkerThreadsModule() {
+  const unsupported = () => {
+    throw new Error("NodeCompat worker_threads is unavailable; use browser Workers through an explicit DindbOS app capability.");
+  };
+  class Worker {
+    constructor() {
+      unsupported();
+    }
+  }
+  class MessagePort {
+    constructor() {
+      this.onmessage = null;
+    }
+    postMessage() {
+      unsupported();
+    }
+    close() {}
+    ref() {
+      return this;
+    }
+    unref() {
+      return this;
+    }
+  }
+  class MessageChannel {
+    constructor() {
+      this.port1 = new MessagePort();
+      this.port2 = new MessagePort();
+    }
+  }
+  return {
+    Worker,
+    MessageChannel,
+    MessagePort,
+    isMainThread: true,
+    parentPort: null,
+    workerData: null,
+    threadId: 0,
+    resourceLimits: {},
+    SHARE_ENV: Symbol.for("dindbos.nodecompat.worker_threads.SHARE_ENV"),
+    markAsUntransferable: () => undefined,
+    moveMessagePortToContext: unsupported,
+    receiveMessageOnPort: () => undefined,
   };
 }
 

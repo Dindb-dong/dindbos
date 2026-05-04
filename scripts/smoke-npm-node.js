@@ -439,6 +439,33 @@ const networkPolicyImport = await node.evaluate(
 assert(networkPolicyImport.status === 0, `network policy import exited with ${networkPolicyImport.status}`);
 assert(networkPolicyImport.output.trim() === "NodeCompat http networking is unavailable; use an explicit DindbOS network capability outside NodeCompat.", `unexpected network policy import output: ${networkPolicyImport.output}`);
 
+const runtimePolicyRequire = node.evaluate(
+  [
+    "const childProcess = require('child_process');",
+    "const workers = require('node:worker_threads');",
+    "console.log(typeof childProcess.spawn, workers.isMainThread, workers.parentPort === null, workers.threadId);",
+    "try { childProcess.exec('echo nope'); } catch (error) { console.log(error.message); }",
+  ].join("\n"),
+  cwd,
+);
+assert(runtimePolicyRequire.status === 0, `runtime policy require exited with ${runtimePolicyRequire.status}`);
+assert(runtimePolicyRequire.output.includes("function true true 0"), "runtime policy require shape missing");
+assert(runtimePolicyRequire.output.includes("NodeCompat child_process is unavailable"), "child_process policy error missing");
+
+const runtimePolicyImport = await node.evaluate(
+  [
+    "import { spawn } from 'node:child_process';",
+    "import workerThreads, { Worker, isMainThread } from 'worker_threads';",
+    "console.log(typeof spawn, isMainThread, workerThreads.parentPort === null);",
+    "try { new Worker('./worker.js'); } catch (error) { console.log(error.message); }",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(runtimePolicyImport.status === 0, `runtime policy import exited with ${runtimePolicyImport.status}`);
+assert(runtimePolicyImport.output.includes("function true true"), "runtime policy ESM shape missing");
+assert(runtimePolicyImport.output.includes("NodeCompat worker_threads is unavailable"), "worker_threads policy error missing");
+
 const policyInstaller = new NpmInstaller(os, { registry: "https://registry.example.test" });
 const policyFetch = countedFetch(fakePolicyFetch);
 const policyRecords = await policyInstaller.install(["policy-pkg@1.0.0"], `${cwd}/policy`, { fetch: policyFetch, maxPackages: 2 });
