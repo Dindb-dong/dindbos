@@ -35,6 +35,7 @@ Added:
 - Shell `su`/`sudo` placeholders now fail explicitly with browser-runtime fixed-session status instead of implying privilege escalation.
 - Package transaction rollback for failed install/update/remove paths.
 - Package install smoke coverage for install -> AppRegistry launch -> runtime render -> remove.
+- Package app execute boundary is now explicit: JS entry files stay non-executable while `.app` launchers carry execute permission.
 - NodeCompat support for CommonJS, JSON modules, simple ESM transforms, simple `exports` resolution, nested dependency lookup, and `events`/`node:events`.
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
 - NodeCompat `stream` builtin facade for browser-safe `Readable`, `Writable`, `PassThrough`, and `pipeline` usage.

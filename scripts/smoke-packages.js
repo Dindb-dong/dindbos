@@ -99,6 +99,9 @@ const flow = packages.install(packageManifest("flow-demo", "1.0.0", [
   { path: "data.txt", mime: "text/plain", content: "runtime-ok" },
 ]));
 assert(flow.id === "flow-demo", "flow package install returned wrong id");
+const flowEntry = os.fs.stat("/opt/flow-demo/app.js");
+assert(flowEntry.permissions === "-rw-r--r--", `package JS entry permissions mismatch: ${flowEntry.permissions}`);
+assert(!flowEntry.permissions.includes("x"), "package JS entry unexpectedly has execute bits");
 const launched = os.apps.launch("flow-demo");
 await waitFor(() => launched.content.innerHTML.includes("flow-demo:runtime-ok"), "package app did not run through AppRegistry launch");
 assert(os.processes.records.has(launched.pid), "package launch did not create process");

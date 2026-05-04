@@ -610,6 +610,8 @@ Already present:
 - Terminal filesystem operations run with the session principal instead of implicit root/system access.
 - Shell script execution enforces the script file execute bit.
 - App launcher `.app` nodes enforce execute permission before `openPath` launches the app, covered by `npm run smoke:permissions`.
+- Package JavaScript entry files are readable app code, not executable programs; `/usr/share/applications/*.app` launchers are the executable app boundary.
+- `npm run smoke:packages` verifies package JS entries remain non-executable while AppRegistry launch still works.
 - App manifests declare filesystem read/write scopes.
 - App sandbox gives apps scoped runtime access instead of the raw OS object.
 - Permission-denied smoke covers Terminal reads/writes, app sandbox filesystem scopes, package capability denial, and local mount capability denial.
@@ -623,7 +625,6 @@ Remaining:
 - User/group management.
 - Home directory generation for multiple users.
 - Stricter read/write/execute checks.
-- Decide whether package JavaScript entry files need execute bits or whether launcher execute permission is the app boundary.
 
 Completion criteria:
 
