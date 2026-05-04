@@ -459,6 +459,7 @@ class CommonJsRuntime {
 
   createFsModule(streamModule) {
     const fsModule = {
+      constants: createFsConstants(),
       readFileSync: (path, encoding = null) => {
         const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
         if (encoding === "utf8" || encoding === "utf-8" || encoding?.encoding) {
@@ -2035,6 +2036,10 @@ function normalizeStringDecoderEncoding(encoding) {
 
 function createConstantsModule() {
   return {
+    F_OK: 0,
+    R_OK: 4,
+    W_OK: 2,
+    X_OK: 1,
     E2BIG: 7,
     EACCES: 13,
     EADDRINUSE: 98,
@@ -2068,6 +2073,25 @@ function createConstantsModule() {
     S_IRUSR: 256,
     S_IWUSR: 128,
     S_IXUSR: 64,
+  };
+}
+
+function createFsConstants() {
+  return {
+    F_OK: 0,
+    R_OK: 4,
+    W_OK: 2,
+    X_OK: 1,
+    COPYFILE_EXCL: 1,
+    COPYFILE_FICLONE: 2,
+    COPYFILE_FICLONE_FORCE: 4,
+    O_RDONLY: 0,
+    O_WRONLY: 1,
+    O_RDWR: 2,
+    O_CREAT: 64,
+    O_EXCL: 128,
+    O_TRUNC: 512,
+    O_APPEND: 1024,
   };
 }
 

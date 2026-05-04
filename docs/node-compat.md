@@ -110,7 +110,7 @@ Current built-ins:
 - `child_process` / `worker_threads` policy facades
 - `zlib` policy facade
 
-The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem. Callback-style `fs` helpers and the `fs.promises` facade wrap the same VFS operations for async package paths, including read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks. `fs.createReadStream` and `fs.createWriteStream` expose browser-safe stream wrappers over VFS files for package compatibility probes.
+The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem. Callback-style `fs` helpers and the `fs.promises` facade wrap the same VFS operations for async package paths, including read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks. `fs.constants` exposes browser-safe access modes, copy flags, and common open flags for package probes. `fs.createReadStream` and `fs.createWriteStream` expose browser-safe stream wrappers over VFS files for package compatibility probes.
 
 The `path` module exposes POSIX helpers used by the DindbOS VFS plus `path/posix` and `path/win32` subpath facades for package string probes. `path/win32` only performs browser-safe path string manipulation; it does not imply Windows host filesystem access.
 
@@ -144,7 +144,7 @@ The `module` module supports `builtinModules`, `isBuiltin`, `createRequire`, and
 
 The `string_decoder` module supports the `StringDecoder` class for common browser-safe package decoding paths, including `utf8`, `utf16le`, `latin1`/`binary`/`ascii`, `hex`, and `base64`.
 
-The `constants` module exposes a browser-safe subset of common errno, signal, open flag, and file mode constants used by packages for feature detection and VFS-facing fallback logic.
+The `constants` module exposes a browser-safe subset of common access mode, errno, signal, open flag, and file mode constants used by packages for feature detection and VFS-facing fallback logic.
 
 The `diagnostics_channel` module supports in-runtime publish/subscribe channels and tracing channel objects for browser-safe instrumentation hooks. It does not forward diagnostics outside the DindbOS runtime.
 
