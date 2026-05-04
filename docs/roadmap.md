@@ -409,6 +409,7 @@ Already present:
 - JSON modules.
 - Module cache.
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
+- Browser-native `Buffer` fallback supports `from`, `alloc`, `concat`, `isBuffer`, `byteLength`, and common string encodings when host `Buffer` is unavailable; `npm run smoke:npm-node` verifies the no-host-Buffer path.
 - `events`/`EventEmitter` builtin facade is available through `events` and `node:events`; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
 - `url`, `util`, and `timers` builtin facades are available through bare and `node:` import paths; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
 - `perf_hooks` builtin facade supports CommonJS and ESM import paths for browser-safe performance marks, measures, observer shape, and package runtime probes.

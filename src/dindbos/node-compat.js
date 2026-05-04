@@ -704,22 +704,86 @@ function safeJson(content, fallback) {
 
 function createBufferFacade() {
   if (globalThis.Buffer) return globalThis.Buffer;
-  return {
-    from: (value) => createByteBuffer(value),
-    isBuffer: (value) => value instanceof Uint8Array,
-    byteLength: (value) => new TextEncoder().encode(String(value ?? "")).byteLength,
+  const BufferFacade = {
+    from: (value, encoding = "utf8") => createByteBuffer(value, encoding),
+    alloc: (size = 0, fill = 0, encoding = "utf8") => {
+      const bytes = createByteBuffer(new Uint8Array(Math.max(0, Number(size) || 0)));
+      if (fill !== 0 && fill !== undefined && bytes.length) bytes.fill(resolveBufferFill(fill, encoding));
+      return bytes;
+    },
+    concat: (chunks = [], totalLength = undefined) => {
+      const normalized = chunks.map((chunk) => createByteBuffer(chunk));
+      const total = totalLength === undefined ? normalized.reduce((sum, chunk) => sum + chunk.byteLength, 0) : Number(totalLength) || 0;
+      const bytes = createByteBuffer(new Uint8Array(Math.max(0, total)));
+      let offset = 0;
+      for (const chunk of normalized) {
+        if (offset >= bytes.length) break;
+        bytes.set(chunk.slice(0, bytes.length - offset), offset);
+        offset += chunk.byteLength;
+      }
+      return bytes;
+    },
+    isBuffer: (value) => Boolean(value?.__dindbosBuffer),
+    byteLength: (value, encoding = "utf8") => createByteBuffer(value, encoding).byteLength,
   };
+  return BufferFacade;
 }
 
-function createByteBuffer(value) {
-  const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(String(value ?? ""));
+function createByteBuffer(value, encoding = "utf8") {
+  const bytes = value instanceof ArrayBuffer
+    ? new Uint8Array(value)
+    : ArrayBuffer.isView(value)
+      ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+      : decodeBufferString(String(value ?? ""), encoding);
+  Object.defineProperty(bytes, "__dindbosBuffer", { value: true });
   bytes.toString = (encoding = "utf8") => {
     if (encoding === "hex") return bytesToHex(bytes);
     if (encoding === "base64") return bytesToBase64(bytes);
+    if (encoding === "base64url") return bytesToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    if (["latin1", "binary", "ascii"].includes(normalizeBufferEncoding(encoding))) return [...bytes].map((byte) => String.fromCharCode(byte)).join("");
     if (encoding !== "utf8" && encoding !== "utf-8") throw new Error(`Buffer: unsupported encoding: ${encoding}`);
     return new TextDecoder().decode(bytes);
   };
   return bytes;
+}
+
+function decodeBufferString(value, encoding = "utf8") {
+  const normalized = normalizeBufferEncoding(encoding);
+  if (normalized === "hex") return hexToBytes(value);
+  if (normalized === "base64" || normalized === "base64url") return base64ToBytes(value, normalized);
+  if (["latin1", "binary", "ascii"].includes(normalized)) return Uint8Array.from([...value].map((character) => character.charCodeAt(0) & 0xff));
+  if (normalized !== "utf8") throw new Error(`Buffer: unsupported encoding: ${encoding}`);
+  return new TextEncoder().encode(value);
+}
+
+function normalizeBufferEncoding(encoding = "utf8") {
+  const normalized = String(encoding || "utf8").toLowerCase().replace(/[-_]/g, "");
+  if (normalized === "utf8") return "utf8";
+  if (normalized === "base64url") return "base64url";
+  return normalized;
+}
+
+function resolveBufferFill(fill, encoding = "utf8") {
+  if (typeof fill === "number") return fill & 0xff;
+  const bytes = createByteBuffer(fill, encoding);
+  return bytes[0] || 0;
+}
+
+function hexToBytes(value = "") {
+  const clean = String(value || "").replace(/\s+/g, "");
+  const length = clean.length - (clean.length % 2);
+  const bytes = new Uint8Array(length / 2);
+  for (let index = 0; index < length; index += 2) bytes[index / 2] = Number.parseInt(clean.slice(index, index + 2), 16) || 0;
+  return bytes;
+}
+
+function base64ToBytes(value = "", encoding = "base64") {
+  const normalized = encoding === "base64url"
+    ? String(value).replace(/-/g, "+").replace(/_/g, "/")
+    : String(value);
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  if (typeof atob === "function") return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+  throw new Error("base64 decoding is not available");
 }
 
 function createEventsModule() {

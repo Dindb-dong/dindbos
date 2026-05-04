@@ -121,6 +121,27 @@ const builtinImport = await node.evaluate(
 assert(builtinImport.status === 0, `builtin import exited with ${builtinImport.status}`);
 assert(builtinImport.output.trim() === "dindbos.local ok-2 function", `unexpected builtin import output: ${builtinImport.output}`);
 
+const hostBuffer = globalThis.Buffer;
+globalThis.Buffer = undefined;
+try {
+  const browserBufferFallback = node.evaluate(
+    [
+      "const BufferApi = require('buffer').Buffer;",
+      "const hex = BufferApi.from('6869', 'hex');",
+      "const base64 = BufferApi.from('aGk=', 'base64');",
+      "const latin1 = BufferApi.from('Aÿ', 'latin1');",
+      "const alloc = BufferApi.alloc(3, 'a');",
+      "const concat = BufferApi.concat([hex, BufferApi.from('!')]);",
+      "console.log(BufferApi.isBuffer(hex), hex.toString(), base64.toString('hex'), latin1[1], alloc.toString(), concat.toString(), BufferApi.byteLength('é'));",
+    ].join("\n"),
+    cwd,
+  );
+  assert(browserBufferFallback.status === 0, `browser Buffer fallback exited with ${browserBufferFallback.status}`);
+  assert(browserBufferFallback.output.trim() === "true hi 6869 255 aaa hi! 2", `unexpected browser Buffer fallback output: ${browserBufferFallback.output}`);
+} finally {
+  globalThis.Buffer = hostBuffer;
+}
+
 const perfHooksRequire = node.evaluate(
   [
     "const { performance, PerformanceObserver } = require('perf_hooks');",
