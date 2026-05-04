@@ -73,6 +73,7 @@ Added:
 - NodeCompat `http` and `https` policy facades now fail with explicit DindbOS network capability guidance instead of vague module-not-found errors.
 - NodeCompat ESM transform now supports simple re-export barrels through `export { ... } from` and `export * from` for browser-safe packages.
 - NodeCompat package `exports` resolution now supports explicit root/subpath maps with common `import`, `require`, `browser`, and `default` conditions.
+- Local mount same-folder rename is routed through a separate `dindbos-file-helper-v1` `file.rename` helper when configured, and otherwise fails explicitly instead of pretending browser copy-delete is an OS rename.
 - Process manager activity sampling, crash reports, parent/child process links, and centralized restart behavior.
 - AppRegistry crash isolation renders a crash panel and reports failed app render paths to the process manager.
 - Explicit `app:*` lifecycle events for install, update, first-run, launch, ready, focus, suspend, resume, crash, close, uninstall-cleanup, and uninstall.
@@ -92,7 +93,7 @@ Known limits:
 
 - Package signatures require Web Crypto Ed25519 support for trusted remote installs.
 - Browser.app clipboard and download routing policies are not complete.
-- Files.app still needs native-helper mount rename.
+- Local mount rename requires a deployment-provided file helper companion; the browser-only runtime refuses copy-delete rename for that case.
 - PDF viewing falls back to native iframe behavior unless a deployment provides `globalThis.pdfjsLib`.
 - NodeCompat is intentionally a browser-safe subset and does not provide native Node addons, arbitrary filesystem access, or full Node runtime APIs.
 

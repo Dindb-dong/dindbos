@@ -176,6 +176,7 @@ Available as `os.localMounts`.
 - `forgetMount(path)` requires `localMount.manage`
 - `operations()` requires `localMount.read`
 - `copyPolicy()` requires `localMount.read`
+- `nativeHelperStatus()` requires `localMount.read`
 - `isMountedPath(path, cwd)`
 - `syncDirectory(path)`
 - `list(path, cwd)` requires `localMount.read`
@@ -192,6 +193,8 @@ Available as `os.localMounts`.
 
 Local mounts are browser permission-bound and currently a Chromium-family workflow.
 Directory copy conflicts default to `error` at the runtime API boundary. Callers can pass `conflictPolicy: "replace"`, `"merge"`, `"skip"`, `"rename"`, or `"prompt"` to `copy`/`move`; `prompt` requires a `resolveConflict` callback. `merge` copies missing directory children and preserves existing conflicting files, while `replace` removes the existing target recursively before copying.
+
+Same-folder local mount rename is native-helper gated. When `move(source, destination)` is a pure rename inside one mounted directory, DindbOS calls the configured `dindbos-file-helper-v1` `file.rename` helper and resyncs the directory. If no file helper is configured, the operation fails with `local mount rename requires a file helper companion` instead of faking OS rename with browser copy-delete.
 
 ## Browser Companion Boundary
 

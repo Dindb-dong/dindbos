@@ -429,6 +429,10 @@ export class AppSandbox {
         this.assertCapability("localMount.read");
         return this.os.localMounts.copyPolicy();
       },
+      nativeHelperStatus: () => {
+        this.assertCapability("localMount.read");
+        return this.os.localMounts.nativeHelperStatus();
+      },
       isMountedPath: (path, cwd = this.process.cwd) => this.os.localMounts.isMountedPath(path, cwd),
       syncDirectory: (path) => this.os.localMounts.syncDirectory(path),
       list: (path, cwd = this.process.cwd) => {

@@ -50,7 +50,7 @@ npm run smoke:local-mounts
 npm run smoke:viewer
 ```
 
-The storage smoke test writes text and binary files, verifies copied bytes, serializes a binary content record, reloads through a VFS snapshot, and fails if any byte changes. The persistent storage smoke test verifies localStorage-style snapshot fallback and OPFS write-failure fallback with binary bytes. The Files.app smoke test exports a directory archive, imports it again, verifies nested binary bytes, and proves scheduled copy/import yields during traversal. The local mounts smoke test verifies that a permission-denied directory handle fails before creating a runtime mount or VFS mount node, that directory copy policies preserve or replace target trees as requested, and that disk-side changes trigger a sync conflict instead of being overwritten. The Viewer.app smoke test verifies preview cache writes and hits for image/document bytes.
+The storage smoke test writes text and binary files, verifies copied bytes, serializes a binary content record, reloads through a VFS snapshot, and fails if any byte changes. The persistent storage smoke test verifies localStorage-style snapshot fallback and OPFS write-failure fallback with binary bytes. The Files.app smoke test exports a directory archive, imports it again, verifies nested binary bytes, and proves scheduled copy/import yields during traversal. The local mounts smoke test verifies that a permission-denied directory handle fails before creating a runtime mount or VFS mount node, that directory copy policies preserve or replace target trees as requested, that same-folder local mount rename refuses browser copy-delete without a file helper companion, that a configured `dindbos-file-helper-v1` rename hook changes the external entry, and that disk-side changes trigger a sync conflict instead of being overwritten. The Viewer.app smoke test verifies preview cache writes and hits for image/document bytes.
 
 Example:
 
@@ -61,12 +61,15 @@ echo hello > /mnt/mydisk/hello.txt
 cp /mnt/mydisk/hello.txt ~/Documents/hello.txt
 cp ~/Documents/todo.md /mnt/mydisk/todo.md
 mount-local --list
+mount-local --helper
 umount /mnt/mydisk
 mount-local --restore
 umount --forget /mnt/mydisk
 ```
 
 Local folder mounts are intentionally opt-in. DindbOS cannot and should not silently mount the user's whole computer. The browser requires a user gesture and folder picker, and the mount only covers the selected folder. In Chromium-based browsers, accepted directory handles are stored in IndexedDB so DindbOS can reconnect them on the next boot if permission is still granted. If the browser returns `prompt`, `mount-local --restore` asks for permission again.
+
+Local mount rename is deliberately native-helper gated. Browser File System Access handles do not expose a stable host path or an OS-level rename primitive, so DindbOS does not fake rename with copy-delete for same-folder local mount renames. If a deployment configures a separate `dindbos-file-helper-v1` companion with `file.rename`, `os.localMounts.move()` routes the rename through that helper and then resyncs the mounted directory. Without that helper, the operation fails with a specific message and leaves the source entry untouched. This file helper boundary is separate from `browserd`.
 
 Planned storage stack:
 
@@ -83,4 +86,5 @@ Known limits:
 - persistence still walks the in-memory tree to compute record hashes
 - page unload flushing is best-effort because browsers may stop asynchronous storage work during shutdown; DindbOS prompts on `beforeunload` only when pending writes are visible to the runtime
 - directory copy between internal VFS paths and local mounts works, and large Files.app tree traversals yield cooperatively while still running inside the browser runtime
+- same-folder local mount rename requires a separate file helper companion; the browser runtime refuses copy-delete rename when that helper is absent
 - browser support is strongest in Chromium-based browsers

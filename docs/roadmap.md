@@ -339,9 +339,8 @@ Already present:
 - `npm run smoke:boot` verifies storage bucket policy reporting, disk-policy bucket intent for `/tmp` and `/var/cache`, and boot diagnostics persistence.
 - Local mount directory copy conflicts are defined at the runtime boundary: default `error`, destructive `replace`, non-destructive `merge`, `skip`, `rename`, and caller-resolved `prompt`.
 - `npm run smoke:local-mounts` verifies local directory copy policy reporting, default conflict rejection, merge preservation, replace overwrite, skip preservation, and prompt rename behavior.
-
-Remaining:
-- Add mount rename through a native helper/companion later, instead of browser copy-delete.
+- Same-folder local mount rename is routed through a separate `dindbos-file-helper-v1` `file.rename` helper when configured; without that helper, DindbOS refuses browser copy-delete rename and leaves the source entry untouched.
+- `npm run smoke:local-mounts` verifies helperless local mount rename failure, helper-backed native rename, external byte preservation, and native rename operation reporting.
 
 Completion criteria:
 
@@ -560,7 +559,7 @@ Completion criteria:
 
 ## 7. Files.app
 
-Status: Done second pass, scale/native-helper work remaining.
+Status: Done second pass, scale polish remaining.
 
 Already present:
 
@@ -590,10 +589,7 @@ Already present:
 - Large tree copy/move/export operations are cancellable through the operation reporter and abort signal checks; `npm run smoke:files` verifies cancellation stops export traversal and records cancelled history.
 - Copy, move, import, and export naming paths expose conflict/filename choices for replace, rename, skip, and custom export names; `npm run smoke:files` verifies the non-destructive conflict policies.
 - Files.app inspector includes app-specific troubleshooting diagnostics for folder scale, selection count, local mount conflicts, recent operation state, and next-step advice; `npm run smoke:files` verifies the diagnostic summary and conflict/large-folder guidance.
-
-Remaining:
-
-- Add OS-level local mount rename through a native companion/helper instead of browser copy-delete.
+- Files.app rename on same-folder local mount paths uses the runtime local mount move path, which now requires a separate file helper companion for OS-level rename instead of silently performing browser copy-delete.
 
 Completion criteria:
 

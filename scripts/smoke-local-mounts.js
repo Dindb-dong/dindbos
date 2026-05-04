@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { mkdir, mkdtemp, readFile as readNodeFile, readdir, rename as renameNodeEntry, rm, stat as statNodePath, writeFile as writeNodeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { LocalFolderMountManager } from "../src/dindbos/local-folder-mount.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
@@ -83,6 +86,82 @@ class MemoryFileHandle {
   }
 }
 
+class NodeDirectoryHandle {
+  constructor(path, name = basename(path)) {
+    this.kind = "directory";
+    this.path = path;
+    this.name = name;
+  }
+
+  async queryPermission() {
+    return "granted";
+  }
+
+  async requestPermission() {
+    return "granted";
+  }
+
+  async *entries() {
+    const entries = await readdir(this.path, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = join(this.path, entry.name);
+      yield [entry.name, entry.isDirectory() ? new NodeDirectoryHandle(entryPath, entry.name) : new NodeFileHandle(entryPath, entry.name)];
+    }
+  }
+
+  async getFileHandle(name, options = {}) {
+    const filePath = join(this.path, name);
+    if (options.create && !await nodePathExists(filePath)) await writeNodeFile(filePath, "");
+    const info = await statNodePath(filePath);
+    if (!info.isFile()) throw new Error(`file not found: ${name}`);
+    return new NodeFileHandle(filePath, name);
+  }
+
+  async getDirectoryHandle(name, options = {}) {
+    const directoryPath = join(this.path, name);
+    if (options.create) await mkdir(directoryPath, { recursive: true });
+    const info = await statNodePath(directoryPath);
+    if (!info.isDirectory()) throw new Error(`directory not found: ${name}`);
+    return new NodeDirectoryHandle(directoryPath, name);
+  }
+
+  async removeEntry(name, options = {}) {
+    await rm(join(this.path, name), { recursive: Boolean(options.recursive), force: false });
+  }
+}
+
+class NodeFileHandle {
+  constructor(path, name = basename(path)) {
+    this.kind = "file";
+    this.path = path;
+    this.name = name;
+  }
+
+  async getFile() {
+    const bytes = await readNodeFile(this.path);
+    const info = await statNodePath(this.path);
+    return {
+      type: "text/plain",
+      size: bytes.byteLength,
+      lastModified: info.mtimeMs,
+      text: async () => bytes.toString("utf8"),
+      arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    };
+  }
+
+  async createWritable() {
+    let pending = Buffer.alloc(0);
+    return {
+      write: async (value) => {
+        pending = value instanceof Uint8Array ? Buffer.from(value) : Buffer.from(String(value ?? ""));
+      },
+      close: async () => {
+        await writeNodeFile(this.path, pending);
+      },
+    };
+  }
+}
+
 const os = bootOs();
 const deniedHandle = {
   kind: "directory",
@@ -106,6 +185,7 @@ assert(!os.fs.exists("/mnt/denied"), "denied handle created a VFS mount node");
 
 const handle = new MemoryDirectoryHandle("disk", {
   "note.txt": new MemoryFileHandle("note.txt", "external v1", "text/plain", 1_000),
+  "rename-me.txt": new MemoryFileHandle("rename-me.txt", "rename source", "text/plain", 1_050),
   source: new MemoryDirectoryHandle("source", {
     "keep.txt": new MemoryFileHandle("keep.txt", "source keep", "text/plain", 1_100),
     "new.txt": new MemoryFileHandle("new.txt", "source new", "text/plain", 1_200),
@@ -128,6 +208,12 @@ const handle = new MemoryDirectoryHandle("disk", {
 const mounted = await mounts.mountLocal("disk", { handle, persist: false });
 assert(mounted.path === "/mnt/disk", `mounted path mismatch: ${mounted.path}`);
 assert(await mounts.readFile("/mnt/disk/note.txt") === "external v1", "initial local mount mirror did not read external file");
+await assertRejects(
+  () => mounts.move("/mnt/disk/rename-me.txt", "/mnt/disk/renamed.txt"),
+  "local mount rename requires a file helper companion",
+);
+assert(await mounts.readFile("/mnt/disk/rename-me.txt") === "rename source", "helperless rename changed source bytes");
+await smokeNativeRenameHelper(os);
 const copyPolicy = mounts.copyPolicy();
 assert(copyPolicy.defaultConflictPolicy === "error", "local copy policy default mismatch");
 assert(copyPolicy.directoryActions.includes("merge"), "local copy policy does not expose directory merge");
@@ -164,7 +250,7 @@ assert(mounts.operationStatus().some((operation) => operation.kind === "sync-con
 const status = await mounts.status();
 assert(status[0].conflicts.length === 1, "mount status did not expose sync conflict");
 
-console.log("local mounts smoke ok permission-denied directory-copy-policy sync-conflict");
+console.log("local mounts smoke ok permission-denied directory-copy-policy native-rename sync-conflict");
 
 function bootOs() {
   const permissions = new PermissionPolicy();
@@ -181,6 +267,50 @@ function bootOs() {
       async flush() {},
     },
   };
+}
+
+async function smokeNativeRenameHelper(os) {
+  const rootPath = await mkdtemp(join(tmpdir(), "dindbos-local-rename-"));
+  try {
+    await writeNodeFile(join(rootPath, "native.txt"), "native source");
+    const helper = {
+      name: "test-file-helperd",
+      protocol: "dindbos-file-helper-v1",
+      capabilities: ["file.rename"],
+      async renameEntry(request) {
+        assert(request.capability === "file.rename", "native rename helper capability mismatch");
+        assert(request.mountPath === "/mnt/native", "native rename helper mount path mismatch");
+        assert(request.sourceRelativePath === "native.txt", "native rename helper source path mismatch");
+        assert(request.destinationRelativePath === "native-renamed.txt", "native rename helper destination path mismatch");
+        await renameNodeEntry(join(rootPath, request.sourceRelativePath), join(rootPath, request.destinationRelativePath));
+        return { status: "renamed", path: request.destinationPath };
+      },
+    };
+    const nativeMounts = new LocalFolderMountManager(os, { nativeHelper: helper });
+    await nativeMounts.mountLocal("native", { handle: new NodeDirectoryHandle(rootPath, "native"), persist: false });
+    const helperStatus = nativeMounts.nativeHelperStatus();
+    assert(helperStatus.configured === true, "native helper status did not mark configured");
+    assert(helperStatus.renameSupported === true, "native helper status did not expose rename support");
+    const renamedFile = await nativeMounts.move("/mnt/native/native.txt", "/mnt/native/native-renamed.txt");
+    assert(renamedFile.path === "/mnt/native/native-renamed.txt", `native rename path mismatch: ${renamedFile.path}`);
+    assert(!await nodePathExists(join(rootPath, "native.txt")), "native rename left the old host path");
+    assert(await readNodeFile(join(rootPath, "native-renamed.txt"), "utf8") === "native source", "native rename did not preserve host bytes");
+    assert(await nativeMounts.readFile("/mnt/native/native-renamed.txt") === "native source", "native rename did not resync mounted bytes");
+    assert(nativeMounts.operationStatus().some((operation) => operation.kind === "native-rename" && operation.status === "complete"), "native rename operation was not reported");
+    const status = await nativeMounts.status();
+    assert(status[0].nativeHelper.renameSupported === true, "mount status did not expose native helper rename support");
+  } finally {
+    await rm(rootPath, { recursive: true, force: true });
+  }
+}
+
+async function nodePathExists(path) {
+  try {
+    await statNodePath(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function assertRejects(action, expectedMessage) {

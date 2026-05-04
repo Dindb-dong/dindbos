@@ -10,6 +10,7 @@ export class LocalFolderMountManager {
     this.operationSeq = 0;
     this.syncSnapshots = new Map();
     this.conflicts = new Map();
+    this.nativeHelper = options.nativeHelper || options.helper || null;
   }
 
   supported() {
@@ -23,6 +24,23 @@ export class LocalFolderMountManager {
       directoryActions: [...LOCAL_DIRECTORY_COPY_POLICY.directoryActions],
       fileActions: [...LOCAL_DIRECTORY_COPY_POLICY.fileActions],
       semantics: { ...LOCAL_DIRECTORY_COPY_POLICY.semantics },
+    };
+  }
+
+  nativeHelperStatus() {
+    const helper = this.nativeHelper || {};
+    const capabilities = Array.isArray(helper.capabilities)
+      ? helper.capabilities.map(String)
+      : [];
+    const renameSupported = typeof helper.renameEntry === "function"
+      || typeof helper.rename === "function";
+    return {
+      configured: Boolean(this.nativeHelper),
+      name: helper.name || helper.id || "",
+      protocol: helper.protocol || "dindbos-file-helper-v1",
+      capabilities,
+      renameSupported,
+      status: this.nativeHelper ? "configured" : "unavailable",
     };
   }
 
@@ -387,6 +405,7 @@ export class LocalFolderMountManager {
       ? this.os.fs.join(destinationInput, this.os.fs.basename(source))
       : destinationInput;
     if (destination === source || destination.startsWith(`${source}/`)) throw new Error(`mv: cannot move ${source} into itself`);
+    if (this.isNativeRename(source, destination)) return this.renameEntry(source, destination, sourceStat, options);
     const operation = this.beginOperation("move", source, destination, options);
     try {
       operation.total = await this.countEntries(source, sourceStat);
@@ -402,6 +421,53 @@ export class LocalFolderMountManager {
     }
     await this.syncDirectory(this.os.fs.dirname(destination));
     return this.stat(destination);
+  }
+
+  isNativeRename(source, destination) {
+    const mount = this.mountFor(source);
+    return Boolean(mount)
+      && mount.path !== source
+      && this.mountFor(destination)?.path === mount.path
+      && this.os.fs.dirname(source) === this.os.fs.dirname(destination)
+      && this.os.fs.basename(source) !== this.os.fs.basename(destination);
+  }
+
+  async renameEntry(source, destination, sourceStat = null, options = {}) {
+    const mount = this.mountFor(source);
+    if (!mount || mount.path === source) throw new Error(`mv: cannot rename mount root: ${source}`);
+    if (await this.exists(destination)) throw new Error(`mv: ${destination}: file exists`);
+    const helper = options.nativeHelper || this.nativeHelper;
+    const operation = this.beginOperation("native-rename", source, destination, options);
+    try {
+      if (!helper || (typeof helper.renameEntry !== "function" && typeof helper.rename !== "function")) {
+        throw new Error("local mount rename requires a file helper companion; browser copy-delete rename is disabled");
+      }
+      const request = {
+        protocol: "dindbos-file-helper-v1",
+        capability: "file.rename",
+        mountPath: mount.path,
+        mountName: mount.name,
+        handleName: mount.handleName,
+        sourcePath: source,
+        destinationPath: destination,
+        sourceRelativePath: relativeParts(mount.path, source).join("/"),
+        destinationRelativePath: relativeParts(mount.path, destination).join("/"),
+        sourceName: this.os.fs.basename(source),
+        destinationName: this.os.fs.basename(destination),
+        sourceType: sourceStat?.resolvedType || sourceStat?.type || "file",
+      };
+      const result = typeof helper.renameEntry === "function"
+        ? await helper.renameEntry(request)
+        : await helper.rename(request);
+      operation.destination = destination;
+      this.finishOperation(operation);
+      await this.syncDirectory(this.os.fs.dirname(source));
+      if (this.os.fs.dirname(destination) !== this.os.fs.dirname(source)) await this.syncDirectory(this.os.fs.dirname(destination));
+      return this.stat(destination);
+    } catch (error) {
+      this.finishOperation(operation, error);
+      throw error;
+    }
   }
 
   async copyEntry(source, destination, sourceStat = null, operation = null, options = {}) {
@@ -557,6 +623,7 @@ export class LocalFolderMountManager {
   }
 
   summary(mount, extra = {}) {
+    const helper = this.nativeHelperStatus();
     return {
       name: mount.name,
       path: mount.path,
@@ -564,6 +631,13 @@ export class LocalFolderMountManager {
       mode: mount.mode || this.defaultMode,
       access: mount.mode === "read" ? "read-only" : "read-write",
       type: "local-folder",
+      nativeHelper: {
+        configured: helper.configured,
+        name: helper.name,
+        protocol: helper.protocol,
+        renameSupported: helper.renameSupported,
+        status: helper.status,
+      },
       ...extra,
     };
   }

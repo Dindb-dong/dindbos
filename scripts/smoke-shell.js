@@ -114,9 +114,15 @@ assert(result.output.includes("DindbOS doctor"), `doctor heading missing: ${resu
 assert(result.output.includes("session user=guest"), `doctor session output missing: ${result.output}`);
 assert(result.output.includes("storage backend=memory"), `doctor storage output missing: ${result.output}`);
 assert(result.output.includes("localMounts supported=false mounted=0"), `doctor mount output missing: ${result.output}`);
+assert(result.output.includes("helper=unavailable rename=false"), `doctor helper output missing: ${result.output}`);
 assert(result.output.includes("packages installed=1"), `doctor package output missing: ${result.output}`);
 assert(result.output.includes("processes running=0"), `doctor process output missing: ${result.output}`);
 assert(result.output.includes("docs/support.md"), `doctor troubleshooting output missing: ${result.output}`);
+
+result = await shell.executeAsync("mount-local --helper");
+assert(result.status === 0, `mount helper status mismatch: ${result.status}`);
+assert(result.output.includes("protocol=dindbos-file-helper-v1"), `mount helper protocol missing: ${result.output}`);
+assert(result.output.includes("rename=false"), `mount helper rename output missing: ${result.output}`);
 
 const trustKey = "ed25519-pub:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 result = await shell.executeAsync(`pkg trust add com.example ${trustKey} Example Publisher`);
@@ -196,6 +202,13 @@ function bootOs() {
       isMountedPath: () => false,
       supported: () => false,
       status: async () => [],
+      nativeHelperStatus: () => ({
+        configured: false,
+        status: "unavailable",
+        protocol: "dindbos-file-helper-v1",
+        capabilities: [],
+        renameSupported: false,
+      }),
     },
     storage: {
       status: () => ({ backend: "memory", bytes: 0 }),
