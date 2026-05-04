@@ -142,7 +142,7 @@ Already present:
 
 ### Stage 5: External Capability Bridges
 
-Status: In progress through Browser.app companion.
+Status: Done first pass; future bridge work is capability-specific and demand-driven.
 
 Goal: Capabilities blocked by browser sandbox can be exposed through explicit, opt-in companions.
 
@@ -178,17 +178,17 @@ Already present:
 
 ## Current Priority
 
-Browser.app is the next proof point.
+Browser.app is complete as the current proof point first pass.
 
-Process/activity visibility, persistent storage, local folder mounts, npm install, and early NodeCompat are already in place. The work that remains is to make Browser.app and document viewers strong enough that the portfolio demo can run real URL/document workloads inside the OS shell, not just open built-in demo panels.
+Process/activity visibility, persistent storage, local folder mounts, npm install, NodeCompat, Browser.app, and document viewers are now in first-pass shape for the portfolio demo to run real URL/document workloads inside the OS shell, not just open built-in demo panels.
 
 The next practical sequence:
 
-1. Stabilize the current Browser.app + `browserd` companion work.
-2. Add verification coverage for Browser.app, storage persistence, npm install, and NodeCompat smoke paths.
-3. Improve document viewers so PDF, image, markdown, and HTML workloads feel native.
-4. Harden app packaging and runtime lifecycle once the browser/document proof point works.
-5. Polish window management and UX only after the core runtime behavior is reliable.
+1. Add new Browser.app or companion work only when smoke coverage or real URL workloads expose a gap.
+2. Add focused verification before broadening provider/native-adjacent capabilities.
+3. Improve document viewers only when real document workloads expose a gap.
+4. Harden app packaging and runtime lifecycle when third-party app usage exposes a gap.
+5. Polish window management and UX only after the core runtime behavior remains reliable under real workloads.
 
 ## 0. Immediate Carry-Over Work
 
@@ -523,7 +523,7 @@ Completion criteria:
 
 ## 5. Browser.app
 
-Status: In progress.
+Status: Done first pass; provider/native-adjacent hardening is demand-driven by real workload gaps.
 
 Already present:
 
@@ -762,7 +762,7 @@ Goal: Browser.app can reliably open local HTML and real external URLs.
 
 Tasks:
 
-- Continue provider/native-adjacent hardening only where smoke coverage exposes a real gap.
+- No open Browser proof point task is currently identified; add new work here only when smoke coverage or real URL workloads expose a gap.
 
 ### Milestone B: Runtime Confidence
 
