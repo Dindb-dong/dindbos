@@ -40,6 +40,7 @@ Boundary rules:
 
 - Browser.app may talk to `browserd` only after the `/health` response identifies the expected service, protocol version, and required capabilities.
 - Browser.app opens the WebSocket with subprotocol `dindbos-browserd.v1`, and `browserd` refuses `/browser` upgrades that do not request that subprotocol.
+- Each Browser.app WebSocket session receives its own Chromium browser context and page target. Cookies, localStorage, and other origin-scoped page state are isolated between sessions.
 - Third-party apps should not connect to `browserd` directly. They should open URLs or HTML documents through Browser.app via `os.launch("browser", context)` or `os.openPath(path)`.
 - `browserd` is optional. The DindbOS runtime must boot, run local apps, open local HTML files, and keep the desktop usable when the companion is absent.
 - Starting `browserd` is a user/developer action from the local machine. Web pages must not attempt to install or launch it automatically.
@@ -117,5 +118,5 @@ Current limits:
 
 - The browser frame is a throttled Chromium screencast stream, not GPU/WebRTC video.
 - Keyboard input covers printable text, common special keys, and modifier metadata, but full browser shortcut/focus policy is still limited.
-- One Chromium target is created per Browser.app WebSocket session.
+- One isolated Chromium browser context and target is created per Browser.app WebSocket session.
 - The companion must be started manually. Web pages cannot install or launch local native processes automatically.
