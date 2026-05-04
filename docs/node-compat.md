@@ -92,6 +92,7 @@ Current built-ins:
 - `crypto`
 - `assert`
 - `querystring`
+- `os`
 - `http` / `https` policy facades
 
 The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
@@ -101,6 +102,8 @@ The `stream` module is a browser-safe subset for package compatibility. It suppo
 The `crypto` module is a browser-safe subset. It supports `createHash("sha256")`, `randomBytes`, `randomFillSync`, `randomUUID`, `getRandomValues`, and `webcrypto`; it does not expose OpenSSL, certificates, ciphers, signing, or key management APIs.
 
 The `assert` and `querystring` modules are browser-safe compatibility facades for packages that rely on Node's assertion helpers or legacy query string parsing/stringifying. They are not complete replacements for every edge case in Node core.
+
+The `os` module is a browser-safe environment facade. It reports DindbOS paths and browser runtime identity for package feature detection; CPU, memory, network interface, load average, and priority APIs return conservative non-host values.
 
 The `http` and `https` modules are explicit policy facades. They can be imported by packages that probe for Node built-ins, but `request()`, `get()`, `createServer()`, and constructor paths throw `NodeCompat <protocol> networking is unavailable`. Network access belongs to a future explicit DindbOS network capability or app sandbox grant, not the NodeCompat compatibility layer.
 

@@ -200,6 +200,27 @@ const assertQueryImport = await node.evaluate(
 assert(assertQueryImport.status === 0, `assert/querystring import exited with ${assertQueryImport.status}`);
 assert(assertQueryImport.output.trim() === "assert-querystring-esm", `unexpected assert/querystring import output: ${assertQueryImport.output}`);
 
+const osRequire = node.evaluate(
+  [
+    "const os = require('os');",
+    "console.log(os.platform(), os.homedir(), os.tmpdir(), os.userInfo().username, os.cpus().length >= 1);",
+  ].join("\n"),
+  cwd,
+);
+assert(osRequire.status === 0, `os require exited with ${osRequire.status}`);
+assert(osRequire.output.trim() === "browser /home/guest /tmp guest true", `unexpected os require output: ${osRequire.output}`);
+
+const osImport = await node.evaluate(
+  [
+    "import os, { platform, tmpdir } from 'node:os';",
+    "console.log(platform(), tmpdir(), os.type(), Array.isArray(os.loadavg()));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(osImport.status === 0, `os import exited with ${osImport.status}`);
+assert(osImport.output.trim() === "browser /tmp DindbOS true", `unexpected os import output: ${osImport.output}`);
+
 const networkPolicyRequire = node.evaluate(
   [
     "const http = require('http');",
