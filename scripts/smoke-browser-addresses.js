@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 import {
   BROWSER_LOCAL_HTML_SANDBOX,
+  activeBrowserTab,
   browserSessionSnapshot,
   browserChromeShortcut,
   browserKeyEventPayload,
+  browserTabNavigate,
+  closeBrowserTab,
   createBrowserSessionState,
+  createBrowserNewTab,
   normalizeBrowserAddress,
+  reopenBrowserTab,
 } from "../src/dindbos/apps/builtins.js";
 
 assert(normalizeBrowserAddress("") === "about:blank", "empty address did not become about:blank");
@@ -46,6 +51,24 @@ assert(invalidSession.mode === "idle", "browser session accepted invalid restore
 assert(invalidSession.address === "/home/guest/page.html", "browser session dropped restored local address");
 const snapshot = browserSessionSnapshot({ mode: "local", status: "local document /x.html", address: "/x.html", title: "x.html", localHtml: "<h1>x</h1>" });
 assert(snapshot.mode === "local" && snapshot.localHtml.includes("<h1>x</h1>"), "browser session snapshot lost local state");
+assert(snapshot.tabs.length === 1 && snapshot.activeTabId === "tab-1", "browser session snapshot did not include default tab");
+
+const tabbedSession = createBrowserSessionState({}, {
+  tabs: [
+    { id: "tab-1", mode: "companion", address: "https://one.example", title: "One", status: "ready one", history: ["https://one.example"], historyIndex: 0 },
+    { id: "tab-2", mode: "local", address: "/home/guest/page.html", title: "page.html", localHtml: "<h1>page</h1>", history: ["/home/guest/page.html"], historyIndex: 0 },
+  ],
+  activeTabId: "tab-2",
+});
+assert(tabbedSession.address === "/home/guest/page.html" && tabbedSession.mode === "local", "browser session did not restore active tab state");
+browserTabNavigate(tabbedSession, "/home/guest/next.html", { mode: "local", title: "next.html" });
+assert(activeBrowserTab(tabbedSession).history.join("|") === "/home/guest/page.html|/home/guest/next.html", "browser tab did not record per-tab history");
+createBrowserNewTab(tabbedSession, { address: "example.com", title: "Example" });
+assert(tabbedSession.tabs.length === 3 && tabbedSession.address === "example.com", "browser new tab did not become active");
+closeBrowserTab(tabbedSession);
+assert(tabbedSession.tabs.length === 2 && tabbedSession.closedTabs.length === 1, "browser close tab did not retain closed tab");
+reopenBrowserTab(tabbedSession);
+assert(tabbedSession.tabs.length === 3 && tabbedSession.address === "example.com", "browser reopen tab did not restore closed tab");
 
 assert(browserChromeShortcut({ key: "l", ctrlKey: true }) === "focus-address", "ctrl-l did not focus browser address");
 assert(browserChromeShortcut({ key: "L", metaKey: true }) === "focus-address", "cmd-l did not focus browser address");

@@ -485,13 +485,14 @@ Already present:
 - `npm run smoke:browser-client` verifies paste helper behavior and the `type` protocol payload sent to the companion.
 - Browser.app stores address/title/status/frame/local-document session state in the window state slot so minimize, focus, activation, and render restore paths do not reset visible browser state.
 - `npm run smoke:browser-addresses` verifies Browser.app session snapshots; `npm run smoke:window-manager` verifies window state survives minimize/focus/activate.
+- Browser.app keeps multiple tab records with active tab state, close/reopen support, and per-tab navigation history in the window state slot.
+- `npm run smoke:browser-addresses` verifies tab restore, active tab sync, new tab, close, reopen, and per-tab history behavior.
 - Binary frame transport sends Chromium JPEG screencast bytes over WebSocket binary messages and Browser.app renders them through object URLs, covered by `npm run smoke:browserd` and `npm run smoke:browser-client`.
 - Browser.app keyboard policy covers address focus, viewport focus restore, remote Tab/Shift+Tab focus movement, and remote modifier shortcuts, covered by `npm run smoke:browser-addresses` and `npm run smoke:browserd`.
 
 Remaining:
 
 - Remote hosted provider option for deployments where a local companion is not available.
-- Better tab model: multiple tabs, current tab state, close/reopen, and per-tab history.
 - WebRTC/video stream investigation after CDP screencast is proven reliable.
 - Auth/session isolation per Browser.app session.
 - Better mobile behavior for browser viewport size and input.
