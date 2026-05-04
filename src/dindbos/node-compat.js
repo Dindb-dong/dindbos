@@ -492,6 +492,7 @@ class CommonJsRuntime {
         if (options?.withFileTypes) return entries.map((entry) => createDirent(entry));
         return entries.map((entry) => entry.name);
       },
+      opendirSync: (path = ".", options = {}) => createDirHandle(this.node.resolveFsPath(path, this.processContext.cwd), fsModule.readdirSync(path, { ...options, withFileTypes: true })),
       mkdirSync: (path, options = {}) => {
         const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
         if (options?.recursive) return ensureDirectory(this.os, resolved, "/", this.node.system);
@@ -514,6 +515,7 @@ class CommonJsRuntime {
       appendFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.appendFileSync(path, data)),
       realpath: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.realpathSync(path)),
       readdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readdirSync(path, optionalOptions(options))),
+      opendir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.opendirSync(path, optionalOptions(options))),
       mkdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.mkdirSync(path, optionalOptions(options))),
       mkdtemp: (prefix, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.mkdtempSync(prefix)),
       rm: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.rmSync(path, optionalOptions(options))),
@@ -563,6 +565,7 @@ class CommonJsRuntime {
       appendFile: async (path, data) => fsModule.appendFileSync(path, data),
       realpath: async (path) => fsModule.realpathSync(path),
       readdir: async (path = ".", options = {}) => fsModule.readdirSync(path, options),
+      opendir: async (path = ".", options = {}) => fsModule.opendirSync(path, options),
       mkdir: async (path, options = {}) => fsModule.mkdirSync(path, options),
       mkdtemp: async (prefix) => fsModule.mkdtempSync(prefix),
       rm: async (path, options = {}) => fsModule.rmSync(path, options),
@@ -2676,6 +2679,38 @@ function createDirent(entry) {
     isDirectory: () => type === "directory",
     isSymbolicLink: () => entry.type === "link" || entry.type === "symlink",
   };
+}
+
+function createDirHandle(path, entries) {
+  let index = 0;
+  let closed = false;
+  const assertOpen = () => {
+    if (closed) throw new Error("fs.Dir: directory handle is closed");
+  };
+  const dir = {
+    path,
+    readSync: () => {
+      assertOpen();
+      return index < entries.length ? entries[index++] : null;
+    },
+    read: (callback = null) => {
+      if (callback) return invokeFsCallback(callback, () => dir.readSync());
+      return Promise.resolve(dir.readSync());
+    },
+    closeSync: () => {
+      closed = true;
+    },
+    close: (callback = null) => {
+      if (callback) return invokeFsCallback(callback, () => dir.closeSync());
+      dir.closeSync();
+      return Promise.resolve();
+    },
+  };
+  dir[Symbol.asyncIterator] = async function* iterateDir() {
+    let entry;
+    while ((entry = await dir.read())) yield entry;
+  };
+  return dir;
 }
 
 function createTempDirectory(os, prefix, principal) {

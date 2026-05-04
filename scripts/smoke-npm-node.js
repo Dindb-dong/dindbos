@@ -346,6 +346,48 @@ const fsMkdtempImport = await node.evaluate(
 assert(fsMkdtempImport.status === 0, `fs mkdtemp import exited with ${fsMkdtempImport.status}`);
 assert(fsMkdtempImport.output.trim() === "true true", `unexpected fs mkdtemp import output: ${fsMkdtempImport.output}`);
 
+const fsOpendirRequire = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "fs.mkdirSync('./open-dir', { recursive: true });",
+    "fs.writeFileSync('./open-dir/a.txt', 'a');",
+    "fs.writeFileSync('./open-dir/b.txt', 'b');",
+    "const syncDir = fs.opendirSync('./open-dir');",
+    "const first = syncDir.readSync();",
+    "syncDir.closeSync();",
+    "fs.opendir('./open-dir', (error, dir) => {",
+    "  if (error) throw error;",
+    "  dir.read((readError, entry) => {",
+    "    if (readError) throw readError;",
+    "    dir.close((closeError) => {",
+    "      if (closeError) throw closeError;",
+    "      console.log(first.name, first.isFile(), entry.name, dir.path.endsWith('/open-dir'));",
+    "    });",
+    "  });",
+    "});",
+  ].join("\n"),
+  cwd,
+);
+assert(fsOpendirRequire.status === 0, `fs opendir require exited with ${fsOpendirRequire.status}`);
+assert(fsOpendirRequire.output.trim() === "a.txt true a.txt true", `unexpected fs opendir require output: ${fsOpendirRequire.output}`);
+
+const fsOpendirImport = await node.evaluate(
+  [
+    "import { promises as fs, writeFileSync, mkdirSync } from 'node:fs';",
+    "mkdirSync('./open-esm-dir', { recursive: true });",
+    "writeFileSync('./open-esm-dir/a.txt', 'a');",
+    "writeFileSync('./open-esm-dir/b.txt', 'b');",
+    "const dir = await fs.opendir('./open-esm-dir');",
+    "const seen = [];",
+    "for await (const entry of dir) seen.push(`${entry.name}:${entry.isFile()}`);",
+    "console.log(seen.join(','));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsOpendirImport.status === 0, `fs opendir import exited with ${fsOpendirImport.status}`);
+assert(fsOpendirImport.output.trim() === "a.txt:true,b.txt:true", `unexpected fs opendir import output: ${fsOpendirImport.output}`);
+
 const fsStreamsRequire = node.evaluate(
   [
     "const fs = require('fs');",
