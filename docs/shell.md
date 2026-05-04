@@ -97,10 +97,20 @@ pkg trust remove <publisher-id|ed25519-public-key>
 
 Unsigned, invalid, or untrusted remote manifests fail before package files or launchers are written unless a runtime caller explicitly allows unsigned or untrusted installs.
 
+## Troubleshooting
+
+`doctor` prints a compact runtime diagnostic snapshot for support and bug reports:
+
+```text
+doctor
+```
+
+It reports the active session, current working directory, storage backend and dirty-write state, local mount availability/counts, installed package count, running process count, and the follow-up commands that expose deeper runtime details.
+
 ## Verification
 
 ```bash
 npm run smoke:shell
 ```
 
-The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.
+The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.
