@@ -108,6 +108,8 @@ Current built-ins:
 
 The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
 
+The `buffer` module uses the host `Buffer` when available and falls back to a browser-native `Uint8Array` facade with `from`, `alloc`, `concat`, `isBuffer`, `byteLength`, and common `utf8`, `hex`, `base64`, `base64url`, and `latin1` conversions.
+
 The `stream` module is a browser-safe subset for package compatibility. It supports `Readable.from`, `Writable`, `PassThrough`, `pipeline`, and `finished`, but it is not a full Node stream implementation.
 
 The `crypto` module is a browser-safe subset. It supports `createHash("sha256")`, `randomBytes`, `randomFillSync`, `randomUUID`, `getRandomValues`, and `webcrypto`; it does not expose OpenSSL, certificates, ciphers, signing, or key management APIs.
