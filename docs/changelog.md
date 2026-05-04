@@ -49,6 +49,7 @@ Added:
 - API Lab sample package now ships under `/opt/dindbos/packages/api-lab` and proves third-party use of sandboxed filesystem, package metadata, current-process, and process-log APIs through package smoke coverage.
 - App sandbox now exposes per-app `os.state` JSON persistence backed by `/var/lib/dindbos/app-state`, with relaunch/reload restoration and package uninstall cleanup coverage.
 - TextEdit, Viewer.app, and Browser.app now use user-document read scopes instead of root filesystem read scope for file-open paths.
+- Local mount writes now detect disk-side changes since the last sync and report `sync-conflict` instead of silently overwriting external file changes.
 - NodeCompat support for CommonJS, JSON modules, simple ESM transforms, simple `exports` resolution, nested dependency lookup, and `events`/`node:events`.
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
 - NodeCompat `stream` builtin facade for browser-safe `Readable`, `Writable`, `PassThrough`, and `pipeline` usage.

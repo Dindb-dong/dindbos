@@ -33,6 +33,7 @@ Current implementation:
 - `mount-local --forget <path>` removes a persisted local mount handle.
 - `umount [--forget] <path>` detaches a local folder, optionally removing its persisted handle.
 - Terminal file operations can copy text files between internal DindbOS paths and local mounts.
+- Local mount writes compare the target file against the last synced metadata before writing. If the external file changed on disk after the last sync, DindbOS blocks the write, preserves the external file, and reports a `sync-conflict` operation through local mount status.
 - `os.diskPolicyAreas()`, `os.diskPolicyForPath(path)`, and `df` expose policy areas for `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache`.
 
 Smoke test:
@@ -44,7 +45,7 @@ npm run smoke:files
 npm run smoke:local-mounts
 ```
 
-The storage smoke test writes text and binary files, verifies copied bytes, serializes a binary content record, reloads through a VFS snapshot, and fails if any byte changes. The persistent storage smoke test verifies localStorage-style snapshot fallback and OPFS write-failure fallback with binary bytes. The Files.app smoke test exports a directory archive and imports it again, then verifies nested binary bytes. The local mounts smoke test verifies that a permission-denied directory handle fails before creating a runtime mount or VFS mount node.
+The storage smoke test writes text and binary files, verifies copied bytes, serializes a binary content record, reloads through a VFS snapshot, and fails if any byte changes. The persistent storage smoke test verifies localStorage-style snapshot fallback and OPFS write-failure fallback with binary bytes. The Files.app smoke test exports a directory archive and imports it again, then verifies nested binary bytes. The local mounts smoke test verifies that a permission-denied directory handle fails before creating a runtime mount or VFS mount node, and that disk-side changes trigger a sync conflict instead of being overwritten.
 
 Example:
 
