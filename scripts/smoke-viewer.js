@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { AppRegistry } from "../src/dindbos/app-registry.js";
 import { AppSandbox } from "../src/dindbos/app-sandbox.js";
-import { buildViewerDiagnostics, cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerMarkup, viewerPdfAdapterStatus, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue, wirePdfJsViewer } from "../src/dindbos/apps/builtins.js";
+import { buildViewerDiagnostics, cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerEditTargetApp, viewerMarkup, viewerPdfAdapterStatus, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue, wirePdfJsViewer } from "../src/dindbos/apps/builtins.js";
 import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
@@ -36,6 +36,12 @@ assert(!viewerHtml.includes("<script>"), "viewer markdown markup emitted script 
 assert(viewerHtml.includes("viewer-toolbar"), "viewer toolbar was not rendered");
 assert(viewerHtml.includes('data-viewer-action="zoom-in"'), "viewer zoom-in action missing");
 assert(viewerHtml.includes('data-viewer-action="copy-path"'), "viewer copy path action missing");
+assert(viewerHtml.includes('data-viewer-action="open-editor"'), "viewer edit action missing");
+assert(!viewerHtml.includes('data-viewer-action="open-editor" disabled'), "viewer edit action was disabled for markdown");
+assert(viewerEditTargetApp("text/markdown", "/home/guest/README.md") === "text", "markdown edit target mismatch");
+assert(viewerEditTargetApp("application/json", "/home/guest/data.json") === "text", "json edit target mismatch");
+assert(viewerEditTargetApp("application/pdf", "/home/guest/paper.pdf") === "", "PDF edit target should be empty");
+assert(viewerEditTargetApp("text/markdown", "") === "", "pathless markdown edit target should be empty");
 const diagnosticHtml = viewerMarkup({
   mime: "text/markdown",
   name: "README.md",
@@ -62,6 +68,7 @@ const pdfHtml = viewerMarkup({
 assert(pdfHtml.includes("data-viewer-pdf-canvas"), "viewer PDF markup did not include PDF.js canvas");
 assert(pdfHtml.includes('data-viewer-action="page-prev"'), "viewer PDF previous page action missing");
 assert(pdfHtml.includes('data-viewer-action="page-next"'), "viewer PDF next page action missing");
+assert(pdfHtml.includes('data-viewer-action="open-editor" disabled'), "viewer PDF edit action was not disabled");
 assert(!pdfHtml.includes("data-viewer-diagnostics"), "viewer diagnostics rendered when not requested");
 assert(viewerPdfAdapterStatus(null).includes("deployment-provided, not bundled"), "PDF.js missing status did not document deployment-provided policy");
 assert(viewerPdfAdapterStatus(fakePdfJsLib()).includes("PDF.js adapter available"), "PDF.js available status missing");
@@ -146,6 +153,7 @@ installBuiltinApps(os, { portfolioData: { name: "Smoke", summary: "", projects: 
 assert(!os.apps.getManifest("text").fileSystem.read.includes("/"), "TextEdit kept root read scope");
 assert(!os.apps.getManifest("viewer").fileSystem.read.includes("/"), "Viewer.app kept root read scope");
 assert(!os.apps.getManifest("browser").fileSystem.read.includes("/"), "Browser.app kept root read scope");
+assert(os.apps.getManifest("viewer").capabilities.includes("app.launch"), "Viewer.app cannot hand off documents to apps");
 assert(resolve(os, "document.pdf", "application/pdf") === "viewer", "PDF did not resolve to Viewer.app");
 assert(resolve(os, "image.png", "image/png") === "viewer", "image did not resolve to Viewer.app");
 assert(resolve(os, "README.md", "text/markdown") === "viewer", "markdown did not resolve to Viewer.app");

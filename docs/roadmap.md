@@ -539,7 +539,7 @@ Completion criteria:
 
 ## 6. Document Viewers
 
-Status: Done first pass, workload polish remaining.
+Status: Done second pass.
 
 Already present:
 
@@ -551,7 +551,8 @@ Already present:
 - File associations for PDF, image, markdown, HTML, plain text, and unknown binary are covered by `npm run smoke:viewer`.
 - Viewer.app uses adapters for PDF, image, markdown, and fallback previews instead of splitting separate viewer apps.
 - Object URLs created for PDF/image previews are revoked after media load/error or before rerender.
-- Viewer toolbar includes zoom controls, disabled native page controls, Browser.app handoff for HTML documents, export, and copy path; `npm run smoke:viewer` verifies toolbar markup and zoom behavior.
+- Viewer toolbar includes zoom controls, disabled native page controls, Browser.app handoff for HTML documents, TextEdit handoff for editable text-like documents, export, and copy path.
+- `npm run smoke:viewer` verifies Viewer toolbar markup, zoom behavior, editable MIME handoff target selection, disabled edit controls for non-editable documents, and the Viewer.app `app.launch` capability needed for app handoffs.
 - Large text previews are bounded with a truncation notice and readable status; binary fallback previews include file-size status, covered by `npm run smoke:viewer`.
 - `.deck.html` files use `application/x-dindbos-deck`, resolve to Viewer.app, and render in a sandboxed HTML deck frame.
 - `npm run smoke:viewer` verifies deck MIME detection, deck file association, sandboxed deck markup, and bounded deck text preview behavior.
@@ -752,8 +753,7 @@ Tasks:
 Goal: Portfolio documents open naturally from the desktop.
 
 Tasks:
-
-- Polish realistic document workloads that still feel rough in Files.app or Viewer.app.
+- No open document workload polish task is currently identified; add new work here only when smoke coverage or real usage exposes a gap.
 
 ### Milestone D: Package And App Platform
 
