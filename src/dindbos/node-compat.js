@@ -20,6 +20,10 @@ const BUILTIN_MODULES = new Set([
   "node:stream",
   "crypto",
   "node:crypto",
+  "assert",
+  "node:assert",
+  "querystring",
+  "node:querystring",
 ]);
 const AsyncFunction = Object.getPrototypeOf(async function createAsyncFunction() {}).constructor;
 
@@ -181,6 +185,8 @@ class CommonJsRuntime {
       timers: createTimersModule(),
       stream: createStreamModule(events),
       crypto: createCryptoModule(this.buffer),
+      assert: createAssertModule(),
+      querystring: createQuerystringModule(),
     };
   }
 
@@ -561,7 +567,7 @@ function exportObjectProperties(specifiers) {
 }
 
 function commonJsNamespace(exports) {
-  if (exports && typeof exports === "object") return { default: exports, ...exports };
+  if (exports && (typeof exports === "object" || typeof exports === "function")) return { default: exports, ...exports };
   return { default: exports };
 }
 
@@ -750,6 +756,134 @@ function createTimersModule() {
     clearInterval: globalThis.clearInterval?.bind(globalThis),
     setImmediate: (callback, ...args) => globalThis.setTimeout?.(() => callback(...args), 0),
     clearImmediate: globalThis.clearTimeout?.bind(globalThis),
+  };
+}
+
+function createAssertModule() {
+  class AssertionError extends Error {
+    constructor(options = {}) {
+      super(options.message || `Expected ${formatConsoleValue(options.actual)} ${options.operator || "=="} ${formatConsoleValue(options.expected)}`);
+      this.name = "AssertionError";
+      this.code = "ERR_ASSERTION";
+      this.actual = options.actual;
+      this.expected = options.expected;
+      this.operator = options.operator || "==";
+      this.generatedMessage = !options.message;
+    }
+  }
+  const fail = (options = {}) => {
+    throw new AssertionError(typeof options === "string" ? { message: options } : options);
+  };
+  const assert = (value, message = "") => {
+    if (!value) fail({ actual: value, expected: true, operator: "==", message });
+  };
+  assert.AssertionError = AssertionError;
+  assert.fail = (message = "Failed") => fail({ message });
+  assert.ok = assert;
+  assert.equal = (actual, expected, message = "") => {
+    // Node's loose assertion survives for compatibility with older browser-safe packages.
+    if (actual != expected) fail({ actual, expected, operator: "==", message });
+  };
+  assert.notEqual = (actual, expected, message = "") => {
+    if (actual == expected) fail({ actual, expected, operator: "!=", message });
+  };
+  assert.strictEqual = (actual, expected, message = "") => {
+    if (!Object.is(actual, expected)) fail({ actual, expected, operator: "strictEqual", message });
+  };
+  assert.notStrictEqual = (actual, expected, message = "") => {
+    if (Object.is(actual, expected)) fail({ actual, expected, operator: "notStrictEqual", message });
+  };
+  assert.deepStrictEqual = (actual, expected, message = "") => {
+    if (!deepStrictEqual(actual, expected)) fail({ actual, expected, operator: "deepStrictEqual", message });
+  };
+  assert.notDeepStrictEqual = (actual, expected, message = "") => {
+    if (deepStrictEqual(actual, expected)) fail({ actual, expected, operator: "notDeepStrictEqual", message });
+  };
+  assert.throws = (fn, expected = undefined, message = "") => {
+    if (typeof fn !== "function") fail({ message: "assert.throws: expected a function" });
+    try {
+      fn();
+    } catch (error) {
+      if (!matchesExpectedError(error, expected)) fail({ actual: error, expected, operator: "throws", message });
+      return error;
+    }
+    fail({ actual: undefined, expected, operator: "throws", message: message || "Missing expected exception" });
+  };
+  assert.doesNotThrow = (fn, expected = undefined, message = "") => {
+    if (typeof fn !== "function") fail({ message: "assert.doesNotThrow: expected a function" });
+    try {
+      fn();
+    } catch (error) {
+      if (matchesExpectedError(error, expected)) fail({ actual: error, expected, operator: "doesNotThrow", message });
+    }
+  };
+  assert.strict = assert;
+  return assert;
+}
+
+function deepStrictEqual(actual, expected) {
+  if (Object.is(actual, expected)) return true;
+  if (typeof actual !== typeof expected) return false;
+  if (!actual || !expected || typeof actual !== "object") return false;
+  if (Array.isArray(actual) !== Array.isArray(expected)) return false;
+  const actualKeys = Object.keys(actual);
+  const expectedKeys = Object.keys(expected);
+  if (actualKeys.length !== expectedKeys.length) return false;
+  return actualKeys.every((key) => Object.prototype.hasOwnProperty.call(expected, key) && deepStrictEqual(actual[key], expected[key]));
+}
+
+function matchesExpectedError(error, expected) {
+  if (!expected) return true;
+  if (expected instanceof RegExp) return expected.test(error?.message || String(error));
+  if (typeof expected === "function") {
+    if (error instanceof expected) return true;
+    try {
+      return expected(error) === true;
+    } catch {
+      return false;
+    }
+  }
+  if (typeof expected === "object") {
+    return Object.entries(expected).every(([key, value]) => error?.[key] === value);
+  }
+  return String(error?.message || error).includes(String(expected));
+}
+
+function createQuerystringModule() {
+  const escape = (value) => encodeURIComponent(String(value));
+  const unescape = (value) => decodeURIComponent(String(value || "").replace(/\+/g, " "));
+  const stringify = (object = {}, separator = "&", equals = "=", options = {}) => {
+    const encode = options.encodeURIComponent || escape;
+    return Object.entries(object).flatMap(([key, value]) => {
+      const values = Array.isArray(value) ? value : [value];
+      return values.map((entry) => `${encode(key)}${equals}${encode(entry ?? "")}`);
+    }).join(separator);
+  };
+  const parse = (text = "", separator = "&", equals = "=", options = {}) => {
+    const decode = options.decodeURIComponent || unescape;
+    const maxKeys = options.maxKeys === 0 ? Infinity : Number(options.maxKeys ?? 1000);
+    const result = {};
+    String(text || "").split(separator).filter(Boolean).slice(0, maxKeys).forEach((pair) => {
+      const index = pair.indexOf(equals);
+      const rawKey = index >= 0 ? pair.slice(0, index) : pair;
+      const rawValue = index >= 0 ? pair.slice(index + equals.length) : "";
+      const key = decode(rawKey);
+      const value = decode(rawValue);
+      if (Object.prototype.hasOwnProperty.call(result, key)) {
+        result[key] = Array.isArray(result[key]) ? [...result[key], value] : [result[key], value];
+      } else {
+        result[key] = value;
+      }
+    });
+    return result;
+  };
+  return {
+    stringify,
+    encode: stringify,
+    parse,
+    decode: parse,
+    escape,
+    unescape,
   };
 }
 
