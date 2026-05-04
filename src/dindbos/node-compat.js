@@ -349,12 +349,37 @@ class CommonJsRuntime {
 
   createProcess() {
     const context = this.processContext;
+    const startedAt = Date.now();
+    const hrtimeOrigin = Number(globalThis.performance?.now?.() || Date.now());
+    const hrtime = (previous) => {
+      const elapsedMs = Number(globalThis.performance?.now?.() || Date.now()) - hrtimeOrigin;
+      const seconds = Math.floor(elapsedMs / 1000);
+      const nanoseconds = Math.floor((elapsedMs - seconds * 1000) * 1_000_000);
+      if (Array.isArray(previous)) {
+        let deltaSeconds = seconds - Number(previous[0] || 0);
+        let deltaNanoseconds = nanoseconds - Number(previous[1] || 0);
+        if (deltaNanoseconds < 0) {
+          deltaSeconds -= 1;
+          deltaNanoseconds += 1_000_000_000;
+        }
+        return [Math.max(0, deltaSeconds), Math.max(0, deltaNanoseconds)];
+      }
+      return [seconds, nanoseconds];
+    };
+    hrtime.bigint = () => {
+      const [seconds, nanoseconds] = hrtime();
+      return BigInt(seconds) * 1_000_000_000n + BigInt(nanoseconds);
+    };
     return {
       argv: context.argv,
       env: context.env,
       platform: "browser",
+      browser: true,
       version: "v0.0.0-dindbos",
       versions: { node: "0.0.0-dindbos", dindbos: "0.1.0" },
+      release: { name: "dindbos-nodecompat", sourceUrl: "", headersUrl: "" },
+      title: "dindbos-nodecompat",
+      execPath: "/usr/bin/node",
       get exitCode() {
         return context.exitCode;
       },
@@ -362,6 +387,19 @@ class CommonJsRuntime {
         context.exitCode = Number(value) || 0;
       },
       cwd: () => context.cwd,
+      uptime: () => Math.max(0, (Date.now() - startedAt) / 1000),
+      hrtime,
+      memoryUsage: () => ({
+        rss: 0,
+        heapTotal: 0,
+        heapUsed: 0,
+        external: 0,
+        arrayBuffers: 0,
+      }),
+      nextTick: (callback, ...args) => {
+        if (typeof callback !== "function") throw new Error("process.nextTick: callback must be a function");
+        callback(...args);
+      },
       chdir: (path) => {
         const nextPath = this.node.resolveFsPath(path, context.cwd);
         const next = this.os.fs.resolve(nextPath);
