@@ -63,6 +63,7 @@ This is not full Node.js yet. Current limits:
 - no `node-gyp`
 - no `child_process`
 - partial Node built-ins only
+- no NodeCompat-owned networking; `http`/`https` imports fail explicitly when used and network access belongs to a future explicit DindbOS capability
 - simple ESM transform only, not full JavaScript module semantics
 
 The next layer is broader Node built-ins, richer ESM semantics, optional dependency handling, and JS-only lifecycle scripts.

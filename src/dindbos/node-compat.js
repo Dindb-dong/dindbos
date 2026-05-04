@@ -24,6 +24,10 @@ const BUILTIN_MODULES = new Set([
   "node:assert",
   "querystring",
   "node:querystring",
+  "http",
+  "node:http",
+  "https",
+  "node:https",
 ]);
 const AsyncFunction = Object.getPrototypeOf(async function createAsyncFunction() {}).constructor;
 
@@ -187,6 +191,8 @@ class CommonJsRuntime {
       crypto: createCryptoModule(this.buffer),
       assert: createAssertModule(),
       querystring: createQuerystringModule(),
+      http: createNetworkModule("http"),
+      https: createNetworkModule("https"),
     };
   }
 
@@ -756,6 +762,38 @@ function createTimersModule() {
     clearInterval: globalThis.clearInterval?.bind(globalThis),
     setImmediate: (callback, ...args) => globalThis.setTimeout?.(() => callback(...args), 0),
     clearImmediate: globalThis.clearTimeout?.bind(globalThis),
+  };
+}
+
+function createNetworkModule(protocol) {
+  const unsupported = () => {
+    throw new Error(`NodeCompat ${protocol} networking is unavailable; use an explicit DindbOS network capability outside NodeCompat.`);
+  };
+  class ClientRequest {
+    constructor() {
+      unsupported();
+    }
+  }
+  class IncomingMessage {
+    constructor() {
+      unsupported();
+    }
+  }
+  class Agent {
+    constructor() {
+      unsupported();
+    }
+  }
+  return {
+    Agent,
+    ClientRequest,
+    IncomingMessage,
+    globalAgent: null,
+    request: unsupported,
+    get: unsupported,
+    createServer: unsupported,
+    STATUS_CODES: {},
+    METHODS: [],
   };
 }
 
