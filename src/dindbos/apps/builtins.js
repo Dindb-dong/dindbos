@@ -6,6 +6,7 @@ const FILES_OPERATION_HISTORY_LIMIT = 12;
 const FILES_OPERATION_YIELD_INTERVAL_MS = 12;
 const FILES_OPERATION_YIELD_STEP_INTERVAL = 24;
 export const BROWSER_LOCAL_HTML_SANDBOX = "allow-scripts allow-forms allow-popups";
+const BROWSER_CLOSED_TAB_LIMIT = 8;
 
 export function installBuiltinApps(os, { portfolioData }) {
   const userHome = os.session.home || "/home/guest";
@@ -1735,6 +1736,9 @@ function renderBrowser(os, content, context = {}, windowApi) {
   const state = createBrowserSessionState(context, restoredState);
   content.innerHTML = `
     <section class="browser-app">
+      <div class="browser-tabs" data-browser-tabs>
+        ${browserTabsMarkup(state)}
+      </div>
       <form class="browser-toolbar">
         <button type="button" data-browser-action="back">Back</button>
         <button type="button" data-browser-action="forward">Forward</button>
@@ -1759,6 +1763,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     </section>
   `;
   const refs = {
+    tabs: content.querySelector("[data-browser-tabs]"),
     form: content.querySelector(".browser-toolbar"),
     address: content.querySelector("[name='address']"),
     status: content.querySelector("[data-browser-status]"),
@@ -1778,10 +1783,35 @@ function renderBrowser(os, content, context = {}, windowApi) {
   let remoteFrameObjectUrl = state.frame.startsWith("blob:") ? state.frame : "";
   const lastResize = { width: 0, height: 0, scale: 0 };
   const persistState = () => windowApi?.setState?.("browser", browserSessionSnapshot(state));
+  const renderTabs = () => {
+    refs.tabs.innerHTML = browserTabsMarkup(state);
+    refs.tabs.querySelectorAll("[data-browser-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.activeTabId = button.dataset.browserTab;
+        syncBrowserStateFromActiveTab(state);
+        restoreBrowserView();
+        renderTabs();
+        persistState();
+      });
+    });
+    refs.tabs.querySelectorAll("[data-browser-tab-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const action = button.dataset.browserTabAction;
+        if (action === "new") createBrowserNewTab(state);
+        if (action === "close") closeBrowserTab(state);
+        if (action === "reopen") reopenBrowserTab(state);
+        syncBrowserStateFromActiveTab(state);
+        restoreBrowserView();
+        renderTabs();
+        persistState();
+      });
+    });
+  };
   const setStatus = (status) => {
     const nextStatus = String(status || "");
     if (state.status === nextStatus) return;
     state.status = nextStatus;
+    updateActiveBrowserTab(state, { status: nextStatus });
     refs.status.textContent = nextStatus;
     persistState();
     os.processes.logSelf?.(`browser ${nextStatus}`);
@@ -1791,6 +1821,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     remoteFrameObjectUrl = src.startsWith("blob:") ? src : "";
     state.mode = "companion";
     state.frame = src;
+    updateActiveBrowserTab(state, { mode: "companion", frame: src });
     refs.placeholder.hidden = true;
     refs.local.hidden = true;
     refs.frame.hidden = false;
@@ -1827,11 +1858,14 @@ function renderBrowser(os, content, context = {}, windowApi) {
   client.on("status", (message) => {
     if (message.url) {
       state.address = message.url;
+      updateActiveBrowserTab(state, { address: message.url });
       refs.address.value = message.url;
     }
     if (message.title) {
       state.title = message.title;
+      updateActiveBrowserTab(state, { title: message.title });
       windowApi.setTitle(`${message.title} - Browser`);
+      renderTabs();
     }
     if (message.reconnect) refs.connect.textContent = "Reconnect";
     else if (message.status === "connected") refs.connect.textContent = "Connect";
@@ -1846,11 +1880,14 @@ function renderBrowser(os, content, context = {}, windowApi) {
     }
     if (message.url) {
       state.address = message.url;
+      updateActiveBrowserTab(state, { address: message.url });
       refs.address.value = message.url;
     }
     if (message.title) {
       state.title = message.title;
+      updateActiveBrowserTab(state, { title: message.title });
       windowApi.setTitle(`${message.title} - Browser`);
+      renderTabs();
     }
     setStatus(message.url ? `ready ${message.url}` : "ready");
     queueFrame(message.data);
@@ -1860,6 +1897,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     event.preventDefault();
     await openAddress(refs.address.value);
   });
+  renderTabs();
   refs.form.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -1956,7 +1994,9 @@ function renderBrowser(os, content, context = {}, windowApi) {
     const address = String(value || "").trim();
     if (!address) return;
     state.address = address;
+    browserTabNavigate(state, address);
     refs.address.value = address;
+    renderTabs();
     persistState();
     if (isDindbPath(address)) {
       await openLocalPath(address);
@@ -1984,9 +2024,11 @@ function renderBrowser(os, content, context = {}, windowApi) {
     state.address = normalized;
     state.localHtml = html;
     state.title = node.name;
+    browserTabNavigate(state, normalized, { mode: "local", localHtml: html, title: node.name, status: `local document ${normalized}` });
     refs.address.value = normalized;
     setStatus(`local document ${normalized}`);
     windowApi.setTitle(`${node.name} - Browser`);
+    renderTabs();
     persistState();
   }
 
@@ -2001,6 +2043,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
   }
 
   function restoreBrowserView() {
+    syncBrowserStateFromActiveTab(state);
     refs.status.textContent = state.status;
     refs.address.value = state.address;
     if (state.title && state.title !== "Browser") windowApi.setTitle(`${state.title} - Browser`);
@@ -2012,7 +2055,34 @@ function renderBrowser(os, content, context = {}, windowApi) {
       return;
     }
     if (state.mode === "companion" && state.frame) showFrame(state.frame);
+    if (state.mode === "idle") {
+      refs.placeholder.hidden = false;
+      refs.frame.hidden = true;
+      refs.local.hidden = true;
+    }
   }
+}
+
+function browserTabsMarkup(state = {}) {
+  const tabs = Array.isArray(state.tabs) && state.tabs.length ? state.tabs : [activeBrowserTab(state)];
+  return `
+    <div class="browser-tab-list" role="tablist">
+      ${tabs.map((tab) => `
+        <button type="button" role="tab" data-browser-tab="${escapeAttr(tab.id)}" aria-selected="${tab.id === state.activeTabId ? "true" : "false"}">
+          ${escapeHtml(browserTabLabel(tab))}
+        </button>
+      `).join("")}
+    </div>
+    <div class="browser-tab-actions">
+      <button type="button" data-browser-tab-action="new">New</button>
+      <button type="button" data-browser-tab-action="close">Close</button>
+      <button type="button" data-browser-tab-action="reopen" ${state.closedTabs?.length ? "" : "disabled"}>Reopen</button>
+    </div>
+  `;
+}
+
+function browserTabLabel(tab = {}) {
+  return String(tab.title && tab.title !== "Browser" ? tab.title : tab.address || "New Tab").slice(0, 48);
 }
 
 function isBrowserFrameSource(value) {
@@ -2035,9 +2105,19 @@ export function createBrowserSessionState(context = {}, restored = null) {
     frame: "",
     localHtml: "",
     companionUrl: "ws://127.0.0.1:8787/browser",
+    tabs: [],
+    activeTabId: "",
+    closedTabs: [],
   };
-  if (!restored || typeof restored !== "object") return state;
-  return {
+  if (!restored || typeof restored !== "object") {
+    state.tabs = [createBrowserTabState({ ...state, id: "tab-1" })];
+    state.activeTabId = state.tabs[0].id;
+    return syncBrowserStateFromActiveTab(state);
+  }
+  const restoredTabs = Array.isArray(restored.tabs)
+    ? restored.tabs.map((tab, index) => createBrowserTabState(tab, `tab-${index + 1}`)).filter(Boolean)
+    : [];
+  const next = {
     ...state,
     mode: sanitizeBrowserMode(restored.mode) || state.mode,
     status: String(restored.status || state.status),
@@ -2045,18 +2125,154 @@ export function createBrowserSessionState(context = {}, restored = null) {
     title: String(restored.title || state.title),
     frame: String(restored.frame || ""),
     localHtml: String(restored.localHtml || ""),
+    tabs: restoredTabs.length ? restoredTabs : [createBrowserTabState(restored, "tab-1")],
+    activeTabId: String(restored.activeTabId || restoredTabs[0]?.id || "tab-1"),
+    closedTabs: Array.isArray(restored.closedTabs)
+      ? restored.closedTabs.slice(0, BROWSER_CLOSED_TAB_LIMIT).map((tab, index) => createBrowserTabState(tab, `closed-${index + 1}`))
+      : [],
   };
+  if (!next.tabs.some((tab) => tab.id === next.activeTabId)) next.activeTabId = next.tabs[0].id;
+  return syncBrowserStateFromActiveTab(next);
 }
 
 export function browserSessionSnapshot(state = {}) {
+  const synced = syncBrowserStateFromActiveTab({ ...state, tabs: [...(state.tabs || [])] });
   return {
-    mode: sanitizeBrowserMode(state.mode) || "idle",
-    status: String(state.status || ""),
-    address: String(state.address || ""),
-    title: String(state.title || "Browser"),
-    frame: String(state.frame || ""),
-    localHtml: String(state.localHtml || ""),
+    mode: sanitizeBrowserMode(synced.mode) || "idle",
+    status: String(synced.status || ""),
+    address: String(synced.address || ""),
+    title: String(synced.title || "Browser"),
+    frame: String(synced.frame || ""),
+    localHtml: String(synced.localHtml || ""),
+    activeTabId: String(synced.activeTabId || ""),
+    tabs: (synced.tabs || []).map(browserTabSnapshot),
+    closedTabs: (synced.closedTabs || []).slice(0, BROWSER_CLOSED_TAB_LIMIT).map(browserTabSnapshot),
   };
+}
+
+export function createBrowserTabState(input = {}, fallbackId = "tab-1") {
+  const address = String(input.address || initialBrowserAddress(input) || "");
+  const history = Array.isArray(input.history)
+    ? input.history.map((entry) => String(entry || "")).filter(Boolean)
+    : (address ? [address] : []);
+  const historyIndex = Number.isInteger(input.historyIndex)
+    ? Math.min(Math.max(input.historyIndex, 0), Math.max(history.length - 1, 0))
+    : Math.max(history.length - 1, 0);
+  return {
+    id: sanitizeBrowserTabId(input.id || fallbackId),
+    mode: sanitizeBrowserMode(input.mode) || "idle",
+    status: String(input.status || "browserd not connected"),
+    address,
+    title: String(input.title || "Browser"),
+    frame: isBrowserFrameSource(input.frame) ? String(input.frame) : "",
+    localHtml: String(input.localHtml || ""),
+    history,
+    historyIndex,
+  };
+}
+
+export function activeBrowserTab(state = {}) {
+  const tabs = Array.isArray(state.tabs) && state.tabs.length ? state.tabs : [createBrowserTabState(state, "tab-1")];
+  return tabs.find((tab) => tab.id === state.activeTabId) || tabs[0];
+}
+
+export function syncBrowserStateFromActiveTab(state = {}) {
+  if (!Array.isArray(state.tabs) || !state.tabs.length) state.tabs = [createBrowserTabState(state, "tab-1")];
+  if (!state.activeTabId || !state.tabs.some((tab) => tab.id === state.activeTabId)) state.activeTabId = state.tabs[0].id;
+  const tab = activeBrowserTab(state);
+  Object.assign(state, {
+    mode: tab.mode,
+    status: tab.status,
+    address: tab.address,
+    title: tab.title,
+    frame: tab.frame,
+    localHtml: tab.localHtml,
+  });
+  return state;
+}
+
+export function updateActiveBrowserTab(state = {}, changes = {}) {
+  const tab = activeBrowserTab(state);
+  Object.assign(tab, sanitizeBrowserTabChanges(changes));
+  return syncBrowserStateFromActiveTab(state);
+}
+
+export function browserTabNavigate(state = {}, address = "", changes = {}) {
+  const tab = activeBrowserTab(state);
+  const nextAddress = String(address || "");
+  if (nextAddress && tab.history[tab.historyIndex] !== nextAddress) {
+    tab.history = tab.history.slice(0, tab.historyIndex + 1);
+    tab.history.push(nextAddress);
+    tab.historyIndex = tab.history.length - 1;
+  }
+  Object.assign(tab, sanitizeBrowserTabChanges({ ...changes, address: nextAddress || tab.address }));
+  return syncBrowserStateFromActiveTab(state);
+}
+
+export function createBrowserNewTab(state = {}, input = {}) {
+  if (!Array.isArray(state.tabs)) state.tabs = [];
+  const tab = createBrowserTabState(input, nextBrowserTabId(state));
+  state.tabs.push(tab);
+  state.activeTabId = tab.id;
+  return syncBrowserStateFromActiveTab(state);
+}
+
+export function closeBrowserTab(state = {}, tabId = state.activeTabId) {
+  if (!Array.isArray(state.tabs) || !state.tabs.length) state.tabs = [createBrowserTabState({}, "tab-1")];
+  const index = state.tabs.findIndex((tab) => tab.id === tabId);
+  if (index < 0) return syncBrowserStateFromActiveTab(state);
+  const [closed] = state.tabs.splice(index, 1);
+  state.closedTabs = [closed, ...(state.closedTabs || [])].slice(0, BROWSER_CLOSED_TAB_LIMIT);
+  if (!state.tabs.length) state.tabs.push(createBrowserTabState({}, nextBrowserTabId(state)));
+  state.activeTabId = state.tabs[Math.min(index, state.tabs.length - 1)].id;
+  return syncBrowserStateFromActiveTab(state);
+}
+
+export function reopenBrowserTab(state = {}) {
+  const [tab, ...rest] = state.closedTabs || [];
+  if (!tab) return syncBrowserStateFromActiveTab(state);
+  state.closedTabs = rest;
+  if (!Array.isArray(state.tabs)) state.tabs = [];
+  const reopened = createBrowserTabState(tab, nextBrowserTabId(state));
+  if (state.tabs.some((candidate) => candidate.id === reopened.id)) reopened.id = nextBrowserTabId(state);
+  state.tabs.push(reopened);
+  state.activeTabId = reopened.id;
+  return syncBrowserStateFromActiveTab(state);
+}
+
+function browserTabSnapshot(tab = {}) {
+  return {
+    id: sanitizeBrowserTabId(tab.id),
+    mode: sanitizeBrowserMode(tab.mode) || "idle",
+    status: String(tab.status || ""),
+    address: String(tab.address || ""),
+    title: String(tab.title || "Browser"),
+    frame: isBrowserFrameSource(tab.frame) ? String(tab.frame) : "",
+    localHtml: String(tab.localHtml || ""),
+    history: Array.isArray(tab.history) ? tab.history.map((entry) => String(entry || "")).filter(Boolean) : [],
+    historyIndex: Number.isInteger(tab.historyIndex) ? tab.historyIndex : 0,
+  };
+}
+
+function sanitizeBrowserTabChanges(changes = {}) {
+  const next = { ...changes };
+  if ("mode" in next) next.mode = sanitizeBrowserMode(next.mode) || "idle";
+  if ("frame" in next) next.frame = isBrowserFrameSource(next.frame) ? String(next.frame) : "";
+  ["status", "address", "title", "localHtml"].forEach((key) => {
+    if (key in next) next[key] = String(next[key] || "");
+  });
+  return next;
+}
+
+function nextBrowserTabId(state = {}) {
+  const ids = [...(state.tabs || []), ...(state.closedTabs || [])]
+    .map((tab) => Number(String(tab.id || "").match(/^tab-(\d+)$/)?.[1] || 0));
+  return `tab-${Math.max(0, ...ids) + 1}`;
+}
+
+function sanitizeBrowserTabId(value = "") {
+  const id = String(value || "").replace(/[^a-zA-Z0-9_-]/g, "-").replace(/^-+|-+$/g, "");
+  return id || "tab-1";
 }
 
 function sanitizeBrowserMode(mode) {
