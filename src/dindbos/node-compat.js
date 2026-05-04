@@ -36,6 +36,8 @@ const BUILTIN_MODULES = new Set([
   "node:constants",
   "diagnostics_channel",
   "node:diagnostics_channel",
+  "dns",
+  "node:dns",
   "http",
   "node:http",
   "https",
@@ -215,6 +217,7 @@ class CommonJsRuntime {
       string_decoder: createStringDecoderModule(),
       constants: createConstantsModule(),
       diagnostics_channel: createDiagnosticsChannelModule(),
+      dns: createDnsModule(),
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
     };
@@ -1241,6 +1244,63 @@ function createDiagnosticsChannelModule() {
       asyncEnd: getChannel(`${name}:asyncEnd`),
       error: getChannel(`${name}:error`),
     }),
+  };
+}
+
+function createDnsModule() {
+  const unsupported = () => {
+    throw new Error("NodeCompat dns networking is unavailable; use an explicit DindbOS network capability outside NodeCompat.");
+  };
+  const promises = {
+    lookup: async () => unsupported(),
+    resolve: async () => unsupported(),
+    resolve4: async () => unsupported(),
+    resolve6: async () => unsupported(),
+    resolveCname: async () => unsupported(),
+    resolveMx: async () => unsupported(),
+    resolveTxt: async () => unsupported(),
+    reverse: async () => unsupported(),
+  };
+  class Resolver {
+    cancel() {}
+    getServers() {
+      return [];
+    }
+    setServers() {}
+    resolve() {
+      unsupported();
+    }
+    resolve4() {
+      unsupported();
+    }
+    resolve6() {
+      unsupported();
+    }
+    reverse() {
+      unsupported();
+    }
+  }
+  return {
+    ADDRCONFIG: 32,
+    ALL: 16,
+    V4MAPPED: 8,
+    NODATA: "ENODATA",
+    FORMERR: "EFORMERR",
+    SERVFAIL: "ESERVFAIL",
+    NOTFOUND: "ENOTFOUND",
+    Resolver,
+    promises,
+    getServers: () => [],
+    setServers: () => undefined,
+    lookup: unsupported,
+    lookupService: unsupported,
+    resolve: unsupported,
+    resolve4: unsupported,
+    resolve6: unsupported,
+    resolveCname: unsupported,
+    resolveMx: unsupported,
+    resolveTxt: unsupported,
+    reverse: unsupported,
   };
 }
 
