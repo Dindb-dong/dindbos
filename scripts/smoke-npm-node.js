@@ -223,6 +223,31 @@ const utilDebuglogImport = await node.evaluate(
 assert(utilDebuglogImport.status === 0, `util debuglog import exited with ${utilDebuglogImport.status}`);
 assert(utilDebuglogImport.output.trim() === "DeprecationWarning: sum legacy\nfunction 5", `unexpected util debuglog import output: ${utilDebuglogImport.output}`);
 
+const utilWebApisRequire = node.evaluate(
+  [
+    "const util = require('util');",
+    "const encoded = new util.TextEncoder().encode('hé');",
+    "const decoded = new util.TextDecoder().decode(encoded);",
+    "console.log(decoded, encoded.byteLength, util.isDeepStrictEqual({ a: [1, { b: true }] }, { a: [1, { b: true }] }), util.isDeepStrictEqual({ a: 1 }, { a: '1' }));",
+  ].join("\n"),
+  cwd,
+);
+assert(utilWebApisRequire.status === 0, `util web apis require exited with ${utilWebApisRequire.status}`);
+assert(utilWebApisRequire.output.trim() === "hé 3 true false", `unexpected util web apis require output: ${utilWebApisRequire.output}`);
+
+const utilWebApisImport = await node.evaluate(
+  [
+    "import { TextEncoder, TextDecoder, isDeepStrictEqual } from 'node:util';",
+    "const bytes = new TextEncoder().encode('ok');",
+    "const same = isDeepStrictEqual(new Uint8Array([1, 2]), new Uint8Array([1, 2]));",
+    "console.log(new TextDecoder().decode(bytes), same, isDeepStrictEqual(new Date(1), new Date(2)));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(utilWebApisImport.status === 0, `util web apis import exited with ${utilWebApisImport.status}`);
+assert(utilWebApisImport.output.trim() === "ok true false", `unexpected util web apis import output: ${utilWebApisImport.output}`);
+
 const hostBuffer = globalThis.Buffer;
 globalThis.Buffer = undefined;
 try {

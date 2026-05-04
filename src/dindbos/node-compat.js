@@ -1000,11 +1000,14 @@ function createUtilModule(types = createUtilTypesModule(), consoleApi = null, pr
     };
   };
   return {
+    TextDecoder: globalThis.TextDecoder,
+    TextEncoder: globalThis.TextEncoder,
     format,
     inspect,
     promisify,
     callbackify,
     inherits,
+    isDeepStrictEqual: (left, right) => deepStrictEqual(left, right),
     debuglog,
     deprecate,
     types,
@@ -1529,15 +1532,37 @@ function createAssertModule() {
   return assert;
 }
 
-function deepStrictEqual(actual, expected) {
+function deepStrictEqual(actual, expected, seen = new WeakMap()) {
   if (Object.is(actual, expected)) return true;
   if (typeof actual !== typeof expected) return false;
   if (!actual || !expected || typeof actual !== "object") return false;
-  if (Array.isArray(actual) !== Array.isArray(expected)) return false;
+  if (actual.constructor !== expected.constructor) return false;
+  if (actual instanceof Date) return actual.getTime() === expected.getTime();
+  if (actual instanceof RegExp) return String(actual) === String(expected);
+  if (ArrayBuffer.isView(actual)) {
+    if (!ArrayBuffer.isView(expected) || actual.byteLength !== expected.byteLength) return false;
+    const actualBytes = new Uint8Array(actual.buffer, actual.byteOffset, actual.byteLength);
+    const expectedBytes = new Uint8Array(expected.buffer, expected.byteOffset, expected.byteLength);
+    return actualBytes.every((value, index) => value === expectedBytes[index]);
+  }
+  if (actual instanceof ArrayBuffer) {
+    if (!(expected instanceof ArrayBuffer) || actual.byteLength !== expected.byteLength) return false;
+    return new Uint8Array(actual).every((value, index) => value === new Uint8Array(expected)[index]);
+  }
+  if (seen.get(actual) === expected) return true;
+  seen.set(actual, expected);
+  if (actual instanceof Map) {
+    if (expected.size !== actual.size) return false;
+    return [...actual.entries()].every(([key, value]) => expected.has(key) && deepStrictEqual(value, expected.get(key), seen));
+  }
+  if (actual instanceof Set) {
+    if (expected.size !== actual.size) return false;
+    return [...actual.values()].every((value) => expected.has(value));
+  }
   const actualKeys = Object.keys(actual);
   const expectedKeys = Object.keys(expected);
   if (actualKeys.length !== expectedKeys.length) return false;
-  return actualKeys.every((key) => Object.prototype.hasOwnProperty.call(expected, key) && deepStrictEqual(actual[key], expected[key]));
+  return actualKeys.every((key) => Object.prototype.hasOwnProperty.call(expected, key) && deepStrictEqual(actual[key], expected[key], seen));
 }
 
 function matchesExpectedError(error, expected) {
