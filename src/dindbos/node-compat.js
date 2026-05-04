@@ -475,6 +475,10 @@ class CommonJsRuntime {
         }
         this.os.fs.writeOrCreateFile(resolved, stringifyFileData(data), "/", {}, this.node.system);
       },
+      appendFileSync: (path, data) => {
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
+        this.os.fs.appendFile(resolved, stringifyFileData(data), "/", this.node.system);
+      },
       existsSync: (path) => this.os.fs.exists(this.node.resolveFsPath(path, this.processContext.cwd), "/"),
       statSync: (path) => createStats(this.os.fs.stat(this.node.resolveFsPath(path, this.processContext.cwd), "/")),
       lstatSync: (path) => createStats(this.os.fs.lstat(this.node.resolveFsPath(path, this.processContext.cwd), "/")),
@@ -490,6 +494,7 @@ class CommonJsRuntime {
       },
       rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", options, this.node.system),
       unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", {}, this.node.system),
+      renameSync: (oldPath, newPath) => this.os.fs.move(this.node.resolveFsPath(oldPath, this.processContext.cwd), this.node.resolveFsPath(newPath, this.processContext.cwd), "/", this.node.system),
       copyFileSync: (source, destination, mode = 0) => {
         const resolvedSource = this.node.resolveFsPath(source, this.processContext.cwd);
         const resolvedDestination = this.node.resolveFsPath(destination, this.processContext.cwd);
@@ -500,10 +505,12 @@ class CommonJsRuntime {
       },
       readFile: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readFileSync(path, optionalOptions(options))),
       writeFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.writeFileSync(path, data)),
+      appendFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.appendFileSync(path, data)),
       readdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readdirSync(path, optionalOptions(options))),
       mkdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.mkdirSync(path, optionalOptions(options))),
       rm: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.rmSync(path, optionalOptions(options))),
       unlink: (path, callback) => invokeFsCallback(callback, () => fsModule.unlinkSync(path)),
+      rename: (oldPath, newPath, callback) => invokeFsCallback(callback, () => fsModule.renameSync(oldPath, newPath)),
       copyFile: (source, destination, mode, callback) => invokeFsCallback(optionalCallback(mode, callback), () => fsModule.copyFileSync(source, destination, optionalOptions(mode) || 0)),
       stat: (path, callback) => invokeFsCallback(callback, () => fsModule.statSync(path)),
       lstat: (path, callback) => invokeFsCallback(callback, () => fsModule.lstatSync(path)),
@@ -545,10 +552,12 @@ class CommonJsRuntime {
     fsModule.promises = {
       readFile: async (path, encoding = null) => fsModule.readFileSync(path, encoding),
       writeFile: async (path, data) => fsModule.writeFileSync(path, data),
+      appendFile: async (path, data) => fsModule.appendFileSync(path, data),
       readdir: async (path = ".", options = {}) => fsModule.readdirSync(path, options),
       mkdir: async (path, options = {}) => fsModule.mkdirSync(path, options),
       rm: async (path, options = {}) => fsModule.rmSync(path, options),
       unlink: async (path) => fsModule.unlinkSync(path),
+      rename: async (oldPath, newPath) => fsModule.renameSync(oldPath, newPath),
       copyFile: async (source, destination, mode = 0) => fsModule.copyFileSync(source, destination, mode),
       stat: async (path) => fsModule.statSync(path),
       lstat: async (path) => fsModule.lstatSync(path),
