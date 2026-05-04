@@ -32,6 +32,8 @@ const BUILTIN_MODULES = new Set([
   "node:module",
   "string_decoder",
   "node:string_decoder",
+  "constants",
+  "node:constants",
   "http",
   "node:http",
   "https",
@@ -209,6 +211,7 @@ class CommonJsRuntime {
       os: createOsModule(this.processContext),
       tty: createTtyModule(),
       string_decoder: createStringDecoderModule(),
+      constants: createConstantsModule(),
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
     };
@@ -1152,6 +1155,44 @@ function normalizeStringDecoderEncoding(encoding) {
   if (normalized === "ucs2" || normalized === "utf16le") return "utf16le";
   if (["base64", "hex", "latin1", "binary", "ascii"].includes(normalized)) return normalized;
   return "utf8";
+}
+
+function createConstantsModule() {
+  return {
+    E2BIG: 7,
+    EACCES: 13,
+    EADDRINUSE: 98,
+    EADDRNOTAVAIL: 99,
+    EAGAIN: 11,
+    EBADF: 9,
+    EBUSY: 16,
+    EEXIST: 17,
+    EINVAL: 22,
+    EIO: 5,
+    EISDIR: 21,
+    EMFILE: 24,
+    ENOENT: 2,
+    ENOSPC: 28,
+    ENOTDIR: 20,
+    ENOTEMPTY: 39,
+    EPERM: 1,
+    EPIPE: 32,
+    SIGINT: 2,
+    SIGTERM: 15,
+    SIGKILL: 9,
+    O_RDONLY: 0,
+    O_WRONLY: 1,
+    O_RDWR: 2,
+    O_CREAT: 64,
+    O_EXCL: 128,
+    O_TRUNC: 512,
+    O_APPEND: 1024,
+    S_IFREG: 32768,
+    S_IFDIR: 16384,
+    S_IRUSR: 256,
+    S_IWUSR: 128,
+    S_IXUSR: 64,
+  };
 }
 
 function createStreamModule(eventsModule) {

@@ -290,6 +290,21 @@ const stringDecoderImport = await node.evaluate(
 assert(stringDecoderImport.status === 0, `string_decoder import exited with ${stringDecoderImport.status}`);
 assert(stringDecoderImport.output.trim() === "ABC aGk=", `unexpected string_decoder import output: ${stringDecoderImport.output}`);
 
+const constantsRequire = node.evaluate(
+  "const constants = require('constants'); console.log(constants.ENOENT, constants.EACCES, constants.O_RDONLY, constants.S_IFDIR > 0);",
+  cwd,
+);
+assert(constantsRequire.status === 0, `constants require exited with ${constantsRequire.status}`);
+assert(constantsRequire.output.trim() === "2 13 0 true", `unexpected constants require output: ${constantsRequire.output}`);
+
+const constantsImport = await node.evaluate(
+  "import constants, { SIGTERM, O_CREAT } from 'node:constants'; console.log(SIGTERM, O_CREAT, constants.EEXIST);",
+  cwd,
+  { inputType: "module" },
+);
+assert(constantsImport.status === 0, `constants import exited with ${constantsImport.status}`);
+assert(constantsImport.output.trim() === "15 64 17", `unexpected constants import output: ${constantsImport.output}`);
+
 const networkPolicyRequire = node.evaluate(
   [
     "const http = require('http');",
