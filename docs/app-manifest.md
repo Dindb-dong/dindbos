@@ -63,6 +63,8 @@ pkg info hello-notes
 
 Installed package records live in `/var/lib/dindbos/packages`. Package files live in `/opt/<package>`. Launchers live in `/usr/share/applications/*.app`.
 
+The runtime includes two local sample packages: `/opt/dindbos/packages/hello-notes/dindbos.app.json` for a minimal package and `/opt/dindbos/packages/api-lab/dindbos.app.json` for a third-party API proof that uses sandboxed filesystem, package, and process APIs.
+
 Remote installs fetch `dindbos.app.json` over `http` or `https`. A remote manifest can declare small package files with inline `content`, UTF-8 `base64`, or a relative/absolute file `url`. Relative file URLs resolve from the manifest URL.
 
 Remote manifests must pass package signature verification before files, launchers, records, or app registrations are written. `pkg info <package>` shows `trust.source`, `trust.trusted`, `trust.signature`, `trust.publisher`, and `trust.warnings` so users can see whether an app came from local VFS content or a trusted remote publisher.

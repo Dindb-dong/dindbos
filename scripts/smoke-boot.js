@@ -40,6 +40,7 @@ async function verifySuccessfulBootPhases() {
   assert(events.includes("desktop-render:complete"), "desktop-render complete event missing");
   assert(os.apps.has("files"), "built-in apps were not registered during app-registry-load");
   assert(os.packages.info("hello-notes"), "package registry did not bootstrap sample package");
+  assert(os.fs.exists("/opt/dindbos/packages/api-lab/dindbos.app.json"), "package registry did not bootstrap API Lab sample source");
   assert(os.fs.exists("/proc/processes.json"), "process init did not write /proc/processes.json");
   assert(os.fs.exists("/var/log/dindbos/boot.json"), "boot diagnostics JSON was not written");
   assert(os.fs.exists("/var/log/dindbos/boot.log"), "boot diagnostics log was not written");

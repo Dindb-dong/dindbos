@@ -66,6 +66,48 @@ const SAMPLE_PACKAGE = {
   },
 };
 
+const SAMPLE_API_PACKAGE = {
+  id: "api-lab",
+  name: "API Lab",
+  version: "0.1.0",
+  description: "A sample third-party app that exercises sandboxed runtime APIs.",
+  app: {
+    id: "api-lab",
+    name: "API Lab",
+    title: "API Lab.app",
+    icon: "app",
+    width: 620,
+    height: 420,
+    entry: "app.js",
+  },
+  files: [
+    {
+      path: "app.js",
+      mime: "text/javascript",
+      content: [
+        "export function mount({ content, os, pkg }) {",
+        "  const workspace = '/home/guest/DindbOS API Lab';",
+        "  if (!os.fs.exists(workspace)) os.fs.createDirectory(workspace);",
+        "  const reportPath = os.fs.join(workspace, 'report.txt');",
+        "  const process = os.processes.current();",
+        "  const info = os.packages.info(pkg.id);",
+        "  const report = 'package=' + pkg.id + '\\nprocess=' + process.pid + '\\nversion=' + info.version + '\\n';",
+        "  os.fs.writeOrCreateFile(reportPath, report);",
+        "  os.processes.logSelf(`api-lab wrote ${reportPath}`);",
+        "  content.innerHTML = '<main data-api-lab><h2>' + pkg.name + '</h2><p>' + os.fs.readFile(reportPath) + '</p></main>';",
+        "}",
+      ].join("\n"),
+    },
+  ],
+  permissions: {
+    capabilities: ["package.read"],
+    fileSystem: {
+      read: ["/opt/api-lab", "/home/guest/DindbOS API Lab"],
+      write: ["/home/guest/DindbOS API Lab"],
+    },
+  },
+};
+
 export class PackageManager {
   constructor(os) {
     this.os = os;
@@ -419,7 +461,12 @@ export class PackageManager {
   }
 
   ensureSamplePackageSource() {
-    const directory = `${PACKAGE_SOURCE_DIR}/hello-notes`;
+    this.ensureSamplePackage(SAMPLE_PACKAGE, "# Hello Notes package\n\nInstall with `pkg install /opt/dindbos/packages/hello-notes/dindbos.app.json`.\n");
+    this.ensureSamplePackage(SAMPLE_API_PACKAGE, "# API Lab package\n\nInstall with `pkg install /opt/dindbos/packages/api-lab/dindbos.app.json`.\n");
+  }
+
+  ensureSamplePackage(manifest, readme) {
+    const directory = `${PACKAGE_SOURCE_DIR}/${manifest.id}`;
     if (!this.os.fs.exists(directory)) {
       this.os.fs.createDirectory(directory, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, this.system);
     }
@@ -427,31 +474,34 @@ export class PackageManager {
     const currentManifest = this.os.fs.exists(manifestPath)
       ? safeRead(() => this.os.fs.readFile(manifestPath, "/", this.system), "")
       : "";
-    if (!currentManifest.includes('"entry": "app.js"')) {
+    if (!currentManifest.includes(`"id": "${manifest.id}"`) || !currentManifest.includes('"entry": "app.js"')) {
       this.os.fs.writeOrCreateFile(
         manifestPath,
-        `${JSON.stringify(SAMPLE_PACKAGE, null, 2)}\n`,
+        `${JSON.stringify(manifest, null, 2)}\n`,
         "/",
         { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
         this.system,
       );
     }
-    const appPath = `${directory}/app.js`;
-    if (!this.os.fs.exists(appPath)) {
-      const appFile = SAMPLE_PACKAGE.files.find((file) => file.path === "app.js");
-      this.os.fs.writeOrCreateFile(
-        appPath,
-        appFile.content,
-        "/",
-        { mime: "text/javascript", owner: "root", group: "root", permissions: "-rw-r--r--" },
-        this.system,
-      );
+    for (const file of manifest.files || []) {
+      if (file.url) continue;
+      const filePath = `${directory}/${file.path}`;
+      this.ensureParentDirectories(filePath);
+      if (!this.os.fs.exists(filePath)) {
+        this.os.fs.writeOrCreateFile(
+          filePath,
+          contentFromInlineFile(file),
+          "/",
+          { mime: file.mime || mimeFromName(filePath), owner: "root", group: "root", permissions: file.permissions || "-rw-r--r--" },
+          this.system,
+        );
+      }
     }
     const readmePath = `${directory}/README.md`;
     if (!this.os.fs.exists(readmePath)) {
       this.os.fs.writeOrCreateFile(
         readmePath,
-        "# Hello Notes package\n\nInstall with `pkg install /opt/dindbos/packages/hello-notes/dindbos.app.json`.\n",
+        readme,
         "/",
         { mime: "text/markdown", owner: "root", group: "root", permissions: "-rw-r--r--" },
         this.system,
@@ -517,6 +567,13 @@ export class PackageManager {
             version: "0.1.0",
             description: "Sample executable DindbOS package.",
             manifestUrl: `${PACKAGE_SOURCE_DIR}/hello-notes/dindbos.app.json`,
+          },
+          {
+            id: "api-lab",
+            name: "API Lab",
+            version: "0.1.0",
+            description: "Sample app proving sandboxed runtime APIs.",
+            manifestUrl: `${PACKAGE_SOURCE_DIR}/api-lab/dindbos.app.json`,
           },
         ],
       }, null, 2)}\n`,
@@ -706,8 +763,7 @@ export class PackageManager {
 
 function renderPackagedApp(content, runtime, record, windowApi, manager = null) {
   if (record.app.entryPath) {
-    mountPackageEntrypoint(content, runtime, record, windowApi, manager);
-    return;
+    return mountPackageEntrypoint(content, runtime, record, windowApi, manager);
   }
   const files = safeRead(() => runtime.fs.list(record.installPath), []);
   content.innerHTML = `
