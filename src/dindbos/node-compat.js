@@ -14,6 +14,8 @@ const BUILTIN_MODULES = new Set([
   "node:url",
   "util",
   "node:util",
+  "util/types",
+  "node:util/types",
   "timers",
   "node:timers",
   "perf_hooks",
@@ -211,6 +213,7 @@ class CommonJsRuntime {
     this.process = this.createProcess();
     this.console = this.createConsole();
     const events = createEventsModule();
+    const utilTypes = createUtilTypesModule();
     this.builtins = {
       fs: this.createFsModule(),
       path: this.createPathModule(),
@@ -218,7 +221,8 @@ class CommonJsRuntime {
       buffer: { Buffer: this.buffer },
       events,
       url: createUrlModule(),
-      util: createUtilModule(),
+      util: createUtilModule(utilTypes),
+      "util/types": utilTypes,
       timers: createTimersModule(),
       perf_hooks: createPerfHooksModule(),
       async_hooks: createAsyncHooksModule(),
@@ -889,7 +893,7 @@ function createUrlModule() {
   };
 }
 
-function createUtilModule() {
+function createUtilModule(types = createUtilTypesModule()) {
   const format = (template, ...values) => {
     if (typeof template !== "string") return [template, ...values].map(formatConsoleValue).join(" ");
     let index = 0;
@@ -928,10 +932,61 @@ function createUtilModule() {
     promisify,
     callbackify,
     inherits,
-    types: {
-      isPromise: (value) => Boolean(value && typeof value.then === "function"),
-      isUint8Array: (value) => value instanceof Uint8Array,
-    },
+    types,
+  };
+}
+
+function createUtilTypesModule() {
+  const tag = (value) => Object.prototype.toString.call(value);
+  const objectTag = (name) => (value) => tag(value) === `[object ${name}]`;
+  const typedArrayConstructors = new Set([
+    Int8Array,
+    Uint8Array,
+    Uint8ClampedArray,
+    Int16Array,
+    Uint16Array,
+    Int32Array,
+    Uint32Array,
+    Float32Array,
+    Float64Array,
+    globalThis.BigInt64Array,
+    globalThis.BigUint64Array,
+  ].filter(Boolean));
+  const isTypedArray = (value) => ArrayBuffer.isView(value) && !(value instanceof DataView);
+  return {
+    isAnyArrayBuffer: (value) => value instanceof ArrayBuffer || tag(value) === "[object SharedArrayBuffer]",
+    isArrayBuffer: (value) => value instanceof ArrayBuffer,
+    isArrayBufferView: (value) => ArrayBuffer.isView(value),
+    isArgumentsObject: objectTag("Arguments"),
+    isBigInt64Array: (value) => typeof BigInt64Array !== "undefined" && value instanceof BigInt64Array,
+    isBigUint64Array: (value) => typeof BigUint64Array !== "undefined" && value instanceof BigUint64Array,
+    isBigIntObject: objectTag("BigInt"),
+    isBooleanObject: objectTag("Boolean"),
+    isBoxedPrimitive: (value) => ["[object Boolean]", "[object Number]", "[object String]", "[object Symbol]", "[object BigInt]"].includes(tag(value)),
+    isDataView: (value) => value instanceof DataView,
+    isDate: (value) => value instanceof Date,
+    isFloat32Array: (value) => value instanceof Float32Array,
+    isFloat64Array: (value) => value instanceof Float64Array,
+    isInt8Array: (value) => value instanceof Int8Array,
+    isInt16Array: (value) => value instanceof Int16Array,
+    isInt32Array: (value) => value instanceof Int32Array,
+    isMap: (value) => value instanceof Map,
+    isMapIterator: (value) => tag(value) === "[object Map Iterator]",
+    isNativeError: (value) => value instanceof Error,
+    isNumberObject: objectTag("Number"),
+    isPromise: (value) => Boolean(value && typeof value.then === "function"),
+    isRegExp: (value) => value instanceof RegExp,
+    isSet: (value) => value instanceof Set,
+    isSetIterator: (value) => tag(value) === "[object Set Iterator]",
+    isStringObject: objectTag("String"),
+    isSymbolObject: objectTag("Symbol"),
+    isTypedArray: (value) => isTypedArray(value) && typedArrayConstructors.has(value.constructor),
+    isUint8Array: (value) => value instanceof Uint8Array,
+    isUint8ClampedArray: (value) => value instanceof Uint8ClampedArray,
+    isUint16Array: (value) => value instanceof Uint16Array,
+    isUint32Array: (value) => value instanceof Uint32Array,
+    isWeakMap: (value) => value instanceof WeakMap,
+    isWeakSet: (value) => value instanceof WeakSet,
   };
 }
 

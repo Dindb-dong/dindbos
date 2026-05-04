@@ -87,6 +87,7 @@ Current built-ins:
 - `events` / `EventEmitter`
 - `url`
 - `util`
+- `util/types`
 - `timers`
 - `perf_hooks`
 - `async_hooks`
@@ -115,6 +116,8 @@ The `stream` module is a browser-safe subset for package compatibility. It suppo
 The `crypto` module is a browser-safe subset. It supports `createHash("sha256")`, `randomBytes`, `randomFillSync`, `randomUUID`, `getRandomValues`, and `webcrypto`; it does not expose OpenSSL, certificates, ciphers, signing, or key management APIs.
 
 The `assert` and `querystring` modules are browser-safe compatibility facades for packages that rely on Node's assertion helpers or legacy query string parsing/stringifying. They are not complete replacements for every edge case in Node core.
+
+The `util/types` module is available through `util.types`, `util/types`, and `node:util/types` for browser-safe package feature probes. It covers common ArrayBuffer, typed array, boxed primitive, collection, Date, RegExp, Promise, and Error checks.
 
 The `punycode` module supports `encode`, `decode`, `toASCII`, `toUnicode`, and `ucs2` helpers for browser-safe packages that still probe or import Node's legacy IDNA utility surface.
 

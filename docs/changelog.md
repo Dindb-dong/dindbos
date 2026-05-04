@@ -67,6 +67,7 @@ Added:
 - Viewer.app document and image preview bytes now use the runtime Cache API store with stale-key protection from path, MIME type, size, and modified time.
 - NodeCompat support for CommonJS, JSON modules, simple ESM transforms, simple `exports` resolution, nested dependency lookup, and `events`/`node:events`.
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
+- NodeCompat `util/types` facade for browser-safe package feature probes through `util.types`, `util/types`, and `node:util/types`.
 - NodeCompat `stream` builtin facade for browser-safe `Readable`, `Writable`, `PassThrough`, and `pipeline` usage.
 - NodeCompat `crypto` builtin facade for browser-safe SHA-256 hashing and random APIs.
 - NodeCompat `assert` and `querystring` builtin facades for browser-safe package compatibility.
