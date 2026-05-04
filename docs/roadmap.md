@@ -682,12 +682,10 @@ Already present:
 
 - `.github/PULL_REQUEST_TEMPLATE.md` includes verification and runtime checklists for storage, package, browser, and permission changes.
 - GitHub issue templates exist for app compatibility, storage loss, and Browser.app companion failures.
+- GitHub Pages demo deployment is reproducible through `.github/workflows/pages.yml`: pushes to `main` run `npm run smoke`, upload the static runtime root as the Pages artifact, and deploy through GitHub Pages.
 - `docs/support.md` defines minimum browser support, Chromium-specific local mount and Browser.app companion workflows, manifest/registry versioning expectations, and credential/local environment file policy.
 - `docs/changelog.md` tracks the current Unreleased runtime changes, known limits, and release checklist before version tags.
-
-Remaining:
-
-- Keep GitHub Pages demo aligned with the latest runtime.
+- `npm run smoke:pages-workflow` verifies the Pages workflow deploy gate, static artifact path, `.nojekyll`, and current runtime cache-buster wiring for the demo entrypoint.
 
 Completion criteria:
 

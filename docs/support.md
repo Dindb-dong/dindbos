@@ -36,6 +36,7 @@ Before a tagged release:
 - Breaking manifest changes require a documented migration note in release notes.
 - Registry format changes require a version note and backward-compatibility statement.
 - Smoke commands in README must match the release.
+- The GitHub Pages demo workflow must still run `npm run smoke` before deploying the static runtime root.
 - Browser support changes must update this document.
 
 Current policy:
