@@ -8,6 +8,14 @@ import { join } from "node:path";
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_CDP_PORT = 9223;
+const BROWSERD_SERVICE = "dindbos-browserd";
+const BROWSERD_PROTOCOL = "dindbos-browserd.v1";
+const BROWSERD_CAPABILITIES = [
+  "browser.navigate",
+  "browser.input",
+  "browser.frames.binary",
+  "browser.download.deny",
+];
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_FRAME_INTERVAL_MS = 100;
 const DEFAULT_JPEG_QUALITY = 58;
@@ -88,7 +96,13 @@ class BrowserDaemon {
         "content-type": "application/json",
         "access-control-allow-origin": "*",
       });
-      response.end(JSON.stringify({ ok: true, service: "dindbos-browserd", port: this.port }));
+      response.end(JSON.stringify({
+        ok: true,
+        service: BROWSERD_SERVICE,
+        protocol: BROWSERD_PROTOCOL,
+        port: this.port,
+        capabilities: BROWSERD_CAPABILITIES,
+      }));
       return;
     }
     response.writeHead(200, { "content-type": "text/plain" });
@@ -101,7 +115,11 @@ class BrowserDaemon {
       return;
     }
     const key = request.headers["sec-websocket-key"];
-    if (!key) {
+    const protocols = String(request.headers["sec-websocket-protocol"] || "")
+      .split(",")
+      .map((protocol) => protocol.trim())
+      .filter(Boolean);
+    if (!key || !protocols.includes(BROWSERD_PROTOCOL)) {
       socket.destroy();
       return;
     }
@@ -111,6 +129,7 @@ class BrowserDaemon {
       "Upgrade: websocket",
       "Connection: Upgrade",
       `Sec-WebSocket-Accept: ${accept}`,
+      `Sec-WebSocket-Protocol: ${BROWSERD_PROTOCOL}`,
       "",
       "",
     ].join("\r\n"));

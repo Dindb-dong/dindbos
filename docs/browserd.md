@@ -28,7 +28,7 @@ Health check:
 curl http://127.0.0.1:8787/health
 ```
 
-The response must include `service: "dindbos-browserd"`. If another old local server is already using port `8787`, Browser.app will refuse to connect instead of rendering a broken frame.
+The response must include `service: "dindbos-browserd"`, `protocol: "dindbos-browserd.v1"`, and required capabilities such as `browser.navigate`, `browser.input`, and `browser.frames.binary`. If another old local server is already using port `8787`, Browser.app will refuse to connect instead of rendering a broken frame.
 
 ## Trust Boundary
 
@@ -36,7 +36,8 @@ The response must include `service: "dindbos-browserd"`. If another old local se
 
 Boundary rules:
 
-- Browser.app may talk to `browserd` only after the `/health` response identifies `service: "dindbos-browserd"`.
+- Browser.app may talk to `browserd` only after the `/health` response identifies the expected service, protocol version, and required capabilities.
+- Browser.app opens the WebSocket with subprotocol `dindbos-browserd.v1`, and `browserd` refuses `/browser` upgrades that do not request that subprotocol.
 - Third-party apps should not connect to `browserd` directly. They should open URLs or HTML documents through Browser.app via `os.launch("browser", context)` or `os.openPath(path)`.
 - `browserd` is optional. The DindbOS runtime must boot, run local apps, open local HTML files, and keep the desktop usable when the companion is absent.
 - Starting `browserd` is a user/developer action from the local machine. Web pages must not attempt to install or launch it automatically.
@@ -44,7 +45,7 @@ Boundary rules:
 - The WebSocket protocol should stay narrow: browser navigation, viewport resize, input events, screenshots/frames, and status/error reporting.
 - Future hosted or remote browser providers must use a separate provider identity and trust model. Do not treat a remote provider as equivalent to `127.0.0.1` `browserd`.
 
-Current identity checks are intentionally simple: Browser.app verifies the health service name before opening a WebSocket and refuses non-DindbOS services on the same port. This prevents accidental connection to an unrelated local server; it is not a full authentication scheme.
+Current identity checks are intentionally local and versioned: Browser.app verifies the health service name, protocol version, and required capabilities before opening a WebSocket, then requests the same protocol as a WebSocket subprotocol. This prevents accidental connection to an unrelated or incompatible local server; it is not a full authentication scheme.
 
 ## Connection Policy
 

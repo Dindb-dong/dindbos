@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { BrowserCompanionClient, pasteClipboardText } from "../src/dindbos/browser-client.js";
+import {
+  BROWSERD_PROTOCOL,
+  BROWSERD_REQUIRED_CAPABILITIES,
+  BROWSERD_SERVICE,
+  BrowserCompanionClient,
+  pasteClipboardText,
+} from "../src/dindbos/browser-client.js";
 
 await verifyReconnectContract();
 await verifyBinaryFrameProtocol();
@@ -18,13 +24,14 @@ async function verifyReconnectContract() {
   const statuses = [];
   globalThis.fetch = async () => ({
     ok: true,
-    json: async () => ({ ok: true, service: "dindbos-browserd" }),
+    json: async () => browserdHealth(),
   });
   globalThis.WebSocket = class FakeWebSocket {
     static OPEN = 1;
     static CLOSED = 3;
 
-    constructor() {
+    constructor(...args) {
+      this.protocols = args;
       this.readyState = 0;
       this.listeners = new Map();
       this.sent = [];
@@ -64,6 +71,7 @@ async function verifyReconnectContract() {
     client.on("status", (status) => statuses.push(status));
     await client.connect();
     assert(client.connected, "client did not connect");
+    assert(sockets[0].protocols[1] === BROWSERD_PROTOCOL, "client did not request browserd WebSocket protocol");
     sockets[0].closeFromServer();
     await Promise.resolve();
     assert(!client.connected, "client remained connected after close");
@@ -84,13 +92,14 @@ async function verifyBinaryFrameProtocol() {
   const frames = [];
   globalThis.fetch = async () => ({
     ok: true,
-    json: async () => ({ ok: true, service: "dindbos-browserd" }),
+    json: async () => browserdHealth(),
   });
   globalThis.WebSocket = class FakeWebSocket {
     static OPEN = 1;
     static CLOSED = 3;
 
-    constructor() {
+    constructor(...args) {
+      this.protocols = args;
       this.readyState = 0;
       this.listeners = new Map();
       queueMicrotask(() => {
@@ -121,6 +130,7 @@ async function verifyBinaryFrameProtocol() {
     const client = new BrowserCompanionClient("ws://127.0.0.1:8787/browser");
     client.on("frame", (frame) => frames.push(frame));
     await client.connect();
+    assert(client.socket.protocols[1] === BROWSERD_PROTOCOL, "binary frame connection did not request browserd WebSocket protocol");
     await client.handleMessage(encodeBinaryFrame(
       { type: "frame", status: "ready", url: "https://example.com", title: "Example", mime: "image/jpeg", transport: "binary" },
       new Uint8Array([0xff, 0xd8, 0xff, 0xd9]),
@@ -143,13 +153,14 @@ async function verifyPasteProtocol() {
   const sockets = [];
   globalThis.fetch = async () => ({
     ok: true,
-    json: async () => ({ ok: true, service: "dindbos-browserd" }),
+    json: async () => browserdHealth(),
   });
   globalThis.WebSocket = class FakeWebSocket {
     static OPEN = 1;
     static CLOSED = 3;
 
-    constructor() {
+    constructor(...args) {
+      this.protocols = args;
       this.readyState = 0;
       this.listeners = new Map();
       this.sent = [];
@@ -187,6 +198,7 @@ async function verifyPasteProtocol() {
   try {
     const client = new BrowserCompanionClient("ws://127.0.0.1:8787/browser");
     await client.connect();
+    assert(sockets[0].protocols[1] === BROWSERD_PROTOCOL, "paste connection did not request browserd WebSocket protocol");
     await client.paste("clip text");
     assert(sockets[0].sent.length === 1, `expected one paste command, got ${sockets[0].sent.length}`);
     assert(sockets[0].sent[0].type === "type", `paste used wrong protocol: ${sockets[0].sent[0].type}`);
@@ -218,33 +230,12 @@ async function verifyPasteHelper() {
 }
 
 async function verifyHealthIdentityGuard() {
-  const server = createServer((request, response) => {
-    if (request.url === "/health") {
-      response.writeHead(200, {
-        "content-type": "application/json",
-        "access-control-allow-origin": "*",
-      });
-      response.end(JSON.stringify({ ok: true, service: "not-dindbos-browserd" }));
-      return;
-    }
-    response.writeHead(404);
-    response.end();
-  });
-
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-
-  try {
-    const { port } = server.address();
-    const client = new BrowserCompanionClient(`ws://127.0.0.1:${port}/browser`);
-    await assertRejects(
-      () => client.connect(),
-      `port ${port} is not dindbos-browserd`,
-    );
-  } finally {
-    server.close();
-    await once(server, "close");
-  }
+  const wrongService = await serveHealth({ ok: true, service: "not-dindbos-browserd" });
+  await assertHealthRejected(wrongService, `port ${wrongService.port} is not dindbos-browserd`);
+  const wrongProtocol = await serveHealth({ ...browserdHealth(), protocol: "dindbos-browserd.v0" });
+  await assertHealthRejected(wrongProtocol, "browserd protocol mismatch");
+  const missingCapability = await serveHealth({ ...browserdHealth(), capabilities: ["browser.navigate"] });
+  await assertHealthRejected(missingCapability, "browserd missing capabilities");
 }
 
 async function assertRejects(action, expectedMessage) {
@@ -259,6 +250,43 @@ async function assertRejects(action, expectedMessage) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function browserdHealth() {
+  return {
+    ok: true,
+    service: BROWSERD_SERVICE,
+    protocol: BROWSERD_PROTOCOL,
+    capabilities: [...BROWSERD_REQUIRED_CAPABILITIES, "browser.download.deny"],
+  };
+}
+
+async function serveHealth(health) {
+  const server = createServer((request, response) => {
+    if (request.url === "/health") {
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+      });
+      response.end(JSON.stringify(health));
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  return { server, port: server.address().port };
+}
+
+async function assertHealthRejected(target, expectedMessage) {
+  try {
+    const client = new BrowserCompanionClient(`ws://127.0.0.1:${target.port}/browser`);
+    await assertRejects(() => client.connect(), expectedMessage);
+  } finally {
+    target.server.close();
+    await once(target.server, "close");
+  }
 }
 
 function encodeBinaryFrame(metadata, payload) {
