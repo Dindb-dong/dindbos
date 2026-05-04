@@ -526,6 +526,8 @@ Already present:
 - Browser.app forwards mobile viewport intent to `browserd`, enabling mobile CDP metrics/touch emulation for narrow or touch-capable viewports, with toolbar/input layout polish for mobile windows.
 - Browser.app v1 uses a documented CDP screencast stream policy instead of WebRTC/GPU video. `browserd` advertises `stream.transport: "cdp-screencast"` and `stream.encoding: "binary-jpeg"` in health, Browser.app rejects incompatible stream metadata, and WebRTC is deferred until measured workload targets require it.
 - `docs/browserd.md`, `npm run smoke:browserd`, and `npm run smoke:browser-client` cover the stream transport decision and provider compatibility guard.
+- Browser.app includes app-specific troubleshooting diagnostics for provider kind, provider health URL, connection state, stream policy, tab/session mode, and next-step advice for local HTML, remote providers, protocol mismatches, and disconnected local `browserd`.
+- `npm run smoke:browser-addresses` verifies Browser.app diagnostics for remote provider health mapping, local HTML sandbox advice, connected provider state, tab counts, stream policy, and diagnostics markup.
 
 Completion criteria:
 
@@ -764,4 +766,3 @@ Goal: The OS shell feels stable under normal daily interaction.
 Tasks:
 
 - Improve Files.app remaining scale polish.
-- Extend app-specific troubleshooting flows beyond Files.app and the shell `doctor` baseline.
