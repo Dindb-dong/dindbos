@@ -24,6 +24,8 @@ const BUILTIN_MODULES = new Set([
   "node:assert",
   "querystring",
   "node:querystring",
+  "punycode",
+  "node:punycode",
   "os",
   "node:os",
   "tty",
@@ -214,6 +216,7 @@ class CommonJsRuntime {
       crypto: createCryptoModule(this.buffer),
       assert: createAssertModule(),
       querystring: createQuerystringModule(),
+      punycode: createPunycodeModule(),
       os: createOsModule(this.processContext),
       tty: createTtyModule(),
       string_decoder: createStringDecoderModule(),
@@ -1025,6 +1028,154 @@ function createQuerystringModule() {
     escape,
     unescape,
   };
+}
+
+function createPunycodeModule() {
+  const maxInt = 2147483647;
+  const base = 36;
+  const tMin = 1;
+  const tMax = 26;
+  const skew = 38;
+  const damp = 700;
+  const initialBias = 72;
+  const initialN = 128;
+  const delimiter = "-";
+
+  const adapt = (delta, numPoints, firstTime) => {
+    let nextDelta = firstTime ? Math.floor(delta / damp) : delta >> 1;
+    nextDelta += Math.floor(nextDelta / numPoints);
+    let k = 0;
+    while (nextDelta > Math.floor(((base - tMin) * tMax) / 2)) {
+      nextDelta = Math.floor(nextDelta / (base - tMin));
+      k += base;
+    }
+    return k + Math.floor(((base - tMin + 1) * nextDelta) / (nextDelta + skew));
+  };
+
+  const basicToDigit = (codePoint) => {
+    if (codePoint >= 48 && codePoint < 58) return 26 + codePoint - 48;
+    if (codePoint >= 65 && codePoint < 91) return codePoint - 65;
+    if (codePoint >= 97 && codePoint < 123) return codePoint - 97;
+    return base;
+  };
+
+  const digitToBasic = (digit) => String.fromCharCode(digit + 22 + 75 * (digit < 26));
+
+  const ucs2 = {
+    decode: (input = "") => Array.from(String(input), (character) => character.codePointAt(0)),
+    encode: (codePoints = []) => String.fromCodePoint(...codePoints.map((codePoint) => Number(codePoint) || 0)),
+  };
+
+  const decode = (input = "") => {
+    const value = String(input);
+    const output = [];
+    const basic = value.lastIndexOf(delimiter);
+    let index = 0;
+    if (basic > -1) {
+      for (let counter = 0; counter < basic; counter += 1) {
+        const codePoint = value.charCodeAt(counter);
+        if (codePoint >= 0x80) throw new Error("punycode: invalid input");
+        output.push(codePoint);
+      }
+      index = basic + 1;
+    }
+    let i = 0;
+    let n = initialN;
+    let bias = initialBias;
+    while (index < value.length) {
+      const oldI = i;
+      let w = 1;
+      for (let k = base; ; k += base) {
+        if (index >= value.length) throw new Error("punycode: invalid input");
+        const digit = basicToDigit(value.charCodeAt(index));
+        index += 1;
+        if (digit >= base || digit > Math.floor((maxInt - i) / w)) throw new Error("punycode: overflow");
+        i += digit * w;
+        const t = k <= bias ? tMin : k >= bias + tMax ? tMax : k - bias;
+        if (digit < t) break;
+        if (w > Math.floor(maxInt / (base - t))) throw new Error("punycode: overflow");
+        w *= base - t;
+      }
+      const out = output.length + 1;
+      bias = adapt(i - oldI, out, oldI === 0);
+      if (Math.floor(i / out) > maxInt - n) throw new Error("punycode: overflow");
+      n += Math.floor(i / out);
+      i %= out;
+      output.splice(i, 0, n);
+      i += 1;
+    }
+    return ucs2.encode(output);
+  };
+
+  const encode = (input = "") => {
+    const codePoints = ucs2.decode(input);
+    const output = [];
+    for (const codePoint of codePoints) {
+      if (codePoint < 0x80) output.push(String.fromCharCode(codePoint));
+    }
+    const basicLength = output.length;
+    let handled = basicLength;
+    if (basicLength) output.push(delimiter);
+    let n = initialN;
+    let delta = 0;
+    let bias = initialBias;
+    while (handled < codePoints.length) {
+      let m = maxInt;
+      for (const codePoint of codePoints) {
+        if (codePoint >= n && codePoint < m) m = codePoint;
+      }
+      if (m - n > Math.floor((maxInt - delta) / (handled + 1))) throw new Error("punycode: overflow");
+      delta += (m - n) * (handled + 1);
+      n = m;
+      for (const codePoint of codePoints) {
+        if (codePoint < n) {
+          delta += 1;
+          if (delta > maxInt) throw new Error("punycode: overflow");
+        }
+        if (codePoint === n) {
+          let q = delta;
+          for (let k = base; ; k += base) {
+            const t = k <= bias ? tMin : k >= bias + tMax ? tMax : k - bias;
+            if (q < t) break;
+            output.push(digitToBasic(t + ((q - t) % (base - t))));
+            q = Math.floor((q - t) / (base - t));
+          }
+          output.push(digitToBasic(q));
+          bias = adapt(delta, handled + 1, handled === basicLength);
+          delta = 0;
+          handled += 1;
+        }
+      }
+      delta += 1;
+      n += 1;
+    }
+    return output.join("");
+  };
+
+  const mapDomain = (input, mapper) => String(input || "")
+    .replace(/[\u3002\uff0e\uff61]/g, ".")
+    .split(".")
+    .map(mapper)
+    .join(".");
+
+  const toASCII = (input = "") => mapDomain(input, (label) => {
+    if (!/[^\0-\x7E]/.test(label)) return label;
+    return `xn--${encode(label)}`;
+  });
+
+  const toUnicode = (input = "") => mapDomain(input, (label) => (
+    /^xn--/i.test(label) ? decode(label.slice(4).toLowerCase()) : label
+  ));
+
+  const module = {
+    version: "2.1.0-dindbos",
+    ucs2,
+    decode,
+    encode,
+    toASCII,
+    toUnicode,
+  };
+  return { default: module, ...module };
 }
 
 function createOsModule(processContext) {

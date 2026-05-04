@@ -92,6 +92,7 @@ Current built-ins:
 - `crypto`
 - `assert`
 - `querystring`
+- `punycode`
 - `os`
 - `tty`
 - `module`
@@ -109,6 +110,8 @@ The `stream` module is a browser-safe subset for package compatibility. It suppo
 The `crypto` module is a browser-safe subset. It supports `createHash("sha256")`, `randomBytes`, `randomFillSync`, `randomUUID`, `getRandomValues`, and `webcrypto`; it does not expose OpenSSL, certificates, ciphers, signing, or key management APIs.
 
 The `assert` and `querystring` modules are browser-safe compatibility facades for packages that rely on Node's assertion helpers or legacy query string parsing/stringifying. They are not complete replacements for every edge case in Node core.
+
+The `punycode` module supports `encode`, `decode`, `toASCII`, `toUnicode`, and `ucs2` helpers for browser-safe packages that still probe or import Node's legacy IDNA utility surface.
 
 The `os` module is a browser-safe environment facade. It reports DindbOS paths and browser runtime identity for package feature detection; CPU, memory, network interface, load average, and priority APIs return conservative non-host values.
 
