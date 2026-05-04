@@ -90,6 +90,8 @@ export class ShellSession {
   execute(commandLine) {
     const line = commandLine.trim();
     if (!line) return { output: "", clear: false, reload: false };
+    const locked = this.lockedSessionResult();
+    if (locked) return locked;
     this.history.push(line);
     this.historyIndex = this.history.length;
     const expanded = expandVariables(line, this.env);
@@ -116,6 +118,8 @@ export class ShellSession {
   async executeAsync(commandLine) {
     const line = commandLine.trim();
     if (!line) return { output: "", clear: false, reload: false };
+    const locked = this.lockedSessionResult();
+    if (locked) return locked;
     this.history.push(line);
     this.historyIndex = this.history.length;
     const expanded = expandVariables(line, this.env);
@@ -137,6 +141,15 @@ export class ShellSession {
       if (result.reload) return { ...result, output: output.join("\n") };
     }
     return { output: output.join("\n"), clear: false, reload: false, status: previousStatus };
+  }
+
+  lockedSessionResult() {
+    try {
+      this.os.assertSessionUnlocked?.("shell");
+      return null;
+    } catch (error) {
+      return { output: error.message, clear: false, reload: false, status: 1 };
+    }
   }
 
   executePipeline(commandLine) {
