@@ -45,6 +45,7 @@ Added:
 - Process manager activity sampling, crash reports, parent/child process links, and centralized restart behavior.
 - AppRegistry crash isolation renders a crash panel and reports failed app render paths to the process manager.
 - Explicit `app:*` lifecycle events for install, launch, ready, focus, suspend, resume, crash, close, and uninstall.
+- Window minimize now uses a stable delayed-hide animation state and cancels that state cleanly on focus/restore/close.
 - App-facing API docs, app lifecycle docs, Browser companion docs, first app guide, package signature plan, and support policy docs.
 - GitHub issue templates and PR verification checklist.
 

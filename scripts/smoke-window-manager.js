@@ -113,6 +113,14 @@ function bootOs() {
 function fakeTask(id) {
   const classList = {
     active: false,
+    values: new Set(),
+    add: (name) => {
+      classList.values.add(name);
+    },
+    remove: (name) => {
+      classList.values.delete(name);
+    },
+    contains: (name) => classList.values.has(name),
     toggle: (_name, active) => {
       classList.active = active;
     },
@@ -154,6 +162,12 @@ class FakeElement {
     this.listeners = {};
     this.classList = {
       values: new Set(),
+      add: (name) => {
+        this.classList.values.add(name);
+      },
+      remove: (name) => {
+        this.classList.values.delete(name);
+      },
       toggle: (name, active) => {
         if (active) this.classList.values.add(name);
         else this.classList.values.delete(name);
@@ -205,11 +219,11 @@ class FakeElement {
   }
 }
 
-runLiveWindowStateSmoke();
+await runLiveWindowStateSmoke();
 
 console.log("window manager smoke ok viewport snap shortcuts");
 
-function runLiveWindowStateSmoke() {
+async function runLiveWindowStateSmoke() {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
   try {
@@ -237,8 +251,16 @@ function runLiveWindowStateSmoke() {
       },
     });
     liveManager.minimize("browser");
+    const task = liveManager.windows.get("browser");
+    assert(task.frame.hidden === false, "window was hidden before minimize animation could run");
+    assert(task.frame.classList.contains("is-minimizing"), "window did not enter minimizing animation state");
+    await new Promise((resolve) => setTimeout(resolve, 190));
+    assert(task.frame.hidden === true, "window was not hidden after minimize animation");
+    assert(!task.frame.classList.contains("is-minimizing"), "window kept minimizing class after animation");
     liveManager.focus("browser");
     assert(api.getState("browser").address === "https://example.com", "window API state was not preserved after minimize/focus");
+    assert(task.frame.hidden === false, "focus did not reveal minimized window");
+    assert(!task.frame.classList.contains("is-minimizing"), "focus did not cancel minimizing animation state");
     liveManager.activate("browser");
     assert(api.getState("browser").title === "Example Domain", "window API state was not preserved after activate");
   } finally {

@@ -589,10 +589,7 @@ Already present:
 - Edge snap zones, Alt-Tab focus cycling, z-index focus promotion, active class toggling, and Ctrl/Meta keyboard shortcuts for minimize/close are covered by `npm run smoke:window-manager`.
 - Window placements persist under `/var/lib/dindbos/window-placements.json` and are clamped into the current viewport when restored; `npm run smoke:window-manager` verifies persistence and restore behavior.
 - Mobile viewport policy starts windows as a single reachable maximized panel instead of restoring cramped desktop coordinates; `npm run smoke:window-manager` verifies mobile viewport detection and placement.
-
-Remaining:
-
-- Stable minimize animation.
+- Minimize uses a stable delayed-hide animation state instead of immediately removing the window from layout; `npm run smoke:window-manager` verifies the animation state, delayed hide, and focus restore behavior.
 
 Completion criteria:
 

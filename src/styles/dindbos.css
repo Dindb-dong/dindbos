@@ -293,6 +293,15 @@ button {
   box-shadow: var(--shadow);
   backdrop-filter: blur(20px);
   pointer-events: auto;
+  transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease;
+  transform-origin: bottom center;
+}
+
+/* Minimizing window frame */
+.dos-window.is-minimizing {
+  opacity: 0;
+  transform: translateY(18px) scale(0.96);
+  pointer-events: none;
 }
 
 /* Active window frame */

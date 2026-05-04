@@ -1,5 +1,6 @@
 const MIN_WIDTH = 340;
 const MIN_HEIGHT = 240;
+const MINIMIZE_ANIMATION_MS = 160;
 const WINDOW_PLACEMENTS_PATH = "/var/lib/dindbos/window-placements.json";
 
 export class WindowManager {
@@ -106,6 +107,7 @@ export class WindowManager {
   focus(id) {
     const task = this.windows.get(id);
     if (!task) return;
+    cancelMinimizeAnimation(task);
     task.frame.hidden = false;
     task.minimized = false;
     this.activeWindowId = id;
@@ -118,8 +120,17 @@ export class WindowManager {
   minimize(id) {
     const task = this.windows.get(id);
     if (!task) return;
+    if (task.minimized && task.frame.hidden) return;
     task.minimized = true;
-    task.frame.hidden = true;
+    task.frame.hidden = false;
+    task.frame.classList.add("is-minimizing");
+    clearTimeout(task.minimizeTimer);
+    task.minimizeTimer = setTimeout(() => {
+      task.minimizeTimer = null;
+      if (!task.minimized) return;
+      task.frame.hidden = true;
+      task.frame.classList.remove("is-minimizing");
+    }, MINIMIZE_ANIMATION_MS);
     this.os.processes.updateWindowState?.(task.pid, "minimized", { windowId: id });
     this.renderTasks();
   }
@@ -145,6 +156,7 @@ export class WindowManager {
   close(id, options = {}) {
     const task = this.windows.get(id);
     if (!task) return;
+    cancelMinimizeAnimation(task);
     this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, "closing", { windowId: id });
     task.frame.remove();
@@ -448,6 +460,12 @@ function clamp(value, min, max) {
 
 function newestWindowId(windows) {
   return [...windows.keys()].at(-1) || "";
+}
+
+function cancelMinimizeAnimation(task) {
+  clearTimeout(task.minimizeTimer);
+  task.minimizeTimer = null;
+  task.frame.classList.remove("is-minimizing");
 }
 
 function cloneState(value) {
