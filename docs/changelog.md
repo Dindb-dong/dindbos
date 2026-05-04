@@ -44,6 +44,7 @@ Added:
 - Viewer.app toolbar controls, Browser.app handoff for HTML documents, bounded large text previews, and binary fallback messaging.
 - Viewer.app sandboxed `.deck.html` preview support for portfolio/demo HTML decks.
 - Viewer.app optional PDF.js adapter hook with canvas rendering and page previous/next controls when `globalThis.pdfjsLib` is available.
+- Viewer.app now surfaces the PDF.js deployment policy in runtime status: PDF.js remains a deployment-provided optional adapter, with native iframe fallback when the adapter is absent or fails.
 - Shell script execution with shebang handling, `PATH` lookup, positional arguments, stdin pipeline support, execute-bit enforcement, escaped quote parsing, empty string arguments, input redirection, and redirected pipeline status.
 - Shell `su`/`sudo` placeholders now fail explicitly with browser-runtime fixed-session status instead of implying privilege escalation.
 - Package transaction rollback for failed install/update/remove paths.
