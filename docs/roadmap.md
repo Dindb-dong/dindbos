@@ -666,7 +666,7 @@ Completion criteria:
 
 ## 9. Users And Permissions
 
-Status: Early permission model present, user/session model remaining.
+Status: Done first pass; future user/security hardening is demand-driven by real permission gaps.
 
 Already present:
 
@@ -701,7 +701,7 @@ Completion criteria:
 
 ## 10. Developer Experience
 
-Status: Partial docs present, onboarding and examples remaining.
+Status: Done first pass; future onboarding/examples work is demand-driven by contributor gaps.
 
 Already present:
 
@@ -737,7 +737,7 @@ Completion criteria:
 
 ## 11. Release And Project Hygiene
 
-Status: Partial release hygiene present; demo deployment alignment remaining.
+Status: Done first pass; future release hygiene work is demand-driven by release/demo gaps.
 
 Already present:
 
