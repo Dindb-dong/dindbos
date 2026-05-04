@@ -438,6 +438,8 @@ Already present:
 - `npm run smoke:npm-node` verifies `console` and `node:console` import paths, default captured output, `Console` custom stream writes, and error/warn helper behavior.
 - `http` and `https` policy facades support CommonJS and ESM import paths but fail with explicit DindbOS network capability guidance when used; network APIs belong to a future explicit app sandbox/capability boundary, not NodeCompat.
 - `npm run smoke:npm-node` verifies NodeCompat `http`/`https` policy errors for CommonJS and ESM import paths.
+- `child_process` and `worker_threads` policy facades support CommonJS and ESM import paths for package feature probes while failing host process and Node worker APIs with explicit DindbOS capability guidance.
+- `npm run smoke:npm-node` verifies NodeCompat runtime policy facade shape and policy errors for `child_process`, `node:child_process`, `worker_threads`, and `node:worker_threads`.
 - ESM transform supports simple re-export barrels through `export { ... } from` and `export * from`, which covers common browser-safe package index modules without pretending to implement full Node loader semantics.
 - `npm run smoke:npm-node` verifies default, named, renamed, and star re-export behavior through a VFS-backed `.mjs` fixture.
 - ESM transform supports multiline static import/export lists, multiple variable declaration exports, and namespace re-export barrels through `export * as namespace from`, covering more real browser-safe package index modules without claiming full Node loader semantics.
