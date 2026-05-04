@@ -510,19 +510,23 @@ function transformEsmSource(source) {
     state.exportedNames.push(name);
     return `${declaration} ${name}`;
   });
-  code = code.replace(/\bexport\s+(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+);?/g, (_, declaration, name, expression) => {
-    state.exportedNames.push(name);
-    return `${declaration} ${name} = ${expression};`;
+  code = code.replace(/\bexport\s+(const|let|var)\s+([^;\n]+);?/g, (_, declaration, declarations) => {
+    state.exportedNames.push(...declarationNames(declarations));
+    return `${declaration} ${declarations};`;
   });
-  code = code.replace(/\bexport\s*\{([^}]+)\}\s+from\s+["']([^"']+)["'];?/g, (_, specifiers, specifier) => {
+  code = code.replace(/\bexport\s*\{([\s\S]*?)\}\s+from\s+["']([^"']+)["'];?/g, (_, specifiers, specifier) => {
     const moduleName = `__esm_reexport_${state.importIndex++}`;
     return `const ${moduleName} = await __import(${JSON.stringify(specifier)});\n__export({ ${exportFromProperties(specifiers, moduleName)} });`;
+  });
+  code = code.replace(/\bexport\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["'];?/g, (_, name, specifier) => {
+    const moduleName = `__esm_reexport_${state.importIndex++}`;
+    return `const ${moduleName} = await __import(${JSON.stringify(specifier)});\n__export({ ${name}: ${moduleName} });`;
   });
   code = code.replace(/\bexport\s+\*\s+from\s+["']([^"']+)["'];?/g, (_, specifier) => {
     const moduleName = `__esm_reexport_${state.importIndex++}`;
     return `const ${moduleName} = await __import(${JSON.stringify(specifier)});\n__export(Object.fromEntries(Object.entries(${moduleName}).filter(([key]) => key !== "default")));`;
   });
-  code = code.replace(/^\s*export\s*\{([^}]+)\};?/gm, (_, specifiers) => `__export({ ${exportObjectProperties(specifiers)} });`);
+  code = code.replace(/\bexport\s*\{([\s\S]*?)\};?/g, (_, specifiers) => `__export({ ${exportObjectProperties(specifiers)} });`);
   const footer = [];
   if (state.exportedNames.length) footer.push(`__export({ ${[...new Set(state.exportedNames)].join(", ")} });`);
   if (state.defaultExportAssigned) footer.push("__export({ default: __default_export__ });");
@@ -531,7 +535,7 @@ function transformEsmSource(source) {
 
 function transformImportStatements(source, state) {
   let code = source.replace(/^\s*import\s+["']([^"']+)["'];?/gm, (_, specifier) => `await __import(${JSON.stringify(specifier)});`);
-  code = code.replace(/^\s*import\s+(.+?)\s+from\s+["']([^"']+)["'];?/gm, (_, clause, specifier) => importClauseToCode(clause.trim(), specifier, state.importIndex++));
+  code = code.replace(/^\s*import\s+([\s\S]*?)\s+from\s+["']([^"']+)["'];?/gm, (_, clause, specifier) => importClauseToCode(clause.trim(), specifier, state.importIndex++));
   code = code.replace(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g, (_, specifier) => `__import(${JSON.stringify(specifier)})`);
   return code;
 }
@@ -567,6 +571,13 @@ function importDestructureProperties(specifiers) {
     .filter(Boolean)
     .map((part) => part.replace(/\s+as\s+/g, ": "))
     .join(", ");
+}
+
+function declarationNames(declarations) {
+  return String(declarations || "")
+    .split(",")
+    .map((part) => part.trim().match(/^([A-Za-z_$][\w$]*)/)?.[1] || "")
+    .filter(Boolean);
 }
 
 function exportObjectProperties(specifiers) {
