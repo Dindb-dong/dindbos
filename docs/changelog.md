@@ -50,6 +50,7 @@ Added:
 - App sandbox now exposes per-app `os.state` JSON persistence backed by `/var/lib/dindbos/app-state`, with relaunch/reload restoration and package uninstall cleanup coverage.
 - TextEdit, Viewer.app, and Browser.app now use user-document read scopes instead of root filesystem read scope for file-open paths.
 - Session users now get generated `/home/<user>` workspaces with Desktop/Documents/Downloads/Trash directories, matching shell ownership, and built-in app scopes based on the active home.
+- VFS path traversal now enforces execute permission on parent directories for reads, writes, stat, copy, move, chmod, and app sandbox resolve/stat/exists paths.
 - Local mount writes now detect disk-side changes since the last sync and report `sync-conflict` instead of silently overwriting external file changes.
 - Files.app large copy, move, import, and export traversals now yield cooperatively while keeping progress, cancellation, and byte-preservation smoke coverage.
 - Viewer.app document and image preview bytes now use the runtime Cache API store with stale-key protection from path, MIME type, size, and modified time.

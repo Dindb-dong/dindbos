@@ -622,12 +622,13 @@ Already present:
 - Session users are normalized into browser-safe names and receive generated `/home/<user>` workspaces with Desktop, Documents, Downloads, `.Trash`, and `.profile`.
 - VFS file/directory creation now defaults ownership to the caller principal so non-guest session writes are owned by the active user.
 - Built-in app manifests use the active session home for document read/write scopes instead of hard-coded `/home/guest`, covered by `npm run smoke:sessions`.
+- VFS path traversal enforces execute permission on parent directories before read, write, stat, copy, move, chmod, and app sandbox resolve/stat/exists access.
+- `npm run smoke:permissions` verifies that a world-readable file inside non-executable `/root` is still blocked by traversal permissions.
 
 Remaining:
 
 - Login session.
 - User/group management.
-- Stricter read/write/execute checks.
 
 Completion criteria:
 

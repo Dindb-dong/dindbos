@@ -12,6 +12,14 @@ let result = await shell.executeAsync("cat /root/secret.txt");
 assert(result.status === 1, `shell denied read status mismatch: ${result.status}`);
 assert(result.output.includes("permission denied"), `shell denied read output mismatch: ${result.output}`);
 
+result = await shell.executeAsync("cat /root/public.txt");
+assert(result.status === 1, `shell denied traversal read status mismatch: ${result.status}`);
+assert(result.output.includes("permission denied"), `shell denied traversal read output mismatch: ${result.output}`);
+
+result = await shell.executeAsync("stat /root/public.txt");
+assert(result.status === 1, `shell denied traversal stat status mismatch: ${result.status}`);
+assert(result.output.includes("permission denied"), `shell denied traversal stat output mismatch: ${result.output}`);
+
 result = await shell.executeAsync("echo nope > /root/new.txt");
 assert(result.status === 1, `shell denied write status mismatch: ${result.status}`);
 assert(result.output.includes("permission denied"), `shell denied write output mismatch: ${result.output}`);
@@ -41,6 +49,15 @@ const otherAppSandbox = new AppSandbox(os, { ...process, pid: 102, appId: "other
 assert(otherAppSandbox.state.get("prefs", "missing") === "missing", "app state leaked across app ids");
 assert(sandbox.state.remove("prefs") === true, "app state remove did not report existing key");
 assert(!sandbox.state.keys().includes("prefs"), "app state key remained after remove");
+const broadSandbox = new AppSandbox(os, {
+  ...process,
+  pid: 103,
+  appId: "broad",
+  manifest: { capabilities: [], fileSystem: { read: ["/"], write: [] } },
+});
+await assertRejects(() => broadSandbox.fs.stat("/root/public.txt"), "permission denied");
+await assertRejects(() => broadSandbox.fs.resolve("/root/public.txt"), "permission denied");
+await assertRejects(() => broadSandbox.fs.exists("/root/public.txt"), "permission denied");
 await assertRejects(() => sandbox.state.set("bad", undefined), "JSON serializable");
 await assertRejects(() => sandbox.fs.readFile("/root/secret.txt"), "sandbox denied");
 await assertRejects(() => sandbox.fs.writeOrCreateFile("/root/new.txt", "nope"), "sandbox denied");
@@ -48,6 +65,7 @@ await assertRejects(() => sandbox.processes.list(), "capability denied: process.
 await assertRejects(() => sandbox.packages.installFromRegistry("hello-notes"), "capability denied: package.manage");
 await assertRejects(() => sandbox.localMounts.mountLocal("disk"), "capability denied: localMount.manage");
 await assertRejects(() => openNonExecutableAppLauncher(), "permission denied");
+await assertRejects(() => os.fs.readFile("/root/public.txt", "/", os.permissions.principal(os.session)), "permission denied");
 
 console.log("permissions smoke ok shell sandbox denials");
 
@@ -78,6 +96,7 @@ function bootOs() {
   fs.writeOrCreateFile("/home/guest/readable.txt", "ok", "/", { owner: "guest", group: "users", permissions: "-rw-r--r--" }, system);
   fs.createDirectory("/root", "/", { owner: "root", group: "root", permissions: "drwx------" }, system);
   fs.writeOrCreateFile("/root/secret.txt", "secret", "/", { owner: "root", group: "root", permissions: "-rw-------" }, system);
+  fs.writeOrCreateFile("/root/public.txt", "public", "/", { owner: "root", group: "root", permissions: "-rw-r--r--" }, system);
   return {
     fs,
     permissions,
