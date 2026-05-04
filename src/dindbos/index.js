@@ -230,6 +230,7 @@ export class DindbOS {
       },
       phases,
       persistence: this.persistenceStatus(),
+      storageBuckets: this.storageBucketPolicy(),
     };
     this.fs.writeOrCreateFile("/var/log/dindbos/boot.json", `${JSON.stringify(payload, null, 2)}\n`, "/", {
       owner: "root",
@@ -479,9 +480,33 @@ export class DindbOS {
   diskPolicyAreas() {
     return DISK_POLICY_AREAS.map((area) => ({
       ...area,
+      bucket: this.storageBucketForArea(area),
       exists: this.fs.exists(area.root),
       usedBytes: this.fs.exists(area.root) ? this.countBytes(area.root) : 0,
     }));
+  }
+
+  storageBucketPolicy() {
+    const supported = Boolean(globalThis.navigator?.storageBuckets);
+    return {
+      supported,
+      decision: supported ? "available-but-not-mounted" : "fallback-to-current-storage-stack",
+      reason: supported
+        ? "Storage Buckets are detected, but DindbOS keeps the current OPFS/IndexedDB/Cache split until migration and quota semantics are verified."
+        : "Storage Buckets are unavailable in this runtime; /tmp, /var/cache, and durable app data stay separated by disk policy and storage backend selection.",
+      areas: DISK_POLICY_AREAS.map((area) => ({
+        root: area.root,
+        type: area.type,
+        bucket: this.storageBucketForArea(area),
+      })),
+    };
+  }
+
+  storageBucketForArea(area) {
+    if (area.root === "/tmp") return "session";
+    if (area.root === "/var/cache") return "cache";
+    if (area.root === "/home" || area.root === "/var" || area.root === "/opt") return "durable";
+    return "external-or-virtual";
   }
 
   diskPolicyForPath(path) {

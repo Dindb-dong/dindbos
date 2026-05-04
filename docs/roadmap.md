@@ -339,9 +339,10 @@ Already present:
 - `npm run smoke:files` verifies scheduled copy/import yields and nested byte preservation.
 - Viewer.app document/image preview bytes use the runtime Cache API store with memory fallback.
 - `npm run smoke:viewer` verifies preview cache namespace, writes, hits, and byte preservation.
+- Storage Buckets are evaluated as a future physical isolation layer: `os.storageBucketPolicy()` reports support detection and records the current decision to keep OPFS/IndexedDB/Cache as the active storage stack while disk policies mark `/tmp` as session, `/var/cache` as cache, and durable areas as durable bucket intent.
+- `npm run smoke:boot` verifies storage bucket policy reporting, disk-policy bucket intent for `/tmp` and `/var/cache`, and boot diagnostics persistence.
 
 Remaining:
-- Evaluate Storage Buckets for `/tmp`, `/var/cache`, and durable app data separation where available.
 - Define copy semantics for local mount directories: overwrite, merge, skip, or prompt.
 - Add mount rename through a native helper/companion later, instead of browser copy-delete.
 
