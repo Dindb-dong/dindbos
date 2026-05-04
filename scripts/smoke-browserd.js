@@ -47,7 +47,7 @@ try {
 
   const received = [];
   socket.addEventListener("message", async (event) => {
-    received.push(JSON.parse(await socketMessageText(event.data)));
+    received.push(await socketMessage(event.data));
   });
 
   await sendCommand(socket, 1, "resize", { width: 640, height: 420, deviceScaleFactor: 1 });
@@ -57,8 +57,10 @@ try {
   const frame = await waitForMessage(received, (message) => message.type === "frame", FRAME_TIMEOUT_MS);
 
   assert(frame.url === targetUrl, `frame url mismatch: ${frame.url}`);
-  assert(frame.data?.startsWith("data:image/jpeg;base64,"), "frame did not contain a jpeg data URL");
-  assert(frame.data.length > 1024, `frame payload too small: ${frame.data.length}`);
+  assert(frame.transport === "binary", `frame did not use binary transport: ${frame.transport}`);
+  assert(frame.mime === "image/jpeg", `frame mime mismatch: ${frame.mime}`);
+  assert(frame.payload?.byteLength > 1024, `frame payload too small: ${frame.payload?.byteLength}`);
+  assert(frame.payload[0] === 0xff && frame.payload[1] === 0xd8, "frame payload did not start with JPEG magic bytes");
 
   await sendCommand(socket, 4, "key", { key: "a", code: "KeyA", text: "a" });
   await sendCommand(socket, 5, "key", { key: "b", code: "KeyB", text: "b" });
@@ -92,7 +94,7 @@ try {
   );
 
   socket.close();
-  console.log(`browserd smoke ok port=${browserPort} cdp=${cdpPort} frameBytes=${frame.data.length}`);
+  console.log(`browserd smoke ok port=${browserPort} cdp=${cdpPort} frameBytes=${frame.payload.byteLength}`);
 } catch (error) {
   console.error(`browserd smoke failed: ${error.message}`);
   if (output.trim()) console.error(output.trim());
@@ -149,7 +151,8 @@ function waitForSocketResponse(socket, id) {
       reject(new Error(`command ${id} timed out`));
     }, COMMAND_TIMEOUT_MS);
     const onMessage = async (event) => {
-      const message = JSON.parse(await socketMessageText(event.data));
+      const message = await socketMessage(event.data);
+      if (!message.id) return;
       if (message.id !== id) return;
       cleanup();
       if (message.ok === false) reject(new Error(message.error || `command ${id} failed`));
@@ -205,6 +208,32 @@ async function socketMessageText(data) {
   if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
   if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
   return String(data || "");
+}
+
+async function socketMessage(data) {
+  if (!isBinarySocketData(data)) return JSON.parse(await socketMessageText(data));
+  const bytes = await socketMessageBytes(data);
+  if (bytes.byteLength < 4) throw new Error("binary browser frame missing header length");
+  const headerLength = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0);
+  if (bytes.byteLength < 4 + headerLength) throw new Error("binary browser frame header truncated");
+  const header = JSON.parse(new TextDecoder().decode(bytes.slice(4, 4 + headerLength)));
+  return {
+    ...header,
+    payload: bytes.slice(4 + headerLength),
+  };
+}
+
+function isBinarySocketData(data) {
+  return data instanceof ArrayBuffer
+    || ArrayBuffer.isView(data)
+    || (typeof Blob !== "undefined" && data instanceof Blob && typeof data.arrayBuffer === "function");
+}
+
+async function socketMessageBytes(data) {
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  if (typeof Blob !== "undefined" && data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
+  throw new Error("unsupported binary browser frame payload");
 }
 
 function smokePageUrl() {

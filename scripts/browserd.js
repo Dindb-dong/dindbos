@@ -136,7 +136,11 @@ class BrowserSocket {
     this.socket = socket;
     this.cdpPort = cdpPort;
     this.buffer = Buffer.alloc(0);
-    this.session = new BrowserSession(cdpPort, (message) => this.send(message));
+    this.session = new BrowserSession(
+      cdpPort,
+      (message) => this.send(message),
+      (metadata, bytes) => this.sendBinaryFrame(metadata, bytes),
+    );
     socket.on("data", (chunk) => this.handleData(chunk));
     socket.on("close", () => this.session.close());
     socket.on("error", () => this.session.close());
@@ -177,12 +181,18 @@ class BrowserSocket {
     if (this.socket.destroyed) return;
     this.socket.write(encodeFrame(JSON.stringify(message)));
   }
+
+  sendBinaryFrame(metadata, bytes) {
+    if (this.socket.destroyed) return;
+    this.socket.write(encodeFrame(encodeBinaryFrame(metadata, bytes), 2));
+  }
 }
 
 class BrowserSession {
-  constructor(cdpPort, send) {
+  constructor(cdpPort, send, sendBinaryFrame) {
     this.cdpPort = cdpPort;
     this.send = send;
+    this.sendBinaryFrame = sendBinaryFrame;
     this.cdp = null;
     this.width = 1280;
     this.height = 800;
@@ -382,13 +392,15 @@ class BrowserSession {
 
   sendFrame(data) {
     this.lastFrameAt = Date.now();
-    this.send({
+    const metadata = {
       type: "frame",
       status: "ready",
       url: this.metadata.url,
       title: this.metadata.title,
-      data: `data:image/jpeg;base64,${data}`,
-    });
+      mime: "image/jpeg",
+      transport: "binary",
+    };
+    this.sendBinaryFrame(metadata, Buffer.from(data, "base64"));
   }
 
   scheduleMetadataRefresh() {
@@ -525,6 +537,14 @@ function encodeFrame(payload, opcode = 1) {
   header[1] = 127;
   header.writeBigUInt64BE(BigInt(length), 2);
   return Buffer.concat([header, data]);
+}
+
+function encodeBinaryFrame(metadata, bytes) {
+  const header = Buffer.from(JSON.stringify(metadata), "utf8");
+  const body = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  const prefix = Buffer.alloc(4);
+  prefix.writeUInt32BE(header.length, 0);
+  return Buffer.concat([prefix, header, body]);
 }
 
 async function createTarget(port) {

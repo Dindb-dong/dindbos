@@ -93,6 +93,10 @@ export class BrowserCompanionClient {
   }
 
   async handleMessage(data) {
+    if (isBinarySocketData(data)) {
+      this.emitBinaryFrame(await decodeBrowserFrame(data));
+      return;
+    }
     const text = await socketMessageText(data);
     const message = JSON.parse(text);
     if (message.id && this.pending.has(message.id)) {
@@ -103,6 +107,10 @@ export class BrowserCompanionClient {
       return;
     }
     this.emit(message.type || "message", message);
+  }
+
+  emitBinaryFrame(message) {
+    this.emit(message.type || "frame", message);
   }
 
   send(type, payload = {}) {
@@ -168,6 +176,36 @@ async function socketMessageText(data) {
   if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
   if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
   return String(data || "");
+}
+
+function isBinarySocketData(data) {
+  return data instanceof ArrayBuffer
+    || ArrayBuffer.isView(data)
+    || (typeof Blob !== "undefined" && data instanceof Blob && typeof data.arrayBuffer === "function");
+}
+
+async function decodeBrowserFrame(data) {
+  const bytes = await socketMessageBytes(data);
+  if (bytes.byteLength < 4) throw new Error("browserd binary frame missing header length");
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const headerLength = view.getUint32(0);
+  if (headerLength <= 0 || bytes.byteLength < 4 + headerLength) throw new Error("browserd binary frame header is truncated");
+  const headerText = new TextDecoder().decode(bytes.slice(4, 4 + headerLength));
+  const header = JSON.parse(headerText);
+  const payload = bytes.slice(4 + headerLength);
+  const mime = String(header.mime || "image/jpeg");
+  return {
+    ...header,
+    bytes: payload.byteLength,
+    data: URL.createObjectURL(new Blob([payload], { type: mime })),
+  };
+}
+
+async function socketMessageBytes(data) {
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  if (typeof Blob !== "undefined" && data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
+  throw new Error("browserd binary frame has unsupported payload type");
 }
 
 function companionHealthUrl(url) {

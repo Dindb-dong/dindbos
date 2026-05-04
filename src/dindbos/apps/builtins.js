@@ -1538,6 +1538,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
   let wheelDeltaX = 0;
   let wheelDeltaY = 0;
   let wheelPoint = { x: 0, y: 0 };
+  let remoteFrameObjectUrl = state.frame.startsWith("blob:") ? state.frame : "";
   const lastResize = { width: 0, height: 0, scale: 0 };
   const persistState = () => windowApi?.setState?.("browser", browserSessionSnapshot(state));
   const setStatus = (status) => {
@@ -1549,6 +1550,8 @@ function renderBrowser(os, content, context = {}, windowApi) {
     os.processes.logSelf?.(`browser ${nextStatus}`);
   };
   const showFrame = (src) => {
+    if (remoteFrameObjectUrl && remoteFrameObjectUrl !== src) URL.revokeObjectURL(remoteFrameObjectUrl);
+    remoteFrameObjectUrl = src.startsWith("blob:") ? src : "";
     state.mode = "companion";
     state.frame = src;
     refs.placeholder.hidden = true;
@@ -1600,7 +1603,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     persistState();
   });
   client.on("frame", (message) => {
-    if (!message.data?.startsWith("data:image/")) {
+    if (!isBrowserFrameSource(message.data)) {
       setStatus("browserd frame missing image data");
       return;
     }
@@ -1717,6 +1720,8 @@ function renderBrowser(os, content, context = {}, windowApi) {
     refs.frame.hidden = true;
     refs.local.hidden = false;
     refs.local.srcdoc = html;
+    if (remoteFrameObjectUrl) URL.revokeObjectURL(remoteFrameObjectUrl);
+    remoteFrameObjectUrl = "";
     state.mode = "local";
     state.address = normalized;
     state.localHtml = html;
@@ -1750,6 +1755,11 @@ function renderBrowser(os, content, context = {}, windowApi) {
     }
     if (state.mode === "companion" && state.frame) showFrame(state.frame);
   }
+}
+
+function isBrowserFrameSource(value) {
+  const src = String(value || "");
+  return src.startsWith("data:image/") || src.startsWith("blob:");
 }
 
 function initialBrowserAddress(context = {}) {
