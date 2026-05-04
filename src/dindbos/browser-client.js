@@ -1,3 +1,7 @@
+export const BROWSERD_SERVICE = "dindbos-browserd";
+export const BROWSERD_PROTOCOL = "dindbos-browserd.v1";
+export const BROWSERD_REQUIRED_CAPABILITIES = ["browser.navigate", "browser.input", "browser.frames.binary"];
+
 export class BrowserCompanionClient {
   constructor(url = "ws://127.0.0.1:8787/browser") {
     this.url = url;
@@ -29,7 +33,7 @@ export class BrowserCompanionClient {
     if (this.connected) return Promise.resolve(this);
     if (this.connecting) return this.connecting;
     this.connecting = this.checkHealth().then(() => new Promise((resolve, reject) => {
-      const socket = new WebSocket(this.url);
+      const socket = new WebSocket(this.url, BROWSERD_PROTOCOL);
       this.socket = socket;
       this.closing = false;
       socket.addEventListener("open", () => {
@@ -86,9 +90,15 @@ export class BrowserCompanionClient {
     const response = await fetch(this.healthUrl, { cache: "no-store" });
     if (!response.ok) throw new Error(`browserd health check failed: ${response.status}`);
     const health = await response.json();
-    if (health.service !== "dindbos-browserd") {
+    if (health.service !== BROWSERD_SERVICE) {
       throw new Error(`port ${new URL(this.healthUrl).port} is not dindbos-browserd`);
     }
+    if (health.protocol !== BROWSERD_PROTOCOL) {
+      throw new Error(`browserd protocol mismatch: expected ${BROWSERD_PROTOCOL}, got ${health.protocol || "missing"}`);
+    }
+    const capabilities = Array.isArray(health.capabilities) ? health.capabilities : [];
+    const missing = BROWSERD_REQUIRED_CAPABILITIES.filter((capability) => !capabilities.includes(capability));
+    if (missing.length) throw new Error(`browserd missing capabilities: ${missing.join(", ")}`);
     return health;
   }
 

@@ -21,6 +21,7 @@ Added:
 - Browser.app clipboard paste forwarding from Ctrl/Cmd+V into remote companion pages through the explicit text insertion protocol.
 - Browser.app now snapshots address/title/status/frame/local-document state into the window state slot so minimize/focus/activate restore paths keep visible browser state.
 - Browser.app companion frames now use binary WebSocket payloads plus object URLs instead of base64 data URL transport.
+- Browser.app companion identity checks now require the expected health service, protocol version, capabilities, and WebSocket subprotocol before connecting.
 - Explicit runtime boot phase diagnostics for storage load, VFS mount, package registry load, app registry load, process init, and desktop render, persisted under `/var/log/dindbos`.
 - Recoverable storage-load and VFS mount restore failures now continue booting with `recovered` boot phase diagnostics.
 - Disk policy areas for `/home`, `/opt`, `/var`, `/var/cache`, `/tmp`, and `/mnt`, exposed through runtime APIs and `df`.

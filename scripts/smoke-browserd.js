@@ -41,8 +41,10 @@ try {
   await waitForHealth(browserPort);
   const health = await readHealth(browserPort);
   assert(health.service === "dindbos-browserd", `unexpected health service: ${JSON.stringify(health)}`);
+  assert(health.protocol === "dindbos-browserd.v1", `unexpected health protocol: ${JSON.stringify(health)}`);
+  assert(health.capabilities.includes("browser.frames.binary"), "health capabilities missing binary frames");
 
-  const socket = new WebSocket(`ws://127.0.0.1:${browserPort}/browser`);
+  const socket = new WebSocket(`ws://127.0.0.1:${browserPort}/browser`, "dindbos-browserd.v1");
   await once(socket, "open");
 
   const received = [];

@@ -152,10 +152,10 @@ Already present:
 - Health check and WebSocket protocol.
 - Browser.app companion client.
 - `docs/browserd.md` defines the local companion trust boundary, optional-runtime rule, direct-third-party-access restriction, and future companion/provider separation.
+- Browser.app checks `browserd` health service, protocol version, required capabilities, and WebSocket subprotocol before opening the companion boundary.
 
 Remaining:
 
-- Harden companion identity checks and failure handling.
 - Decide whether future companions handle file helper work, browser downloads, local mount rename, or other native-adjacent tasks.
 
 ### Stage 6: Desktop UX As A Runtime Client
@@ -220,6 +220,7 @@ Already present:
 - Browser.app forwards clipboard paste into remote pages and blocks companion downloads with visible status instead of silent writes.
 - Browser.app address/title/status session state is snapshotted into the window state slot and survives minimize/focus/activate flows.
 - Browser.app companion frames use binary WebSocket payloads with JSON headers and object URLs instead of base64 data URL transport.
+- Browser.app companion identity checks verify health service, protocol version, required capabilities, and WebSocket subprotocol before accepting `browserd`.
 
 Remaining:
 
