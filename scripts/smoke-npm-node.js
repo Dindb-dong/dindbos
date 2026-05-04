@@ -115,6 +115,13 @@ const pathPosixRequire = node.evaluate(
 assert(pathPosixRequire.status === 0, `path/posix require exited with ${pathPosixRequire.status}`);
 assert(pathPosixRequire.output.trim() === "/tmp/dindbos file.txt true", `unexpected path/posix require output: ${pathPosixRequire.output}`);
 
+const pathWin32Require = node.evaluate(
+  "const win32 = require('path/win32'); const path = require('path'); console.log(win32.join('C:/tmp', 'dindbos'), win32.basename('C:/tmp/file.txt'), win32.dirname('C:/tmp/file.txt'), win32.extname('file.txt'), win32.isAbsolute('C:/tmp'), path.win32 === win32);",
+  cwd,
+);
+assert(pathWin32Require.status === 0, `path/win32 require exited with ${pathWin32Require.status}`);
+assert(pathWin32Require.output.trim() === "C:\\tmp\\dindbos file.txt C:\\tmp .txt true true", `unexpected path/win32 require output: ${pathWin32Require.output}`);
+
 const builtinImport = await node.evaluate(
   [
     "import { URL } from 'node:url';",
@@ -138,6 +145,17 @@ const pathPosixImport = await node.evaluate(
 );
 assert(pathPosixImport.status === 0, `path/posix import exited with ${pathPosixImport.status}`);
 assert(pathPosixImport.output.trim() === "/home/guest .md", `unexpected path/posix import output: ${pathPosixImport.output}`);
+
+const pathWin32Import = await node.evaluate(
+  [
+    "import win32, { relative } from 'node:path/win32';",
+    "console.log(win32.normalize('C:/tmp/../app/file.md'), relative('C:/tmp/app', 'C:/tmp/app/nested/file.md'));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(pathWin32Import.status === 0, `path/win32 import exited with ${pathWin32Import.status}`);
+assert(pathWin32Import.output.trim() === "C:\\app\\file.md nested\\file.md", `unexpected path/win32 import output: ${pathWin32Import.output}`);
 
 const processProbeRequire = node.evaluate(
   [
