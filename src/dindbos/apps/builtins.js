@@ -1623,6 +1623,20 @@ function renderBrowser(os, content, context = {}, windowApi) {
     event.preventDefault();
     await openAddress(refs.address.value);
   });
+  refs.form.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      refs.viewport.focus();
+    }
+  });
+  content.addEventListener("keydown", (event) => {
+    const action = browserChromeShortcut(event);
+    if (action === "focus-address") {
+      event.preventDefault();
+      refs.address.focus();
+      refs.address.select();
+    }
+  });
   refs.form.querySelectorAll("[data-browser-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       const action = button.dataset.browserAction;
@@ -1664,6 +1678,13 @@ function renderBrowser(os, content, context = {}, windowApi) {
   }, { passive: false });
   refs.viewport.addEventListener("keydown", async (event) => {
     if (!client.connected || refs.frame.hidden) return;
+    const chromeAction = browserChromeShortcut(event);
+    if (chromeAction === "focus-address") {
+      event.preventDefault();
+      refs.address.focus();
+      refs.address.select();
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
       event.preventDefault();
       try {
@@ -1838,7 +1859,13 @@ function browserViewportPoint(element, event) {
   };
 }
 
-function browserKeyEventPayload(event) {
+export function browserChromeShortcut(event) {
+  const key = String(event?.key || "").toLowerCase();
+  if ((event?.metaKey || event?.ctrlKey) && key === "l") return "focus-address";
+  return "";
+}
+
+export function browserKeyEventPayload(event) {
   const key = String(event.key || "");
   if (!key || key === "Unidentified") return null;
   const modifiers = (event.altKey ? 1 : 0)

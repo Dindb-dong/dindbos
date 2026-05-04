@@ -2,6 +2,8 @@
 import {
   BROWSER_LOCAL_HTML_SANDBOX,
   browserSessionSnapshot,
+  browserChromeShortcut,
+  browserKeyEventPayload,
   createBrowserSessionState,
   normalizeBrowserAddress,
 } from "../src/dindbos/apps/builtins.js";
@@ -44,6 +46,18 @@ assert(invalidSession.mode === "idle", "browser session accepted invalid restore
 assert(invalidSession.address === "/home/guest/page.html", "browser session dropped restored local address");
 const snapshot = browserSessionSnapshot({ mode: "local", status: "local document /x.html", address: "/x.html", title: "x.html", localHtml: "<h1>x</h1>" });
 assert(snapshot.mode === "local" && snapshot.localHtml.includes("<h1>x</h1>"), "browser session snapshot lost local state");
+
+assert(browserChromeShortcut({ key: "l", ctrlKey: true }) === "focus-address", "ctrl-l did not focus browser address");
+assert(browserChromeShortcut({ key: "L", metaKey: true }) === "focus-address", "cmd-l did not focus browser address");
+assert(browserChromeShortcut({ key: "l" }) === "", "plain l should not focus browser address");
+const tab = browserKeyEventPayload({ key: "Tab", code: "Tab", shiftKey: true });
+assert(tab.key === "Tab" && tab.modifiers === 8 && tab.text === undefined, "shift-tab payload mismatch");
+const selectAll = browserKeyEventPayload({ key: "a", code: "KeyA", ctrlKey: true });
+assert(selectAll.key === "a" && selectAll.modifiers === 2 && selectAll.text === undefined, "ctrl-a selection shortcut payload mismatch");
+const copy = browserKeyEventPayload({ key: "c", code: "KeyC", metaKey: true });
+assert(copy.key === "c" && copy.modifiers === 4 && copy.text === undefined, "cmd-c shortcut payload mismatch");
+const printable = browserKeyEventPayload({ key: "x", code: "KeyX" });
+assert(printable.key === "x" && printable.text === "x", "printable text payload mismatch");
 
 console.log("browser address smoke ok");
 

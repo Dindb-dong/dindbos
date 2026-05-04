@@ -80,13 +80,20 @@ try {
     (message) => message.type === "status" && message.title === "modifier:ctrl-a",
     COMMAND_TIMEOUT_MS,
   );
-  await sendCommand(socket, 10, "navigate", { url: downloadPageUrl() });
+  await sendCommand(socket, 10, "key", { key: "Tab", code: "Tab" });
+  await sendCommand(socket, 11, "key", { key: "Tab", code: "Tab", modifiers: 8 });
+  await waitForMessage(
+    received,
+    (message) => message.type === "status" && message.title === "focus:INPUT",
+    COMMAND_TIMEOUT_MS,
+  );
+  await sendCommand(socket, 12, "navigate", { url: downloadPageUrl() });
   await waitForMessage(
     received,
     (message) => message.type === "status" && message.title === "DindbOS Download Smoke",
     COMMAND_TIMEOUT_MS,
   );
-  await sendCommand(socket, 11, "click", { x: 78, y: 58 });
+  await sendCommand(socket, 13, "click", { x: 78, y: 58 });
   await waitForMessage(
     received,
     (message) => message.type === "status"
@@ -283,6 +290,9 @@ function smokePageUrl() {
                 typed += event.key;
                 document.title = "typed:" + typed;
               }
+            });
+            document.addEventListener("focusin", (event) => {
+              document.title = "focus:" + event.target.tagName;
             });
           });
         </script>

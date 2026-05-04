@@ -221,10 +221,10 @@ Already present:
 - Browser.app address/title/status session state is snapshotted into the window state slot and survives minimize/focus/activate flows.
 - Browser.app companion frames use binary WebSocket payloads with JSON headers and object URLs instead of base64 data URL transport.
 - Browser.app companion identity checks verify health service, protocol version, required capabilities, and WebSocket subprotocol before accepting `browserd`.
+- Browser.app keyboard policy supports Ctrl/Cmd+L address focus, Escape back to remote viewport, Tab/Shift+Tab remote focus movement, and modifier shortcuts for remote text selection/copy/cut/paste.
 
 Remaining:
 
-- Expand Browser.app keyboard policy for focus movement, text selection, and full shortcut behavior.
 - Evaluate WebRTC/video stream only after the current CDP screencast protocol is stable.
 
 Completion criteria:
@@ -486,6 +486,7 @@ Already present:
 - Browser.app stores address/title/status/frame/local-document session state in the window state slot so minimize, focus, activation, and render restore paths do not reset visible browser state.
 - `npm run smoke:browser-addresses` verifies Browser.app session snapshots; `npm run smoke:window-manager` verifies window state survives minimize/focus/activate.
 - Binary frame transport sends Chromium JPEG screencast bytes over WebSocket binary messages and Browser.app renders them through object URLs, covered by `npm run smoke:browserd` and `npm run smoke:browser-client`.
+- Browser.app keyboard policy covers address focus, viewport focus restore, remote Tab/Shift+Tab focus movement, and remote modifier shortcuts, covered by `npm run smoke:browser-addresses` and `npm run smoke:browserd`.
 
 Remaining:
 
