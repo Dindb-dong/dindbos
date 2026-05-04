@@ -71,7 +71,7 @@ Already present:
 
 ### Stage 2: Durable Disk And Mounts
 
-Status: In progress.
+Status: Done first pass.
 
 Goal: Files are real runtime state, not demo content.
 
@@ -770,7 +770,7 @@ Goal: Storage, npm install, NodeCompat, and process visibility have enough verif
 
 Tasks:
 
-- Add focused smoke coverage when a new risky browser-runtime path is introduced.
+- No open runtime confidence task is currently identified; add focused smoke coverage when a new risky browser-runtime path is introduced.
 
 ### Milestone C: Document Workloads
 
