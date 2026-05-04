@@ -200,6 +200,27 @@ const assertQueryImport = await node.evaluate(
 assert(assertQueryImport.status === 0, `assert/querystring import exited with ${assertQueryImport.status}`);
 assert(assertQueryImport.output.trim() === "assert-querystring-esm", `unexpected assert/querystring import output: ${assertQueryImport.output}`);
 
+const punycodeRequire = node.evaluate(
+  [
+    "const punycode = require('punycode');",
+    "console.log(punycode.encode('mañana'), punycode.decode('maana-pta'), punycode.toASCII('mañana.com'), punycode.toUnicode('xn--maana-pta.com'));",
+  ].join("\n"),
+  cwd,
+);
+assert(punycodeRequire.status === 0, `punycode require exited with ${punycodeRequire.status}`);
+assert(punycodeRequire.output.trim() === "maana-pta mañana xn--maana-pta.com mañana.com", `unexpected punycode require output: ${punycodeRequire.output}`);
+
+const punycodeImport = await node.evaluate(
+  [
+    "import punycode, { toASCII, toUnicode, ucs2 } from 'node:punycode';",
+    "console.log(toASCII('bücher.example'), toUnicode('xn--bcher-kva.example'), ucs2.encode(ucs2.decode('🍎')), punycode.version);",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(punycodeImport.status === 0, `punycode import exited with ${punycodeImport.status}`);
+assert(punycodeImport.output.trim() === "xn--bcher-kva.example bücher.example 🍎 2.1.0-dindbos", `unexpected punycode import output: ${punycodeImport.output}`);
+
 const osRequire = node.evaluate(
   [
     "const os = require('os');",
