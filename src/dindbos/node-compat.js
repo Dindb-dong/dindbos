@@ -219,9 +219,10 @@ class CommonJsRuntime {
     this.process = this.createProcess();
     this.console = this.createConsole();
     const events = createEventsModule();
+    const stream = createStreamModule(events);
     const utilTypes = createUtilTypesModule();
     this.builtins = {
-      fs: this.createFsModule(),
+      fs: this.createFsModule(stream),
       path: this.createPathModule(),
       process: this.process,
       buffer: { Buffer: this.buffer },
@@ -232,7 +233,7 @@ class CommonJsRuntime {
       timers: createTimersModule(),
       perf_hooks: createPerfHooksModule(),
       async_hooks: createAsyncHooksModule(),
-      stream: createStreamModule(events),
+      stream,
       crypto: createCryptoModule(this.buffer),
       assert: createAssertModule(),
       querystring: createQuerystringModule(),
@@ -456,7 +457,7 @@ class CommonJsRuntime {
     return pathModule;
   }
 
-  createFsModule() {
+  createFsModule(streamModule) {
     const fsModule = {
       readFileSync: (path, encoding = null) => {
         const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
@@ -488,6 +489,36 @@ class CommonJsRuntime {
       },
       rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", options, this.node.system),
       unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", {}, this.node.system),
+      createReadStream: (path, options = {}) => {
+        const streamOptions = normalizeStreamOptions(options);
+        const data = fsModule.readFileSync(path, streamOptions.encoding || null);
+        const stream = streamModule.Readable.from([data]);
+        stream.path = path;
+        stream.bytesRead = data?.length || 0;
+        stream.pending = false;
+        if (streamOptions.autoClose !== false) stream.on("end", () => stream.emit("close"));
+        return stream;
+      },
+      createWriteStream: (path, options = {}) => {
+        const streamOptions = normalizeStreamOptions(options);
+        const chunks = [];
+        const stream = new streamModule.Writable({
+          write: (chunk, encoding, callback) => {
+            chunks.push(chunk);
+            stream.bytesWritten += measureChunkLength(chunk, this.buffer, encoding);
+            callback?.();
+          },
+          final: (callback) => {
+            fsModule.writeFileSync(path, mergeStreamChunks(chunks, this.buffer, streamOptions.encoding || "utf8"));
+            callback?.();
+          },
+        });
+        stream.path = path;
+        stream.bytesWritten = 0;
+        stream.pending = false;
+        if (streamOptions.autoClose !== false) stream.on("finish", () => stream.emit("close"));
+        return stream;
+      },
     };
     fsModule.promises = {
       readFile: async (path, encoding = null) => fsModule.readFileSync(path, encoding),
@@ -2522,6 +2553,22 @@ function rotateRight(value, bits) {
 function stringifyFileData(data) {
   if (data instanceof Uint8Array) return new TextDecoder().decode(data);
   return String(data ?? "");
+}
+
+function normalizeStreamOptions(options = {}) {
+  if (typeof options === "string") return { encoding: options };
+  return options || {};
+}
+
+function measureChunkLength(chunk, buffer, encoding = "utf8") {
+  if (chunk instanceof Uint8Array) return chunk.length;
+  return buffer.byteLength(String(chunk ?? ""), encoding);
+}
+
+function mergeStreamChunks(chunks, buffer, encoding = "utf8") {
+  if (!chunks.length) return "";
+  if (chunks.every((chunk) => typeof chunk === "string")) return chunks.join("");
+  return buffer.concat(chunks.map((chunk) => (chunk instanceof Uint8Array ? chunk : buffer.from(String(chunk ?? ""), encoding))));
 }
 
 function createStats(stat) {
