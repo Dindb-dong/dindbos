@@ -630,10 +630,8 @@ Already present:
 - `npm run smoke:permissions` verifies that a world-readable file inside non-executable `/root` is still blocked by traversal permissions.
 - Login session state exists as an OS primitive: the runtime exposes `sessionStatus()`, `lockSession()`, and `unlockSession()`, persists status under `/var/run/dindbos/session.json`, emits `session:lock`/`session:unlock`, and blocks Shell plus app/path launch while locked.
 - `npm run smoke:sessions` verifies session status persistence, lock/unlock events, locked shell denial, locked file-open denial, and unlocked shell recovery.
-
-Remaining:
-
-- User/group management.
+- User/group management exists as a runtime registry under `/etc/dindbos/users.json`, with `listUsers()`, `listGroups()`, `createUser()`, `createGroup()`, `addUserToGroup()`, and `removeUserFromGroup()` APIs. Creating a user sanitizes browser-safe ids, persists group membership, and creates the owned home workspace.
+- `npm run smoke:sessions` verifies active-session registration, user/group creation, membership add/remove, persisted registry records, duplicate-user denial, and generated home ownership.
 
 Completion criteria:
 

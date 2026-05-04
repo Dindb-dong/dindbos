@@ -65,6 +65,23 @@ assert(sessionStatus.state === "authenticated" && sessionStatus.locked === false
 const persistedSession = JSON.parse(os.fs.readFile("/var/run/dindbos/session.json"));
 assert(persistedSession.user === "ada-lovelace", "session status file user mismatch");
 assert(persistedSession.state === "authenticated", "session status file state mismatch");
+const initialUsers = os.listUsers();
+assert(initialUsers.some((user) => user.user === "ada-lovelace"), "active session user was not registered");
+assert(os.listGroups().some((group) => group.group === "research-team" && group.members.includes("ada-lovelace")), "active session group membership was not registered");
+const operators = os.createGroup("Operators");
+assert(operators.group === "operators", "createGroup did not sanitize group name");
+const grace = os.createUser("Grace Hopper", { groups: ["users", "Operators"] });
+assert(grace.user === "grace-hopper", `createUser did not sanitize user: ${grace.user}`);
+assert(os.fs.stat("/home/grace-hopper/Documents").owner === "grace-hopper", "createUser did not create owned home workspace");
+assert(os.listGroups().find((group) => group.group === "operators").members.includes("grace-hopper"), "createUser did not add user to group membership");
+const release = os.addUserToGroup("Grace Hopper", "Release Team");
+assert(release.user.groups.includes("release-team"), "addUserToGroup did not update user groups");
+assert(release.group.members.includes("grace-hopper"), "addUserToGroup did not update group members");
+const removed = os.removeUserFromGroup("Grace Hopper", "Operators");
+assert(!removed.groups.includes("operators"), "removeUserFromGroup did not remove user group");
+const userDb = JSON.parse(os.fs.readFile("/etc/dindbos/users.json"));
+assert(userDb.users["grace-hopper"].home === "/home/grace-hopper", "user database did not persist created user");
+assertRejects(() => os.createUser("Grace Hopper"), "already exists");
 
 const events = [];
 os.bus.on("session:lock", (event) => events.push(`lock:${event.state}:${event.reason}`));
