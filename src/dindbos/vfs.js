@@ -14,6 +14,7 @@ export class VirtualFileSystem {
   list(path = "/", cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "directory") return [];
+    this.assertTraversalAccess(node.path, "/", principal);
     this.assertAccess(node, "read", principal, node.path);
     this.assertAccess(node, "execute", principal, node.path);
     return (node.children || [])
@@ -51,6 +52,7 @@ export class VirtualFileSystem {
   readFile(path, cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
+    this.assertTraversalAccess(node.path, "/", principal);
     this.assertAccess(node, "read", principal, node.path);
     return fileContentToText(node.content);
   }
@@ -58,6 +60,7 @@ export class VirtualFileSystem {
   readFileBytes(path, cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
+    this.assertTraversalAccess(node.path, "/", principal);
     this.assertAccess(node, "read", principal, node.path);
     return fileContentToBytes(node.content);
   }
@@ -65,6 +68,7 @@ export class VirtualFileSystem {
   writeFile(path, content, cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
+    this.assertTraversalAccess(node.path, "/", principal);
     this.assertAccess(node, "write", principal, node.path);
     node.content = normalizeFileContent(content, { mime: node.mime });
     node.size = fileContentByteLength(node.content);
@@ -91,6 +95,7 @@ export class VirtualFileSystem {
     const existing = this.resolve(normalized);
     if (existing) return this.writeFile(normalized, content, "/", principal);
     const parent = this.parentFor(normalized);
+    this.assertTraversalAccess(parent.path, "/", principal);
     this.assertAccess(parent, "write", principal, parent.path);
     this.assertAccess(parent, "execute", principal, parent.path);
     const name = this.basename(normalized);
@@ -121,6 +126,7 @@ export class VirtualFileSystem {
     const normalized = this.normalize(path, cwd);
     if (this.exists(normalized)) throw new Error(`mkdir: ${normalized}: file exists`);
     const parent = this.parentFor(normalized);
+    this.assertTraversalAccess(parent.path, "/", principal);
     this.assertAccess(parent, "write", principal, parent.path);
     this.assertAccess(parent, "execute", principal, parent.path);
     const node = this.createNode({
@@ -155,6 +161,7 @@ export class VirtualFileSystem {
       return this.withPath(existing, normalized);
     }
     const parent = this.parentFor(normalized);
+    this.assertTraversalAccess(parent.path, "/", principal);
     this.assertAccess(parent, "write", principal, parent.path);
     this.assertAccess(parent, "execute", principal, parent.path);
     const node = this.createNode({
@@ -176,6 +183,7 @@ export class VirtualFileSystem {
     const normalized = this.normalize(path);
     if (this.exists(normalized)) throw new Error(`mount: ${normalized}: file exists`);
     const parent = this.parentFor(normalized);
+    this.assertTraversalAccess(parent.path, "/", principal);
     this.assertAccess(parent, "write", principal, parent.path);
     this.assertAccess(parent, "execute", principal, parent.path);
     const node = this.createNode({
@@ -200,6 +208,7 @@ export class VirtualFileSystem {
     if (normalized === "/") throw new Error("rm: cannot remove root");
     const { parent, node, index } = this.lookupChild(normalized);
     if (!node) throw new Error(`rm: ${path}: no such file or directory`);
+    this.assertTraversalAccess(parent.path, "/", principal);
     this.assertAccess(parent, "write", principal, parent.path);
     this.assertAccess(parent, "execute", principal, parent.path);
     if ((node.type === "directory" || node.type === "mount") && node.children?.length && !options.recursive) {
@@ -213,6 +222,7 @@ export class VirtualFileSystem {
   copy(sourcePath, destinationPath, cwd = "/", options = {}, principal = this.systemPrincipal) {
     const source = this.resolve(sourcePath, cwd);
     if (!source) throw new Error(`cp: ${sourcePath}: no such file or directory`);
+    this.assertTraversalAccess(source.path, "/", principal);
     this.assertAccess(source, "read", principal, source.path);
     if (source.type === "directory" || source.type === "mount") this.assertAccess(source, "execute", principal, source.path);
     if ((source.type === "directory" || source.type === "mount") && !options.recursive) throw new Error(`cp: ${sourcePath}: is a directory`);
@@ -225,6 +235,7 @@ export class VirtualFileSystem {
     }
     if (this.exists(destinationPathNormalized)) throw new Error(`cp: ${destinationPathNormalized}: file exists`);
     const parent = this.parentFor(destinationPathNormalized);
+    this.assertTraversalAccess(parent.path, "/", principal);
     this.assertAccess(parent, "write", principal, parent.path);
     this.assertAccess(parent, "execute", principal, parent.path);
     const copy = cloneNode(source);
@@ -240,6 +251,7 @@ export class VirtualFileSystem {
     if (normalizedSource === "/") throw new Error("mv: cannot move root");
     const { parent: sourceParent, node, index } = this.lookupChild(normalizedSource);
     if (!node) throw new Error(`mv: ${sourcePath}: no such file or directory`);
+    this.assertTraversalAccess(sourceParent.path, "/", principal);
     this.assertAccess(sourceParent, "write", principal, sourceParent.path);
     this.assertAccess(sourceParent, "execute", principal, sourceParent.path);
     const destination = this.resolve(destinationPath, cwd);
@@ -251,6 +263,7 @@ export class VirtualFileSystem {
     }
     if (this.exists(normalizedDestination)) throw new Error(`mv: ${normalizedDestination}: file exists`);
     const targetParent = this.parentFor(normalizedDestination);
+    this.assertTraversalAccess(targetParent.path, "/", principal);
     this.assertAccess(targetParent, "write", principal, targetParent.path);
     this.assertAccess(targetParent, "execute", principal, targetParent.path);
     sourceParent.children.splice(index, 1);
@@ -267,6 +280,7 @@ export class VirtualFileSystem {
     }
     const node = this.resolve(path, cwd);
     if (!node) throw new Error(`chmod: ${path}: no such file or directory`);
+    this.assertTraversalAccess(node.path, "/", principal);
     if (!principal.system && principal.user !== "root" && principal.user !== (node.owner || "root")) {
       throw new Error(`chmod: ${path}: permission denied`);
     }
@@ -276,23 +290,27 @@ export class VirtualFileSystem {
     return this.withPath(node, node.path);
   }
 
-  stat(path, cwd = "/") {
+  stat(path, cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node) return null;
+    this.assertTraversalAccess(node.path, "/", principal);
     return this.nodeStat(node, node.path);
   }
 
-  lstat(path, cwd = "/") {
+  lstat(path, cwd = "/", principal = this.systemPrincipal) {
     const normalized = this.normalize(path, cwd);
     if (normalized === "/") return this.nodeStat(this.root, "/");
     const parts = normalized.split("/").filter(Boolean);
     const parentPath = `/${parts.slice(0, -1).join("/")}`;
     const parent = this.resolve(parentPath || "/");
     const node = parent?.children?.find((child) => child.name === parts.at(-1));
-    return node ? this.nodeStat(this.withPath(node, normalized), normalized) : null;
+    if (!node) return null;
+    this.assertTraversalAccess(normalized, "/", principal);
+    return this.nodeStat(this.withPath(node, normalized), normalized);
   }
 
-  exists(path, cwd = "/") {
+  exists(path, cwd = "/", principal = this.systemPrincipal) {
+    this.assertTraversalAccess(path, cwd, principal);
     return Boolean(this.resolve(path, cwd));
   }
 
@@ -372,6 +390,19 @@ export class VirtualFileSystem {
   assertAccess(node, access, principal, path) {
     if (!this.policy) return;
     this.policy.assert(node, access, principal, path);
+  }
+
+  assertTraversalAccess(path, cwd = "/", principal = this.systemPrincipal) {
+    if (!this.policy || principal?.system || principal?.user === "root") return;
+    const normalized = this.normalize(path, cwd);
+    const parts = normalized.split("/").filter(Boolean);
+    let cursor = "/";
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      cursor = this.join(cursor, parts[index]);
+      const node = this.resolve(cursor);
+      if (!node) return;
+      this.assertAccess(node, "execute", principal, cursor);
+    }
   }
 
   emitChange(action, path) {

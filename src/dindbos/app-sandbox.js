@@ -58,6 +58,7 @@ export class AppSandbox {
       resolve: (path = "/", cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
+        this.os.fs.assertTraversalAccess(normalized, "/", this.principal);
         return this.os.fs.resolve(normalized);
       },
       resolveNode: (node) => this.os.fs.resolveNode(node),
@@ -143,17 +144,17 @@ export class AppSandbox {
       stat: (path, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
-        return this.os.fs.stat(normalized);
+        return this.os.fs.stat(normalized, "/", this.principal);
       },
       lstat: (path, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
-        return this.os.fs.lstat(normalized);
+        return this.os.fs.lstat(normalized, "/", this.principal);
       },
       exists: (path, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
-        return this.os.fs.exists(normalized);
+        return this.os.fs.exists(normalized, "/", this.principal);
       },
       isLink: (node) => this.os.fs.isLink(node),
       normalize: (path, cwd = this.process.cwd) => this.os.fs.normalize(path, cwd),

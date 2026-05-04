@@ -225,7 +225,7 @@ export class ShellSession {
     if (command === "mv") return this.mv(args);
     if (command === "chmod") return this.chmod(args);
     if (command === "stat") return this.stat(args[0] || this.cwd);
-    if (command === "readlink") return this.os.fs.lstat(args[0] || this.cwd, this.cwd)?.target || "";
+    if (command === "readlink") return this.os.fs.lstat(args[0] || this.cwd, this.cwd, this.principal)?.target || "";
     if (command === "find") return this.find(args);
     if (command === "open") {
       this.os.openPath(this.os.fs.normalize(args[0] || this.cwd, this.cwd));
@@ -601,7 +601,7 @@ export class ShellSession {
 
   stat(path) {
     if (this.isLocalPath(path)) return this.os.localMounts.stat(path, this.cwd).then(formatStat);
-    return formatStat(this.os.fs.stat(path, this.cwd));
+    return formatStat(this.os.fs.stat(path, this.cwd, this.principal));
   }
 
   async touchOne(path) {
