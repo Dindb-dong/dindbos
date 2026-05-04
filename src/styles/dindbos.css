@@ -931,6 +931,58 @@ button {
   text-transform: uppercase;
 }
 
+/* Files operation history */
+.files-operation-history {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* Files operation history empty text */
+.files-operation-history > p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Files operation history list */
+.files-operation-history ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Files operation history item */
+.files-operation-history li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Files operation history error */
+.files-operation-history li[data-operation-history-status="error"] {
+  border-color: rgba(225, 88, 69, 0.44);
+}
+
+/* Files operation history text */
+.files-operation-history span,
+.files-operation-history small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Files context menu */
 .files-context-menu {
   position: fixed;
@@ -1043,7 +1095,7 @@ button {
 /* Activity Monitor app */
 .activity-app {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 14px;
   height: 100%;
   min-height: 360px;
@@ -1079,6 +1131,45 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.06);
+}
+
+/* Activity filters */
+.activity-controls {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(128px, auto) minmax(118px, auto) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Activity filter fields */
+.activity-controls input,
+.activity-controls select,
+.activity-controls button {
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+/* Activity text filter */
+.activity-controls input {
+  padding: 0 10px;
+}
+
+/* Activity select filter */
+.activity-controls select {
+  padding: 0 8px;
+}
+
+/* Activity sort direction */
+.activity-controls button {
+  padding: 0 12px;
+  cursor: pointer;
+  font-weight: 800;
 }
 
 /* Activity main grid */
@@ -1246,6 +1337,129 @@ button {
   white-space: pre-wrap;
 }
 
+/* Browser app */
+.browser-app {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 360px;
+  margin: -18px;
+  overflow: hidden;
+  background: rgba(8, 10, 7, 0.74);
+}
+
+/* Browser toolbar */
+.browser-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, max-content) minmax(180px, 1fr) repeat(2, max-content);
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 12, 9, 0.78);
+}
+
+/* Browser toolbar controls */
+.browser-toolbar button,
+.browser-toolbar input {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+/* Browser toolbar button */
+.browser-toolbar button {
+  cursor: pointer;
+}
+
+/* Browser address input */
+.browser-toolbar input {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Browser status bar */
+.browser-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Browser status text */
+.browser-status span,
+.browser-status code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Browser viewport */
+.browser-viewport {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+  outline: 0;
+  background: #0b0d0a;
+}
+
+/* Browser placeholder */
+.browser-placeholder {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+
+/* Browser hidden panes */
+.browser-placeholder[hidden],
+.browser-viewport img[hidden],
+.browser-viewport iframe[hidden] {
+  display: none;
+}
+
+/* Browser placeholder heading */
+.browser-placeholder h2 {
+  max-width: 520px;
+  margin: 0;
+}
+
+/* Browser command hint */
+.browser-placeholder pre {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Browser rendered frame */
+.browser-viewport img,
+.browser-viewport iframe {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  background: white;
+}
+
+/* Browser remote frame */
+.browser-viewport img {
+  object-fit: fill;
+  object-position: top left;
+}
+
 /* Text app */
 .text-app {
   display: grid;
@@ -1327,8 +1541,67 @@ button {
   margin: 0;
 }
 
-/* Viewer preview */
-.viewer-app pre {
+/* Viewer header */
+.viewer-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Viewer toolbar */
+.viewer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 6px;
+}
+
+/* Viewer toolbar button */
+.viewer-toolbar button {
+  min-width: 34px;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* Viewer disabled toolbar button */
+.viewer-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+/* Viewer status */
+.viewer-status {
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Viewer preview surface */
+.viewer-preview {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Viewer zoomed content */
+.viewer-preview > * {
+  transform: scale(var(--viewer-zoom, 1));
+  transform-origin: top left;
+}
+
+/* Viewer text preview */
+.viewer-preview pre {
   min-height: 320px;
   margin: 0;
   overflow: auto;
@@ -1340,8 +1613,8 @@ button {
 }
 
 /* Viewer media */
-.viewer-app img,
-.viewer-app iframe {
+.viewer-preview img,
+.viewer-preview iframe {
   width: 100%;
   min-height: 320px;
   max-height: 100%;
@@ -1349,6 +1622,38 @@ button {
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.08);
   object-fit: contain;
+}
+
+/* Viewer deck frame */
+.viewer-deck {
+  aspect-ratio: 16 / 10;
+  min-height: 420px;
+}
+
+/* Viewer markdown */
+.viewer-markdown {
+  min-height: 320px;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  line-height: 1.55;
+}
+
+/* Viewer markdown block spacing */
+.viewer-markdown > * {
+  margin: 0 0 12px;
+}
+
+/* Viewer markdown lists */
+.viewer-markdown ul {
+  padding-left: 20px;
+}
+
+/* Viewer markdown code */
+.viewer-markdown code {
+  font-family: var(--mono);
 }
 
 /* Package app */
@@ -1665,6 +1970,11 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Mobile activity filters */
+  .activity-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(96px, auto);
+  }
+
   /* Mobile activity table */
   .activity-table {
     max-height: 230px;
@@ -1680,6 +1990,21 @@ button {
   /* Mobile activity trimmed cells */
   .activity-row span:nth-child(4),
   .activity-row span:nth-child(5) {
+    display: none;
+  }
+
+  /* Mobile browser toolbar */
+  .browser-toolbar {
+    grid-template-columns: repeat(3, max-content) minmax(140px, 1fr) max-content;
+  }
+
+  /* Mobile browser connect button */
+  .browser-toolbar [data-browser-action="connect"] {
+    display: none;
+  }
+
+  /* Mobile browser status */
+  .browser-status code {
     display: none;
   }
 

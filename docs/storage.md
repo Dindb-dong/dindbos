@@ -6,7 +6,8 @@ DindbOS uses browser storage as a layered disk model.
 /home/guest        internal browser disk
 /opt               installed packages
 /var/lib/dindbos   package and runtime records
-/var/cache         future package and asset cache
+/var/cache         package and document cache policy area
+/tmp               temporary scratch policy area
 /mnt/<name>        user-selected local folders
 ```
 
@@ -25,12 +26,25 @@ Current implementation:
 - `storage persist` requests persistent browser storage.
 - `storage flush` forces pending filesystem writes to commit immediately.
 - Settings.app exposes storage quota, pending write state, manual flush, and local mount management.
+- When filesystem writes are pending or in flight, DindbOS attempts a best-effort flush during `beforeunload`, `pagehide`, and hidden-tab visibility changes. `beforeunload` also asks the browser to show its native leave-page prompt while pending writes exist.
 - `mount-local [name]` uses File System Access API to mount a user-selected folder under `/mnt`.
 - `mount-local --list` reports persisted and runtime local mounts.
 - `mount-local --restore` requests permission again and reconnects persisted local mounts.
 - `mount-local --forget <path>` removes a persisted local mount handle.
 - `umount [--forget] <path>` detaches a local folder, optionally removing its persisted handle.
 - Terminal file operations can copy text files between internal DindbOS paths and local mounts.
+- `os.diskPolicyAreas()`, `os.diskPolicyForPath(path)`, and `df` expose policy areas for `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache`.
+
+Smoke test:
+
+```text
+npm run smoke:storage
+npm run smoke:persistent-storage
+npm run smoke:files
+npm run smoke:local-mounts
+```
+
+The storage smoke test writes text and binary files, verifies copied bytes, serializes a binary content record, reloads through a VFS snapshot, and fails if any byte changes. The persistent storage smoke test verifies localStorage-style snapshot fallback and OPFS write-failure fallback with binary bytes. The Files.app smoke test exports a directory archive and imports it again, then verifies nested binary bytes. The local mounts smoke test verifies that a permission-denied directory handle fails before creating a runtime mount or VFS mount node.
 
 Example:
 
@@ -53,13 +67,14 @@ Planned storage stack:
 - OPFS for internal file contents and inode metadata records
 - IndexedDB for package records, structured handles, and browser objects that OPFS cannot store
 - Cache API for npm tarballs, registry responses, documents, and image caches
+- Current Cache API coverage: npm metadata/tarballs and remote package manifests/files, with memory fallback
 - File System Access API for external local folder mounts
-- Storage Buckets where available for `/tmp`, `/var/cache`, and durable app data separation
+- Storage Buckets where available for physical separation of `/tmp`, `/var/cache`, and durable app data
 
 Known limits:
 
 - Blob/File inputs are normalized into in-memory `Uint8Array` nodes before persistence
 - persistence still walks the in-memory tree to compute record hashes
-- page unload flushing is best-effort because browsers may stop asynchronous storage work during shutdown
+- page unload flushing is best-effort because browsers may stop asynchronous storage work during shutdown; DindbOS prompts on `beforeunload` only when pending writes are visible to the runtime
 - directory copy between internal VFS paths and local mounts works, but large trees still run on the main thread
 - browser support is strongest in Chromium-based browsers

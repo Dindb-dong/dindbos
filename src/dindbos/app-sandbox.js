@@ -1,4 +1,4 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260422-activity-monitor";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260422-browserd";
 
 export class AppSandbox {
   constructor(os, process) {
@@ -18,20 +18,20 @@ export class AppSandbox {
 
   launch(appId, context = {}) {
     this.assertCapability("app.launch");
-    return this.os.launch(appId, context);
+    return this.os.launch(appId, { ...context, parentPid: this.process.pid });
   }
 
   openPath(path, context = {}) {
     this.assertCapability("app.launch");
     const normalized = this.os.fs.normalize(path, this.process.cwd);
     this.assertFileSystem(normalized, "read");
-    return this.os.openPath(normalized, context);
+    return this.os.openPath(normalized, { ...context, parentPid: this.process.pid });
   }
 
   openNode(node, context = {}) {
     this.assertCapability("app.launch");
     this.assertFileSystem(node.path || "/", "read");
-    return this.os.openNode(node, context);
+    return this.os.openNode(node, { ...context, parentPid: this.process.pid });
   }
 
   assertCapability(capability) {
@@ -188,9 +188,16 @@ export class AppSandbox {
         this.assertCapability("process.read");
         return this.os.processes.readLog(pid);
       },
+      logSelf: (message, level = "info") => {
+        this.os.processes.log(this.process.pid, String(message || ""), level);
+      },
       kill: (pid) => {
         this.assertCapability("process.manage");
         return this.os.processes.kill(pid, "killed");
+      },
+      restart: (pid) => {
+        this.assertCapability("process.manage");
+        return this.os.processes.restart(pid);
       },
       table: () => {
         this.assertCapability("process.read");
