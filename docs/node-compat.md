@@ -29,7 +29,7 @@ It currently supports:
 - package `main` and simple `exports` resolution
 - JSON modules
 - module cache
-- VFS-backed `fs.readFileSync`, `fs.writeFileSync`, `fs.existsSync`, `fs.statSync`, `fs.readdirSync`, `fs.mkdirSync`, and `fs.rmSync`
+- VFS-backed `fs` sync/callback/promise helpers for common package file probes
 - `path`, `path/posix`, `process`, `events`, and `Buffer` facades
 
 ## Supported ESM Subset
@@ -110,7 +110,7 @@ Current built-ins:
 - `child_process` / `worker_threads` policy facades
 - `zlib` policy facade
 
-The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem. Callback-style `fs` helpers and the `fs.promises` facade wrap the same VFS operations for async package paths, including read/write/append, rename, copyFile, directory listing, mkdir, rm/unlink, stat/lstat, and access checks. `fs.constants` exposes browser-safe access modes, copy flags, and common open flags for package probes. `fs.createReadStream` and `fs.createWriteStream` expose browser-safe stream wrappers over VFS files for package compatibility probes.
+The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem. Callback-style `fs` helpers and the `fs.promises` facade wrap the same VFS operations for async package paths, including read/write/append, rename, copyFile, realpath, directory listing, mkdir, rm/unlink, stat/lstat, and access checks. `fs.constants` exposes browser-safe access modes, copy flags, and common open flags for package probes. `fs.createReadStream` and `fs.createWriteStream` expose browser-safe stream wrappers over VFS files for package compatibility probes.
 
 The `path` module exposes POSIX helpers used by the DindbOS VFS plus `path/posix` and `path/win32` subpath facades for package string probes. `path/win32` only performs browser-safe path string manipulation; it does not imply Windows host filesystem access.
 
