@@ -143,6 +143,10 @@ export class BrowserCompanionClient {
     return this.send("type", { text });
   }
 
+  paste(text) {
+    return this.type(String(text || ""));
+  }
+
   key(key, options = {}) {
     const payload = typeof key === "object" && key !== null ? key : { key, ...options };
     return this.send("key", normalizeKeyPayload(payload));
@@ -185,4 +189,14 @@ function normalizeKeyPayload(payload = {}) {
   };
   if (payload.text !== undefined) normalized.text = String(payload.text);
   return normalized;
+}
+
+export async function pasteClipboardText(readText, sendText) {
+  if (typeof readText !== "function") throw new Error("Browser paste requires clipboard read access");
+  if (typeof sendText !== "function") throw new Error("Browser paste requires a remote text sender");
+  const text = await readText();
+  const value = String(text || "");
+  if (!value) return { pasted: false, bytes: 0 };
+  await sendText(value);
+  return { pasted: true, bytes: new TextEncoder().encode(value).byteLength };
 }

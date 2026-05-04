@@ -481,13 +481,14 @@ Already present:
 - `npm run smoke:browser-addresses` verifies Browser.app local HTML sandbox policy and URL scheme rejection.
 - Browser.app companion sets a deny-by-default download policy and surfaces attempted downloads as `download-blocked` status instead of silently writing local files.
 - `npm run smoke:browserd` verifies a real Chromium download attempt is blocked with the suggested filename reported.
+- Browser.app forwards Ctrl/Cmd+V clipboard text into remote companion pages through the explicit `Input.insertText` protocol path.
+- `npm run smoke:browser-client` verifies paste helper behavior and the `type` protocol payload sent to the companion.
 
 Remaining:
 
 - Remote hosted provider option for deployments where a local companion is not available.
 - Better tab model: multiple tabs, current tab state, close/reopen, and per-tab history.
 - WebRTC/video stream investigation after CDP screencast is proven reliable.
-- Clipboard paste handling.
 - Auth/session isolation per Browser.app session.
 - Binary frame transport to reduce base64 overhead.
 - Better mobile behavior for browser viewport size and input.

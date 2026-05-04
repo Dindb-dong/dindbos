@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { BrowserCompanionClient } from "../src/dindbos/browser-client.js";
+import { BrowserCompanionClient, pasteClipboardText } from "../src/dindbos/browser-client.js";
 
 await verifyReconnectContract();
+await verifyPasteProtocol();
+await verifyPasteHelper();
 await verifyHealthIdentityGuard();
 
-console.log("browser client smoke ok reconnect identity guard");
+console.log("browser client smoke ok reconnect identity guard paste");
 
 async function verifyReconnectContract() {
   const originalFetch = globalThis.fetch;
@@ -24,6 +26,7 @@ async function verifyReconnectContract() {
     constructor() {
       this.readyState = 0;
       this.listeners = new Map();
+      this.sent = [];
       sockets.push(this);
       queueMicrotask(() => {
         this.readyState = FakeWebSocket.OPEN;
@@ -41,7 +44,9 @@ async function verifyReconnectContract() {
       this.closeFromServer();
     }
 
-    send() {}
+    send(message) {
+      this.sent.push(JSON.parse(message));
+    }
 
     closeFromServer() {
       this.readyState = FakeWebSocket.CLOSED;
@@ -70,6 +75,86 @@ async function verifyReconnectContract() {
     globalThis.fetch = originalFetch;
     globalThis.WebSocket = originalWebSocket;
   }
+}
+
+async function verifyPasteProtocol() {
+  const originalFetch = globalThis.fetch;
+  const originalWebSocket = globalThis.WebSocket;
+  const sockets = [];
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ ok: true, service: "dindbos-browserd" }),
+  });
+  globalThis.WebSocket = class FakeWebSocket {
+    static OPEN = 1;
+    static CLOSED = 3;
+
+    constructor() {
+      this.readyState = 0;
+      this.listeners = new Map();
+      this.sent = [];
+      sockets.push(this);
+      queueMicrotask(() => {
+        this.readyState = FakeWebSocket.OPEN;
+        this.dispatch("open", {});
+      });
+    }
+
+    addEventListener(type, listener) {
+      const listeners = this.listeners.get(type) || [];
+      listeners.push(listener);
+      this.listeners.set(type, listeners);
+    }
+
+    close() {
+      this.readyState = FakeWebSocket.CLOSED;
+      this.dispatch("close", {});
+    }
+
+    send(message) {
+      const parsed = JSON.parse(message);
+      this.sent.push(parsed);
+      queueMicrotask(() => this.dispatch("message", {
+        data: JSON.stringify({ id: parsed.id, ok: true, result: { accepted: true } }),
+      }));
+    }
+
+    dispatch(type, event) {
+      (this.listeners.get(type) || []).forEach((listener) => listener(event));
+    }
+  };
+
+  try {
+    const client = new BrowserCompanionClient("ws://127.0.0.1:8787/browser");
+    await client.connect();
+    await client.paste("clip text");
+    assert(sockets[0].sent.length === 1, `expected one paste command, got ${sockets[0].sent.length}`);
+    assert(sockets[0].sent[0].type === "type", `paste used wrong protocol: ${sockets[0].sent[0].type}`);
+    assert(sockets[0].sent[0].text === "clip text", "paste payload text mismatch");
+    client.close();
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.WebSocket = originalWebSocket;
+  }
+}
+
+async function verifyPasteHelper() {
+  const sent = [];
+  const result = await pasteClipboardText(
+    async () => "hello clipboard",
+    async (text) => sent.push(text),
+  );
+  assert(result.pasted === true, "paste helper did not mark text as pasted");
+  assert(result.bytes === 15, `paste helper byte count mismatch: ${result.bytes}`);
+  assert(sent[0] === "hello clipboard", "paste helper did not send clipboard text");
+  const empty = await pasteClipboardText(async () => "", async () => {
+    throw new Error("empty paste should not send");
+  });
+  assert(empty.pasted === false && empty.bytes === 0, "empty paste helper result mismatch");
+  await assertRejects(
+    () => pasteClipboardText(null, async () => {}),
+    "clipboard read access",
+  );
 }
 
 async function verifyHealthIdentityGuard() {

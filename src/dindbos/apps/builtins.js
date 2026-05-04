@@ -1,5 +1,5 @@
 import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260422-browserd";
-import { BrowserCompanionClient } from "../browser-client.js?v=20260422-browserd";
+import { BrowserCompanionClient, pasteClipboardText } from "../browser-client.js?v=20260422-browserd";
 import { ShellSession } from "../shell.js?v=20260422-browserd";
 
 const FILES_OPERATION_HISTORY_LIMIT = 12;
@@ -1655,8 +1655,21 @@ function renderBrowser(os, content, context = {}, windowApi) {
       client.scroll(deltaX, deltaY, point.x, point.y).catch((error) => setStatus(error.message));
     }, 33);
   }, { passive: false });
-  refs.viewport.addEventListener("keydown", (event) => {
+  refs.viewport.addEventListener("keydown", async (event) => {
     if (!client.connected || refs.frame.hidden) return;
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
+      event.preventDefault();
+      try {
+        const result = await pasteClipboardText(
+          () => globalThis.navigator?.clipboard?.readText?.(),
+          (text) => client.paste(text),
+        );
+        setStatus(result.pasted ? `pasted ${result.bytes} clipboard bytes` : "clipboard empty");
+      } catch (error) {
+        setStatus(`paste blocked: ${error.message}`);
+      }
+      return;
+    }
     const payload = browserKeyEventPayload(event);
     if (!payload) return;
     event.preventDefault();
