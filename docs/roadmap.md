@@ -585,6 +585,8 @@ Already present:
 - File operation history/log for recent successful and failed operations.
 - Rich search filters by text, type, extension, size, modified time, and path.
 - `npm run smoke:files` verifies Files.app search query parsing and type/ext/size filter behavior.
+- Files.app supports folder and search result sorting by kind/name, name, modified time, and size so large folders can be scanned predictably.
+- `npm run smoke:files` verifies Files.app sort ordering for folder-first, alphabetical, largest-first, and newest-first views.
 - Multi-select selection model with Ctrl/Cmd toggle and Shift range selection.
 - Multi-select Trash/Delete target calculation for operating on several selected files at once.
 - `npm run smoke:files` verifies Files.app multi-select helper behavior and multi-action target de-duplication.
