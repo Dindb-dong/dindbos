@@ -22,6 +22,7 @@ Added:
 - Explicit runtime boot phase diagnostics for storage load, VFS mount, package registry load, app registry load, process init, and desktop render, persisted under `/var/log/dindbos`.
 - Recoverable storage-load and VFS mount restore failures now continue booting with `recovered` boot phase diagnostics.
 - Disk policy areas for `/home`, `/opt`, `/var`, `/var/cache`, `/tmp`, and `/mnt`, exposed through runtime APIs and `df`.
+- Persistence lifecycle flush coverage for `beforeunload`, `pagehide`, and hidden-tab visibility changes.
 - Runtime Cache API store with memory fallback for npm metadata/tarballs and remote package manifests/files.
 - Files.app import/export archive support with nested binary byte preservation.
 - Files.app local mount banners, reconnect/sync/forget controls, operation progress, and recent operation history.

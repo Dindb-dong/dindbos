@@ -331,13 +331,13 @@ Already present:
 - Lifecycle flush status and write-pending status.
 - Runtime disk policy areas distinguish `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache`; `df` prints their policy, durability, and used bytes.
 - Runtime Cache API store caches npm metadata/tarballs and remote package manifests/files, with memory fallback when Cache API is unavailable.
-- Pending writes trigger a best-effort unload flush and browser leave-page prompt through `beforeunload`, covered by `npm run smoke:persistent-storage`.
+- Pending writes trigger best-effort flushes through `beforeunload`, `pagehide`, and hidden-tab visibility changes; `beforeunload` also requests the native leave-page prompt.
+- `npm run smoke:persistent-storage` verifies pending-write `beforeunload` prompting plus `pagehide` and hidden-tab flush triggers.
 - `npm run smoke:storage` verifies VFS text and binary byte preservation across copy, content-record serialization, and snapshot reload.
 - `npm run smoke:files` verifies Files.app import/export preserves nested binary files byte-for-byte.
 
 Remaining:
 
-- Strengthen browser shutdown guarantees as much as browser APIs allow.
 - Extend Cache API storage to document and image previews.
 - Evaluate Storage Buckets for `/tmp`, `/var/cache`, and durable app data separation where available.
 - Move large directory copy/import/export work off the main thread or chunk it with visible progress.

@@ -8,7 +8,7 @@ const binary = new Uint8Array([3, 9, 27, 81, 128, 255]);
 
 await verifySnapshotAdapterFallback();
 await verifyOpfsFailureFallsBackToSnapshot();
-await verifyBeforeUnloadPendingWritePrompt();
+await verifyLifecyclePendingWriteFlushes();
 
 console.log(`persistent storage smoke ok binaryBytes=${binary.byteLength}`);
 
@@ -67,17 +67,18 @@ async function verifyOpfsFailureFallsBackToSnapshot() {
   assertBytes(reloaded.readFileBytes(binaryPath), binary, "OPFS fallback bytes changed");
 }
 
-async function verifyBeforeUnloadPendingWritePrompt() {
+async function verifyLifecyclePendingWriteFlushes() {
   const originalWindow = globalThis.window;
   const originalDocument = globalThis.document;
-  const listeners = new Map();
+  const windowListeners = new Map();
+  const documentListeners = new Map();
   const storage = createRuntimeStorage();
   globalThis.window = {
-    addEventListener: (type, listener) => listeners.set(type, listener),
+    addEventListener: (type, listener) => windowListeners.set(type, listener),
   };
   globalThis.document = {
     visibilityState: "visible",
-    addEventListener: (type, listener) => listeners.set(type, listener),
+    addEventListener: (type, listener) => documentListeners.set(type, listener),
   };
   try {
     const os = new DindbOS({ root: {}, storage, persistDelayMs: 10000 });
@@ -90,11 +91,27 @@ async function verifyBeforeUnloadPendingWritePrompt() {
         this.prevented = true;
       },
     };
-    const message = listeners.get("beforeunload")(event);
+    const message = windowListeners.get("beforeunload")(event);
     assert(event.prevented, "beforeunload did not prevent unload with pending writes");
     assert(event.returnValue.includes("saving filesystem"), `beforeunload message mismatch: ${event.returnValue}`);
     assert(message === event.returnValue, "beforeunload did not return the prompt message");
     assert(storage.saved > 0, "beforeunload did not synchronously queue a filesystem save");
+    await Promise.resolve();
+
+    os.schedulePersistFileSystem({ action: "smoke-pagehide", path: "/home/guest/Documents/pagehide.txt" });
+    const savedBeforePagehide = storage.saved;
+    windowListeners.get("pagehide")({});
+    assert(storage.saved > savedBeforePagehide, "pagehide did not queue a filesystem save");
+    await Promise.resolve();
+
+    os.schedulePersistFileSystem({ action: "smoke-hidden", path: "/home/guest/Documents/hidden.txt" });
+    const savedBeforeVisibleChange = storage.saved;
+    globalThis.document.visibilityState = "visible";
+    documentListeners.get("visibilitychange")({});
+    assert(storage.saved === savedBeforeVisibleChange, "visible visibilitychange flushed unexpectedly");
+    globalThis.document.visibilityState = "hidden";
+    documentListeners.get("visibilitychange")({});
+    assert(storage.saved > savedBeforeVisibleChange, "hidden visibilitychange did not queue a filesystem save");
 
     const cleanStorage = createRuntimeStorage();
     const cleanOs = new DindbOS({ root: {}, storage: cleanStorage, persistDelayMs: 10000 });
@@ -106,7 +123,7 @@ async function verifyBeforeUnloadPendingWritePrompt() {
         this.prevented = true;
       },
     };
-    const cleanMessage = listeners.get("beforeunload")(cleanEvent);
+    const cleanMessage = windowListeners.get("beforeunload")(cleanEvent);
     assert(!cleanEvent.prevented, "beforeunload prevented unload without pending writes");
     assert(cleanMessage === undefined, "beforeunload returned a message without pending writes");
   } finally {
