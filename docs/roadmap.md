@@ -223,10 +223,8 @@ Already present:
 - Browser.app companion identity checks verify health service, protocol version, required capabilities, and WebSocket subprotocol before accepting `browserd`.
 - Browser.app keyboard policy supports Ctrl/Cmd+L address focus, Escape back to remote viewport, Tab/Shift+Tab remote focus movement, and modifier shortcuts for remote text selection/copy/cut/paste.
 - Browser.app can be configured with a local or hosted browser provider WebSocket URL; session snapshots preserve that provider, and smoke coverage verifies remote `wss` provider URL persistence.
-
-Remaining:
-
-- Evaluate WebRTC/video stream only after the current CDP screencast protocol is stable.
+- Browser.app v1 stream policy is explicit: `browserd` health advertises CDP screencast with binary JPEG frame encoding, and Browser.app rejects providers that advertise a different stream shape. WebRTC remains deferred until the proven CDP screencast path fails measured workload latency, bandwidth, or quality targets.
+- `npm run smoke:browserd` verifies `browserd` health stream metadata; `npm run smoke:browser-client` verifies incompatible WebRTC-only stream metadata is rejected.
 
 Completion criteria:
 
@@ -496,10 +494,8 @@ Already present:
 - Browser.app maps provider WebSocket URLs to `/health` using `http` for `ws` and `https` for `wss`, covered by `npm run smoke:browser-client`.
 - `browserd` creates an isolated Chromium browser context for each Browser.app WebSocket session so cookies and localStorage do not leak between sessions, covered by `npm run smoke:browserd`.
 - Browser.app forwards mobile viewport intent to `browserd`, enabling mobile CDP metrics/touch emulation for narrow or touch-capable viewports, with toolbar/input layout polish for mobile windows.
-
-Remaining:
-
-- WebRTC/video stream investigation after CDP screencast is proven reliable.
+- Browser.app v1 uses a documented CDP screencast stream policy instead of WebRTC/GPU video. `browserd` advertises `stream.transport: "cdp-screencast"` and `stream.encoding: "binary-jpeg"` in health, Browser.app rejects incompatible stream metadata, and WebRTC is deferred until measured workload targets require it.
+- `docs/browserd.md`, `npm run smoke:browserd`, and `npm run smoke:browser-client` cover the stream transport decision and provider compatibility guard.
 
 Completion criteria:
 

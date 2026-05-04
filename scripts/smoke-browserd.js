@@ -44,6 +44,10 @@ try {
   assert(health.service === "dindbos-browserd", `unexpected health service: ${JSON.stringify(health)}`);
   assert(health.protocol === "dindbos-browserd.v1", `unexpected health protocol: ${JSON.stringify(health)}`);
   assert(health.capabilities.includes("browser.frames.binary"), "health capabilities missing binary frames");
+  assert(health.capabilities.includes("browser.frames.cdp-screencast"), "health capabilities missing CDP screencast frames");
+  assert(health.stream?.transport === "cdp-screencast", `health stream transport mismatch: ${JSON.stringify(health.stream)}`);
+  assert(health.stream?.encoding === "binary-jpeg", `health stream encoding mismatch: ${JSON.stringify(health.stream)}`);
+  assert(health.stream?.webrtc === "deferred", `health WebRTC policy mismatch: ${JSON.stringify(health.stream)}`);
   assert(health.capabilities.every((capability) => capability.startsWith("browser.")), `browserd exposed non-browser capability: ${health.capabilities.join(",")}`);
   assert(!health.capabilities.some((capability) => /file|mount|native|download\.save/.test(capability)), `browserd exposed native-adjacent capability: ${health.capabilities.join(",")}`);
 

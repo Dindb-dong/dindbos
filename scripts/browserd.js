@@ -10,12 +10,15 @@ const DEFAULT_PORT = 8787;
 const DEFAULT_CDP_PORT = 9223;
 const BROWSERD_SERVICE = "dindbos-browserd";
 const BROWSERD_PROTOCOL = "dindbos-browserd.v1";
+const BROWSERD_FRAME_TRANSPORT = "cdp-screencast";
+const BROWSERD_FRAME_ENCODING = "binary-jpeg";
 const BROWSERD_CAPABILITIES = [
   "browser.capture",
   "browser.history",
   "browser.navigate",
   "browser.input",
   "browser.frames.binary",
+  "browser.frames.cdp-screencast",
   "browser.download.deny",
 ];
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -104,6 +107,12 @@ class BrowserDaemon {
         protocol: BROWSERD_PROTOCOL,
         port: this.port,
         capabilities: BROWSERD_CAPABILITIES,
+        stream: {
+          transport: BROWSERD_FRAME_TRANSPORT,
+          encoding: BROWSERD_FRAME_ENCODING,
+          realtimeVideo: false,
+          webrtc: "deferred",
+        },
       }));
       return;
     }
