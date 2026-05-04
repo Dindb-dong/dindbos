@@ -408,11 +408,13 @@ Already present:
 - JSON modules.
 - Module cache.
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
-- Callback-style `fs` helpers expose browser-safe VFS-backed read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
+- Callback-style `fs` helpers expose browser-safe VFS-backed read/write, copyFile, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
 - `fs.constants` exposes browser-safe access modes, copy flags, and common open flags for package probes.
 - `npm run smoke:npm-node` verifies callback-style `fs` read/write/readdir/stat/lstat/access/unlink behavior plus `fs.constants` access modes through CommonJS and ESM `node:fs` import paths.
-- `fs.promises` exposes browser-safe Promise wrappers for VFS-backed read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
+- `fs.promises` exposes browser-safe Promise wrappers for VFS-backed read/write, copyFile, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
 - `npm run smoke:npm-node` verifies `fs.promises` CommonJS shape plus ESM async mkdir/write/read/readdir/stat/access/rm behavior inside the DindbOS VFS.
+- `fs.copyFileSync`, callback-style `fs.copyFile`, and `fs.promises.copyFile` copy VFS file bytes with `COPYFILE_EXCL` conflict handling.
+- `npm run smoke:npm-node` verifies VFS byte-preserving copyFile behavior and exclusive-copy errors through CommonJS and ESM `node:fs` import paths.
 - `fs.createReadStream` and `fs.createWriteStream` expose browser-safe stream wrappers over VFS files for package compatibility probes.
 - `npm run smoke:npm-node` verifies VFS-backed fs stream read/write behavior through CommonJS and ESM `node:fs` import paths.
 - NodeCompat `process` facade exposes browser-safe feature probe fields including `nextTick`, `hrtime`, `uptime`, `memoryUsage`, `release`, `title`, and `execPath`.

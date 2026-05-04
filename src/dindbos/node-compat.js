@@ -490,12 +490,21 @@ class CommonJsRuntime {
       },
       rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", options, this.node.system),
       unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", {}, this.node.system),
+      copyFileSync: (source, destination, mode = 0) => {
+        const resolvedSource = this.node.resolveFsPath(source, this.processContext.cwd);
+        const resolvedDestination = this.node.resolveFsPath(destination, this.processContext.cwd);
+        if ((Number(mode) & fsModule.constants.COPYFILE_EXCL) && this.os.fs.exists(resolvedDestination, "/")) {
+          throw new Error(`EEXIST: file already exists, copyfile '${source}' -> '${destination}'`);
+        }
+        this.os.fs.writeOrCreateFileBytes(resolvedDestination, this.os.fs.readFileBytes(resolvedSource, "/", this.node.system), "/", {}, this.node.system);
+      },
       readFile: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readFileSync(path, optionalOptions(options))),
       writeFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.writeFileSync(path, data)),
       readdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readdirSync(path, optionalOptions(options))),
       mkdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.mkdirSync(path, optionalOptions(options))),
       rm: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.rmSync(path, optionalOptions(options))),
       unlink: (path, callback) => invokeFsCallback(callback, () => fsModule.unlinkSync(path)),
+      copyFile: (source, destination, mode, callback) => invokeFsCallback(optionalCallback(mode, callback), () => fsModule.copyFileSync(source, destination, optionalOptions(mode) || 0)),
       stat: (path, callback) => invokeFsCallback(callback, () => fsModule.statSync(path)),
       lstat: (path, callback) => invokeFsCallback(callback, () => fsModule.lstatSync(path)),
       access: (path, mode, callback) =>
@@ -540,6 +549,7 @@ class CommonJsRuntime {
       mkdir: async (path, options = {}) => fsModule.mkdirSync(path, options),
       rm: async (path, options = {}) => fsModule.rmSync(path, options),
       unlink: async (path) => fsModule.unlinkSync(path),
+      copyFile: async (source, destination, mode = 0) => fsModule.copyFileSync(source, destination, mode),
       stat: async (path) => fsModule.statSync(path),
       lstat: async (path) => fsModule.lstatSync(path),
       access: async (path) => {
