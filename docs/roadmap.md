@@ -408,10 +408,10 @@ Already present:
 - JSON modules.
 - Module cache.
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
-- Callback-style `fs` helpers expose browser-safe VFS-backed read/write/append, rename, copyFile, realpath, directory listing, mkdir/mkdtemp, rm/unlink, stat/lstat, and access checks.
+- Callback-style `fs` helpers expose browser-safe VFS-backed read/write/append, rename, copyFile, realpath, directory listing/opendir, mkdir/mkdtemp, rm/unlink, stat/lstat, and access checks.
 - `fs.constants` exposes browser-safe access modes, copy flags, and common open flags for package probes.
 - `npm run smoke:npm-node` verifies callback-style `fs` read/write/readdir/stat/lstat/access/unlink behavior plus `fs.constants` access modes through CommonJS and ESM `node:fs` import paths.
-- `fs.promises` exposes browser-safe Promise wrappers for VFS-backed read/write/append, rename, copyFile, realpath, directory listing, mkdir/mkdtemp, rm/unlink, stat/lstat, and access checks.
+- `fs.promises` exposes browser-safe Promise wrappers for VFS-backed read/write/append, rename, copyFile, realpath, directory listing/opendir, mkdir/mkdtemp, rm/unlink, stat/lstat, and access checks.
 - `npm run smoke:npm-node` verifies `fs.promises` CommonJS shape plus ESM async mkdir/write/read/readdir/stat/access/rm behavior inside the DindbOS VFS.
 - `fs.copyFileSync`, callback-style `fs.copyFile`, and `fs.promises.copyFile` copy VFS file bytes with `COPYFILE_EXCL` conflict handling.
 - `npm run smoke:npm-node` verifies VFS byte-preserving copyFile behavior and exclusive-copy errors through CommonJS and ESM `node:fs` import paths.
@@ -421,6 +421,8 @@ Already present:
 - `npm run smoke:npm-node` verifies realpath behavior through CommonJS and ESM `node:fs` import paths.
 - `fs.mkdtempSync`, callback-style `fs.mkdtemp`, and `fs.promises.mkdtemp` create unique VFS temp directories from caller prefixes.
 - `npm run smoke:npm-node` verifies mkdtemp prefix handling, uniqueness, and directory creation through CommonJS and ESM `node:fs` import paths.
+- `fs.opendirSync`, callback-style `fs.opendir`, and `fs.promises.opendir` expose browser-safe directory handles over VFS `Dirent` entries.
+- `npm run smoke:npm-node` verifies sync, callback, Promise, and async-iterator opendir behavior through CommonJS and ESM `node:fs` import paths.
 - `fs.createReadStream` and `fs.createWriteStream` expose browser-safe stream wrappers over VFS files for package compatibility probes.
 - `npm run smoke:npm-node` verifies VFS-backed fs stream read/write behavior through CommonJS and ESM `node:fs` import paths.
 - NodeCompat `process` facade exposes browser-safe feature probe fields including `nextTick`, `hrtime`, `uptime`, `memoryUsage`, `release`, `title`, and `execPath`.
