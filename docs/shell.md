@@ -105,7 +105,7 @@ Unsigned, invalid, or untrusted remote manifests fail before package files or la
 doctor
 ```
 
-It reports the active session, current working directory, storage backend and dirty-write state, local mount availability/counts, installed package count, running process count, and the follow-up commands that expose deeper runtime details.
+It reports the active session, current working directory, storage backend and dirty-write state, local mount availability/counts, file helper rename support, installed package count, running process count, and the follow-up commands that expose deeper runtime details. `mount-local --helper` prints the native file helper protocol status for local mount operations that cannot be implemented honestly inside the browser sandbox.
 
 ## Verification
 

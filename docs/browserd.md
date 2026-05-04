@@ -44,7 +44,7 @@ Boundary rules:
 - Third-party apps should not connect to `browserd` directly. They should open URLs or HTML documents through Browser.app via `os.launch("browser", context)` or `os.openPath(path)`.
 - `browserd` is optional. The DindbOS runtime must boot, run local apps, open local HTML files, and keep the desktop usable when the companion is absent.
 - Starting `browserd` is a user/developer action from the local machine. Web pages must not attempt to install or launch it automatically.
-- The companion can drive a local Chromium instance. Do not expose file helper, download, mount rename, or broader native-adjacent commands through this protocol until those commands have their own capability policy and failure UX.
+- The companion can drive a local Chromium instance. Do not expose file helper, download, mount rename, or broader native-adjacent commands through this protocol. Local mount rename uses the separate `dindbos-file-helper-v1` file helper boundary when a deployment provides one.
 - The WebSocket protocol should stay narrow: browser navigation, viewport resize, input events, screenshots/frames, and status/error reporting.
 - Hosted or remote browser providers are a separate trust boundary from `127.0.0.1` `browserd`. The current Browser.app integration only accepts providers that advertise the expected service, protocol, and capabilities; deployment-level authentication, tenancy, and TLS policy still belong outside this v1 protocol.
 
@@ -55,7 +55,7 @@ Boundary rules:
 Native-adjacent work is split by boundary:
 
 - Browser downloads stay denied in `browserd` until a separate save/download policy exists.
-- Local mount rename belongs to a future mount/file companion with its own service identity, protocol, capabilities, prompts, and failure UX.
+- Local mount rename belongs to the separate `dindbos-file-helper-v1` file helper boundary with its own service identity, protocol, capabilities, prompts, and failure UX.
 - File import/export helpers belong to browser-native APIs first; any native helper must use a separate companion identity instead of expanding `browserd`.
 - Remote hosted browser providers are separate from local `browserd` and require their own provider identity/trust model.
 

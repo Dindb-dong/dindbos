@@ -17,7 +17,7 @@ const BUILTIN_MANUALS = {
   manifest: "manifest [app] - show app manifests",
   mkdir: "mkdir [-p] <path> - create directories",
   mount: "mount - print mounted virtual filesystems",
-  "mount-local": "mount-local [name|--list|--restore|--forget path] - manage local folder mounts",
+  "mount-local": "mount-local [name|--list|--restore|--forget path|--helper] - manage local folder mounts",
   mv: "mv <source> <destination> - move or rename files",
   node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
@@ -421,9 +421,12 @@ export class ShellSession {
   mv(args) {
     const operands = args.filter((arg) => !arg.startsWith("-"));
     if (operands.length < 2) throw new Error("mv: missing source or destination");
-    if (this.isLocalPath(operands[0]) || this.isLocalPath(operands[1])) {
+    const sourceLocal = this.isLocalPath(operands[0]);
+    const destinationLocal = this.isLocalPath(operands[1]);
+    if (sourceLocal && destinationLocal) return this.os.localMounts.move(operands[0], operands[1], this.cwd, { recursive: true }).then(() => "");
+    if (sourceLocal || destinationLocal) {
       return this.copyWithLocal(operands[0], operands[1], { recursive: true })
-        .then(() => this.isLocalPath(operands[0])
+        .then(() => sourceLocal
           ? this.os.localMounts.remove(operands[0], this.cwd, { recursive: true })
           : this.os.fs.remove(operands[0], this.cwd, { recursive: true }, this.principal))
         .then(() => "");
@@ -608,11 +611,12 @@ export class ShellSession {
     const mounted = Array.isArray(mounts) ? mounts.filter((mount) => mount.status !== "forgotten").length : 0;
     const persistedMounts = Array.isArray(mounts) ? mounts.filter((mount) => mount.persisted).length : 0;
     const mountErrors = Array.isArray(mounts) ? mounts.filter((mount) => mount.error).length : 0;
+    const helper = safeRead(() => this.os.localMounts?.nativeHelperStatus?.(), {});
     return [
       "DindbOS doctor",
       `session user=${this.env.USER} groups=${groups.join(",")} home=${this.env.HOME} cwd=${this.cwd} locked=${sessionStatus?.locked || false}`,
       `storage backend=${storage?.backend || "memory"} persisted=${storage?.persisted || false} bytes=${storage?.bytes || 0} dirtyInodes=${storage?.dirtyInodes || 0} dirtyFiles=${storage?.dirtyFiles || 0} pending=${storage?.persistPending || false}`,
-      `localMounts supported=${localMountSupported} mounted=${mounted} persisted=${persistedMounts} errors=${mountErrors}`,
+      `localMounts supported=${localMountSupported} mounted=${mounted} persisted=${persistedMounts} errors=${mountErrors} helper=${helper?.status || "unavailable"} rename=${helper?.renameSupported || false}`,
       `packages installed=${Array.isArray(packages) ? packages.length : 0}`,
       `processes running=${Array.isArray(processes) ? processes.length : 0}`,
       "troubleshooting docs=docs/support.md command=storage|mount-local --list|ps|pkg list",
@@ -700,6 +704,7 @@ export class ShellSession {
     const [first, second] = args;
     if (first === "--list") return this.os.localMounts.status().then(formatMountStatus);
     if (first === "--restore") return this.os.localMounts.restorePersistedMounts({ request: true }).then(formatMountRestore);
+    if (first === "--helper") return formatMountHelperStatus(this.os.localMounts.nativeHelperStatus?.());
     if (first === "--forget") {
       const path = second;
       if (!path) return "mount-local: usage: mount-local --forget <path>";
@@ -1145,13 +1150,16 @@ function formatMountStatus(mounts) {
   if (!mounts.length) return "no local mounts";
   return mounts.map((mount) => {
     const suffix = mount.error ? ` (${mount.error})` : "";
+    const helper = mount.nativeHelper?.configured
+      ? ` helper=${mount.nativeHelper.renameSupported ? "rename" : "configured"}`
+      : " helper=unavailable";
     return [
       mount.path,
       mount.type,
       mount.status || "unknown",
       mount.persisted ? "persisted" : "runtime",
       mount.handleName || mount.name,
-    ].join(" ") + suffix;
+    ].join(" ") + helper + suffix;
   }).join("\n");
 }
 
@@ -1161,6 +1169,16 @@ function formatMountRestore(mounts) {
     const suffix = mount.error ? ` (${mount.error})` : "";
     return `${mount.status || "unknown"} ${mount.path}${suffix}`;
   }).join("\n");
+}
+
+function formatMountHelperStatus(helper = {}) {
+  return [
+    `status=${helper.status || "unavailable"}`,
+    `protocol=${helper.protocol || "dindbos-file-helper-v1"}`,
+    `name=${helper.name || "-"}`,
+    `rename=${Boolean(helper.renameSupported)}`,
+    `capabilities=${Array.isArray(helper.capabilities) && helper.capabilities.length ? helper.capabilities.join(",") : "-"}`,
+  ].join("\n");
 }
 
 function commandSuggestions(os, command) {
