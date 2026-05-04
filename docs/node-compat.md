@@ -97,6 +97,7 @@ Current built-ins:
 - `module`
 - `string_decoder`
 - `constants`
+- `diagnostics_channel`
 - `http` / `https` policy facades
 
 The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
@@ -116,6 +117,8 @@ The `module` module supports `builtinModules`, `isBuiltin`, `createRequire`, and
 The `string_decoder` module supports the `StringDecoder` class for common browser-safe package decoding paths, including `utf8`, `utf16le`, `latin1`/`binary`/`ascii`, `hex`, and `base64`.
 
 The `constants` module exposes a browser-safe subset of common errno, signal, open flag, and file mode constants used by packages for feature detection and VFS-facing fallback logic.
+
+The `diagnostics_channel` module supports in-runtime publish/subscribe channels and tracing channel objects for browser-safe instrumentation hooks. It does not forward diagnostics outside the DindbOS runtime.
 
 The `http` and `https` modules are explicit policy facades. They can be imported by packages that probe for Node built-ins, but `request()`, `get()`, `createServer()`, and constructor paths throw `NodeCompat <protocol> networking is unavailable`. Network access belongs to a future explicit DindbOS network capability or app sandbox grant, not the NodeCompat compatibility layer.
 

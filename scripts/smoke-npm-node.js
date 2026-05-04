@@ -305,6 +305,39 @@ const constantsImport = await node.evaluate(
 assert(constantsImport.status === 0, `constants import exited with ${constantsImport.status}`);
 assert(constantsImport.output.trim() === "15 64 17", `unexpected constants import output: ${constantsImport.output}`);
 
+const diagnosticsRequire = node.evaluate(
+  [
+    "const dc = require('diagnostics_channel');",
+    "let seen = '';",
+    "const channel = dc.channel('dindbos:test');",
+    "const onMessage = (message, name) => { seen = `${name}:${message.value}`; };",
+    "channel.subscribe(onMessage);",
+    "channel.publish({ value: 'ok' });",
+    "console.log(channel.hasSubscribers, dc.hasSubscribers('dindbos:test'), seen);",
+    "channel.unsubscribe(onMessage);",
+  ].join("\n"),
+  cwd,
+);
+assert(diagnosticsRequire.status === 0, `diagnostics_channel require exited with ${diagnosticsRequire.status}`);
+assert(diagnosticsRequire.output.trim() === "true true dindbos:test:ok", `unexpected diagnostics_channel require output: ${diagnosticsRequire.output}`);
+
+const diagnosticsImport = await node.evaluate(
+  [
+    "import { channel, subscribe, unsubscribe, tracingChannel } from 'node:diagnostics_channel';",
+    "let count = 0;",
+    "const onMessage = () => { count += 1; };",
+    "subscribe('dindbos:esm', onMessage);",
+    "channel('dindbos:esm').publish({});",
+    "unsubscribe('dindbos:esm', onMessage);",
+    "channel('dindbos:esm').publish({});",
+    "console.log(count, tracingChannel('trace').start.name);",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(diagnosticsImport.status === 0, `diagnostics_channel import exited with ${diagnosticsImport.status}`);
+assert(diagnosticsImport.output.trim() === "1 trace:start", `unexpected diagnostics_channel import output: ${diagnosticsImport.output}`);
+
 const networkPolicyRequire = node.evaluate(
   [
     "const http = require('http');",
