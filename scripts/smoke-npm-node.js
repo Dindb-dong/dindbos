@@ -276,13 +276,16 @@ try {
       "const base64 = BufferApi.from('aGk=', 'base64');",
       "const latin1 = BufferApi.from('Aÿ', 'latin1');",
       "const alloc = BufferApi.alloc(3, 'a');",
+      "const unsafe = BufferApi.allocUnsafe(2);",
+      "const array = BufferApi.from([1, 258]);",
+      "const sliced = BufferApi.from(new Uint8Array([9, 8, 7, 6]).buffer, 1, 2);",
       "const concat = BufferApi.concat([hex, BufferApi.from('!')]);",
-      "console.log(BufferApi.isBuffer(hex), hex.toString(), base64.toString('hex'), latin1[1], alloc.toString(), concat.toString(), BufferApi.byteLength('é'));",
+      "console.log(BufferApi.isBuffer(hex), hex.toString(), base64.toString('hex'), latin1[1], alloc.toString(), concat.toString(), BufferApi.byteLength('é'), BufferApi.isEncoding('base64url'), BufferApi.compare(BufferApi.from('a'), BufferApi.from('b')), BufferApi.from('x').equals(BufferApi.from('x')), unsafe.length, array.toString('hex'), sliced.toString('hex'));",
     ].join("\n"),
     cwd,
   );
   assert(browserBufferFallback.status === 0, `browser Buffer fallback exited with ${browserBufferFallback.status}`);
-  assert(browserBufferFallback.output.trim() === "true hi 6869 255 aaa hi! 2", `unexpected browser Buffer fallback output: ${browserBufferFallback.output}`);
+  assert(browserBufferFallback.output.trim() === "true hi 6869 255 aaa hi! 2 true -1 true 2 0102 0807", `unexpected browser Buffer fallback output: ${browserBufferFallback.output}`);
 } finally {
   globalThis.Buffer = hostBuffer;
 }

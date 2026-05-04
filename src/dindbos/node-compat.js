@@ -757,12 +757,14 @@ function safeJson(content, fallback) {
 function createBufferFacade() {
   if (globalThis.Buffer) return globalThis.Buffer;
   const BufferFacade = {
-    from: (value, encoding = "utf8") => createByteBuffer(value, encoding),
+    from: (value, encodingOrOffset = "utf8", length = undefined) => createByteBuffer(value, encodingOrOffset, length),
     alloc: (size = 0, fill = 0, encoding = "utf8") => {
       const bytes = createByteBuffer(new Uint8Array(Math.max(0, Number(size) || 0)));
       if (fill !== 0 && fill !== undefined && bytes.length) bytes.fill(resolveBufferFill(fill, encoding));
       return bytes;
     },
+    allocUnsafe: (size = 0) => createByteBuffer(new Uint8Array(Math.max(0, Number(size) || 0))),
+    allocUnsafeSlow: (size = 0) => createByteBuffer(new Uint8Array(Math.max(0, Number(size) || 0))),
     concat: (chunks = [], totalLength = undefined) => {
       const normalized = chunks.map((chunk) => createByteBuffer(chunk));
       const total = totalLength === undefined ? normalized.reduce((sum, chunk) => sum + chunk.byteLength, 0) : Number(totalLength) || 0;
@@ -775,18 +777,27 @@ function createBufferFacade() {
       }
       return bytes;
     },
+    compare: (left, right) => compareByteBuffers(left, right),
     isBuffer: (value) => Boolean(value?.__dindbosBuffer),
+    isEncoding: (encoding) => isBufferEncoding(encoding),
     byteLength: (value, encoding = "utf8") => createByteBuffer(value, encoding).byteLength,
   };
+  BufferFacade.kMaxLength = Number.MAX_SAFE_INTEGER;
   return BufferFacade;
 }
 
-function createByteBuffer(value, encoding = "utf8") {
+function createByteBuffer(value, encodingOrOffset = "utf8", length = undefined) {
   const bytes = value instanceof ArrayBuffer
-    ? new Uint8Array(value)
+    ? new Uint8Array(
+      value,
+      Math.max(0, Number(encodingOrOffset) || 0),
+      length === undefined ? undefined : Math.max(0, Number(length) || 0),
+    )
     : ArrayBuffer.isView(value)
       ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-      : decodeBufferString(String(value ?? ""), encoding);
+      : Array.isArray(value)
+        ? Uint8Array.from(value.map((byte) => Number(byte) & 0xff))
+        : decodeBufferString(String(value ?? ""), encodingOrOffset);
   Object.defineProperty(bytes, "__dindbosBuffer", { value: true });
   bytes.toString = (encoding = "utf8") => {
     if (encoding === "hex") return bytesToHex(bytes);
@@ -796,7 +807,20 @@ function createByteBuffer(value, encoding = "utf8") {
     if (encoding !== "utf8" && encoding !== "utf-8") throw new Error(`Buffer: unsupported encoding: ${encoding}`);
     return new TextDecoder().decode(bytes);
   };
+  bytes.equals = (other) => compareByteBuffers(bytes, other) === 0;
+  bytes.compare = (other) => compareByteBuffers(bytes, other);
   return bytes;
+}
+
+function compareByteBuffers(left, right) {
+  const leftBytes = createByteBuffer(left);
+  const rightBytes = createByteBuffer(right);
+  const length = Math.min(leftBytes.byteLength, rightBytes.byteLength);
+  for (let index = 0; index < length; index += 1) {
+    if (leftBytes[index] !== rightBytes[index]) return leftBytes[index] < rightBytes[index] ? -1 : 1;
+  }
+  if (leftBytes.byteLength === rightBytes.byteLength) return 0;
+  return leftBytes.byteLength < rightBytes.byteLength ? -1 : 1;
 }
 
 function decodeBufferString(value, encoding = "utf8") {
@@ -813,6 +837,10 @@ function normalizeBufferEncoding(encoding = "utf8") {
   if (normalized === "utf8") return "utf8";
   if (normalized === "base64url") return "base64url";
   return normalized;
+}
+
+function isBufferEncoding(encoding = "") {
+  return ["utf8", "hex", "base64", "base64url", "latin1", "binary", "ascii"].includes(normalizeBufferEncoding(encoding));
 }
 
 function resolveBufferFill(fill, encoding = "utf8") {

@@ -410,7 +410,8 @@ Already present:
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
 - NodeCompat `process` facade exposes browser-safe feature probe fields including `nextTick`, `hrtime`, `uptime`, `memoryUsage`, `release`, `title`, and `execPath`.
 - `npm run smoke:npm-node` verifies `process` CommonJS and ESM import paths for next-tick callbacks, high-resolution time shape, memory usage shape, and runtime identity fields.
-- Browser-native `Buffer` fallback supports `from`, `alloc`, `concat`, `isBuffer`, `byteLength`, and common string encodings when host `Buffer` is unavailable; `npm run smoke:npm-node` verifies the no-host-Buffer path.
+- Browser-native `Buffer` fallback supports `from`, `alloc`, `allocUnsafe`, `concat`, `compare`, `isBuffer`, `isEncoding`, `byteLength`, instance `equals`/`compare`, Array/ArrayBuffer slice inputs, and common string encodings when host `Buffer` is unavailable.
+- `npm run smoke:npm-node` verifies the no-host-Buffer path for string, array, ArrayBuffer slice, concat, compare/equality, unsafe allocation shape, encoding probes, byte length, and common encoding conversions.
 - `events`/`EventEmitter` builtin facade is available through `events` and `node:events`; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
 - `path/posix` resolves through CommonJS and ESM import paths to the browser-safe POSIX path facade used by package feature probes.
 - `npm run smoke:npm-node` verifies `path/posix`, `node:path/posix`, and `path.posix` behavior.
