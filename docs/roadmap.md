@@ -552,6 +552,8 @@ Already present:
 - `npm run smoke:viewer` verifies the PDF.js canvas surface, fake PDF.js page rendering, page state, and page-control enable/disable behavior.
 - PDF.js packaging policy is decided for the current static runtime: DindbOS keeps PDF.js as a deployment-provided optional adapter instead of bundling worker/assets. When `globalThis.pdfjsLib` is missing or fails, Viewer.app shows native PDF preview fallback status instead of implying a bundled renderer.
 - `npm run smoke:viewer` verifies the deployment-provided PDF.js policy status for missing, available, and failed adapter paths.
+- Viewer.app includes app-specific troubleshooting diagnostics for MIME type, byte size, preview cache eligibility, cache hits/writes, PDF adapter mode, truncation/binary fallback, and next-step advice.
+- `npm run smoke:viewer` verifies Viewer.app diagnostics for cacheable markdown, native PDF fallback, large text truncation, and unsupported binary previews.
 
 Completion criteria:
 

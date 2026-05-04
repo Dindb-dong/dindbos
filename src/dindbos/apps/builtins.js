@@ -2450,6 +2450,14 @@ async function renderViewerBytes(os, content, node) {
     ? viewerPreviewForBytes(bytes, mime)
     : { preview: node?.content ? fileContentPreview(node.content) : "Preview adapter pending.", status: "" };
   const status = mime === "application/pdf" ? viewerPdfAdapterStatus() : previewState.status;
+  const diagnostics = buildViewerDiagnostics({
+    node,
+    mime,
+    bytes,
+    previewState,
+    status,
+    cacheStatus: os.cache?.status?.(),
+  });
   content.innerHTML = viewerMarkup({
     mime,
     name: node?.name || "Document",
@@ -2457,6 +2465,7 @@ async function renderViewerBytes(os, content, node) {
     preview: previewState.preview,
     url,
     status,
+    diagnostics,
   });
   wireViewerToolbar(os, content, node, bytes || new Uint8Array(), mime);
   if (mime === "application/pdf" && bytes?.byteLength) {
@@ -2475,7 +2484,7 @@ async function renderViewerBytes(os, content, node) {
   }
 }
 
-export function viewerMarkup({ mime, name, path = "", preview, url, status = "" }) {
+export function viewerMarkup({ mime, name, path = "", preview, url, status = "", diagnostics = null }) {
   const browserDisabled = mime === "text/html" && path ? "" : "disabled";
   const statusText = status || (path ? path : "No file path");
   return `
@@ -2497,6 +2506,7 @@ export function viewerMarkup({ mime, name, path = "", preview, url, status = "" 
         </div>
       </header>
       <p class="viewer-status" data-viewer-status>${escapeHtml(statusText)}</p>
+      ${diagnostics ? renderViewerDiagnostics(diagnostics) : ""}
       <div class="viewer-preview" data-viewer-preview style="--viewer-zoom: 1">
         ${mime.startsWith("image/") && url ? `<img data-viewer-object src="${escapeAttr(url)}" alt="${escapeAttr(name || "Image")}" />` : ""}
         ${mime === "application/pdf" && url ? `<canvas class="viewer-pdf-canvas" data-viewer-pdf-canvas hidden></canvas><iframe data-viewer-object src="${escapeAttr(url)}" title="${escapeAttr(name || "PDF")}"></iframe>` : ""}
@@ -2506,6 +2516,53 @@ export function viewerMarkup({ mime, name, path = "", preview, url, status = "" 
       </div>
     </section>
   `;
+}
+
+export function buildViewerDiagnostics({ node = null, mime = "application/octet-stream", bytes = null, previewState = {}, status = "", cacheStatus = null } = {}) {
+  const byteLength = Number(bytes?.byteLength ?? node?.size ?? 0);
+  const cacheable = isViewerPreviewCacheable(mime);
+  const pdfAdapter = mime === "application/pdf"
+    ? (status.includes("PDF.js adapter available") ? "pdfjs" : status.includes("adapter failed") ? "failed" : "native")
+    : "n/a";
+  const truncated = String(previewState?.status || "").includes("Large text preview");
+  const binary = String(previewState?.status || "").includes("Binary preview");
+  const advice = viewerDiagnosticsAdvice({ mime, cacheable, pdfAdapter, truncated, binary, byteLength });
+  return {
+    path: node?.path || "",
+    mime,
+    size: byteLength,
+    cacheable,
+    cacheWrites: Number(cacheStatus?.writes || 0),
+    cacheHits: Number(cacheStatus?.hits || 0),
+    pdfAdapter,
+    truncated,
+    binary,
+    advice,
+  };
+}
+
+function renderViewerDiagnostics(diagnostics) {
+  return `
+    <section class="viewer-diagnostics" data-viewer-diagnostics>
+      <dl>
+        <div><dt>File</dt><dd>${escapeHtml(`${diagnostics.mime} · ${formatBytes(diagnostics.size)}`)}</dd></div>
+        <div><dt>Cache</dt><dd>${escapeHtml(`${diagnostics.cacheable ? "eligible" : "bypass"} · hits ${diagnostics.cacheHits} · writes ${diagnostics.cacheWrites}`)}</dd></div>
+        <div><dt>PDF</dt><dd>${escapeHtml(diagnostics.pdfAdapter)}</dd></div>
+      </dl>
+      <p>${escapeHtml(diagnostics.advice)}</p>
+    </section>
+  `;
+}
+
+function viewerDiagnosticsAdvice({ mime, cacheable, pdfAdapter, truncated, binary, byteLength }) {
+  if (pdfAdapter === "native") return "PDF.js adapter is not bundled; using native PDF preview fallback.";
+  if (pdfAdapter === "failed") return "PDF.js adapter failed; native PDF preview remains available.";
+  if (truncated) return "Large text is bounded in Viewer; export or open in TextEdit for full editing.";
+  if (binary) return "No text renderer for this binary type; export or open with a package viewer.";
+  if (!byteLength) return "Empty document; no preview bytes to inspect.";
+  if (mime === "application/x-dindbos-deck") return "Deck preview is sandboxed and cannot mutate the source file.";
+  if (cacheable) return "Preview bytes are cacheable and keyed by path, MIME, size, and modified time.";
+  return "Preview bypasses cache for this MIME type.";
 }
 
 function wireViewerToolbar(os, content, node, bytes, mime) {

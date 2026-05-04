@@ -42,6 +42,7 @@ Added:
 - Files.app keyboard navigation for row movement, folder traversal, open, Trash, rename, and copy/paste shortcuts.
 - Files.app large tree operations now expose cancellation state and abort checks for recursive copy/move/export paths.
 - Files.app copy, move, import, and export naming paths now expose conflict choices for replace, rename, skip, and custom export names.
+- Viewer.app now surfaces document troubleshooting diagnostics for MIME/size, preview cache eligibility, PDF adapter mode, large text truncation, binary fallback, and next-step advice.
 - Settings.app runtime panels now have smoke coverage proving they read live storage, local mount, process, package, app, and session state.
 - Viewer.app toolbar controls, Browser.app handoff for HTML documents, bounded large text previews, and binary fallback messaging.
 - Viewer.app sandboxed `.deck.html` preview support for portfolio/demo HTML decks.
