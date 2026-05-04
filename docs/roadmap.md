@@ -109,6 +109,7 @@ Already present:
 - Package install transactions roll back failed installs/updates and cleanly remove package files, launchers, records, and app registration.
 - Package smoke coverage proves install -> launch -> run -> remove through a real AppRegistry launch path.
 - Package signature design documents public key format, signed manifest payloads, verification order, trust states, and failure UX.
+- Package signature verification enforces the documented trust model before remote package filesystem mutation.
 - npm-compatible installer for browser-safe JavaScript packages.
 - NodeCompat for early CommonJS and simple ESM execution.
 - Shell status codes are documented and enforced for success, runtime failure/no-match, and usage errors; `npm run smoke:shell` verifies status-driven `&&`/`||`.
@@ -116,7 +117,6 @@ Already present:
 Remaining:
 
 - Expand NodeCompat only in directions that support browser-safe packages.
-- Implement package signature verification against the documented trust model.
 
 ### Stage 4: Real Apps On Runtime APIs
 
@@ -372,14 +372,14 @@ Already present:
 - `/usr/share/applications/*.app`.
 - `/opt/<package>`.
 - Package install transactions roll back failed local and remote installs, preserving previous package versions and removing partial app registration, launcher, package DB records, and install directories.
-- `npm run smoke:packages` verifies local install failure cleanup, failed update rollback, remove cleanup, missing-remove stability, remote integrity failure cleanup, and install -> AppRegistry launch -> package runtime render -> remove cleanup.
-- Remote package records include untrusted-source metadata and warnings until package signatures are implemented; `npm run smoke:packages` verifies this trust metadata is persisted.
+- `npm run smoke:packages` verifies local install failure cleanup, failed update rollback, remove cleanup, missing-remove stability, unsigned remote rejection, invalid signature rejection, untrusted-key rejection, remote integrity failure cleanup, trusted signed install, and install -> AppRegistry launch -> package runtime render -> remove cleanup.
+- Remote package records include trust metadata with signature status, publisher id, key id, registry source, trusted flag, and warnings.
 - Package/npm fetches are cached through the runtime Cache API store with memory fallback; repeated remote package and npm installs avoid repeated manifest/file/tarball fetches.
-- `docs/package-signatures.md` defines the package signature model: Ed25519 public key format, canonical manifest signing, file integrity binding, trust states, and verification failure UX.
+- Package signature verification enforces the `docs/package-signatures.md` model: Ed25519 public key format, canonical manifest signing, trusted publisher store, file integrity binding, trust states, and fail-closed verification before filesystem mutation.
+- `pkg trust list|add|remove` manages trusted publishers in `/etc/dindbos/trusted-publishers.json`; `npm run smoke:shell` verifies the command surface.
 
 Remaining:
 
-- Implement package signature verification and trusted-publisher management.
 - Add richer app lifecycle hooks: install, update, first-run, uninstall cleanup.
 
 Completion criteria:
@@ -653,7 +653,7 @@ Already present:
 - `docs/support.md` documents supported browser targets, Chromium-only workflows, stability labels, manifest/registry versioning expectations, and local environment safety.
 - `docs/first-app.md` walks a contributor through a package manifest, install command, launcher path, and package smoke verification.
 - `docs/app-apis.md` documents sandboxed filesystem, process, storage, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
-- `docs/package-signatures.md` documents the planned remote package trust model, publisher key format, signed manifest payload, trust states, and verification failure UX.
+- `docs/package-signatures.md` documents the remote package trust model, publisher key format, signed manifest payload, trust states, trusted publisher commands, and verification failure UX.
 - `docs/app-lifecycle.md` documents install, update, launch, ready, focus, suspend/resume limits, crash, close, uninstall, current hooks, limits, and lifecycle verification commands.
 - Sample package/app paths in the runtime.
 
@@ -723,7 +723,6 @@ Goal: Third-party DindbOS apps can be built, installed, updated, and debugged.
 
 Tasks:
 
-- Define package trust/signature model.
 - Expand app lifecycle hooks.
 - Add sample apps that exercise real package flows.
 

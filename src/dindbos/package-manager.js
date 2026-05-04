@@ -3,6 +3,7 @@ const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
 const PACKAGE_SOURCE_DIR = "/opt/dindbos/packages";
 const PACKAGE_INSTALL_ROOT = "/opt";
 const REGISTRY_CONFIG_PATH = "/etc/dindbos/package-registries.json";
+const TRUSTED_PUBLISHERS_PATH = "/etc/dindbos/trusted-publishers.json";
 const LOCAL_REGISTRY_PATH = "/opt/dindbos/registry/index.json";
 const NPM_ESM_BASE_URL = "https://esm.sh";
 const MAX_REMOTE_MANIFEST_BYTES = 512 * 1024;
@@ -113,10 +114,12 @@ export class PackageManager {
     if (typeof fetcher !== "function") throw new Error("pkg: fetch is not available in this runtime");
     const manifestText = await fetchText(this.os, fetcher, sourceUrl, MAX_REMOTE_MANIFEST_BYTES, "manifest");
     const manifest = parseJson(manifestText, sourceUrl);
+    const trust = await this.verifyRemoteManifestTrust(manifest, sourceUrl, options);
     const record = this.normalizePackage(manifest, {
       sourcePath: sourceUrl,
       sourceUrl,
       registry: options.registry || "",
+      trust,
     });
     return this.runPackageTransactionAsync(record, async () => {
       this.ensurePackageRoots();
@@ -201,6 +204,29 @@ export class PackageManager {
     if (next.length === registries.length) throw new Error(`pkg: registry not found: ${name}`);
     this.writeRegistryConfig(next);
     return registryName;
+  }
+
+  trustedPublishers() {
+    this.ensurePackageRoots();
+    const trustStore = parseJson(this.os.fs.readFile(TRUSTED_PUBLISHERS_PATH, "/", this.system), TRUSTED_PUBLISHERS_PATH);
+    return [...(trustStore.publishers || [])];
+  }
+
+  addTrustedPublisher(publisher) {
+    const entry = normalizeTrustedPublisher(publisher);
+    const publishers = this.trustedPublishers().filter((item) => item.id !== entry.id && item.publicKey !== entry.publicKey);
+    publishers.push({ ...entry, addedAt: entry.addedAt || new Date().toISOString() });
+    this.writeTrustedPublishers(publishers);
+    return entry;
+  }
+
+  removeTrustedPublisher(idOrKey) {
+    const value = String(idOrKey || "").trim();
+    const publishers = this.trustedPublishers();
+    const next = publishers.filter((entry) => entry.id !== value && entry.publicKey !== value);
+    if (next.length === publishers.length) throw new Error(`pkg: trusted publisher not found: ${idOrKey}`);
+    this.writeTrustedPublishers(next);
+    return value;
   }
 
   async search(query = "", options = {}) {
@@ -323,7 +349,7 @@ export class PackageManager {
       description: String(manifest.description || app.description || ""),
       installPath,
       sourcePath: options.sourcePath || manifest.sourcePath || "",
-      trust: packageTrust(options.sourcePath || manifest.sourcePath || "", options.registry || ""),
+      trust: options.trust || packageTrust(options.sourcePath || manifest.sourcePath || "", options.registry || ""),
       installedAt: new Date().toISOString(),
       originalManifest: manifest,
       files: [],
@@ -370,6 +396,7 @@ export class PackageManager {
       }
     });
     this.ensureRegistryConfig();
+    this.ensureTrustedPublishers();
     this.ensureLocalRegistryIndex();
   }
 
@@ -423,6 +450,40 @@ export class PackageManager {
       { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
       this.system,
     );
+  }
+
+  ensureTrustedPublishers() {
+    if (this.os.fs.exists(TRUSTED_PUBLISHERS_PATH)) return;
+    this.writeTrustedPublishers([]);
+  }
+
+  writeTrustedPublishers(publishers) {
+    this.os.fs.writeOrCreateFile(
+      TRUSTED_PUBLISHERS_PATH,
+      `${JSON.stringify({ publishers }, null, 2)}\n`,
+      "/",
+      { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+      this.system,
+    );
+  }
+
+  async verifyRemoteManifestTrust(manifest, sourceUrl, options = {}) {
+    const signatureTrust = await verifyManifestSignature(manifest, sourceUrl);
+    const registry = options.registry || "";
+    if (signatureTrust.signature.status === "missing") {
+      if (!options.allowUnsigned && !options.allowUntrusted) throw new Error(`pkg: signature missing for ${sourceUrl}`);
+      return packageTrust(sourceUrl, registry, signatureTrust.signature);
+    }
+    if (signatureTrust.signature.status === "invalid") throw new Error(`pkg: signature invalid for ${manifest?.id || sourceUrl}`);
+    const trusted = this.trustedPublishers().some((publisher) => (
+      publisher.id === signatureTrust.signature.publisherId
+      && publisher.publicKey === signatureTrust.signature.keyId
+    ));
+    if (!trusted) {
+      if (!options.allowUntrusted) throw new Error(`pkg: publisher ${signatureTrust.signature.publisherId || "unknown"} is not trusted`);
+      return packageTrust(sourceUrl, registry, { ...signatureTrust.signature, status: "untrusted-key" });
+    }
+    return packageTrust(sourceUrl, registry, { ...signatureTrust.signature, status: "valid" });
   }
 
   ensureLocalRegistryIndex() {
@@ -810,16 +871,144 @@ function normalizeRegistryPackage(entry, registry) {
   };
 }
 
-function packageTrust(sourcePath, registry = "") {
+function packageTrust(sourcePath, registry = "", signature = null) {
   const remote = isHttpUrl(sourcePath);
   const warnings = [];
-  if (remote) warnings.push("remote manifest is untrusted until package signatures are implemented");
+  const signatureState = signature || { status: remote ? "missing" : "local", publisherId: "", keyId: "", algorithm: "" };
+  if (remote && signatureState.status === "missing") warnings.push("remote manifest is unsigned");
+  if (remote && signatureState.status === "untrusted-key") warnings.push(`publisher ${signatureState.publisherId || "unknown"} is not trusted`);
+  if (remote && signatureState.status === "invalid") warnings.push("remote manifest signature is invalid");
   return {
     source: remote ? "remote" : "local",
     registry,
-    trusted: !remote,
+    trusted: !remote || signatureState.status === "valid",
+    signature: signatureState,
     warnings,
   };
+}
+
+async function verifyManifestSignature(manifest, sourceUrl) {
+  const signature = manifest?.signature;
+  const publisher = manifest?.publisher || {};
+  if (!signature) {
+    return {
+      signature: {
+        status: "missing",
+        publisherId: String(publisher.id || ""),
+        keyId: "",
+        algorithm: "",
+      },
+    };
+  }
+  const normalized = {
+    algorithm: String(signature.algorithm || "").toLowerCase(),
+    keyId: String(signature.keyId || ""),
+    payload: String(signature.payload || ""),
+    publisherId: String(publisher.id || ""),
+  };
+  try {
+    if (normalized.algorithm !== "ed25519") throw new Error("unsupported algorithm");
+    if (normalized.payload !== "dindbos-manifest-v1") throw new Error("unsupported payload");
+    if (!normalized.publisherId) throw new Error("missing publisher id");
+    if (!isEd25519PublicKey(publisher.publicKey)) throw new Error("invalid publisher public key");
+    if (publisher.publicKey !== normalized.keyId) throw new Error("signature key does not match publisher key");
+    const signatureBytes = signatureBytesFromValue(signature.value);
+    const publicKeyBytes = publicKeyBytesFromValue(normalized.keyId);
+    const payload = canonicalPackageManifestPayload(manifest);
+    const valid = await verifyEd25519(publicKeyBytes, signatureBytes, payload);
+    return {
+      signature: {
+        status: valid ? "untrusted-key" : "invalid",
+        publisherId: normalized.publisherId,
+        keyId: normalized.keyId,
+        algorithm: normalized.algorithm,
+      },
+    };
+  } catch (error) {
+    if (String(error.message || "").includes("unsupported Ed25519")) throw error;
+    return {
+      signature: {
+        status: "invalid",
+        publisherId: normalized.publisherId,
+        keyId: normalized.keyId,
+        algorithm: normalized.algorithm || "ed25519",
+        error: `pkg: ${sourceUrl}: ${error.message}`,
+      },
+    };
+  }
+}
+
+export function canonicalPackageManifestPayload(manifest) {
+  const clone = cloneJson(manifest || {});
+  delete clone.signature;
+  return canonicalJson(clone);
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+async function verifyEd25519(publicKeyBytes, signatureBytes, payload) {
+  if (!globalThis.crypto?.subtle) throw new Error("unsupported Ed25519 verification: Web Crypto is unavailable");
+  try {
+    const key = await globalThis.crypto.subtle.importKey(
+      "raw",
+      publicKeyBytes,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    return globalThis.crypto.subtle.verify(
+      { name: "Ed25519" },
+      key,
+      signatureBytes,
+      new TextEncoder().encode(payload),
+    );
+  } catch (error) {
+    if (String(error.message || "").toLowerCase().includes("algorithm")) {
+      throw new Error("unsupported Ed25519 verification in this runtime");
+    }
+    throw error;
+  }
+}
+
+function normalizeTrustedPublisher(publisher) {
+  const id = String(publisher?.id || "").trim();
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id)) throw new Error(`pkg: invalid publisher id: ${publisher?.id || ""}`);
+  const publicKey = String(publisher?.publicKey || "").trim();
+  if (!isEd25519PublicKey(publicKey)) throw new Error(`pkg: invalid publisher public key for ${id}`);
+  return {
+    id,
+    name: String(publisher?.name || id),
+    publicKey,
+    addedAt: publisher?.addedAt || "",
+  };
+}
+
+function isEd25519PublicKey(value) {
+  try {
+    return publicKeyBytesFromValue(value).byteLength === 32;
+  } catch {
+    return false;
+  }
+}
+
+function publicKeyBytesFromValue(value) {
+  const match = /^ed25519-pub:v1:([A-Za-z0-9_-]+)$/.exec(String(value || ""));
+  if (!match) throw new Error("invalid Ed25519 public key format");
+  return base64UrlToBytes(match[1]);
+}
+
+function signatureBytesFromValue(value) {
+  const match = /^ed25519-sig:v1:([A-Za-z0-9_-]+)$/.exec(String(value || ""));
+  if (!match) throw new Error("invalid Ed25519 signature format");
+  const bytes = base64UrlToBytes(match[1]);
+  if (bytes.byteLength !== 64) throw new Error("invalid Ed25519 signature length");
+  return bytes;
 }
 
 function normalizePackageUrl(value) {
@@ -898,6 +1087,19 @@ function base64FromBytes(bytes) {
     return btoa(String.fromCharCode(...bytes));
   }
   return Buffer.from(bytes).toString("base64");
+}
+
+function base64UrlToBytes(value) {
+  const padded = String(value || "").replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(String(value || "").length / 4) * 4, "=");
+  if (typeof atob === "function") {
+    return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+  }
+  return new Uint8Array(Buffer.from(padded, "base64"));
+}
+
+export function base64UrlFromBytes(bytes) {
+  const base64 = base64FromBytes(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+  return base64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
 function mimeFromName(path) {

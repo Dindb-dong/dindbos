@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { PackageManager } from "../src/dindbos/package-manager.js";
+import { base64UrlFromBytes, canonicalPackageManifestPayload, PackageManager } from "../src/dindbos/package-manager.js";
 import { AppRegistry } from "../src/dindbos/app-registry.js";
 import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
 import { EventBus } from "../src/dindbos/event-bus.js";
@@ -9,6 +9,8 @@ import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 const os = bootOs();
 const packages = new PackageManager(os);
 const lifecycleEvents = [];
+let signedRemoteManifest = null;
+let trustedPublisher = null;
 ["install", "uninstall"].forEach((type) => {
   os.bus.on(`app:${type}`, (event) => lifecycleEvents.push(`${type}:${event.packageId}:${event.appId}`));
 });
@@ -64,7 +66,13 @@ assert(lifecycleEvents.includes("uninstall:rollback-demo:rollback-demo"), "app:u
 
 const remoteFetch = countedFetch(fakeFetch);
 await assertRejects(
-  () => packages.installFromUrl("https://packages.example/broken/dindbos.app.json", { fetch: remoteFetch }),
+  () => packages.installFromUrl("https://packages.example/unsigned/dindbos.app.json", { fetch: remoteFetch }),
+  "signature missing",
+);
+assert(!os.fs.exists("/opt/remote-unsigned"), "unsigned remote install mutated package directory");
+
+await assertRejects(
+  () => packages.installFromUrl("https://packages.example/broken/dindbos.app.json", { fetch: remoteFetch, allowUntrusted: true }),
   "integrity mismatch",
 );
 
@@ -73,17 +81,48 @@ assert(!os.fs.exists("/var/lib/dindbos/packages/remote-broken.json"), "failed re
 assert(!os.fs.exists("/usr/share/applications/Remote Broken.app"), "failed remote install left launcher");
 assert(!os.apps.apps.has("remote-broken"), "failed remote install registered app");
 
-const remoteGood = await packages.installFromUrl("https://packages.example/good/dindbos.app.json", { fetch: remoteFetch, registry: "community" });
+const signed = await signedPackageManifest(packageManifest("remote-good", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: "export const signed = true;\n",
+    integrity: await sha256Integrity("export const signed = true;\n"),
+  },
+]));
+signedRemoteManifest = signed.manifest;
+trustedPublisher = signed.publisher;
+
+await assertRejects(
+  () => packages.installFromUrl("https://packages.example/signed/dindbos.app.json", { fetch: remoteFetch, registry: "community" }),
+  "is not trusted",
+);
+assert(!os.fs.exists("/opt/remote-good"), "untrusted signed package mutated install directory");
+
+const addedPublisher = packages.addTrustedPublisher(trustedPublisher);
+assert(addedPublisher.id === trustedPublisher.id, "trusted publisher add returned wrong id");
+assert(packages.trustedPublishers().some((publisher) => publisher.publicKey === trustedPublisher.publicKey), "trusted publisher was not persisted");
+
+await assertRejects(
+  () => packages.installFromUrl("https://packages.example/tampered/dindbos.app.json", { fetch: remoteFetch, registry: "community" }),
+  "signature invalid",
+);
+assert(!os.fs.exists("/opt/remote-tampered"), "invalid signature install mutated package directory");
+
+const remoteGood = await packages.installFromUrl("https://packages.example/signed/dindbos.app.json", { fetch: remoteFetch, registry: "community" });
 assert(remoteGood.trust.source === "remote", "remote package trust source mismatch");
 assert(remoteGood.trust.registry === "community", "remote package trust registry mismatch");
-assert(remoteGood.trust.trusted === false, "remote package was marked trusted before signatures");
-assert(remoteGood.trust.warnings[0].includes("untrusted"), "remote package trust warning missing");
-assert(packages.info("remote-good").trust.trusted === false, "remote package trust metadata was not persisted");
+assert(remoteGood.trust.trusted === true, "trusted signed package was not marked trusted");
+assert(remoteGood.trust.signature.status === "valid", "trusted signed package signature status mismatch");
+assert(remoteGood.trust.signature.publisherId === trustedPublisher.id, "trusted signed package publisher id mismatch");
+assert(packages.info("remote-good").trust.trusted === true, "trusted signed package metadata was not persisted");
 const remoteFetchCountAfterFirstInstall = remoteFetch.count;
 const cacheHitsBeforeRepeat = os.cache.status().hits;
-await packages.installFromUrl("https://packages.example/good/dindbos.app.json", { fetch: remoteFetch, registry: "community" });
+await packages.installFromUrl("https://packages.example/signed/dindbos.app.json", { fetch: remoteFetch, registry: "community" });
 assert(remoteFetch.count === remoteFetchCountAfterFirstInstall, "package cache did not avoid repeated manifest/file fetches");
 assert(os.cache.status().hits > cacheHitsBeforeRepeat, "package cache did not report repeated install hits");
+
+assert(packages.removeTrustedPublisher(trustedPublisher.id) === trustedPublisher.id, "trusted publisher remove returned wrong id");
+assert(!packages.trustedPublishers().some((publisher) => publisher.id === trustedPublisher.id), "trusted publisher remove did not persist");
 
 const flow = packages.install(packageManifest("flow-demo", "1.0.0", [
   {
@@ -218,11 +257,11 @@ async function waitFor(check, label) {
 
 async function fakeFetch(url) {
   if (url.endsWith("dindbos.app.json")) {
-    if (url.includes("/good/")) {
-      return response(JSON.stringify(packageManifest("remote-good", "0.1.0", [
-        { path: "app.js", mime: "text/javascript", content: "export const good = true;\n" },
-      ])));
-    }
+    if (url.includes("/unsigned/")) return response(JSON.stringify(packageManifest("remote-unsigned", "0.1.0", [
+      { path: "app.js", mime: "text/javascript", content: "export const unsigned = true;\n" },
+    ])));
+    if (url.includes("/signed/")) return response(JSON.stringify(signedRemoteManifest));
+    if (url.includes("/tampered/")) return response(JSON.stringify({ ...signedRemoteManifest, id: "remote-tampered" }));
     return response(JSON.stringify(packageManifest("remote-broken", "0.1.0", [
       {
         path: "app.js",
@@ -234,6 +273,42 @@ async function fakeFetch(url) {
   }
   if (url.endsWith("app.js")) return response("export const remote = true;\n");
   return { ok: false, status: 404, headers: new Map(), text: async () => "" };
+}
+
+async function signedPackageManifest(manifest) {
+  const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  const publicKeyBytes = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey));
+  const publisher = {
+    id: "com.example",
+    name: "Example Publisher",
+    publicKey: `ed25519-pub:v1:${base64UrlFromBytes(publicKeyBytes)}`,
+  };
+  const unsigned = {
+    ...manifest,
+    publisher,
+  };
+  const signatureBytes = new Uint8Array(await crypto.subtle.sign(
+    { name: "Ed25519" },
+    keyPair.privateKey,
+    new TextEncoder().encode(canonicalPackageManifestPayload(unsigned)),
+  ));
+  return {
+    manifest: {
+      ...unsigned,
+      signature: {
+        algorithm: "ed25519",
+        keyId: publisher.publicKey,
+        payload: "dindbos-manifest-v1",
+        value: `ed25519-sig:v1:${base64UrlFromBytes(signatureBytes)}`,
+      },
+    },
+    publisher,
+  };
+}
+
+async function sha256Integrity(content) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  return `sha256-${Buffer.from(new Uint8Array(digest)).toString("base64")}`;
 }
 
 function countedFetch(fetcher) {
