@@ -821,6 +821,15 @@ button {
   font-size: 11px;
 }
 
+/* Files column cap notice */
+.files-column-limit {
+  padding: 10px 9px;
+  border-bottom: 1px solid rgba(230, 235, 218, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 /* Mini icon art */
 .dos-mini-icon {
   width: 16px;
