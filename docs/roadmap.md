@@ -64,8 +64,8 @@ Already present:
 - `npm run smoke:boot` verifies boot phase order, completion diagnostics, persisted boot logs, boot phase events, `/proc` initialization, app registry load, package registry load, and storage-load failure reporting.
 - App render crashes are isolated to the app process, render an explicit crash panel, mark the process as crashed, and keep the desktop session alive.
 - `npm run smoke:app-registry` verifies crash panel rendering and process crash reporting for a throwing app render path.
-- Explicit app lifecycle events exist for install, launch, ready, focus, suspend, resume, crash, close, and uninstall.
-- `npm run smoke:packages` verifies app install/uninstall lifecycle events; `npm run smoke:processes` verifies launch, ready, focus, suspend, resume, crash, and close lifecycle events.
+- Explicit app lifecycle events exist for install, update, first-run, launch, ready, focus, suspend, resume, crash, close, uninstall-cleanup, and uninstall.
+- `npm run smoke:packages` verifies app install/update/first-run/uninstall-cleanup/uninstall lifecycle events; `npm run smoke:processes` verifies launch, ready, focus, suspend, resume, crash, and close lifecycle events.
 - Failed storage-load and VFS mount restore phases can recover and continue booting with explicit `recovered` diagnostics.
 - `npm run smoke:boot` verifies recovered storage-load diagnostics, recovered boot log persistence, and strict no-recovery failure behavior.
 
@@ -138,7 +138,7 @@ Remaining:
 
 - Remove privileged shortcuts where built-in apps bypass sandbox boundaries unnecessarily.
 - Add sample third-party apps that prove the APIs.
-- Add app lifecycle hooks and app state persistence.
+- Add app state persistence.
 
 ### Stage 5: External Capability Bridges
 
@@ -372,15 +372,16 @@ Already present:
 - `/usr/share/applications/*.app`.
 - `/opt/<package>`.
 - Package install transactions roll back failed local and remote installs, preserving previous package versions and removing partial app registration, launcher, package DB records, and install directories.
-- `npm run smoke:packages` verifies local install failure cleanup, failed update rollback, remove cleanup, missing-remove stability, unsigned remote rejection, invalid signature rejection, untrusted-key rejection, remote integrity failure cleanup, trusted signed install, and install -> AppRegistry launch -> package runtime render -> remove cleanup.
+- `npm run smoke:packages` verifies local install failure cleanup, failed update rollback, valid update lifecycle metadata, remove cleanup, missing-remove stability, unsigned remote rejection, invalid signature rejection, untrusted-key rejection, remote integrity failure cleanup, trusted signed install, first-run lifecycle persistence, and install -> AppRegistry launch -> package runtime render -> remove cleanup.
 - Remote package records include trust metadata with signature status, publisher id, key id, registry source, trusted flag, and warnings.
 - Package/npm fetches are cached through the runtime Cache API store with memory fallback; repeated remote package and npm installs avoid repeated manifest/file/tarball fetches.
 - Package signature verification enforces the `docs/package-signatures.md` model: Ed25519 public key format, canonical manifest signing, trusted publisher store, file integrity binding, trust states, and fail-closed verification before filesystem mutation.
 - `pkg trust list|add|remove` manages trusted publishers in `/etc/dindbos/trusted-publishers.json`; `npm run smoke:shell` verifies the command surface.
+- Package lifecycle metadata and events distinguish install, update, first-run, uninstall-cleanup, and uninstall; `docs/app-lifecycle.md` and `npm run smoke:packages` cover the contract.
 
 Remaining:
 
-- Add richer app lifecycle hooks: install, update, first-run, uninstall cleanup.
+- Add package/app state persistence beyond lifecycle metadata.
 
 Completion criteria:
 
@@ -654,7 +655,7 @@ Already present:
 - `docs/first-app.md` walks a contributor through a package manifest, install command, launcher path, and package smoke verification.
 - `docs/app-apis.md` documents sandboxed filesystem, process, storage, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
 - `docs/package-signatures.md` documents the remote package trust model, publisher key format, signed manifest payload, trust states, trusted publisher commands, and verification failure UX.
-- `docs/app-lifecycle.md` documents install, update, launch, ready, focus, suspend/resume limits, crash, close, uninstall, current hooks, limits, and lifecycle verification commands.
+- `docs/app-lifecycle.md` documents install, update, first-run, launch, ready, focus, suspend/resume limits, crash, close, uninstall cleanup, uninstall, current hooks, limits, and lifecycle verification commands.
 - Sample package/app paths in the runtime.
 
 Remaining:
@@ -723,7 +724,7 @@ Goal: Third-party DindbOS apps can be built, installed, updated, and debugged.
 
 Tasks:
 
-- Expand app lifecycle hooks.
+- Add app state persistence.
 - Add sample apps that exercise real package flows.
 
 ### Milestone E: Desktop Polish

@@ -11,7 +11,7 @@ const packages = new PackageManager(os);
 const lifecycleEvents = [];
 let signedRemoteManifest = null;
 let trustedPublisher = null;
-["install", "uninstall"].forEach((type) => {
+["install", "update", "first-run", "uninstall-cleanup", "uninstall"].forEach((type) => {
   os.bus.on(`app:${type}`, (event) => lifecycleEvents.push(`${type}:${event.packageId}:${event.appId}`));
 });
 
@@ -53,8 +53,16 @@ assert(packages.info("rollback-demo")?.version === "0.1.0", "failed update did n
 assert(os.fs.exists("/usr/share/applications/Rollback Demo.app"), "failed update removed previous launcher");
 assert(os.apps.apps.has("rollback-demo"), "failed update removed previous app registration");
 
+const updated = packages.install(packageManifest("rollback-demo", "0.2.0", [
+  { path: "app.js", mime: "text/javascript", content: "export const version = '0.2.0';\n" },
+]));
+assert(updated.version === "0.2.0", "valid update returned wrong version");
+assert(updated.lifecycle.updateCount === 1, "valid update did not increment lifecycle update count");
+assert(lifecycleEvents.includes("update:rollback-demo:rollback-demo"), "app:update lifecycle event missing");
+assert(lifecycleEvents.filter((event) => event === "install:rollback-demo:rollback-demo").length === 1, "valid update emitted a second install event");
+
 await assertRejects(() => packages.remove("missing-package"), "package not installed");
-assert(packages.info("rollback-demo")?.version === "0.1.0", "missing remove mutated installed package record");
+assert(packages.info("rollback-demo")?.version === "0.2.0", "missing remove mutated installed package record");
 
 const removed = packages.remove("rollback-demo");
 assert(removed.id === "rollback-demo", "remove returned wrong package id");
@@ -63,6 +71,7 @@ assert(!os.fs.exists("/var/lib/dindbos/packages/rollback-demo.json"), "remove le
 assert(!os.fs.exists("/usr/share/applications/Rollback Demo.app"), "remove left launcher");
 assert(!os.apps.apps.has("rollback-demo"), "remove left app registration");
 assert(lifecycleEvents.includes("uninstall:rollback-demo:rollback-demo"), "app:uninstall lifecycle event missing");
+assert(lifecycleEvents.includes("uninstall-cleanup:rollback-demo:rollback-demo"), "app:uninstall-cleanup lifecycle event missing");
 
 const remoteFetch = countedFetch(fakeFetch);
 await assertRejects(
@@ -143,6 +152,11 @@ assert(flowEntry.permissions === "-rw-r--r--", `package JS entry permissions mis
 assert(!flowEntry.permissions.includes("x"), "package JS entry unexpectedly has execute bits");
 const launched = os.apps.launch("flow-demo");
 await waitFor(() => launched.content.innerHTML.includes("flow-demo:runtime-ok"), "package app did not run through AppRegistry launch");
+assert(lifecycleEvents.includes("first-run:flow-demo:flow-demo"), "app:first-run lifecycle event missing");
+const firstRunEventCount = lifecycleEvents.filter((event) => event === "first-run:flow-demo:flow-demo").length;
+os.apps.launch("flow-demo");
+assert(lifecycleEvents.filter((event) => event === "first-run:flow-demo:flow-demo").length === firstRunEventCount, "app:first-run emitted more than once");
+assert(packages.info("flow-demo").lifecycle.firstRunAt, "first-run timestamp was not persisted");
 assert(os.processes.records.has(launched.pid), "package launch did not create process");
 assert(launched.content.innerHTML.includes("data-flow-run"), "package app did not render mounted UI");
 const removedFlow = packages.remove("flow-demo");
