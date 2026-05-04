@@ -17,6 +17,7 @@ Added:
 - Browser.app companion client and `scripts/browserd.js` for real Chromium-backed page navigation through an explicit local boundary.
 - Browser.app connection health, reconnect, and failure handling smoke coverage.
 - Browser.app local VFS HTML sandbox policy that allows document scripts/forms/popups while denying same-origin and top-navigation privileges.
+- Browser.app companion download policy blocks Chromium downloads and reports the suggested filename as an in-app status.
 - Explicit runtime boot phase diagnostics for storage load, VFS mount, package registry load, app registry load, process init, and desktop render, persisted under `/var/log/dindbos`.
 - Recoverable storage-load and VFS mount restore failures now continue booting with `recovered` boot phase diagnostics.
 - Disk policy areas for `/home`, `/opt`, `/var`, `/var/cache`, `/tmp`, and `/mnt`, exposed through runtime APIs and `df`.

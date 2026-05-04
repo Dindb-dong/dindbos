@@ -76,6 +76,20 @@ try {
     (message) => message.type === "status" && message.title === "modifier:ctrl-a",
     COMMAND_TIMEOUT_MS,
   );
+  await sendCommand(socket, 10, "navigate", { url: downloadPageUrl() });
+  await waitForMessage(
+    received,
+    (message) => message.type === "status" && message.title === "DindbOS Download Smoke",
+    COMMAND_TIMEOUT_MS,
+  );
+  await sendCommand(socket, 11, "click", { x: 78, y: 58 });
+  await waitForMessage(
+    received,
+    (message) => message.type === "status"
+      && message.status === "download-blocked"
+      && message.suggestedFilename === "blocked.txt",
+    COMMAND_TIMEOUT_MS,
+  );
 
   socket.close();
   console.log(`browserd smoke ok port=${browserPort} cdp=${cdpPort} frameBytes=${frame.data.length}`);
@@ -243,6 +257,31 @@ function smokePageUrl() {
         </script>
       </head>
       <body><main><p>browserd <strong>smoke frame</strong></p><form><input autofocus /></form></main></body>
+    </html>`;
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function downloadPageUrl() {
+  const html = `<!doctype html>
+    <html>
+      <head>
+        <title>DindbOS Download Smoke</title>
+        <style>
+          body { margin: 0; font: 20px system-ui; background: #f7f1e8; }
+          a {
+            position: fixed;
+            left: 24px;
+            top: 24px;
+            display: inline-block;
+            padding: 14px 18px;
+            background: #3b82f6;
+            color: white;
+          }
+        </style>
+      </head>
+      <body>
+        <a download="blocked.txt" href="data:text/plain,blocked">download</a>
+      </body>
     </html>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }

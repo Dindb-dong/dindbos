@@ -225,9 +225,12 @@ class BrowserSession {
     await this.cdp.connect();
     await this.command("Page.enable");
     await this.command("Runtime.enable");
+    await this.configureDownloadPolicy();
     this.cdp.on("Page.screencastFrame", (params) => this.handleScreencastFrame(params).catch(() => {}));
     this.cdp.on("Page.loadEventFired", () => this.scheduleMetadataRefresh());
     this.cdp.on("Page.frameNavigated", () => this.scheduleMetadataRefresh());
+    this.cdp.on("Page.downloadWillBegin", (params) => this.handleDownloadWillBegin(params));
+    this.cdp.on("Browser.downloadWillBegin", (params) => this.handleDownloadWillBegin(params));
     await this.resize({ width: this.width, height: this.height, deviceScaleFactor: this.deviceScaleFactor, force: true });
     await this.startScreencast();
     this.send({ type: "status", status: "ready", url: "about:blank", title: "" });
@@ -235,6 +238,24 @@ class BrowserSession {
 
   command(method, params = {}) {
     return this.cdp.send(method, params);
+  }
+
+  async configureDownloadPolicy() {
+    await this.command("Browser.setDownloadBehavior", { behavior: "deny" }).catch(() => (
+      this.command("Page.setDownloadBehavior", { behavior: "deny" }).catch(() => {})
+    ));
+  }
+
+  handleDownloadWillBegin(params = {}) {
+    const filename = params.suggestedFilename || "download";
+    this.send({
+      type: "status",
+      status: "download-blocked",
+      message: `download blocked by DindbOS policy: ${filename}`,
+      url: params.url || this.metadata.url,
+      title: this.metadata.title,
+      suggestedFilename: filename,
+    });
   }
 
   async navigate(url) {
