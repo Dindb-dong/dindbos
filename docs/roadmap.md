@@ -558,11 +558,11 @@ Already present:
 - `npm run smoke:files` verifies Files.app multi-select helper behavior and multi-action target de-duplication.
 - Keyboard navigation supports Up/Down/Home/End selection movement, Left/Right folder traversal, Enter open, Delete to Trash, F2 rename, and Ctrl/Cmd+C/V copy/paste.
 - `npm run smoke:files` verifies Files.app keyboard selection movement helper behavior.
+- Large tree copy/move/export operations are cancellable through the operation reporter and abort signal checks; `npm run smoke:files` verifies cancellation stops export traversal and records cancelled history.
 
 Remaining:
 
 - Add conflict dialogs for copy/move/import/export.
-- Add large tree operation cancellation.
 - Add OS-level local mount rename through a native companion/helper instead of browser copy-delete.
 
 Completion criteria:

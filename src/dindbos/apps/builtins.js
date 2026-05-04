@@ -495,7 +495,7 @@ function renderFiles(os, content, path, windowApi) {
       await draw(result.path || currentPath, result.selectedPath || result.path || currentPath);
     } catch (error) {
       if (reporter.started) {
-        fileOperation = reporter.fail(error);
+        fileOperation = error.name === "AbortError" ? reporter.cancel(error.message) : reporter.fail(error);
         operationHistory = recordFilesOperationHistory(operationHistory, fileOperation);
       }
       windowApi.setTitle(`Files - ${error.message}`);
@@ -718,11 +718,13 @@ function renderFilesOperation(operation) {
   const status = operation.status || "running";
   const label = operation.label || operation.kind || "operation";
   const detail = operation.error || operation.detail || operation.source || "";
+  const cancellable = operation.cancellable && status === "running";
   return `
     <div class="files-operation" data-operation-status="${escapeAttr(status)}">
       <div>
         <strong>${escapeHtml(label)}</strong>
         <span>${total > 0 ? `${done}/${total}` : status} · ${escapeHtml(detail)}</span>
+        ${cancellable ? `<button type="button" data-files-operation-cancel="${escapeAttr(operation.id || "")}">Cancel</button>` : ""}
       </div>
       <div class="files-operation-meter" aria-label="${escapeAttr(label)} progress">
         <span style="width:${percent}%"></span>
@@ -772,10 +774,25 @@ function renderFilesOperationHistory(history = []) {
 }
 
 function createFilesOperationReporter(content, label) {
+  const controller = new AbortController();
   const reporter = {
     label,
+    signal: controller.signal,
     started: false,
     state: null,
+    cancel(detail = "Cancelled") {
+      controller.abort();
+      if (!this.started) this.start(1, detail);
+      this.state = {
+        ...this.state,
+        detail,
+        error: detail,
+        status: "cancelled",
+        finishedAt: new Date().toISOString(),
+      };
+      updateFilesOperation(content, this.state);
+      return this.state;
+    },
     start(total = 0, detail = "") {
       this.started = true;
       this.state = {
@@ -786,6 +803,7 @@ function createFilesOperationReporter(content, label) {
         done: 0,
         detail,
         status: "running",
+        cancellable: true,
         startedAt: new Date().toISOString(),
       };
       updateFilesOperation(content, this.state);
@@ -798,6 +816,7 @@ function createFilesOperationReporter(content, label) {
         ...operation,
         label: this.label,
         status: operation.status || this.state.status || "running",
+        cancellable: this.state.cancellable !== false,
       };
       updateFilesOperation(content, this.state);
       return this.state;
@@ -809,6 +828,7 @@ function createFilesOperationReporter(content, label) {
         done: Number(this.state.done || 0) + increment,
         detail: detail || this.state.detail,
         status: "running",
+        cancellable: this.state.cancellable !== false,
       };
       updateFilesOperation(content, this.state);
       return this.state;
@@ -820,6 +840,7 @@ function createFilesOperationReporter(content, label) {
         done: this.state.total || this.state.done || 1,
         detail,
         status: "complete",
+        cancellable: false,
         finishedAt: new Date().toISOString(),
       };
       updateFilesOperation(content, this.state);
@@ -832,13 +853,27 @@ function createFilesOperationReporter(content, label) {
         detail: error?.message || String(error),
         error: error?.message || String(error),
         status: "error",
+        cancellable: false,
         finishedAt: new Date().toISOString(),
       };
       updateFilesOperation(content, this.state);
       return this.state;
     },
   };
+  content.addEventListener("click", (event) => {
+    if (!event.target?.matches?.("[data-files-operation-cancel]")) return;
+    if (event.target.dataset.filesOperationCancel !== reporter.state?.id) return;
+    reporter.cancel();
+  });
   return reporter;
+}
+
+export function assertFilesOperationActive(signal, detail = "Files operation cancelled") {
+  if (signal?.aborted) {
+    const error = new Error(detail);
+    error.name = "AbortError";
+    throw error;
+  }
 }
 
 function operationLabel(action) {
@@ -1175,6 +1210,7 @@ async function movePathIntoDirectory(os, sourcePath, directoryPath, reporter = n
 }
 
 async function copyPath(os, sourcePath, destinationPath, reporter = null) {
+  assertFilesOperationActive(reporter?.signal);
   const sourceLocal = os.localMounts?.isMountedPath(sourcePath);
   const destinationLocal = os.localMounts?.isMountedPath(destinationPath);
   if (sourceLocal && destinationLocal) {
@@ -1200,6 +1236,7 @@ async function copyPath(os, sourcePath, destinationPath, reporter = null) {
 }
 
 async function movePath(os, sourcePath, destinationPath, reporter = null) {
+  assertFilesOperationActive(reporter?.signal);
   const sourceLocal = os.localMounts?.isMountedPath(sourcePath);
   const destinationLocal = os.localMounts?.isMountedPath(destinationPath);
   if (sourceLocal && destinationLocal) {
@@ -1220,6 +1257,7 @@ async function movePath(os, sourcePath, destinationPath, reporter = null) {
 }
 
 async function copyLocalToVirtual(os, sourcePath, destinationPath, reporter = null) {
+  assertFilesOperationActive(reporter?.signal);
   const stat = await os.localMounts.stat(sourcePath);
   if (stat.type === "directory" || stat.type === "mount") {
     os.fs.createDirectory(destinationPath, "/", {
@@ -1230,6 +1268,7 @@ async function copyLocalToVirtual(os, sourcePath, destinationPath, reporter = nu
     reporter?.step(sourcePath);
     const entries = await os.localMounts.list(sourcePath);
     for (const entry of entries) {
+      assertFilesOperationActive(reporter?.signal);
       await copyLocalToVirtual(os, entry.path, os.fs.join(destinationPath, entry.name), reporter);
     }
     return;
@@ -1244,12 +1283,14 @@ async function copyLocalToVirtual(os, sourcePath, destinationPath, reporter = nu
 }
 
 async function copyVirtualToLocal(os, sourcePath, destinationPath, reporter = null) {
+  assertFilesOperationActive(reporter?.signal);
   const stat = os.fs.stat(sourcePath);
   if (!stat) throw new Error(`copy: ${sourcePath}: no such file or directory`);
   if (stat.type === "directory" || stat.type === "mount") {
     await os.localMounts.createDirectory(destinationPath, "/", { parents: true });
     reporter?.step(sourcePath);
     for (const entry of os.fs.list(sourcePath)) {
+      assertFilesOperationActive(reporter?.signal);
       await copyVirtualToLocal(os, entry.path, os.fs.join(destinationPath, entry.name), reporter);
     }
     return;
@@ -1275,6 +1316,7 @@ async function countLocalEntries(os, path) {
 }
 
 async function removePath(os, path, reporter = null) {
+  assertFilesOperationActive(reporter?.signal);
   const ownsProgress = reporter && !reporter.started;
   if (ownsProgress) reporter.start(1, path);
   if (os.localMounts?.isMountedPath(path)) {
@@ -1331,6 +1373,7 @@ function sanitizeFileName(name) {
 }
 
 async function exportPath(os, path, reporter = null) {
+  assertFilesOperationActive(reporter?.signal);
   const normalized = os.fs.normalize(path);
   const node = os.fs.resolve(normalized) || os.fs.lstat(normalized);
   if (!node) throw new Error(`export: no such path: ${path}`);
@@ -1360,17 +1403,24 @@ export async function collectExportEntries(os, rootPath, reporter = null) {
   const root = os.fs.normalize(rootPath);
   const entries = [];
   const walk = async (path) => {
+    assertFilesOperationActive(reporter?.signal);
     if (os.localMounts?.isMountedPath(path)) await os.localMounts.syncDirectory(path);
     const node = os.fs.resolve(path);
     if (!node || node.type === "mount") {
       reporter?.step(path);
       const localEntries = await os.localMounts.list(path);
-      for (const entry of localEntries) await walk(entry.path);
+      for (const entry of localEntries) {
+        assertFilesOperationActive(reporter?.signal);
+        await walk(entry.path);
+      }
       return;
     }
     if (node.type === "directory") {
       reporter?.step(path);
-      for (const entry of os.fs.list(path)) await walk(entry.path);
+      for (const entry of os.fs.list(path)) {
+        assertFilesOperationActive(reporter?.signal);
+        await walk(entry.path);
+      }
       return;
     }
     if (node.type !== "file") return;

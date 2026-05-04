@@ -34,6 +34,7 @@ Added:
 - Files.app rich search filters for text, type, extension, size, modified time, and path.
 - Files.app multi-select with Ctrl/Cmd toggle, Shift range selection, and multi-item Trash/Delete targeting.
 - Files.app keyboard navigation for row movement, folder traversal, open, Trash, rename, and copy/paste shortcuts.
+- Files.app large tree operations now expose cancellation state and abort checks for recursive copy/move/export paths.
 - Viewer.app toolbar controls, Browser.app handoff for HTML documents, bounded large text previews, and binary fallback messaging.
 - Viewer.app sandboxed `.deck.html` preview support for portfolio/demo HTML decks.
 - Shell script execution with shebang handling, `PATH` lookup, positional arguments, stdin pipeline support, execute-bit enforcement, escaped quote parsing, empty string arguments, input redirection, and redirected pipeline status.
