@@ -96,6 +96,7 @@ Current built-ins:
 - `tty`
 - `module`
 - `string_decoder`
+- `constants`
 - `http` / `https` policy facades
 
 The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
@@ -113,6 +114,8 @@ The `tty` module is a non-interactive browser-safe facade. It supports packages 
 The `module` module supports `builtinModules`, `isBuiltin`, `createRequire`, and a minimal `Module` object so browser-safe packages can probe built-ins or bridge from ESM-style code back to CommonJS resolution without Node loader hooks.
 
 The `string_decoder` module supports the `StringDecoder` class for common browser-safe package decoding paths, including `utf8`, `utf16le`, `latin1`/`binary`/`ascii`, `hex`, and `base64`.
+
+The `constants` module exposes a browser-safe subset of common errno, signal, open flag, and file mode constants used by packages for feature detection and VFS-facing fallback logic.
 
 The `http` and `https` modules are explicit policy facades. They can be imported by packages that probe for Node built-ins, but `request()`, `get()`, `createServer()`, and constructor paths throw `NodeCompat <protocol> networking is unavailable`. Network access belongs to a future explicit DindbOS network capability or app sandbox grant, not the NodeCompat compatibility layer.
 
