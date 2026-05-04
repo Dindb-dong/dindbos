@@ -953,6 +953,47 @@ function createUrlModule() {
     if (url.protocol !== "file:") throw new Error(`url.fileURLToPath: unsupported protocol: ${url.protocol}`);
     return decodeURIComponent(url.pathname || "/");
   };
+  const parse = (value = "", parseQueryString = false) => {
+    const input = String(value || "");
+    const hasProtocol = /^[a-z][a-z0-9+.-]*:/i.test(input);
+    const parsed = new URL(input, hasProtocol ? undefined : "http://dindbos.local");
+    const absolute = hasProtocol || input.startsWith("//");
+    const query = parsed.search ? parsed.search.slice(1) : "";
+    return {
+      href: absolute ? parsed.href : `${parsed.pathname}${parsed.search}${parsed.hash}`,
+      protocol: absolute ? parsed.protocol : null,
+      slashes: input.startsWith("//") || parsed.protocol === "http:" || parsed.protocol === "https:",
+      auth: parsed.username || parsed.password ? `${decodeURIComponent(parsed.username)}${parsed.password ? `:${decodeURIComponent(parsed.password)}` : ""}` : null,
+      host: absolute || input.startsWith("//") ? parsed.host : null,
+      port: parsed.port || null,
+      hostname: absolute || input.startsWith("//") ? parsed.hostname : null,
+      hash: parsed.hash || null,
+      search: parsed.search || null,
+      query: parseQueryString ? Object.fromEntries(parsed.searchParams.entries()) : query,
+      pathname: parsed.pathname,
+      path: `${parsed.pathname}${parsed.search}`,
+    };
+  };
+  const format = (value = {}) => {
+    if (typeof value === "string") return value;
+    if (value instanceof URL) return value.href;
+    if (value.href) return String(value.href);
+    const protocol = value.protocol ? String(value.protocol).replace(/:?$/, ":") : "";
+    const slashes = value.slashes || protocol === "http:" || protocol === "https:" ? "//" : "";
+    const auth = value.auth ? `${encodeURIComponent(String(value.auth))}@` : "";
+    const host = value.host || [value.hostname, value.port].filter(Boolean).join(":");
+    const pathname = value.pathname || "";
+    const query = value.search
+      ? String(value.search)
+      : value.query && typeof value.query === "object"
+        ? `?${new URLSearchParams(value.query).toString()}`
+        : value.query
+          ? `?${String(value.query).replace(/^\?/, "")}`
+          : "";
+    const hash = value.hash ? String(value.hash).replace(/^#?/, "#") : "";
+    return `${protocol}${slashes}${auth}${host || ""}${pathname}${query}${hash}`;
+  };
+  const resolve = (from, to) => new URL(String(to || ""), new URL(String(from || ""), "http://dindbos.local")).href.replace(/^http:\/\/dindbos\.local/, "");
   return {
     URL: globalThis.URL,
     URLSearchParams: globalThis.URLSearchParams,
@@ -965,7 +1006,10 @@ function createUrlModule() {
     },
     domainToUnicode: (domain) => String(domain || ""),
     fileURLToPath,
+    format,
     pathToFileURL,
+    parse,
+    resolve,
   };
 }
 

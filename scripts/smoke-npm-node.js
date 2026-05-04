@@ -102,11 +102,11 @@ assert(eventsImport.status === 0, `events import exited with ${eventsImport.stat
 assert(eventsImport.output.trim() === "events-esm", `unexpected events import output: ${eventsImport.output}`);
 
 const browserSafeBuiltins = node.evaluate(
-  "const { URL, pathToFileURL, fileURLToPath } = require('url'); const util = require('node:util'); const timers = require('timers'); const u = new URL('/docs?q=1', 'https://dindbos.local'); console.log(u.pathname, u.searchParams.get('q'), fileURLToPath(pathToFileURL('/home/guest/a b.txt')), util.format('%s:%d', 'v', 7), typeof timers.setTimeout);",
+  "const { URL, pathToFileURL, fileURLToPath, parse, format, resolve } = require('url'); const util = require('node:util'); const timers = require('timers'); const u = new URL('/docs?q=1', 'https://dindbos.local'); const legacy = parse('https://example.com/docs?q=1#top', true); console.log(u.pathname, u.searchParams.get('q'), fileURLToPath(pathToFileURL('/home/guest/a b.txt')), util.format('%s:%d', 'v', 7), typeof timers.setTimeout, legacy.hostname, legacy.query.q, format({ protocol: 'https', host: 'example.com', pathname: '/a', query: { b: 2 } }), resolve('/docs/a/', '../b'));",
   cwd,
 );
 assert(browserSafeBuiltins.status === 0, `browser-safe builtins exited with ${browserSafeBuiltins.status}`);
-assert(browserSafeBuiltins.output.trim() === "/docs 1 /home/guest/a b.txt v:7 function", `unexpected browser-safe builtins output: ${browserSafeBuiltins.output}`);
+assert(browserSafeBuiltins.output.trim() === "/docs 1 /home/guest/a b.txt v:7 function example.com 1 https://example.com/a?b=2 /docs/b", `unexpected browser-safe builtins output: ${browserSafeBuiltins.output}`);
 
 const pathPosixRequire = node.evaluate(
   "const posix = require('path/posix'); const path = require('path'); console.log(posix.join('/tmp', 'dindbos'), posix.basename('/tmp/file.txt'), path.posix === posix);",
@@ -124,16 +124,17 @@ assert(pathWin32Require.output.trim() === "C:\\tmp\\dindbos file.txt C:\\tmp .tx
 
 const builtinImport = await node.evaluate(
   [
-    "import { URL } from 'node:url';",
+    "import { URL, parse, format as urlFormat, resolve } from 'node:url';",
     "import { format } from 'util';",
     "import { setTimeout } from 'timers';",
-    "console.log(new URL('https://dindbos.local/runtime').hostname, format('%s-%d', 'ok', 2), typeof setTimeout);",
+    "const legacy = parse('/relative/path?x=1');",
+    "console.log(new URL('https://dindbos.local/runtime').hostname, format('%s-%d', 'ok', 2), typeof setTimeout, legacy.pathname, resolve('https://example.com/a/b', './c'), urlFormat({ pathname: '/x', query: 'y=1' }));",
   ].join("\n"),
   cwd,
   { inputType: "module" },
 );
 assert(builtinImport.status === 0, `builtin import exited with ${builtinImport.status}`);
-assert(builtinImport.output.trim() === "dindbos.local ok-2 function", `unexpected builtin import output: ${builtinImport.output}`);
+assert(builtinImport.output.trim() === "dindbos.local ok-2 function /relative/path https://example.com/a/c /x?y=1", `unexpected builtin import output: ${builtinImport.output}`);
 
 const pathPosixImport = await node.evaluate(
   [
