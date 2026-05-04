@@ -220,6 +220,7 @@ class BrowserSession {
     this.width = 1280;
     this.height = 800;
     this.deviceScaleFactor = 1;
+    this.mobile = false;
     this.hasNavigated = false;
     this.screencastStarted = false;
     this.metadata = { url: "about:blank", title: "" };
@@ -308,25 +309,37 @@ class BrowserSession {
     return this.metadata;
   }
 
-  async resize({ width, height, deviceScaleFactor, force = false }) {
+  async resize({ width, height, deviceScaleFactor, mobile = false, force = false }) {
     const nextWidth = Math.max(320, Number(width || this.width));
     const nextHeight = Math.max(240, Number(height || this.height));
     const nextScale = Math.max(1, Number(deviceScaleFactor || this.deviceScaleFactor));
+    const nextMobile = Boolean(mobile);
     const changed = Math.abs(nextWidth - this.width) > 1
       || Math.abs(nextHeight - this.height) > 1
-      || Math.abs(nextScale - this.deviceScaleFactor) > 0.01;
+      || Math.abs(nextScale - this.deviceScaleFactor) > 0.01
+      || nextMobile !== this.mobile;
     if (!changed && !force) return {};
     this.width = nextWidth;
     this.height = nextHeight;
     this.deviceScaleFactor = nextScale;
+    this.mobile = nextMobile;
     await this.command("Emulation.setDeviceMetricsOverride", {
       width: this.width,
       height: this.height,
       deviceScaleFactor: this.deviceScaleFactor,
-      mobile: false,
+      mobile: this.mobile,
     });
+    await this.command("Emulation.setTouchEmulationEnabled", {
+      enabled: this.mobile,
+      maxTouchPoints: this.mobile ? 1 : 0,
+    }).catch(() => {});
     await this.restartScreencast();
-    return {};
+    return {
+      width: this.width,
+      height: this.height,
+      deviceScaleFactor: this.deviceScaleFactor,
+      mobile: this.mobile,
+    };
   }
 
   async click({ x, y }) {

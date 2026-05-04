@@ -1782,7 +1782,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
   let wheelDeltaY = 0;
   let wheelPoint = { x: 0, y: 0 };
   let remoteFrameObjectUrl = state.frame.startsWith("blob:") ? state.frame : "";
-  const lastResize = { width: 0, height: 0, scale: 0 };
+  const lastResize = { width: 0, height: 0, scale: 0, mobile: false };
   const persistState = () => windowApi?.setState?.("browser", browserSessionSnapshot(state));
   const renderTabs = () => {
     refs.tabs.innerHTML = browserTabsMarkup(state);
@@ -1843,17 +1843,17 @@ function renderBrowser(os, content, context = {}, windowApi) {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       const rect = refs.viewport.getBoundingClientRect();
-      const width = Math.round(rect.width);
-      const height = Math.round(rect.height);
-      const scale = globalThis.devicePixelRatio || 1;
+      const { width, height, scale, mobile } = browserViewportMetrics(rect, globalThis.devicePixelRatio || 1, globalThis.navigator);
       const unchanged = Math.abs(width - lastResize.width) < 2
         && Math.abs(height - lastResize.height) < 2
-        && Math.abs(scale - lastResize.scale) < 0.01;
+        && Math.abs(scale - lastResize.scale) < 0.01
+        && mobile === lastResize.mobile;
       if (unchanged) return;
       lastResize.width = width;
       lastResize.height = height;
       lastResize.scale = scale;
-      client.resize(width, height, scale).catch((error) => setStatus(error.message));
+      lastResize.mobile = mobile;
+      client.resize(width, height, scale, mobile).catch((error) => setStatus(error.message));
     }, 120);
   };
   client.on("status", (message) => {
@@ -2345,6 +2345,19 @@ export function browserKeyEventPayload(event) {
     code: event.code || undefined,
     modifiers,
     text: key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey ? key : undefined,
+  };
+}
+
+export function browserViewportMetrics(rect = {}, deviceScaleFactor = 1, navigatorLike = {}) {
+  const width = Math.max(320, Math.round(Number(rect.width || 0)));
+  const height = Math.max(240, Math.round(Number(rect.height || 0)));
+  const scale = Math.max(1, Number(deviceScaleFactor || 1));
+  const touchPoints = Number(navigatorLike?.maxTouchPoints || 0);
+  return {
+    width,
+    height,
+    scale,
+    mobile: width <= 720 || touchPoints > 0,
   };
 }
 

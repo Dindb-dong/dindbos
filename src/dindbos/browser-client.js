@@ -149,8 +149,8 @@ export class BrowserCompanionClient {
     return this.send("forward");
   }
 
-  resize(width, height, deviceScaleFactor = globalThis.devicePixelRatio || 1) {
-    return this.send("resize", { width: Math.round(width), height: Math.round(height), deviceScaleFactor });
+  resize(width, height, deviceScaleFactor = globalThis.devicePixelRatio || 1, mobile = false) {
+    return this.send("resize", { width: Math.round(width), height: Math.round(height), deviceScaleFactor, mobile: Boolean(mobile) });
   }
 
   click(x, y) {

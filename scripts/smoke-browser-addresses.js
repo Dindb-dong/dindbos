@@ -6,6 +6,7 @@ import {
   browserChromeShortcut,
   browserKeyEventPayload,
   browserTabNavigate,
+  browserViewportMetrics,
   closeBrowserTab,
   createBrowserSessionState,
   createBrowserNewTab,
@@ -87,6 +88,12 @@ const copy = browserKeyEventPayload({ key: "c", code: "KeyC", metaKey: true });
 assert(copy.key === "c" && copy.modifiers === 4 && copy.text === undefined, "cmd-c shortcut payload mismatch");
 const printable = browserKeyEventPayload({ key: "x", code: "KeyX" });
 assert(printable.key === "x" && printable.text === "x", "printable text payload mismatch");
+const desktopMetrics = browserViewportMetrics({ width: 940, height: 640 }, 1, { maxTouchPoints: 0 });
+assert(desktopMetrics.mobile === false && desktopMetrics.width === 940, "desktop browser viewport metrics mismatch");
+const narrowMetrics = browserViewportMetrics({ width: 390, height: 640 }, 2, { maxTouchPoints: 0 });
+assert(narrowMetrics.mobile === true && narrowMetrics.scale === 2, "narrow browser viewport was not treated as mobile");
+const touchMetrics = browserViewportMetrics({ width: 920, height: 640 }, 1, { maxTouchPoints: 1 });
+assert(touchMetrics.mobile === true, "touch browser viewport was not treated as mobile");
 
 console.log("browser address smoke ok");
 

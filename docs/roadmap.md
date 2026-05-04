@@ -495,11 +495,11 @@ Already present:
 - Browser.app accepts configurable browser provider URLs through runtime options or launch context, preserving remote `wss` providers across window session snapshots.
 - Browser.app maps provider WebSocket URLs to `/health` using `http` for `ws` and `https` for `wss`, covered by `npm run smoke:browser-client`.
 - `browserd` creates an isolated Chromium browser context for each Browser.app WebSocket session so cookies and localStorage do not leak between sessions, covered by `npm run smoke:browserd`.
+- Browser.app forwards mobile viewport intent to `browserd`, enabling mobile CDP metrics/touch emulation for narrow or touch-capable viewports, with toolbar/input layout polish for mobile windows.
 
 Remaining:
 
 - WebRTC/video stream investigation after CDP screencast is proven reliable.
-- Better mobile behavior for browser viewport size and input.
 
 Completion criteria:
 

@@ -101,7 +101,7 @@ Protocol commands:
 - `reload`
 - `back`
 - `forward`
-- `resize { width, height, deviceScaleFactor }`
+- `resize { width, height, deviceScaleFactor, mobile }`
 - `click { x, y }`
 - `type { text }`
 - `key { key, code, modifiers }` where modifiers follow CDP bit flags: Alt `1`, Ctrl `2`, Meta `4`, Shift `8`.
