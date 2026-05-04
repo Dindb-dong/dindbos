@@ -426,11 +426,10 @@ Already present:
 - `npm run smoke:npm-node` verifies multiline import lists, multiline re-export lists, namespace re-exports, and multiple declaration exports through VFS-backed `.mjs` fixtures.
 - `npm run smoke:npm-node` verifies package `"type": "module"`, `.cjs`, `.mjs`, JSON import, conditional root/subpath `exports`, and nested dependency conflict resolution.
 - `npm run smoke:npm-node` verifies peer dependency recording, optional dependency recording, and unsupported native/lifecycle warning metadata.
+- JS-only npm lifecycle scripts are supported only for `node <relative .js/.mjs/.cjs file>` commands; they run through NodeCompat with filesystem access sandboxed to the package root, while shell/native lifecycle commands remain warning-only.
+- `npm run smoke:npm-node` verifies sandboxed JS-only postinstall execution, generated package-root output, package-root escape denial, lifecycle lock metadata, and continued warning-only handling for native lifecycle scripts.
 - `docs/node-compat.md` documents the supported ESM subset, package resolution behavior, built-in module surface, and unsupported Node features.
-
-Remaining:
-
-- Support JS-only lifecycle scripts only after sandbox policy is clear.
+- `docs/npm-compat.md` documents the JS-only lifecycle policy and unsupported shell/native lifecycle boundary.
 
 Completion criteria:
 

@@ -32,9 +32,10 @@ const BUILTIN_MODULES = new Set([
 const AsyncFunction = Object.getPrototypeOf(async function createAsyncFunction() {}).constructor;
 
 export class NodeCompat {
-  constructor(os) {
+  constructor(os, options = {}) {
     this.os = os;
     this.system = os.permissions.systemPrincipal();
+    this.fsRoot = options.fsRoot ? os.fs.normalize(options.fsRoot) : "";
   }
 
   runFile(path, cwd = this.os.session.home || "/", options = {}) {
@@ -64,7 +65,7 @@ export class NodeCompat {
 
   resolveEntry(path, cwd = this.os.session.home || "/") {
     const normalized = this.os.fs.normalize(path, cwd);
-    return this.resolveAsFileOrDirectory(normalized);
+    return this.resolveFsPath(this.resolveAsFileOrDirectory(normalized), "/");
   }
 
   resolveModule(specifier, fromFilename, cwd, options = {}) {
@@ -72,9 +73,9 @@ export class NodeCompat {
     if (BUILTIN_MODULES.has(request)) return { type: "builtin", id: request.replace(/^node:/, "") };
     if (request.startsWith("/") || request.startsWith("./") || request.startsWith("../")) {
       const base = request.startsWith("/") ? "/" : this.os.fs.dirname(fromFilename || this.os.fs.join(cwd, "[eval].js"));
-      return { type: "file", path: this.resolveAsFileOrDirectory(this.os.fs.normalize(request, base), options) };
+      return { type: "file", path: this.resolveFsPath(this.resolveAsFileOrDirectory(this.os.fs.normalize(request, base), options), "/") };
     }
-    return { type: "file", path: this.resolvePackage(request, fromFilename, cwd, options) };
+    return { type: "file", path: this.resolveFsPath(this.resolvePackage(request, fromFilename, cwd, options), "/") };
   }
 
   resolveAsFileOrDirectory(path, options = {}) {
@@ -164,6 +165,12 @@ export class NodeCompat {
       if (cursor === "/") return "";
       cursor = this.os.fs.dirname(cursor);
     }
+  }
+
+  resolveFsPath(path, cwd = this.os.session.home || "/") {
+    const normalized = this.os.fs.normalize(path, cwd);
+    if (!this.fsRoot || normalized === this.fsRoot || normalized.startsWith(`${this.fsRoot}/`)) return normalized;
+    throw new Error(`NodeCompat filesystem sandbox denied: ${normalized}`);
   }
 }
 
@@ -293,7 +300,8 @@ class CommonJsRuntime {
       },
       cwd: () => context.cwd,
       chdir: (path) => {
-        const next = this.os.fs.resolve(path, context.cwd);
+        const nextPath = this.node.resolveFsPath(path, context.cwd);
+        const next = this.os.fs.resolve(nextPath);
         if (!next || next.type !== "directory") throw new Error(`process.chdir: no such directory: ${path}`);
         context.cwd = next.path;
         context.env.PWD = next.path;
@@ -343,32 +351,35 @@ class CommonJsRuntime {
   createFsModule() {
     return {
       readFileSync: (path, encoding = null) => {
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
         if (encoding === "utf8" || encoding === "utf-8" || encoding?.encoding) {
-          return this.os.fs.readFile(path, this.processContext.cwd, this.node.system);
+          return this.os.fs.readFile(resolved, "/", this.node.system);
         }
-        return this.buffer.from(this.os.fs.readFileBytes(path, this.processContext.cwd, this.node.system));
+        return this.buffer.from(this.os.fs.readFileBytes(resolved, "/", this.node.system));
       },
       writeFileSync: (path, data) => {
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
         if (data instanceof Uint8Array) {
-          this.os.fs.writeOrCreateFileBytes(path, data, this.processContext.cwd, {}, this.node.system);
+          this.os.fs.writeOrCreateFileBytes(resolved, data, "/", {}, this.node.system);
           return;
         }
-        this.os.fs.writeOrCreateFile(path, stringifyFileData(data), this.processContext.cwd, {}, this.node.system);
+        this.os.fs.writeOrCreateFile(resolved, stringifyFileData(data), "/", {}, this.node.system);
       },
-      existsSync: (path) => this.os.fs.exists(path, this.processContext.cwd),
-      statSync: (path) => createStats(this.os.fs.stat(path, this.processContext.cwd)),
-      lstatSync: (path) => createStats(this.os.fs.lstat(path, this.processContext.cwd)),
+      existsSync: (path) => this.os.fs.exists(this.node.resolveFsPath(path, this.processContext.cwd), "/"),
+      statSync: (path) => createStats(this.os.fs.stat(this.node.resolveFsPath(path, this.processContext.cwd), "/")),
+      lstatSync: (path) => createStats(this.os.fs.lstat(this.node.resolveFsPath(path, this.processContext.cwd), "/")),
       readdirSync: (path = ".", options = {}) => {
-        const entries = this.os.fs.list(path, this.processContext.cwd, this.node.system);
+        const entries = this.os.fs.list(this.node.resolveFsPath(path, this.processContext.cwd), "/", this.node.system);
         if (options?.withFileTypes) return entries.map((entry) => createDirent(entry));
         return entries.map((entry) => entry.name);
       },
       mkdirSync: (path, options = {}) => {
-        if (options?.recursive) return ensureDirectory(this.os, path, this.processContext.cwd, this.node.system);
-        return this.os.fs.createDirectory(path, this.processContext.cwd, {}, this.node.system);
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
+        if (options?.recursive) return ensureDirectory(this.os, resolved, "/", this.node.system);
+        return this.os.fs.createDirectory(resolved, "/", {}, this.node.system);
       },
-      rmSync: (path, options = {}) => this.os.fs.remove(path, this.processContext.cwd, options, this.node.system),
-      unlinkSync: (path) => this.os.fs.remove(path, this.processContext.cwd, {}, this.node.system),
+      rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", options, this.node.system),
+      unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", {}, this.node.system),
     };
   }
 }

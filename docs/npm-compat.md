@@ -34,6 +34,7 @@ The installer performs real npm registry work:
 - hoist compatible dependencies and nest version conflicts under the dependent package
 - record `peerDependencies` and `optionalDependencies` without auto-installing them
 - record native/lifecycle warnings for packages with install scripts, `node-gyp`, bundled dependencies, or `os`/`cpu` restrictions
+- run JS-only lifecycle scripts when they are exactly `node <relative .js/.mjs/.cjs file>`; these scripts execute through NodeCompat with filesystem access sandboxed to that package root
 
 Installed CommonJS packages can run through NodeCompat:
 
@@ -50,15 +51,16 @@ Policy for dependencies beyond regular `dependencies`:
 
 - `peerDependencies` are recorded in install records and `package-lock.json`, but they are not auto-installed.
 - `optionalDependencies` are recorded in install records and `package-lock.json`, but they are not auto-installed.
-- Packages with lifecycle/native signals install as files, but the record includes DindbOS warnings because lifecycle scripts and native compilation are not executed.
-- `npm run smoke:npm-node` verifies this policy with a fixture package that declares peer dependencies, optional dependencies, an install script, and `node-gyp`.
+- JS-only lifecycle scripts run only when the command is `node <relative .js/.mjs/.cjs file>`. The script cannot use shell operators and NodeCompat filesystem calls are denied outside that package root.
+- Packages with native or shell lifecycle signals still install as files, but the record includes DindbOS warnings because native compilation and shell execution are not executed.
+- `npm run smoke:npm-node` verifies this policy with fixture packages that declare peer dependencies, optional dependencies, an unsupported install script, `node-gyp`, and a sandboxed JS-only postinstall script.
 
 This is not full Node.js yet. Current limits:
 
 - no `devDependencies`
 - no automatic peer dependency install
 - no automatic optional dependency install
-- no lifecycle scripts
+- no shell lifecycle scripts
 - no native addons
 - no `node-gyp`
 - no `child_process`
@@ -66,4 +68,4 @@ This is not full Node.js yet. Current limits:
 - no NodeCompat-owned networking; `http`/`https` imports fail explicitly when used and network access belongs to a future explicit DindbOS capability
 - simple ESM transform only, not full JavaScript module semantics
 
-The next layer is broader Node built-ins, richer ESM semantics, optional dependency handling, and JS-only lifecycle scripts.
+The next layer is broader Node built-ins, richer ESM semantics, optional dependency handling, and more lifecycle coverage only where it remains browser-safe.

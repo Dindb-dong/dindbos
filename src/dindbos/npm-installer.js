@@ -1,6 +1,9 @@
+import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
+
 const DEFAULT_REGISTRY = "https://registry.npmjs.org";
 const MAX_METADATA_BYTES = 4 * 1024 * 1024;
 const MAX_TARBALL_BYTES = 16 * 1024 * 1024;
+const LIFECYCLE_SCRIPT_ORDER = ["preinstall", "install", "postinstall", "prepare"];
 
 export class NpmInstaller {
   constructor(os, options = {}) {
@@ -28,6 +31,7 @@ export class NpmInstaller {
       topLevelDependencies: new Map(),
       pendingDependencies: [],
       deferDependencies: true,
+      lifecycleScripts: options.lifecycleScripts === false ? "disabled" : "safe-js",
     };
     const requests = targets.map((specifier) => parsePackageSpecifier(specifier));
     for (const request of requests) {
@@ -91,6 +95,7 @@ export class NpmInstaller {
       peerDependencies: policy.peerDependencies,
       optionalDependencies: policy.optionalDependencies,
       unsupportedNative: policy.unsupportedNative,
+      lifecycleScripts: policy.lifecycleScripts,
       warnings: policy.warnings,
       depth: request.depth,
       dependencyOf: request.parent?.name || "",
@@ -101,6 +106,7 @@ export class NpmInstaller {
     if (packageRoot === this.packagePath(context.root, record.name)) {
       context.rootRecordsByName.set(record.name, record);
     }
+    await this.runLifecycleScripts(context, record);
     for (const [dependencyName, dependencyRange] of Object.entries(dependencies)) {
       const dependencyRequest = {
         name: dependencyName,
@@ -113,6 +119,19 @@ export class NpmInstaller {
       else await this.installRequest(context, dependencyRequest);
     }
     return record;
+  }
+
+  async runLifecycleScripts(context, record) {
+    const scripts = record.lifecycleScripts || [];
+    if (context.lifecycleScripts === "disabled") return;
+    for (const script of scripts) {
+      if (!script.supported) continue;
+      const node = new NodeCompat(this.os, { fsRoot: record.packageRoot });
+      const result = await node.runFile(script.entry, record.packageRoot, { argv: script.args || [] });
+      script.status = result.status === 0 ? "complete" : "failed";
+      script.output = result.output;
+      if (result.status !== 0) throw new Error(`npm: lifecycle ${record.name}@${record.version} ${script.name} failed with status ${result.status}`);
+    }
   }
 
   findReusableRecord(context, request) {
@@ -262,6 +281,7 @@ export class NpmInstaller {
         ...(record.peerDependencies && Object.keys(record.peerDependencies).length ? { peerDependencies: record.peerDependencies } : {}),
         ...(record.optionalDependencies && Object.keys(record.optionalDependencies).length ? { optionalDependencies: record.optionalDependencies } : {}),
         ...(record.warnings?.length ? { dindbosWarnings: record.warnings } : {}),
+        ...(record.lifecycleScripts?.length ? { dindbosLifecycleScripts: record.lifecycleScripts.map(publicLifecycleScriptRecord) } : {}),
       };
       if (record.topLevel || !nextLock.dependencies[record.name]) {
         nextLock.dependencies[record.name] = {
@@ -305,7 +325,8 @@ function dependencyMap(dependencies) {
 export function npmPackagePolicy(versionMeta = {}) {
   const peerDependencies = dependencyMap(versionMeta.peerDependencies || {});
   const optionalDependencies = dependencyMap(versionMeta.optionalDependencies || {});
-  const unsupportedNative = nativeSignals(versionMeta);
+  const lifecycleScripts = lifecycleScriptPolicy(versionMeta.scripts || {});
+  const unsupportedNative = nativeSignals(versionMeta, lifecycleScripts);
   const warnings = [];
   if (Object.keys(peerDependencies).length) {
     warnings.push("peerDependencies are recorded but not auto-installed");
@@ -316,19 +337,23 @@ export function npmPackagePolicy(versionMeta = {}) {
   if (unsupportedNative.length) {
     warnings.push(`native or lifecycle features are unsupported: ${unsupportedNative.join(", ")}`);
   }
+  const runnableLifecycle = lifecycleScripts.filter((script) => script.supported);
+  if (runnableLifecycle.length) {
+    warnings.push(`JS lifecycle scripts run in package-root sandbox: ${runnableLifecycle.map((script) => script.name).join(", ")}`);
+  }
   return {
     peerDependencies,
     optionalDependencies,
     unsupportedNative,
+    lifecycleScripts,
     warnings,
   };
 }
 
-function nativeSignals(versionMeta = {}) {
+function nativeSignals(versionMeta = {}, lifecycleScripts = lifecycleScriptPolicy(versionMeta.scripts || {})) {
   const signals = new Set();
-  const scripts = versionMeta.scripts || {};
-  ["preinstall", "install", "postinstall", "prepare"].forEach((name) => {
-    if (scripts[name]) signals.add(`script:${name}`);
+  lifecycleScripts.forEach((script) => {
+    if (!script.supported) signals.add(`script:${script.name}`);
   });
   const bundled = versionMeta.bundleDependencies || versionMeta.bundledDependencies || [];
   if (Array.isArray(bundled) && bundled.length) signals.add("bundledDependencies");
@@ -337,6 +362,51 @@ function nativeSignals(versionMeta = {}) {
   if (versionMeta.os) signals.add("os-field");
   if (versionMeta.cpu) signals.add("cpu-field");
   return [...signals].sort();
+}
+
+function lifecycleScriptPolicy(scripts = {}) {
+  return LIFECYCLE_SCRIPT_ORDER
+    .filter((name) => scripts[name])
+    .map((name) => lifecycleScriptPlan(name, scripts[name]));
+}
+
+function lifecycleScriptPlan(name, command) {
+  const text = String(command || "").trim();
+  const unsupported = (reason) => ({ name, command: text, supported: false, status: "unsupported", reason });
+  if (!text) return unsupported("empty script");
+  if (/[;&|<>`$()]/.test(text)) return unsupported("shell features are unavailable");
+  const tokens = shellWords(text);
+  if (!tokens.length) return unsupported("empty script");
+  if (tokens[0] !== "node") return unsupported("only node <relative-js-file> lifecycle scripts are supported");
+  const entry = tokens[1] || "";
+  if (!entry || entry.startsWith("/") || entry.split("/").includes("..")) return unsupported("script entry must stay inside package root");
+  if (!/\.(cjs|mjs|js)$/i.test(entry)) return unsupported("script entry must be a .js, .mjs, or .cjs file");
+  return {
+    name,
+    command: text,
+    supported: true,
+    status: "pending",
+    entry,
+    args: tokens.slice(2),
+  };
+}
+
+function publicLifecycleScriptRecord(script) {
+  return {
+    name: script.name,
+    command: script.command,
+    supported: Boolean(script.supported),
+    status: script.status || (script.supported ? "pending" : "unsupported"),
+    ...(script.reason ? { reason: script.reason } : {}),
+  };
+}
+
+function shellWords(text) {
+  const tokens = [];
+  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match;
+  while ((match = pattern.exec(String(text || "")))) tokens.push(match[1] ?? match[2] ?? match[3] ?? "");
+  return tokens;
 }
 
 function normalizeDependencyRange(range, name) {
