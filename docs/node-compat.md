@@ -116,7 +116,7 @@ The `path` module exposes POSIX helpers used by the DindbOS VFS plus `path/posix
 
 The `process` module reports a browser/DindbOS runtime identity and common package probe fields including `nextTick`, `hrtime`, `uptime`, `memoryUsage`, `release`, `title`, and `execPath`. These values are conservative compatibility data, not host operating system telemetry.
 
-The `buffer` module uses the host `Buffer` when available and falls back to a browser-native `Uint8Array` facade with `from`, `alloc`, `concat`, `isBuffer`, `byteLength`, and common `utf8`, `hex`, `base64`, `base64url`, and `latin1` conversions.
+The `buffer` module uses the host `Buffer` when available and falls back to a browser-native `Uint8Array` facade with `from`, `alloc`, `allocUnsafe`, `concat`, `compare`, `isBuffer`, `isEncoding`, `byteLength`, instance equality/compare helpers, Array/ArrayBuffer slice inputs, and common `utf8`, `hex`, `base64`, `base64url`, and `latin1` conversions.
 
 The `stream` module is a browser-safe subset for package compatibility. It supports `Readable.from`, `Writable`, `PassThrough`, `pipeline`, and `finished`, but it is not a full Node stream implementation.
 
