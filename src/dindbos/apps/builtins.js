@@ -484,7 +484,12 @@ function renderFiles(os, content, path, windowApi) {
   const runAction = async (action, actionPath = selectedPath) => {
     const reporter = createFilesOperationReporter(content, operationLabel(action));
     try {
-      const result = await handleFileAction(os, currentPath, actionPath, action, { clipboard, reporter, selectedPaths: [...selectedPaths] });
+      const result = await handleFileAction(os, currentPath, actionPath, action, {
+        clipboard,
+        conflictPolicy: "prompt",
+        reporter,
+        selectedPaths: [...selectedPaths],
+      });
       if (Object.hasOwn(result, "clipboard")) clipboard = result.clipboard;
       await os.storage?.flush?.();
       if (reporter.started) {
@@ -930,15 +935,16 @@ function showFilesContextMenu(content, event, targetPath, clipboard, runAction) 
 
 async function handleFilesDrop(os, event, destinationPath, draw, windowApi, content, onHistory = null) {
   const reporter = createFilesOperationReporter(content, "Drop");
+  const conflict = { conflictPolicy: "prompt" };
   try {
     const sourcePath = event.dataTransfer?.getData("application/x-dindbos-path");
     if (sourcePath) {
-      const moved = await movePathIntoDirectory(os, sourcePath, destinationPath, reporter);
+      const moved = await movePathIntoDirectory(os, sourcePath, destinationPath, reporter, conflict);
       onHistory?.(reporter.complete("Complete"));
-      await draw(destinationPath, moved);
+      await draw(destinationPath, moved || destinationPath);
       return;
     }
-    const imported = await importDroppedFiles(os, destinationPath, event.dataTransfer?.files || [], reporter);
+    const imported = await importDroppedFiles(os, destinationPath, event.dataTransfer?.files || [], reporter, conflict);
     onHistory?.(reporter.complete("Complete"));
     await draw(destinationPath, imported[0] || destinationPath);
   } catch (error) {
@@ -1057,8 +1063,8 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
   }
   if (action === "paste") {
     if (!state.clipboard?.path) throw new Error("Clipboard is empty");
-    const pasted = await copyPathIntoDirectory(os, state.clipboard.path, currentPath, reporter);
-    return { path: currentPath, selectedPath: pasted, clipboard: state.clipboard };
+    const pasted = await copyPathIntoDirectory(os, state.clipboard.path, currentPath, reporter, state);
+    return { path: currentPath, selectedPath: pasted || currentPath, clipboard: state.clipboard };
   }
   if (action === "trash") {
     const targets = filesActionTargets(currentPath, selectedPath, state.selectedPaths);
@@ -1072,12 +1078,12 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
     return { path: currentPath, selectedPath: targets.length === 1 ? trashed : currentPath };
   }
   if (action === "import") {
-    const imported = await importFilesWithPicker(os, currentPath, reporter);
+    const imported = await importFilesWithPicker(os, currentPath, reporter, state);
     return { path: currentPath, selectedPath: imported[0] || currentPath };
   }
   if (action === "export") {
-    if (selectedPath === currentPath) await exportPath(os, currentPath, reporter);
-    else await exportPath(os, selectedPath, reporter);
+    if (selectedPath === currentPath) await exportPath(os, currentPath, reporter, state);
+    else await exportPath(os, selectedPath, reporter, state);
     return { path: currentPath, selectedPath };
   }
   if (action === "delete") {
@@ -1093,7 +1099,7 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
   return { path: currentPath, selectedPath };
 }
 
-async function importFilesWithPicker(os, currentPath, reporter = null) {
+async function importFilesWithPicker(os, currentPath, reporter = null, options = {}) {
   const input = document.createElement("input");
   input.type = "file";
   input.multiple = true;
@@ -1104,23 +1110,27 @@ async function importFilesWithPicker(os, currentPath, reporter = null) {
       input.addEventListener("change", () => resolve(input.files || []), { once: true });
       input.click();
     });
-    return importDroppedFiles(os, currentPath, files, reporter);
+    return importDroppedFiles(os, currentPath, files, reporter, options);
   } finally {
     input.remove();
   }
 }
 
-export async function importDroppedFiles(os, currentPath, fileList, reporter = null) {
+export async function importDroppedFiles(os, currentPath, fileList, reporter = null, options = {}) {
   const files = [...fileList];
   const imported = [];
   if (files.length) reporter?.start(files.length, `Importing ${files.length} file${files.length === 1 ? "" : "s"}`);
   for (const file of files) {
     if (file.name.endsWith(".dindbos-export.json")) {
-      imported.push(...await importDindbArchive(os, currentPath, file));
+      imported.push(...await importDindbArchive(os, currentPath, file, reporter, options));
       reporter?.step(file.name);
       continue;
     }
-    const target = await allocateImportPath(os, currentPath, file.name || "upload.bin");
+    const target = await allocateImportPath(os, currentPath, file.name || "upload.bin", { ...options, reporter });
+    if (!target) {
+      reporter?.step(file.name || "skipped");
+      continue;
+    }
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.writeFileBlob(target, file, "/", { mime: file.type || mimeFromName(target) });
     else await os.fs.writeOrCreateFileBlob(target, file, "/", { mime: file.type || mimeFromName(target), owner: "guest", group: "users", permissions: "-rw-r--r--" });
     imported.push(target);
@@ -1129,14 +1139,18 @@ export async function importDroppedFiles(os, currentPath, fileList, reporter = n
   return imported;
 }
 
-export async function importDindbArchive(os, currentPath, file, reporter = null) {
+export async function importDindbArchive(os, currentPath, file, reporter = null, options = {}) {
   const archive = JSON.parse(await file.text());
   if (archive?.kind !== "dindbos-export-v1" || !Array.isArray(archive.entries)) throw new Error("Invalid DindbOS export");
   const imported = [];
   if (!reporter?.started) reporter?.start(archive.entries.length, file.name || "archive");
   for (const entry of archive.entries) {
     const relative = sanitizeRelativePath(entry.path || entry.name || "file.bin");
-    const target = await allocateImportPath(os, currentPath, relative);
+    const target = await allocateImportPath(os, currentPath, relative, { ...options, reporter });
+    if (!target) {
+      reporter?.step(relative);
+      continue;
+    }
     const bytes = base64ToBytes(entry.data || "");
     if (os.localMounts?.isMountedPath(target)) await os.localMounts.writeFileBytes(target, bytes, "/", { mime: entry.mime || mimeFromName(target) });
     else os.fs.writeOrCreateFileBytes(target, bytes, "/", {
@@ -1151,21 +1165,13 @@ export async function importDindbArchive(os, currentPath, file, reporter = null)
   return imported;
 }
 
-async function allocateImportPath(os, directory, relativePath) {
+async function allocateImportPath(os, directory, relativePath, options = {}) {
   const relative = sanitizeRelativePath(relativePath);
   const target = os.fs.normalize(relative, directory);
   await ensureImportParent(os, os.fs.dirname(target));
-  if (!await importPathExists(os, target)) return target;
-  const parent = os.fs.dirname(target);
-  const name = os.fs.basename(target);
-  const dotIndex = name.lastIndexOf(".");
-  const base = dotIndex > 0 ? name.slice(0, dotIndex) : name;
-  const extension = dotIndex > 0 ? name.slice(dotIndex) : "";
-  for (let index = 2; index < 1000; index += 1) {
-    const candidate = os.fs.join(parent, `${base}-${index}${extension}`);
-    if (!await importPathExists(os, candidate)) return candidate;
-  }
-  throw new Error(`Cannot allocate a filename for ${relative}`);
+  const conflict = await resolveFilesConflict(os, target, options);
+  await replaceExistingPath(os, conflict.path, conflict, options.reporter || null);
+  return conflict.action === "skip" ? null : conflict.path;
 }
 
 async function ensureImportParent(os, directory) {
@@ -1192,21 +1198,30 @@ function actionTarget(currentPath, selectedPath) {
   return selectedPath;
 }
 
-async function copyPathIntoDirectory(os, sourcePath, directoryPath, reporter = null) {
-  const destination = await uniqueDestinationPath(os, directoryPath, os.fs.basename(sourcePath));
-  await copyPath(os, sourcePath, destination, reporter);
-  return destination;
+export async function copyPathIntoDirectory(os, sourcePath, directoryPath, reporter = null, options = {}) {
+  const normalizedSource = os.fs.normalize(sourcePath);
+  const destination = os.fs.join(directoryPath, os.fs.basename(sourcePath));
+  const conflict = await resolveFilesConflict(os, destination, options);
+  if (conflict.action === "skip") return null;
+  if (conflict.action === "replace" && normalizedSource === conflict.path) throw new Error("Cannot replace a file with itself");
+  await replaceExistingPath(os, conflict.path, conflict, reporter);
+  await copyPath(os, normalizedSource, conflict.path, reporter);
+  return conflict.path;
 }
 
-async function movePathIntoDirectory(os, sourcePath, directoryPath, reporter = null) {
+export async function movePathIntoDirectory(os, sourcePath, directoryPath, reporter = null, options = {}) {
   const normalizedSource = os.fs.normalize(sourcePath);
   const normalizedDirectory = os.fs.normalize(directoryPath);
   if (normalizedSource === normalizedDirectory || normalizedDirectory.startsWith(`${normalizedSource}/`)) {
     throw new Error("Cannot move a folder into itself");
   }
-  const destination = await uniqueDestinationPath(os, normalizedDirectory, os.fs.basename(normalizedSource));
-  await movePath(os, normalizedSource, destination, reporter);
-  return destination;
+  const destination = os.fs.join(normalizedDirectory, os.fs.basename(normalizedSource));
+  const conflict = await resolveFilesConflict(os, destination, options);
+  if (conflict.action === "skip") return null;
+  if (conflict.action === "replace" && normalizedSource === conflict.path) throw new Error("Cannot replace a file with itself");
+  await replaceExistingPath(os, conflict.path, conflict, reporter);
+  await movePath(os, normalizedSource, conflict.path, reporter);
+  return conflict.path;
 }
 
 async function copyPath(os, sourcePath, destinationPath, reporter = null) {
@@ -1338,6 +1353,74 @@ async function movePathToTrash(os, path, reporter = null) {
   return destination;
 }
 
+export async function resolveFilesConflict(os, destinationPath, options = {}) {
+  const path = os.fs.normalize(destinationPath);
+  if (!await importPathExists(os, path)) return { action: "write", conflict: false, path };
+  const requested = await filesConflictDecision({
+    action: options.conflictPolicy || options.policy || "rename",
+    name: os.fs.basename(path),
+    path,
+    resolveConflict: options.resolveConflict,
+  });
+  if (requested.action === "skip") return { action: "skip", conflict: true, path };
+  if (requested.action === "replace") return { action: "replace", conflict: true, path };
+  if (requested.action === "cancel") {
+    const error = new Error("Files operation cancelled");
+    error.name = "AbortError";
+    throw error;
+  }
+  const renamedPath = requested.name
+    ? os.fs.join(os.fs.dirname(path), sanitizeFileName(requested.name))
+    : await uniqueDestinationPath(os, os.fs.dirname(path), os.fs.basename(path));
+  if (await importPathExists(os, renamedPath)) return resolveFilesConflict(os, renamedPath, { ...options, conflictPolicy: "rename" });
+  return { action: "rename", conflict: true, path: renamedPath };
+}
+
+async function filesConflictDecision(conflict) {
+  const action = String(conflict.action || "rename").trim().toLowerCase();
+  if (action === "prompt") {
+    return normalizeFilesConflictDecision(await defaultFilesConflictDialog(conflict));
+  }
+  return normalizeFilesConflictDecision(action);
+}
+
+async function defaultFilesConflictDialog(conflict) {
+  if (typeof conflict.resolveConflict === "function") return conflict.resolveConflict(conflict);
+  if (typeof prompt !== "function") return "rename";
+  return prompt(
+    `${conflict.name} already exists at ${conflict.path}. Type replace, rename, or skip.`,
+    "rename",
+  );
+}
+
+function normalizeFilesConflictDecision(decision) {
+  if (decision && typeof decision === "object") {
+    return {
+      action: normalizeFilesConflictAction(decision.action || decision.policy || "rename"),
+      name: decision.name || "",
+    };
+  }
+  const value = String(decision || "rename").trim();
+  const [action, ...nameParts] = value.split(":");
+  return {
+    action: normalizeFilesConflictAction(action),
+    name: nameParts.join(":").trim(),
+  };
+}
+
+function normalizeFilesConflictAction(action) {
+  const normalized = String(action || "rename").trim().toLowerCase();
+  if (normalized === "overwrite") return "replace";
+  if (["replace", "rename", "skip", "cancel"].includes(normalized)) return normalized;
+  return "rename";
+}
+
+async function replaceExistingPath(os, path, conflict, reporter = null) {
+  if (conflict.action !== "replace") return;
+  if (!await importPathExists(os, path)) return;
+  await removePath(os, path, reporter);
+}
+
 function ensureVirtualDirectory(os, path) {
   const parts = os.fs.normalize(path).split("/").filter(Boolean);
   let cursor = "/";
@@ -1372,7 +1455,7 @@ function sanitizeFileName(name) {
   return cleaned;
 }
 
-async function exportPath(os, path, reporter = null) {
+async function exportPath(os, path, reporter = null, options = {}) {
   assertFilesOperationActive(reporter?.signal);
   const normalized = os.fs.normalize(path);
   const node = os.fs.resolve(normalized) || os.fs.lstat(normalized);
@@ -1383,7 +1466,9 @@ async function exportPath(os, path, reporter = null) {
   reporter?.start(exportTotal, normalized);
   if (node.type === "directory" || node.type === "mount") {
     const entries = await collectExportEntries(os, normalized, reporter);
-    downloadBytes(`${os.fs.basename(normalized)}.dindbos-export.json`, new TextEncoder().encode(JSON.stringify({
+    const filename = resolveFilesExportName(`${os.fs.basename(normalized)}.dindbos-export.json`, options);
+    if (!filename) throw new Error("Files operation cancelled");
+    downloadBytes(filename, new TextEncoder().encode(JSON.stringify({
       kind: "dindbos-export-v1",
       exportedAt: new Date().toISOString(),
       root: normalized,
@@ -1395,8 +1480,22 @@ async function exportPath(os, path, reporter = null) {
   const bytes = os.localMounts?.isMountedPath(normalized)
     ? await os.localMounts.readFileBytes(normalized)
     : os.fs.readFileBytes(normalized);
-  downloadBytes(node.name || os.fs.basename(normalized), bytes, stat?.mime || "application/octet-stream");
+  const filename = resolveFilesExportName(node.name || os.fs.basename(normalized), options);
+  if (!filename) throw new Error("Files operation cancelled");
+  downloadBytes(filename, bytes, stat?.mime || "application/octet-stream");
   reporter?.step(normalized);
+}
+
+export function resolveFilesExportName(defaultName, options = {}) {
+  const fallback = sanitizeFileName(defaultName);
+  if ((options.exportNamePolicy || options.conflictPolicy) !== "prompt") return fallback;
+  if (typeof options.resolveExportName === "function") {
+    const resolved = options.resolveExportName({ name: fallback });
+    return resolved ? sanitizeFileName(resolved) : "";
+  }
+  if (typeof prompt !== "function") return fallback;
+  const resolved = prompt("Export as", fallback);
+  return resolved ? sanitizeFileName(resolved) : "";
 }
 
 export async function collectExportEntries(os, rootPath, reporter = null) {

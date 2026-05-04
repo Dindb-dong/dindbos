@@ -35,6 +35,7 @@ Added:
 - Files.app multi-select with Ctrl/Cmd toggle, Shift range selection, and multi-item Trash/Delete targeting.
 - Files.app keyboard navigation for row movement, folder traversal, open, Trash, rename, and copy/paste shortcuts.
 - Files.app large tree operations now expose cancellation state and abort checks for recursive copy/move/export paths.
+- Files.app copy, move, import, and export naming paths now expose conflict choices for replace, rename, skip, and custom export names.
 - Settings.app runtime panels now have smoke coverage proving they read live storage, local mount, process, package, app, and session state.
 - Viewer.app toolbar controls, Browser.app handoff for HTML documents, bounded large text previews, and binary fallback messaging.
 - Viewer.app sandboxed `.deck.html` preview support for portfolio/demo HTML decks.
@@ -67,7 +68,7 @@ Known limits:
 - Package signatures are documented but not yet enforced.
 - Cache API-backed package/npm caching exists; document and image preview caching is not implemented.
 - Browser.app clipboard and download routing policies are not complete.
-- Files.app still needs conflict dialogs and native-helper mount rename.
+- Files.app still needs native-helper mount rename.
 - PDF viewing still relies on native iframe behavior until PDF.js is introduced.
 - NodeCompat is intentionally a browser-safe subset and does not provide native Node addons, arbitrary filesystem access, or full Node runtime APIs.
 

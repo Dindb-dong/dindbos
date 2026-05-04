@@ -164,7 +164,7 @@ Goal: Polish the desktop after the runtime primitives are dependable.
 Remaining:
 
 - Snap zones, alt-tab, keyboard shortcuts, mobile window policy, and persisted window placement.
-- Files.app keyboard navigation, conflict handling, cancellation, and remaining scale polish.
+- Files.app keyboard navigation and remaining scale polish.
 - Viewer controls for documents and decks.
 
 ## Status Legend
@@ -251,7 +251,7 @@ Already present:
 - `npm run smoke:local-mounts` verifies the local folder mount permission-denied path does not create runtime or VFS mounts.
 - `npm run smoke:app-registry` verifies singleton activation and non-singleton window ID uniqueness.
 - `npm run smoke:boot` verifies runtime boot phase order, completion diagnostics, persisted boot logs, and storage-load failure reporting.
-- `npm run smoke` runs syntax checks plus current boot, storage, persistent storage, Files.app, Viewer.app, Shell, permission, package, npm/node, process, local mount, app registry, window manager, browser address, and browser companion smoke checks as one local confidence command.
+- `npm run smoke` runs syntax checks plus current boot, storage, persistent storage, Files.app, Settings.app, Viewer.app, Shell, permission, package, npm/node, process, local mount, app registry, window manager, browser address, and browser companion smoke checks as one local confidence command.
 
 Remaining:
 
@@ -558,10 +558,10 @@ Already present:
 - Keyboard navigation supports Up/Down/Home/End selection movement, Left/Right folder traversal, Enter open, Delete to Trash, F2 rename, and Ctrl/Cmd+C/V copy/paste.
 - `npm run smoke:files` verifies Files.app keyboard selection movement helper behavior.
 - Large tree copy/move/export operations are cancellable through the operation reporter and abort signal checks; `npm run smoke:files` verifies cancellation stops export traversal and records cancelled history.
+- Copy, move, import, and export naming paths expose conflict/filename choices for replace, rename, skip, and custom export names; `npm run smoke:files` verifies the non-destructive conflict policies.
 
 Remaining:
 
-- Add conflict dialogs for copy/move/import/export.
 - Add OS-level local mount rename through a native companion/helper instead of browser copy-delete.
 
 Completion criteria:
@@ -735,6 +735,6 @@ Tasks:
 
 - Add snap zones and keyboard window switching.
 - Restore window positions.
-- Improve Files.app keyboard navigation, conflict handling, cancellation, and remaining scale polish.
+- Improve Files.app remaining scale polish.
 - Extend mobile polish beyond the initial maximized window placement policy.
 - Polish troubleshooting flows.
