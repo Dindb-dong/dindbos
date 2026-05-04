@@ -650,6 +650,31 @@ assert(runtimePolicyImport.status === 0, `runtime policy import exited with ${ru
 assert(runtimePolicyImport.output.includes("function true true"), "runtime policy ESM shape missing");
 assert(runtimePolicyImport.output.includes("NodeCompat worker_threads is unavailable"), "worker_threads policy error missing");
 
+const compressionPolicyRequire = node.evaluate(
+  [
+    "const zlib = require('zlib');",
+    "console.log(typeof zlib.gzipSync, zlib.constants.Z_BEST_COMPRESSION);",
+    "try { zlib.gzipSync(Buffer.from('nope')); } catch (error) { console.log(error.message); }",
+  ].join("\n"),
+  cwd,
+);
+assert(compressionPolicyRequire.status === 0, `zlib policy require exited with ${compressionPolicyRequire.status}`);
+assert(compressionPolicyRequire.output.includes("function 9"), "zlib policy require shape missing");
+assert(compressionPolicyRequire.output.includes("NodeCompat zlib compression is unavailable"), "zlib policy require error missing");
+
+const compressionPolicyImport = await node.evaluate(
+  [
+    "import zlib, { createGzip, constants } from 'node:zlib';",
+    "console.log(typeof createGzip, constants.Z_DEFAULT_COMPRESSION, typeof zlib.gunzipSync);",
+    "try { createGzip(); } catch (error) { console.log(error.message); }",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(compressionPolicyImport.status === 0, `zlib policy import exited with ${compressionPolicyImport.status}`);
+assert(compressionPolicyImport.output.includes("function -1 function"), "zlib policy ESM shape missing");
+assert(compressionPolicyImport.output.includes("NodeCompat zlib compression is unavailable"), "zlib policy ESM error missing");
+
 const policyInstaller = new NpmInstaller(os, { registry: "https://registry.example.test" });
 const policyFetch = countedFetch(fakePolicyFetch);
 const policyRecords = await policyInstaller.install(["policy-pkg@1.0.0"], `${cwd}/policy`, { fetch: policyFetch, maxPackages: 2 });

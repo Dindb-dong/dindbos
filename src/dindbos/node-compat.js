@@ -58,6 +58,8 @@ const BUILTIN_MODULES = new Set([
   "node:child_process",
   "worker_threads",
   "node:worker_threads",
+  "zlib",
+  "node:zlib",
 ]);
 const AsyncFunction = Object.getPrototypeOf(async function createAsyncFunction() {}).constructor;
 
@@ -244,6 +246,7 @@ class CommonJsRuntime {
       https: createNetworkModule("https"),
       child_process: createChildProcessModule(),
       worker_threads: createWorkerThreadsModule(),
+      zlib: createZlibModule(),
     };
     this.builtins["path/posix"] = this.builtins.path.posix;
     this.builtins.module = this.createModuleModule();
@@ -1414,6 +1417,53 @@ function createWorkerThreadsModule() {
     markAsUntransferable: () => undefined,
     moveMessagePortToContext: unsupported,
     receiveMessageOnPort: () => undefined,
+  };
+}
+
+function createZlibModule() {
+  const unsupported = () => {
+    throw new Error("NodeCompat zlib compression is unavailable; use browser CompressionStream or an explicit DindbOS compression capability outside NodeCompat.");
+  };
+  class Zlib {
+    constructor() {
+      unsupported();
+    }
+  }
+  return {
+    Zlib,
+    createGzip: unsupported,
+    createGunzip: unsupported,
+    createDeflate: unsupported,
+    createInflate: unsupported,
+    createDeflateRaw: unsupported,
+    createInflateRaw: unsupported,
+    createBrotliCompress: unsupported,
+    createBrotliDecompress: unsupported,
+    gzip: unsupported,
+    gunzip: unsupported,
+    deflate: unsupported,
+    inflate: unsupported,
+    deflateRaw: unsupported,
+    inflateRaw: unsupported,
+    unzip: unsupported,
+    brotliCompress: unsupported,
+    brotliDecompress: unsupported,
+    gzipSync: unsupported,
+    gunzipSync: unsupported,
+    deflateSync: unsupported,
+    inflateSync: unsupported,
+    deflateRawSync: unsupported,
+    inflateRawSync: unsupported,
+    unzipSync: unsupported,
+    brotliCompressSync: unsupported,
+    brotliDecompressSync: unsupported,
+    constants: {
+      Z_NO_COMPRESSION: 0,
+      Z_BEST_SPEED: 1,
+      Z_BEST_COMPRESSION: 9,
+      Z_DEFAULT_COMPRESSION: -1,
+      BROTLI_PARAM_QUALITY: 1,
+    },
   };
 }
 
