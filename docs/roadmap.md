@@ -196,7 +196,7 @@ These are the tasks most likely to be "what we were in the middle of" right now.
 
 ### 0.1 Browser.app Companion Stabilization
 
-Status: Done first pass, provider/native-adjacent hardening remaining.
+Status: Done first pass; provider/native-adjacent hardening is demand-driven by real workload gaps.
 
 Already present:
 
@@ -261,7 +261,7 @@ Completion criteria:
 
 ## 1. Shell
 
-Status: Done first pass, hardening remaining.
+Status: Done first pass; shell hardening is demand-driven by real command/workflow gaps.
 
 Already present:
 
@@ -294,7 +294,7 @@ Completion criteria:
 
 ## 2. Storage And Filesystem
 
-Status: Done first pass, durability hardening remaining.
+Status: Done first pass; durability hardening is demand-driven by real storage/workflow gaps.
 
 Already present:
 
@@ -351,7 +351,7 @@ Completion criteria:
 
 ## 3. Package System
 
-Status: Done first pass, trust/lifecycle hardening remaining.
+Status: Done first pass; trust/lifecycle hardening is demand-driven by real package gaps.
 
 Already present:
 
@@ -641,7 +641,7 @@ Completion criteria:
 
 ## 8. Window Manager
 
-Status: Done first pass, desktop polish remaining.
+Status: Done first pass; desktop polish is demand-driven by real interaction gaps.
 
 Already present:
 
