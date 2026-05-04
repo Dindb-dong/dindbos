@@ -141,7 +141,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 820,
     height: 560,
     manifest: {
-      capabilities: ["localMount.read"],
+      capabilities: ["app.launch", "localMount.read"],
       fileSystem: { read: userDocumentReadRoots, write: [] },
     },
     render: ({ os: runtime, content, context }) => renderViewer(runtime, content, context.node),
@@ -2675,6 +2675,7 @@ async function renderViewerBytes(os, content, node) {
 
 export function viewerMarkup({ mime, name, path = "", preview, url, status = "", diagnostics = null }) {
   const browserDisabled = mime === "text/html" && path ? "" : "disabled";
+  const editDisabled = viewerEditTargetApp(mime, path) ? "" : "disabled";
   const statusText = status || (path ? path : "No file path");
   return `
     <section class="viewer-app">
@@ -2690,6 +2691,7 @@ export function viewerMarkup({ mime, name, path = "", preview, url, status = "",
           <button type="button" data-viewer-action="page-prev" disabled>Prev</button>
           <button type="button" data-viewer-action="page-next" disabled>Next</button>
           <button type="button" data-viewer-action="open-browser" ${browserDisabled}>Browser</button>
+          <button type="button" data-viewer-action="open-editor" ${editDisabled}>Edit</button>
           <button type="button" data-viewer-action="export">Export</button>
           <button type="button" data-viewer-action="copy-path" ${path ? "" : "disabled"}>Copy path</button>
         </div>
@@ -2705,6 +2707,11 @@ export function viewerMarkup({ mime, name, path = "", preview, url, status = "",
       </div>
     </section>
   `;
+}
+
+export function viewerEditTargetApp(mime = "", path = "") {
+  if (!path) return "";
+  return ["text/plain", "text/markdown", "application/json", "application/x-dindbos-command"].includes(String(mime || "")) ? "text" : "";
 }
 
 export function buildViewerDiagnostics({ node = null, mime = "application/octet-stream", bytes = null, previewState = {}, status = "", cacheStatus = null } = {}) {
@@ -2780,6 +2787,13 @@ function wireViewerToolbar(os, content, node, bytes, mime) {
       if (action === "open-browser" && node?.path && mime === "text/html") {
         os.launch?.("browser", { url: node.path });
         setStatus(`Opened ${node.path} in Browser.app`);
+      }
+      if (action === "open-editor" && node?.path) {
+        const appId = viewerEditTargetApp(mime, node.path);
+        if (appId) {
+          os.launch?.(appId, { node });
+          setStatus(`Opened ${node.path} in TextEdit`);
+        }
       }
       if (action === "export") {
         exportViewerBytes(node?.name || "document", bytes, mime);
