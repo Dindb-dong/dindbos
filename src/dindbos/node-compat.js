@@ -38,6 +38,8 @@ const BUILTIN_MODULES = new Set([
   "node:diagnostics_channel",
   "dns",
   "node:dns",
+  "console",
+  "node:console",
   "http",
   "node:http",
   "https",
@@ -218,6 +220,7 @@ class CommonJsRuntime {
       constants: createConstantsModule(),
       diagnostics_channel: createDiagnosticsChannelModule(),
       dns: createDnsModule(),
+      console: createConsoleModule(this.output),
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
     };
@@ -319,14 +322,7 @@ class CommonJsRuntime {
   }
 
   createConsole() {
-    const print = (...values) => this.output.push(values.map(formatConsoleValue).join(" "));
-    return {
-      log: print,
-      info: print,
-      warn: print,
-      error: print,
-      debug: print,
-    };
+    return createConsoleModule(this.output).console;
   }
 
   createProcess() {
@@ -1245,6 +1241,70 @@ function createDiagnosticsChannelModule() {
       error: getChannel(`${name}:error`),
     }),
   };
+}
+
+function createConsoleModule(output) {
+  class Console {
+    constructor(stdout = null, stderr = stdout, ignoreErrors = true) {
+      this.stdout = stdout;
+      this.stderr = stderr || stdout;
+      this.ignoreErrors = ignoreErrors;
+    }
+
+    log(...values) {
+      writeConsoleLine(output, this.stdout, values);
+    }
+
+    info(...values) {
+      this.log(...values);
+    }
+
+    warn(...values) {
+      writeConsoleLine(output, this.stderr, values);
+    }
+
+    error(...values) {
+      this.warn(...values);
+    }
+
+    debug(...values) {
+      this.log(...values);
+    }
+
+    dir(value) {
+      this.log(value);
+    }
+
+    trace(...values) {
+      this.error("Trace:", ...values);
+    }
+
+    assert(condition, ...values) {
+      if (!condition) this.error("Assertion failed:", ...values);
+    }
+  }
+  const console = new Console();
+  return {
+    Console,
+    console,
+    log: console.log.bind(console),
+    info: console.info.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+    debug: console.debug.bind(console),
+    dir: console.dir.bind(console),
+    trace: console.trace.bind(console),
+    assert: console.assert.bind(console),
+  };
+}
+
+function writeConsoleLine(output, stream, values) {
+  const line = values.map(formatConsoleValue).join(" ");
+  if (stream && typeof stream.write === "function") {
+    stream.write(`${line}\n`);
+    return;
+  }
+  output.push(line);
 }
 
 function createDnsModule() {

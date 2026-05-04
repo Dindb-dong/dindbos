@@ -99,6 +99,7 @@ Current built-ins:
 - `constants`
 - `diagnostics_channel`
 - `dns` policy facade
+- `console`
 - `http` / `https` policy facades
 
 The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
@@ -122,6 +123,8 @@ The `constants` module exposes a browser-safe subset of common errno, signal, op
 The `diagnostics_channel` module supports in-runtime publish/subscribe channels and tracing channel objects for browser-safe instrumentation hooks. It does not forward diagnostics outside the DindbOS runtime.
 
 The `dns` module is an explicit policy facade. Packages can import `dns`, inspect constants, construct `Resolver`, and inspect `promises`, but lookup/resolve/reverse APIs throw `NodeCompat dns networking is unavailable`. DNS/network access belongs to a future explicit DindbOS capability, not NodeCompat.
+
+The `console` module exposes `Console` plus the standard log/warn/error helpers. By default output is captured into the NodeCompat result buffer; custom stream-like objects with `write()` are supported for package-local formatting probes.
 
 The `http` and `https` modules are explicit policy facades. They can be imported by packages that probe for Node built-ins, but `request()`, `get()`, `createServer()`, and constructor paths throw `NodeCompat <protocol> networking is unavailable`. Network access belongs to a future explicit DindbOS network capability or app sandbox grant, not the NodeCompat compatibility layer.
 
