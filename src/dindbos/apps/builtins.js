@@ -1494,15 +1494,8 @@ async function renderTextEditor(os, content, node, windowApi) {
 
 function renderBrowser(os, content, context = {}, windowApi) {
   const client = new BrowserCompanionClient();
-  const state = {
-    mode: "idle",
-    status: "browserd not connected",
-    address: initialBrowserAddress(context),
-    title: "Browser",
-    frame: "",
-    localHtml: "",
-    companionUrl: "ws://127.0.0.1:8787/browser",
-  };
+  const restoredState = windowApi?.getState?.("browser");
+  const state = createBrowserSessionState(context, restoredState);
   content.innerHTML = `
     <section class="browser-app">
       <form class="browser-toolbar">
@@ -1546,19 +1539,23 @@ function renderBrowser(os, content, context = {}, windowApi) {
   let wheelDeltaY = 0;
   let wheelPoint = { x: 0, y: 0 };
   const lastResize = { width: 0, height: 0, scale: 0 };
+  const persistState = () => windowApi?.setState?.("browser", browserSessionSnapshot(state));
   const setStatus = (status) => {
     const nextStatus = String(status || "");
     if (state.status === nextStatus) return;
     state.status = nextStatus;
     refs.status.textContent = nextStatus;
+    persistState();
     os.processes.logSelf?.(`browser ${nextStatus}`);
   };
   const showFrame = (src) => {
     state.mode = "companion";
+    state.frame = src;
     refs.placeholder.hidden = true;
     refs.local.hidden = true;
     refs.frame.hidden = false;
     refs.frame.src = src;
+    persistState();
   };
   const queueFrame = (src) => {
     pendingFrameSrc = src;
@@ -1588,7 +1585,10 @@ function renderBrowser(os, content, context = {}, windowApi) {
     }, 120);
   };
   client.on("status", (message) => {
-    if (message.url) refs.address.value = message.url;
+    if (message.url) {
+      state.address = message.url;
+      refs.address.value = message.url;
+    }
     if (message.title) {
       state.title = message.title;
       windowApi.setTitle(`${message.title} - Browser`);
@@ -1597,13 +1597,17 @@ function renderBrowser(os, content, context = {}, windowApi) {
     else if (message.status === "connected") refs.connect.textContent = "Connect";
     const status = [message.status, message.url].filter(Boolean).join(" ");
     setStatus(message.message || status || "browserd connected");
+    persistState();
   });
   client.on("frame", (message) => {
     if (!message.data?.startsWith("data:image/")) {
       setStatus("browserd frame missing image data");
       return;
     }
-    if (message.url) refs.address.value = message.url;
+    if (message.url) {
+      state.address = message.url;
+      refs.address.value = message.url;
+    }
     if (message.title) {
       state.title = message.title;
       windowApi.setTitle(`${message.title} - Browser`);
@@ -1690,7 +1694,9 @@ function renderBrowser(os, content, context = {}, windowApi) {
   async function openAddress(value) {
     const address = String(value || "").trim();
     if (!address) return;
+    state.address = address;
     refs.address.value = address;
+    persistState();
     if (isDindbPath(address)) {
       await openLocalPath(address);
       return;
@@ -1713,15 +1719,36 @@ function renderBrowser(os, content, context = {}, windowApi) {
     refs.local.srcdoc = html;
     state.mode = "local";
     state.address = normalized;
+    state.localHtml = html;
+    state.title = node.name;
     refs.address.value = normalized;
     setStatus(`local document ${normalized}`);
     windowApi.setTitle(`${node.name} - Browser`);
+    persistState();
   }
 
-  if (context.node?.path && context.node.mime === "text/html") {
+  restoreBrowserView();
+
+  if (restoredState?.address) {
+    persistState();
+  } else if (context.node?.path && context.node.mime === "text/html") {
     openLocalPath(context.node.path).catch((error) => setStatus(error.message));
   } else if (state.address) {
     openAddress(state.address).catch((error) => setStatus(error.message));
+  }
+
+  function restoreBrowserView() {
+    refs.status.textContent = state.status;
+    refs.address.value = state.address;
+    if (state.title && state.title !== "Browser") windowApi.setTitle(`${state.title} - Browser`);
+    if (state.mode === "local" && state.localHtml) {
+      refs.placeholder.hidden = true;
+      refs.frame.hidden = true;
+      refs.local.hidden = false;
+      refs.local.srcdoc = state.localHtml;
+      return;
+    }
+    if (state.mode === "companion" && state.frame) showFrame(state.frame);
   }
 }
 
@@ -1729,6 +1756,43 @@ function initialBrowserAddress(context = {}) {
   if (context.url) return context.url;
   if (context.node?.path) return context.node.path;
   return "";
+}
+
+export function createBrowserSessionState(context = {}, restored = null) {
+  const state = {
+    mode: "idle",
+    status: "browserd not connected",
+    address: initialBrowserAddress(context),
+    title: "Browser",
+    frame: "",
+    localHtml: "",
+    companionUrl: "ws://127.0.0.1:8787/browser",
+  };
+  if (!restored || typeof restored !== "object") return state;
+  return {
+    ...state,
+    mode: sanitizeBrowserMode(restored.mode) || state.mode,
+    status: String(restored.status || state.status),
+    address: String(restored.address || state.address),
+    title: String(restored.title || state.title),
+    frame: String(restored.frame || ""),
+    localHtml: String(restored.localHtml || ""),
+  };
+}
+
+export function browserSessionSnapshot(state = {}) {
+  return {
+    mode: sanitizeBrowserMode(state.mode) || "idle",
+    status: String(state.status || ""),
+    address: String(state.address || ""),
+    title: String(state.title || "Browser"),
+    frame: String(state.frame || ""),
+    localHtml: String(state.localHtml || ""),
+  };
+}
+
+function sanitizeBrowserMode(mode) {
+  return ["idle", "local", "companion"].includes(mode) ? mode : "";
 }
 
 function isDindbPath(value) {

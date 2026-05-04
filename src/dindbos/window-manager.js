@@ -75,13 +75,18 @@ export class WindowManager {
       id: config.id,
       close: () => this.close(config.id),
       focus: () => this.focus(config.id),
+      getState: (key) => cloneState(key ? task.state[key] : task.state),
+      setState: (key, value) => {
+        task.state[key] = cloneState(value);
+        return cloneState(task.state[key]);
+      },
       setTitle: (title) => {
         titlebar.querySelector("strong").textContent = title;
         task.title = title;
         this.renderTasks();
       },
     };
-    const task = { ...config, frame, titlebar, content, api, minimized: false, maximized: Boolean(placement.maximized) };
+    const task = { ...config, frame, titlebar, content, api, state: {}, minimized: false, maximized: Boolean(placement.maximized) };
     this.windows.set(config.id, task);
 
     titlebar.querySelector("[data-window-minimize]").addEventListener("click", () => this.minimize(config.id));
@@ -443,6 +448,12 @@ function clamp(value, min, max) {
 
 function newestWindowId(windows) {
   return [...windows.keys()].at(-1) || "";
+}
+
+function cloneState(value) {
+  if (value === undefined) return undefined;
+  if (typeof structuredClone === "function") return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
 }
 
 function placementKey(config) {

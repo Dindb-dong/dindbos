@@ -217,12 +217,11 @@ Already present:
 - `npm run smoke:browserd` verifies printable text, Backspace, Enter form submission, and Ctrl-modifier key forwarding inside a real Chromium page.
 - Browser.app exposes a clear reconnect path after `browserd` disconnects; `npm run smoke:browser-client` verifies reconnect status events and a second WebSocket connection after disconnect.
 - Browser.app connection policy is documented: blank windows require Connect, external URL submissions/context launches auto-connect, and local VFS HTML never starts `browserd`.
+- Browser.app forwards clipboard paste into remote pages and blocks companion downloads with visible status instead of silent writes.
+- Browser.app address/title/status session state is snapshotted into the window state slot and survives minimize/focus/activate flows.
 
 Remaining:
 
-- Preserve address/title/status state across window minimize, focus, and reload flows.
-- Add clipboard handling for paste into remote browser pages.
-- Add download handling policy: save downloads into `/home/guest/Downloads`, ask for local mount target, or block with a clear status.
 - Expand Browser.app keyboard policy for focus movement, text selection, and full shortcut behavior.
 - Reduce frame payload overhead by evaluating binary WebSocket frames instead of base64 data URLs.
 - Evaluate WebRTC/video stream only after the current CDP screencast protocol is stable.
@@ -483,6 +482,8 @@ Already present:
 - `npm run smoke:browserd` verifies a real Chromium download attempt is blocked with the suggested filename reported.
 - Browser.app forwards Ctrl/Cmd+V clipboard text into remote companion pages through the explicit `Input.insertText` protocol path.
 - `npm run smoke:browser-client` verifies paste helper behavior and the `type` protocol payload sent to the companion.
+- Browser.app stores address/title/status/frame/local-document session state in the window state slot so minimize, focus, activation, and render restore paths do not reset visible browser state.
+- `npm run smoke:browser-addresses` verifies Browser.app session snapshots; `npm run smoke:window-manager` verifies window state survives minimize/focus/activate.
 
 Remaining:
 

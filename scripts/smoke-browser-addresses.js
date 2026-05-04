@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-import { BROWSER_LOCAL_HTML_SANDBOX, normalizeBrowserAddress } from "../src/dindbos/apps/builtins.js";
+import {
+  BROWSER_LOCAL_HTML_SANDBOX,
+  browserSessionSnapshot,
+  createBrowserSessionState,
+  normalizeBrowserAddress,
+} from "../src/dindbos/apps/builtins.js";
 
 assert(normalizeBrowserAddress("") === "about:blank", "empty address did not become about:blank");
 assert(normalizeBrowserAddress("example.com") === "https://example.com", "domain did not become https URL");
@@ -19,6 +24,26 @@ assert(BROWSER_LOCAL_HTML_SANDBOX.includes("allow-scripts"), "local HTML sandbox
 assert(BROWSER_LOCAL_HTML_SANDBOX.includes("allow-forms"), "local HTML sandbox should allow forms");
 assert(!BROWSER_LOCAL_HTML_SANDBOX.includes("allow-same-origin"), "local HTML sandbox must not allow same-origin access");
 assert(!BROWSER_LOCAL_HTML_SANDBOX.includes("allow-top-navigation"), "local HTML sandbox must not allow top navigation");
+
+const initialSession = createBrowserSessionState({ url: "example.com" });
+assert(initialSession.address === "example.com", "browser session did not use context URL");
+const restoredSession = createBrowserSessionState({ url: "new.example" }, {
+  mode: "companion",
+  status: "ready https://example.com",
+  address: "https://example.com",
+  title: "Example Domain",
+  frame: "data:image/jpeg;base64,abc",
+  localHtml: "<main>cached</main>",
+});
+assert(restoredSession.address === "https://example.com", "browser session did not preserve restored address");
+assert(restoredSession.title === "Example Domain", "browser session did not preserve restored title");
+assert(restoredSession.status === "ready https://example.com", "browser session did not preserve restored status");
+assert(restoredSession.mode === "companion", "browser session did not preserve restored mode");
+const invalidSession = createBrowserSessionState({}, { mode: "invalid", address: "/home/guest/page.html" });
+assert(invalidSession.mode === "idle", "browser session accepted invalid restored mode");
+assert(invalidSession.address === "/home/guest/page.html", "browser session dropped restored local address");
+const snapshot = browserSessionSnapshot({ mode: "local", status: "local document /x.html", address: "/x.html", title: "x.html", localHtml: "<h1>x</h1>" });
+assert(snapshot.mode === "local" && snapshot.localHtml.includes("<h1>x</h1>"), "browser session snapshot lost local state");
 
 console.log("browser address smoke ok");
 

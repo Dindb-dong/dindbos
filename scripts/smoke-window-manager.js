@@ -102,8 +102,6 @@ assert(manager.windows.get("two").minimized === true, "ctrl-m did not minimize a
 manager.handleGlobalKeyDown({ ctrlKey: true, key: "w", preventDefault: () => {} });
 assert(!manager.windows.has("two"), "ctrl-w did not close active window");
 
-console.log("window manager smoke ok viewport snap shortcuts");
-
 function bootOs() {
   const permissions = new PermissionPolicy();
   return {
@@ -129,6 +127,124 @@ function fakeTask(id) {
       classList,
     },
   };
+}
+
+function installFakeDom() {
+  globalThis.window = {
+    innerWidth: 1024,
+    innerHeight: 768,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  globalThis.document = {
+    createElement: (tag) => new FakeElement(tag),
+    createDocumentFragment: () => new FakeElement("fragment"),
+  };
+}
+
+class FakeElement {
+  constructor(tag) {
+    this.tag = tag;
+    this.children = [];
+    this.dataset = {};
+    this.style = {};
+    this.hidden = false;
+    this.textContent = "";
+    this.className = "";
+    this.listeners = {};
+    this.classList = {
+      values: new Set(),
+      toggle: (name, active) => {
+        if (active) this.classList.values.add(name);
+        else this.classList.values.delete(name);
+      },
+      contains: (name) => this.classList.values.has(name),
+    };
+    this.controls = new Map();
+  }
+
+  append(...children) {
+    this.children.push(...children);
+  }
+
+  appendChild(child) {
+    this.children.push(child);
+  }
+
+  remove() {
+    this.removed = true;
+  }
+
+  addEventListener(type, handler) {
+    this.listeners[type] = handler;
+  }
+
+  querySelector(selector) {
+    if (selector === "strong") return this.control(selector);
+    if (selector.startsWith("[data-window-")) return this.control(selector);
+    return null;
+  }
+
+  querySelectorAll(selector) {
+    if (selector === "[data-resize]") return [];
+    return [];
+  }
+
+  getBoundingClientRect() {
+    return {
+      left: Number.parseFloat(this.style.left) || 0,
+      top: Number.parseFloat(this.style.top) || 0,
+      width: Number.parseFloat(this.style.width) || 640,
+      height: Number.parseFloat(this.style.height) || 420,
+    };
+  }
+
+  control(selector) {
+    if (!this.controls.has(selector)) this.controls.set(selector, new FakeElement("control"));
+    return this.controls.get(selector);
+  }
+}
+
+runLiveWindowStateSmoke();
+
+console.log("window manager smoke ok viewport snap shortcuts");
+
+function runLiveWindowStateSmoke() {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  try {
+    installFakeDom();
+    const liveManager = new WindowManager({
+      processes: {
+        markReady: () => {},
+        updateWindowState: () => {},
+      },
+      fs: null,
+    });
+    const layer = new FakeElement("div");
+    const taskStrip = new FakeElement("nav");
+    liveManager.mount(layer, taskStrip);
+    const api = liveManager.open({
+      id: "browser",
+      appId: "browser",
+      pid: 42,
+      title: "Browser.app",
+      width: 640,
+      height: 420,
+      render: (_content, windowApi) => {
+        windowApi.setState("browser", { address: "https://example.com", title: "Example Domain", status: "ready" });
+        windowApi.setTitle("Example Domain - Browser");
+      },
+    });
+    liveManager.minimize("browser");
+    liveManager.focus("browser");
+    assert(api.getState("browser").address === "https://example.com", "window API state was not preserved after minimize/focus");
+    liveManager.activate("browser");
+    assert(api.getState("browser").title === "Example Domain", "window API state was not preserved after activate");
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
 }
 
 function assert(condition, message) {
