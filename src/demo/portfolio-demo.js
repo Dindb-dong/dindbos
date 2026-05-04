@@ -257,6 +257,89 @@ export const demoFileSystem = directory("", [
           ].join("\n")),
           file("README.md", "text/markdown", "# API Lab package\n\nInstall with `pkg install /opt/dindbos/packages/api-lab/dindbos.app.json`.\n"),
         ]),
+        directory("paint-sample", [
+          file("dindbos.app.json", "application/json", `${JSON.stringify({
+            id: "paint-sample",
+            name: "Paint Sample",
+            version: "0.1.0",
+            description: "A sample canvas app proving packaged visual tools can render inside DindbOS.",
+            app: {
+              id: "paint-sample",
+              name: "Paint Sample",
+              title: "Paint Sample.app",
+              icon: "app",
+              width: 640,
+              height: 460,
+              entry: "app.js",
+            },
+            files: [
+              {
+                path: "app.js",
+                mime: "text/javascript",
+                content: [
+                  "export function mount({ content, pkg }) {",
+                  "  content.innerHTML = '<main class=\"package-app\" data-sample-paint><p class=\"dos-kicker\">Package ' + pkg.id + '</p><h2>' + pkg.name + '</h2><canvas width=\"480\" height=\"260\" aria-label=\"Paint sample canvas\"></canvas><p>Canvas sample app rendered from /opt/paint-sample/app.js.</p></main>';",
+                  "}",
+                ].join("\n"),
+              },
+            ],
+            permissions: {
+              capabilities: [],
+              fileSystem: {
+                read: ["/opt/paint-sample"],
+                write: [],
+              },
+            },
+          }, null, 2)}\n`),
+          file("app.js", "text/javascript", [
+            "export function mount({ content, pkg }) {",
+            "  content.innerHTML = '<main class=\"package-app\" data-sample-paint><p class=\"dos-kicker\">Package ' + pkg.id + '</p><h2>' + pkg.name + '</h2><canvas width=\"480\" height=\"260\" aria-label=\"Paint sample canvas\"></canvas><p>Canvas sample app rendered from /opt/paint-sample/app.js.</p></main>';",
+            "}",
+          ].join("\n")),
+          file("README.md", "text/markdown", "# Paint Sample package\n\nInstall with `pkg install /opt/dindbos/packages/paint-sample/dindbos.app.json`.\n"),
+        ]),
+        directory("pdf-viewer-sample", [
+          file("dindbos.app.json", "application/json", `${JSON.stringify({
+            id: "pdf-viewer-sample",
+            name: "PDF Viewer Sample",
+            version: "0.1.0",
+            description: "A sample file-viewer package that declares PDF association through the app manifest.",
+            app: {
+              id: "pdf-viewer-sample",
+              name: "PDF Viewer Sample",
+              title: "PDF Viewer Sample.app",
+              icon: "pdf",
+              width: 720,
+              height: 520,
+              accepts: ["application/pdf"],
+              entry: "app.js",
+            },
+            files: [
+              {
+                path: "app.js",
+                mime: "text/javascript",
+                content: [
+                  "export function mount({ content, pkg }) {",
+                  "  content.innerHTML = '<main class=\"package-app\" data-sample-pdf-viewer><p class=\"dos-kicker\">Package ' + pkg.id + '</p><h2>' + pkg.name + '</h2><p>This sample declares application/pdf in dindbos.app.json so it can be used as a packaged file viewer.</p></main>';",
+                  "}",
+                ].join("\n"),
+              },
+            ],
+            permissions: {
+              capabilities: [],
+              fileSystem: {
+                read: ["/opt/pdf-viewer-sample"],
+                write: [],
+              },
+            },
+          }, null, 2)}\n`),
+          file("app.js", "text/javascript", [
+            "export function mount({ content, pkg }) {",
+            "  content.innerHTML = '<main class=\"package-app\" data-sample-pdf-viewer><p class=\"dos-kicker\">Package ' + pkg.id + '</p><h2>' + pkg.name + '</h2><p>This sample declares application/pdf in dindbos.app.json so it can be used as a packaged file viewer.</p></main>';",
+            "}",
+          ].join("\n")),
+          file("README.md", "text/markdown", "# PDF Viewer Sample package\n\nInstall with `pkg install /opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json`.\n"),
+        ]),
       ]),
       directory("registry", [
         file("index.json", "application/json", `${JSON.stringify({
@@ -275,6 +358,20 @@ export const demoFileSystem = directory("", [
               version: "0.1.0",
               description: "Sample app proving sandboxed runtime APIs.",
               manifestUrl: "/opt/dindbos/packages/api-lab/dindbos.app.json",
+            },
+            {
+              id: "paint-sample",
+              name: "Paint Sample",
+              version: "0.1.0",
+              description: "Sample canvas app for packaged visual tools.",
+              manifestUrl: "/opt/dindbos/packages/paint-sample/dindbos.app.json",
+            },
+            {
+              id: "pdf-viewer-sample",
+              name: "PDF Viewer Sample",
+              version: "0.1.0",
+              description: "Sample packaged PDF file viewer manifest.",
+              manifestUrl: "/opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json",
             },
           ],
         }, null, 2)}\n`),

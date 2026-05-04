@@ -75,4 +75,6 @@ npm run smoke
 - Add `accepts` to make a file viewer app.
 - Add `dependencies.npm` and use `imports.npm("package-name")` in `mount()`.
 - Add scoped file permissions instead of broad filesystem access.
+- Inspect `/opt/dindbos/packages/paint-sample/dindbos.app.json` for a packaged canvas tool.
+- Inspect `/opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json` for a packaged file viewer that declares `application/pdf`.
 - Inspect `/opt/dindbos/packages/api-lab/dindbos.app.json` for a fuller sample that writes a report, reads package metadata, reads its current process, and records a process log through sandboxed runtime APIs.

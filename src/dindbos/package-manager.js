@@ -112,6 +112,75 @@ const SAMPLE_API_PACKAGE = {
   },
 };
 
+const SAMPLE_PAINT_PACKAGE = {
+  id: "paint-sample",
+  name: "Paint Sample",
+  version: "0.1.0",
+  description: "A sample canvas app proving packaged visual tools can render inside DindbOS.",
+  app: {
+    id: "paint-sample",
+    name: "Paint Sample",
+    title: "Paint Sample.app",
+    icon: "app",
+    width: 640,
+    height: 460,
+    entry: "app.js",
+  },
+  files: [
+    {
+      path: "app.js",
+      mime: "text/javascript",
+      content: [
+        "export function mount({ content, pkg }) {",
+        "  content.innerHTML = '<main class=\"package-app\" data-sample-paint><p class=\"dos-kicker\">Package ' + pkg.id + '</p><h2>' + pkg.name + '</h2><canvas width=\"480\" height=\"260\" aria-label=\"Paint sample canvas\"></canvas><p>Canvas sample app rendered from /opt/paint-sample/app.js.</p></main>';",
+        "}",
+      ].join("\n"),
+    },
+  ],
+  permissions: {
+    capabilities: [],
+    fileSystem: {
+      read: ["/opt/paint-sample"],
+      write: [],
+    },
+  },
+};
+
+const SAMPLE_PDF_VIEWER_PACKAGE = {
+  id: "pdf-viewer-sample",
+  name: "PDF Viewer Sample",
+  version: "0.1.0",
+  description: "A sample file-viewer package that declares PDF association through the app manifest.",
+  app: {
+    id: "pdf-viewer-sample",
+    name: "PDF Viewer Sample",
+    title: "PDF Viewer Sample.app",
+    icon: "pdf",
+    width: 720,
+    height: 520,
+    accepts: ["application/pdf"],
+    entry: "app.js",
+  },
+  files: [
+    {
+      path: "app.js",
+      mime: "text/javascript",
+      content: [
+        "export function mount({ content, pkg }) {",
+        "  content.innerHTML = '<main class=\"package-app\" data-sample-pdf-viewer><p class=\"dos-kicker\">Package ' + pkg.id + '</p><h2>' + pkg.name + '</h2><p>This sample declares application/pdf in dindbos.app.json so it can be used as a packaged file viewer.</p></main>';",
+        "}",
+      ].join("\n"),
+    },
+  ],
+  permissions: {
+    capabilities: [],
+    fileSystem: {
+      read: ["/opt/pdf-viewer-sample"],
+      write: [],
+    },
+  },
+};
+
 export class PackageManager {
   constructor(os) {
     this.os = os;
@@ -472,6 +541,8 @@ export class PackageManager {
   ensureSamplePackageSource() {
     this.ensureSamplePackage(SAMPLE_PACKAGE, "# Hello Notes package\n\nInstall with `pkg install /opt/dindbos/packages/hello-notes/dindbos.app.json`.\n");
     this.ensureSamplePackage(SAMPLE_API_PACKAGE, "# API Lab package\n\nInstall with `pkg install /opt/dindbos/packages/api-lab/dindbos.app.json`.\n");
+    this.ensureSamplePackage(SAMPLE_PAINT_PACKAGE, "# Paint Sample package\n\nInstall with `pkg install /opt/dindbos/packages/paint-sample/dindbos.app.json`.\n");
+    this.ensureSamplePackage(SAMPLE_PDF_VIEWER_PACKAGE, "# PDF Viewer Sample package\n\nInstall with `pkg install /opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json`.\n");
   }
 
   ensureSamplePackage(manifest, readme) {
@@ -564,28 +635,15 @@ export class PackageManager {
   }
 
   ensureLocalRegistryIndex() {
-    if (this.os.fs.exists(LOCAL_REGISTRY_PATH)) return;
+    const payload = localRegistryIndexPayload();
+    if (this.os.fs.exists(LOCAL_REGISTRY_PATH)) {
+      const current = safeRead(() => this.os.fs.readFile(LOCAL_REGISTRY_PATH, "/", this.system), "");
+      const hasAllSamples = payload.packages.every((entry) => current.includes(`"id": "${entry.id}"`));
+      if (hasAllSamples) return;
+    }
     this.os.fs.writeOrCreateFile(
       LOCAL_REGISTRY_PATH,
-      `${JSON.stringify({
-        name: "DindbOS Local Registry",
-        packages: [
-          {
-            id: "hello-notes",
-            name: "Hello Notes",
-            version: "0.1.0",
-            description: "Sample executable DindbOS package.",
-            manifestUrl: `${PACKAGE_SOURCE_DIR}/hello-notes/dindbos.app.json`,
-          },
-          {
-            id: "api-lab",
-            name: "API Lab",
-            version: "0.1.0",
-            description: "Sample app proving sandboxed runtime APIs.",
-            manifestUrl: `${PACKAGE_SOURCE_DIR}/api-lab/dindbos.app.json`,
-          },
-        ],
-      }, null, 2)}\n`,
+      `${JSON.stringify(payload, null, 2)}\n`,
       "/",
       { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
       this.system,
@@ -768,6 +826,42 @@ export class PackageManager {
   launcherPath(record) {
     return `${APPLICATION_DIR}/${record.app.title || `${record.app.name}.app`}`;
   }
+}
+
+function localRegistryIndexPayload() {
+  return {
+    name: "DindbOS Local Registry",
+    packages: [
+      {
+        id: "hello-notes",
+        name: "Hello Notes",
+        version: "0.1.0",
+        description: "Sample executable DindbOS package.",
+        manifestUrl: `${PACKAGE_SOURCE_DIR}/hello-notes/dindbos.app.json`,
+      },
+      {
+        id: "api-lab",
+        name: "API Lab",
+        version: "0.1.0",
+        description: "Sample app proving sandboxed runtime APIs.",
+        manifestUrl: `${PACKAGE_SOURCE_DIR}/api-lab/dindbos.app.json`,
+      },
+      {
+        id: "paint-sample",
+        name: "Paint Sample",
+        version: "0.1.0",
+        description: "Sample canvas app for packaged visual tools.",
+        manifestUrl: `${PACKAGE_SOURCE_DIR}/paint-sample/dindbos.app.json`,
+      },
+      {
+        id: "pdf-viewer-sample",
+        name: "PDF Viewer Sample",
+        version: "0.1.0",
+        description: "Sample packaged PDF file viewer manifest.",
+        manifestUrl: `${PACKAGE_SOURCE_DIR}/pdf-viewer-sample/dindbos.app.json`,
+      },
+    ],
+  };
 }
 
 function renderPackagedApp(content, runtime, record, windowApi, manager = null) {

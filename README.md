@@ -134,13 +134,15 @@ See `docs/app-lifecycle.md` for install, update, launch, crash, close, and unins
 
 A DindbOS package starts with a `dindbos.app.json` manifest. The package manager stores installed package records under `/var/lib/dindbos/packages`, installs app files under `/opt/<package>`, creates launchers under `/usr/share/applications`, and registers the app with the runtime.
 
-Try the sample package:
+Try the sample packages:
 
 ```text
 pkg list
 pkg info hello-notes
 pkg deps hello-notes
 open "/usr/share/applications/Hello Notes.app"
+pkg install /opt/dindbos/packages/paint-sample/dindbos.app.json
+pkg install /opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json
 ```
 
 Remote packages install the same way when the server allows browser CORS:

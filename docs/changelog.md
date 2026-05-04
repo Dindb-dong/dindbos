@@ -52,6 +52,7 @@ Added:
 - Package manager now verifies signed remote manifests with Ed25519, manages trusted publishers through `pkg trust`, and fails closed before package filesystem mutation for missing, invalid, or untrusted signatures.
 - Package lifecycle events now distinguish install, update, first-run, uninstall-cleanup, and uninstall, with lifecycle metadata persisted in package records.
 - API Lab sample package now ships under `/opt/dindbos/packages/api-lab` and proves third-party use of sandboxed filesystem, package metadata, current-process, and process-log APIs through package smoke coverage.
+- Paint Sample and PDF Viewer Sample packages now ship under `/opt/dindbos/packages` and the local registry, with smoke coverage for source manifests, registry search, install, association, and launch render paths.
 - App sandbox now exposes per-app `os.state` JSON persistence backed by `/var/lib/dindbos/app-state`, with relaunch/reload restoration and package uninstall cleanup coverage.
 - TextEdit, Viewer.app, and Browser.app now use user-document read scopes instead of root filesystem read scope for file-open paths.
 - Session users now get generated `/home/<user>` workspaces with Desktop/Documents/Downloads/Trash directories, matching shell ownership, and built-in app scopes based on the active home.
