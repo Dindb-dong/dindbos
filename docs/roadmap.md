@@ -153,10 +153,7 @@ Already present:
 - Browser.app companion client.
 - `docs/browserd.md` defines the local companion trust boundary, optional-runtime rule, direct-third-party-access restriction, and future companion/provider separation.
 - Browser.app checks `browserd` health service, protocol version, required capabilities, and WebSocket subprotocol before opening the companion boundary.
-
-Remaining:
-
-- Decide whether future companions handle file helper work, browser downloads, local mount rename, or other native-adjacent tasks.
+- `browserd` is explicitly browser-only: future file helper, download-save, local mount rename, and native-adjacent work must use separate companion identities/protocols instead of expanding the browser companion.
 
 ### Stage 6: Desktop UX As A Runtime Client
 

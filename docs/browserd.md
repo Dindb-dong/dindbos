@@ -45,6 +45,17 @@ Boundary rules:
 - The WebSocket protocol should stay narrow: browser navigation, viewport resize, input events, screenshots/frames, and status/error reporting.
 - Future hosted or remote browser providers must use a separate provider identity and trust model. Do not treat a remote provider as equivalent to `127.0.0.1` `browserd`.
 
+## Companion Scope Decision
+
+`browserd` remains a browser-only companion. Its advertised capabilities must stay under the `browser.*` namespace and must not include file helper, download-save, local mount rename, generic native command, or filesystem helper capabilities.
+
+Native-adjacent work is split by boundary:
+
+- Browser downloads stay denied in `browserd` until a separate save/download policy exists.
+- Local mount rename belongs to a future mount/file companion with its own service identity, protocol, capabilities, prompts, and failure UX.
+- File import/export helpers belong to browser-native APIs first; any native helper must use a separate companion identity instead of expanding `browserd`.
+- Remote hosted browser providers are separate from local `browserd` and require their own provider identity/trust model.
+
 Current identity checks are intentionally local and versioned: Browser.app verifies the health service name, protocol version, and required capabilities before opening a WebSocket, then requests the same protocol as a WebSocket subprotocol. This prevents accidental connection to an unrelated or incompatible local server; it is not a full authentication scheme.
 
 ## Connection Policy

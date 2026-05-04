@@ -43,6 +43,8 @@ try {
   assert(health.service === "dindbos-browserd", `unexpected health service: ${JSON.stringify(health)}`);
   assert(health.protocol === "dindbos-browserd.v1", `unexpected health protocol: ${JSON.stringify(health)}`);
   assert(health.capabilities.includes("browser.frames.binary"), "health capabilities missing binary frames");
+  assert(health.capabilities.every((capability) => capability.startsWith("browser.")), `browserd exposed non-browser capability: ${health.capabilities.join(",")}`);
+  assert(!health.capabilities.some((capability) => /file|mount|native|download\.save/.test(capability)), `browserd exposed native-adjacent capability: ${health.capabilities.join(",")}`);
 
   const socket = new WebSocket(`ws://127.0.0.1:${browserPort}/browser`, "dindbos-browserd.v1");
   await once(socket, "open");
