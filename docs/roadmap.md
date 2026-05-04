@@ -418,6 +418,8 @@ Already present:
 - `path/win32` resolves through CommonJS and ESM import paths to a browser-safe Windows path string facade for package feature probes without exposing host filesystem access.
 - `npm run smoke:npm-node` verifies `path/win32`, `node:path/win32`, and `path.win32` behavior for join, basename, dirname, extname, absolute path detection, normalize, and relative path calculations.
 - `url`, `util`, and `timers` builtin facades are available through bare and `node:` import paths; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
+- `url.parse`, `url.format`, and `url.resolve` provide browser-safe legacy URL string helpers for older package probes through CommonJS and ESM import paths.
+- `npm run smoke:npm-node` verifies legacy URL parse query objects, format output, and relative URL resolution.
 - `util.debuglog` and `util.deprecate` support browser-safe package diagnostics and legacy API wrappers without host Node access; `npm run smoke:npm-node` verifies enabled/disabled debug channels, callback shape, one-time deprecation warnings, and CommonJS/ESM import paths.
 - `util.TextEncoder`, `util.TextDecoder`, and `util.isDeepStrictEqual` support browser-safe package encoding and equality probes through CommonJS and ESM import paths.
 - `npm run smoke:npm-node` verifies util text encoding/decoding and strict deep equality for nested objects, typed arrays, dates, and mismatched primitive types.
