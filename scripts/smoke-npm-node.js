@@ -229,6 +229,36 @@ const fsCallbacksImport = await node.evaluate(
 assert(fsCallbacksImport.status === 0, `fs callbacks import exited with ${fsCallbacksImport.status}`);
 assert(fsCallbacksImport.output.trim() === "esm callback note.txt true 4", `unexpected fs callbacks import output: ${fsCallbacksImport.output}`);
 
+const fsCopyFileRequire = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "fs.writeFileSync('./copy-src.bin', Buffer.from([1, 2, 3]));",
+    "fs.copyFileSync('./copy-src.bin', './copy-dest.bin');",
+    "fs.copyFile('./copy-src.bin', './copy-dest.bin', fs.constants.COPYFILE_EXCL, (error) => {",
+    "  const bytes = fs.readFileSync('./copy-dest.bin');",
+    "  console.log(bytes.length, bytes[1], error instanceof Error);",
+    "});",
+  ].join("\n"),
+  cwd,
+);
+assert(fsCopyFileRequire.status === 0, `fs copyFile require exited with ${fsCopyFileRequire.status}`);
+assert(fsCopyFileRequire.output.trim() === "3 2 true", `unexpected fs copyFile require output: ${fsCopyFileRequire.output}`);
+
+const fsCopyFileImport = await node.evaluate(
+  [
+    "import { constants, promises as fs, readFileSync, writeFileSync } from 'node:fs';",
+    "writeFileSync('./copy-esm-src.txt', 'copy esm');",
+    "await fs.copyFile('./copy-esm-src.txt', './copy-esm-dest.txt');",
+    "let existsError = false;",
+    "try { await fs.copyFile('./copy-esm-src.txt', './copy-esm-dest.txt', constants.COPYFILE_EXCL); } catch (error) { existsError = error instanceof Error; }",
+    "console.log(readFileSync('./copy-esm-dest.txt', 'utf8'), existsError);",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsCopyFileImport.status === 0, `fs copyFile import exited with ${fsCopyFileImport.status}`);
+assert(fsCopyFileImport.output.trim() === "copy esm true", `unexpected fs copyFile import output: ${fsCopyFileImport.output}`);
+
 const fsStreamsRequire = node.evaluate(
   [
     "const fs = require('fs');",
