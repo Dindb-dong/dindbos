@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { AppRegistry } from "../src/dindbos/app-registry.js";
+import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { cleanupViewerObjectUrl, installBuiltinApps, renderMarkdownPreview, viewerMarkup, viewerPreviewForBytes, viewerZoomValue } from "../src/dindbos/apps/builtins.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
@@ -73,6 +74,9 @@ assert(!content.dataset.viewerObjectUrl, "viewer object URL dataset was not clea
 
 const os = bootOs();
 installBuiltinApps(os, { portfolioData: { name: "Smoke", summary: "", projects: [] } });
+assert(!os.apps.getManifest("text").fileSystem.read.includes("/"), "TextEdit kept root read scope");
+assert(!os.apps.getManifest("viewer").fileSystem.read.includes("/"), "Viewer.app kept root read scope");
+assert(!os.apps.getManifest("browser").fileSystem.read.includes("/"), "Browser.app kept root read scope");
 assert(resolve(os, "document.pdf", "application/pdf") === "viewer", "PDF did not resolve to Viewer.app");
 assert(resolve(os, "image.png", "image/png") === "viewer", "image did not resolve to Viewer.app");
 assert(resolve(os, "README.md", "text/markdown") === "viewer", "markdown did not resolve to Viewer.app");
@@ -82,6 +86,13 @@ assert(resolve(os, "note.txt", "text/plain") === "text", "plain text did not res
 assert(resolve(os, "payload.bin", "application/octet-stream") === "", "unknown binary unexpectedly resolved");
 os.fs.createFile("/home/guest/portfolio.deck.html", "/", { content: "<section>Deck</section>" });
 assert(os.fs.stat("/home/guest/portfolio.deck.html").mime === "application/x-dindbos-deck", "VFS deck MIME detection failed");
+os.fs.createDirectory("/root", "/", { owner: "root", group: "root", permissions: "drwx------" }, os.permissions.systemPrincipal());
+os.fs.writeOrCreateFile("/root/secret.md", "# secret\n", "/", { mime: "text/markdown", owner: "root", group: "root", permissions: "-rw-------" }, os.permissions.systemPrincipal());
+os.fs.writeOrCreateFile("/root/secret.txt", "secret\n", "/", { mime: "text/plain", owner: "root", group: "root", permissions: "-rw-------" }, os.permissions.systemPrincipal());
+const deniedViewer = os.apps.openFile(os.fs.stat("/root/secret.md", "/", os.permissions.systemPrincipal()));
+await waitFor(() => deniedViewer.content.innerHTML.includes("sandbox denied"), "Viewer.app did not enforce narrowed read scope for root-owned file");
+const deniedText = os.apps.openFile(os.fs.stat("/root/secret.txt", "/", os.permissions.systemPrincipal()));
+await waitFor(() => deniedText.content.innerHTML.includes("sandbox denied"), "TextEdit did not enforce narrowed read scope for root-owned file");
 
 console.log("viewer smoke ok markdown associations");
 
@@ -98,9 +109,13 @@ function bootOs() {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
+    localMounts: { isMountedPath: () => false },
+    processes: fakeProcesses(),
+    windows: fakeWindows(),
   };
   os.apps = new AppRegistry(os);
   os.registerApp = (app) => os.apps.register(app);
+  os.createSandbox = (process) => new AppSandbox(os, process);
   return os;
 }
 
@@ -110,4 +125,48 @@ function resolve(os, name, mime) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function fakeProcesses() {
+  let nextPid = 200;
+  return {
+    spawn: (app, context) => ({
+      pid: nextPid++,
+      appId: app.id,
+      context,
+      cwd: "/home/guest",
+      logs: [],
+      manifest: app.manifest || {},
+      name: app.name || app.id,
+      state: "running",
+      user: "guest",
+    }),
+    attachWindow: () => {},
+    kill: () => {},
+    crash: () => {},
+    log: () => {},
+  };
+}
+
+function fakeWindows() {
+  return {
+    has: () => false,
+    activate: () => null,
+    open: (options) => {
+      const content = { innerHTML: "", dataset: {}, querySelector: () => null, querySelectorAll: () => [] };
+      const windowApi = { setTitle: (title) => { options.title = title; } };
+      const record = { ...options, content };
+      options.render(content, windowApi);
+      return record;
+    },
+  };
+}
+
+async function waitFor(check, label) {
+  const started = Date.now();
+  while (Date.now() - started < 1000) {
+    if (check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(label);
 }

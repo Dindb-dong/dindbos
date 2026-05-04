@@ -135,12 +135,10 @@ Already present:
 - App sandbox exposes per-app `os.state` JSON persistence under `/var/lib/dindbos/app-state/<appId>.json`; state survives close, relaunch, update, and VFS reload while package uninstall cleanup removes the app state record.
 - `docs/app-apis.md` documents app-facing filesystem, process, storage, app state, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
 - App capability and filesystem-scope failures throw explicit `capability denied` or `sandbox denied` errors; `npm run smoke:permissions` verifies these messages for process, package, local mount, and filesystem denials.
+- TextEdit, Viewer.app, and Browser.app use user-document read scopes for file-open paths instead of root filesystem read scope.
 - `npm run smoke:packages` launches API Lab through AppRegistry and verifies its rendered output, `/home/guest/DindbOS API Lab/report.txt` write, package metadata read, process log side effect, app state relaunch restore, app state VFS reload restore, and uninstall cleanup.
 - `npm run smoke:permissions` verifies app state namespace isolation and JSON-serializable value enforcement.
-
-Remaining:
-
-- Remove privileged shortcuts where built-in apps bypass sandbox boundaries unnecessarily.
+- `npm run smoke:viewer` verifies TextEdit and Viewer.app reject root-owned files outside their app sandbox scopes.
 
 ### Stage 5: External Capability Bridges
 
@@ -723,7 +721,7 @@ Goal: Third-party DindbOS apps can be built, installed, updated, and debugged.
 
 Tasks:
 
-- Remove privileged shortcuts where built-in apps bypass sandbox boundaries unnecessarily.
+- Expand NodeCompat only in directions that support browser-safe packages.
 
 ### Milestone E: Desktop Polish
 

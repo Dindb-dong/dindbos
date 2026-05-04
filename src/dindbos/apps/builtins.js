@@ -3,6 +3,8 @@ import { BrowserCompanionClient, pasteClipboardText } from "../browser-client.js
 import { ShellSession } from "../shell.js?v=20260422-browserd";
 
 const FILES_OPERATION_HISTORY_LIMIT = 12;
+const USER_DOCUMENT_READ_ROOTS = ["/home/guest", "/mnt/portfolio", "/tmp"];
+const USER_DOCUMENT_WRITE_ROOTS = ["/home/guest", "/mnt/portfolio", "/tmp"];
 export const BROWSER_LOCAL_HTML_SANDBOX = "allow-scripts allow-forms allow-popups";
 
 export function installBuiltinApps(os, { portfolioData }) {
@@ -94,7 +96,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     height: 520,
     manifest: {
       capabilities: ["storage.manage", "localMount.read", "localMount.manage"],
-      fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
+      fileSystem: { read: USER_DOCUMENT_READ_ROOTS, write: USER_DOCUMENT_WRITE_ROOTS },
     },
     render: ({ os: runtime, content, context, window }) => renderText(runtime, content, context.node, window),
   });
@@ -110,8 +112,8 @@ export function installBuiltinApps(os, { portfolioData }) {
     associationPriority: 20,
     accepts: ["text/html"],
     manifest: {
-      capabilities: ["process.read", "localMount.read"],
-      fileSystem: { read: ["/"], write: [] },
+      capabilities: ["localMount.read"],
+      fileSystem: { read: USER_DOCUMENT_READ_ROOTS, write: [] },
     },
     render: ({ os: runtime, content, context, window }) => renderBrowser(runtime, content, context, window),
   });
@@ -127,7 +129,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     height: 560,
     manifest: {
       capabilities: ["localMount.read"],
-      fileSystem: { read: ["/"], write: [] },
+      fileSystem: { read: USER_DOCUMENT_READ_ROOTS, write: [] },
     },
     render: ({ os: runtime, content, context }) => renderViewer(runtime, content, context.node),
   });
