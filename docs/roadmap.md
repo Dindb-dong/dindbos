@@ -97,7 +97,7 @@ Already present:
 
 ### Stage 3: Scriptable Userland
 
-Status: In progress.
+Status: Done first pass.
 
 Goal: The shell and package layer can operate the system without hard-coded UI shortcuts.
 
@@ -116,7 +116,7 @@ Already present:
 
 Remaining:
 
-- Expand NodeCompat only in directions that support browser-safe packages.
+- No open scriptable userland task is currently identified; add new work here only when smoke coverage or real browser-safe package usage exposes a gap.
 
 ### Stage 4: Real Apps On Runtime APIs
 
@@ -389,7 +389,7 @@ Completion criteria:
 
 ## 3.1 NodeCompat
 
-Status: Done early pass, compatibility expansion remaining.
+Status: Done first pass; compatibility expansion is now demand-driven by real browser-safe package gaps.
 
 Already present:
 
@@ -785,7 +785,7 @@ Goal: Third-party DindbOS apps can be built, installed, updated, and debugged.
 
 Tasks:
 
-- Expand NodeCompat only in directions that support browser-safe packages.
+- No open package/app platform task is currently identified; add new work here only when smoke coverage or real browser-safe package usage exposes a gap.
 
 ### Milestone E: Desktop Polish
 
