@@ -151,6 +151,8 @@ App state is scoped by app id under `/var/lib/dindbos/app-state/<appId>.json`, s
 
 The runtime exposes browser-native login session state through `os.sessionStatus()`, `os.lockSession(reason)`, and `os.unlockSession()`. Locking a session blocks Shell command execution and app/path launches until the session is unlocked. The current status is persisted at `/var/run/dindbos/session.json`, and lock transitions emit `session:lock` / `session:unlock` events on the runtime bus.
 
+User and group management is backed by `/etc/dindbos/users.json`. Trusted runtime tools can call `os.listUsers()`, `os.listGroups()`, `os.createUser(name, options)`, `os.createGroup(name)`, `os.addUserToGroup(user, group)`, and `os.removeUserFromGroup(user, group)`. User and group ids are normalized to browser-safe identifiers, and new users receive owned home workspaces under `/home/<user>`.
+
 ## Disk Policy
 
 Available on the runtime object for built-in tools and trusted diagnostics:

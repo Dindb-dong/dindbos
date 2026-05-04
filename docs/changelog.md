@@ -59,6 +59,7 @@ Added:
 - TextEdit, Viewer.app, and Browser.app now use user-document read scopes instead of root filesystem read scope for file-open paths.
 - Session users now get generated `/home/<user>` workspaces with Desktop/Documents/Downloads/Trash directories, matching shell ownership, and built-in app scopes based on the active home.
 - Login session state now exposes lock/unlock runtime APIs, persists `/var/run/dindbos/session.json`, emits session lock/unlock events, and blocks Shell/app launch paths while locked.
+- User/group management now persists `/etc/dindbos/users.json`, exposes runtime APIs for creating users/groups and editing membership, and creates owned home workspaces for new users.
 - VFS path traversal now enforces execute permission on parent directories for reads, writes, stat, copy, move, chmod, and app sandbox resolve/stat/exists paths.
 - Local mount writes now detect disk-side changes since the last sync and report `sync-conflict` instead of silently overwriting external file changes.
 - Files.app large copy, move, import, and export traversals now yield cooperatively while keeping progress, cancellation, and byte-preservation smoke coverage.

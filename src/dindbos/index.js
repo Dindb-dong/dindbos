@@ -120,6 +120,7 @@ export class DindbOS {
       this.recoverBootPhase("vfs-mount", "local mount restore failed; continuing without persisted mounts", error);
     }
     this.ensureDiskPolicyRoots();
+    this.ensureUserGroupDatabase();
     this.ensureSessionHome();
     this.writeSessionStatus();
   }
@@ -255,10 +256,14 @@ export class DindbOS {
   }
 
   ensureSessionHome() {
-    const system = this.permissions.systemPrincipal();
     const user = this.session.user || "guest";
     const group = this.session.groups?.[0] || "users";
     const home = this.session.home || `/home/${user}`;
+    this.ensureUserHome(user, group, home);
+  }
+
+  ensureUserHome(user, group = "users", home = `/home/${user}`) {
+    const system = this.permissions.systemPrincipal();
     this.ensureDirectoryPath(home, {
       leafOwner: user,
       leafGroup: group,
@@ -285,6 +290,133 @@ export class DindbOS {
         mime: "text/plain",
       }, system);
     }
+  }
+
+  ensureUserGroupDatabase() {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/etc", "root", system);
+    this.ensureSystemDirectory("/etc/dindbos", "root", system);
+    const database = this.userGroupDatabase();
+    const user = this.session.user || "guest";
+    const groups = this.session.groups?.length ? this.session.groups : ["users"];
+    if (!database.users[user]) {
+      database.users[user] = {
+        user,
+        home: this.session.home || `/home/${user}`,
+        groups: [...groups],
+        createdAt: new Date().toISOString(),
+      };
+    }
+    groups.forEach((group) => {
+      database.groups[group] = database.groups[group] || { group, members: [] };
+      if (!database.groups[group].members.includes(user)) database.groups[group].members.push(user);
+    });
+    this.writeUserGroupDatabase(database);
+  }
+
+  userGroupDatabase() {
+    const path = "/etc/dindbos/users.json";
+    if (!this.fs.exists(path)) return { users: {}, groups: {} };
+    try {
+      const parsed = JSON.parse(this.fs.readFile(path, "/", this.permissions.systemPrincipal()));
+      return {
+        users: parsed.users && typeof parsed.users === "object" ? parsed.users : {},
+        groups: parsed.groups && typeof parsed.groups === "object" ? parsed.groups : {},
+      };
+    } catch {
+      return { users: {}, groups: {} };
+    }
+  }
+
+  writeUserGroupDatabase(database) {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/etc", "root", system);
+    this.ensureSystemDirectory("/etc/dindbos", "root", system);
+    const normalized = {
+      users: Object.fromEntries(Object.entries(database.users || {}).sort(([left], [right]) => left.localeCompare(right))),
+      groups: Object.fromEntries(Object.entries(database.groups || {}).sort(([left], [right]) => left.localeCompare(right))),
+      updatedAt: new Date().toISOString(),
+    };
+    this.fs.writeOrCreateFile("/etc/dindbos/users.json", `${JSON.stringify(normalized, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    return normalized;
+  }
+
+  listUsers() {
+    return Object.values(this.userGroupDatabase().users).map((user) => ({
+      ...user,
+      groups: [...(user.groups || [])],
+    }));
+  }
+
+  listGroups() {
+    return Object.values(this.userGroupDatabase().groups).map((group) => ({
+      ...group,
+      members: [...(group.members || [])],
+    }));
+  }
+
+  createGroup(name) {
+    const group = sanitizeIdentifier(name, "");
+    if (!group) throw new Error("group: invalid group name");
+    const database = this.userGroupDatabase();
+    database.groups[group] = database.groups[group] || { group, members: [], createdAt: new Date().toISOString() };
+    this.writeUserGroupDatabase(database);
+    return { ...database.groups[group], members: [...(database.groups[group].members || [])] };
+  }
+
+  createUser(name, options = {}) {
+    const user = sanitizeUserName(name);
+    const groups = sanitizeGroups(options.groups?.length ? options.groups : ["users"]);
+    const home = normalizeHomePath(options.home, user);
+    const database = this.userGroupDatabase();
+    if (database.users[user]) throw new Error(`user: ${user}: already exists`);
+    database.users[user] = {
+      user,
+      home,
+      groups: [...groups],
+      createdAt: new Date().toISOString(),
+    };
+    groups.forEach((group) => {
+      database.groups[group] = database.groups[group] || { group, members: [], createdAt: new Date().toISOString() };
+      if (!database.groups[group].members.includes(user)) database.groups[group].members.push(user);
+    });
+    this.writeUserGroupDatabase(database);
+    this.ensureUserHome(user, groups[0] || "users", home);
+    return { ...database.users[user], groups: [...database.users[user].groups] };
+  }
+
+  addUserToGroup(userName, groupName) {
+    const user = sanitizeUserName(userName);
+    const group = sanitizeIdentifier(groupName, "");
+    if (!group) throw new Error("group: invalid group name");
+    const database = this.userGroupDatabase();
+    if (!database.users[user]) throw new Error(`user: ${user}: no such user`);
+    database.groups[group] = database.groups[group] || { group, members: [], createdAt: new Date().toISOString() };
+    if (!database.users[user].groups.includes(group)) database.users[user].groups.push(group);
+    if (!database.groups[group].members.includes(user)) database.groups[group].members.push(user);
+    this.writeUserGroupDatabase(database);
+    return {
+      user: { ...database.users[user], groups: [...database.users[user].groups] },
+      group: { ...database.groups[group], members: [...database.groups[group].members] },
+    };
+  }
+
+  removeUserFromGroup(userName, groupName) {
+    const user = sanitizeUserName(userName);
+    const group = sanitizeIdentifier(groupName, "");
+    const database = this.userGroupDatabase();
+    if (!database.users[user]) throw new Error(`user: ${user}: no such user`);
+    database.users[user].groups = (database.users[user].groups || []).filter((candidate) => candidate !== group);
+    if (database.groups[group]) {
+      database.groups[group].members = (database.groups[group].members || []).filter((candidate) => candidate !== user);
+    }
+    this.writeUserGroupDatabase(database);
+    return { ...database.users[user], groups: [...database.users[user].groups] };
   }
 
   sessionStatus() {
