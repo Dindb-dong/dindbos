@@ -120,7 +120,7 @@ Remaining:
 
 ### Stage 4: Real Apps On Runtime APIs
 
-Status: Next.
+Status: Done first pass, third-party API hardening continues through package milestones.
 
 Goal: Built-in and third-party apps behave like OS apps because they consume runtime services.
 
@@ -196,7 +196,7 @@ These are the tasks most likely to be "what we were in the middle of" right now.
 
 ### 0.1 Browser.app Companion Stabilization
 
-Status: In progress.
+Status: Done first pass, provider/native-adjacent hardening remaining.
 
 Already present:
 
@@ -233,7 +233,7 @@ Completion criteria:
 
 ### 0.2 Verification Baseline
 
-Status: Next.
+Status: Done first pass, expand only when new risky runtime paths appear.
 
 Already present:
 
@@ -254,11 +254,6 @@ Already present:
 - `npm run smoke:boot` verifies runtime boot phase order, completion diagnostics, persisted boot logs, and storage-load failure reporting.
 - `npm run smoke:sessions` verifies generated user homes, shell ownership for created files/directories, and active-home built-in app scopes.
 - `npm run smoke` runs syntax checks plus current boot, storage, persistent storage, Files.app, Settings.app, Viewer.app, Shell, session, permission, package, npm/node, process, local mount, app registry, window manager, browser address, and browser companion smoke checks as one local confidence command.
-
-Remaining:
-
-- Keep `npm run check` passing after every runtime change.
-- Add smoke scripts for the remaining risky browser-runtime paths that syntax checks cannot cover.
 
 Completion criteria:
 
@@ -528,7 +523,7 @@ Completion criteria:
 
 ## 6. Document Viewers
 
-Status: In progress.
+Status: Done first pass, workload polish remaining.
 
 Already present:
 
@@ -601,7 +596,7 @@ Completion criteria:
 
 ## 8. Window Manager
 
-Status: Basic windowing present, desktop polish remaining.
+Status: Done first pass, desktop polish remaining.
 
 Already present:
 
@@ -722,9 +717,7 @@ Goal: Browser.app can reliably open local HTML and real external URLs.
 
 Tasks:
 
-- Finish companion failure/reconnect handling.
-- Verify click/type/scroll/back/forward/reload.
-- Decide initial clipboard/download policy.
+- Continue provider/native-adjacent hardening only where smoke coverage exposes a real gap.
 
 ### Milestone B: Runtime Confidence
 
@@ -732,7 +725,7 @@ Goal: Storage, npm install, NodeCompat, and process visibility have enough verif
 
 Tasks:
 
-- Keep `npm run check` as the minimum syntax gate.
+- Add focused smoke coverage when a new risky browser-runtime path is introduced.
 
 ### Milestone C: Document Workloads
 
@@ -740,8 +733,7 @@ Goal: Portfolio documents open naturally from the desktop.
 
 Tasks:
 
-- Improve Viewer.app adapters.
-- Add PDF.js only if native PDF iframe is insufficient.
+- Polish realistic document workloads that still feel rough in Files.app or Viewer.app.
 
 ### Milestone D: Package And App Platform
 
@@ -757,8 +749,5 @@ Goal: The OS shell feels stable under normal daily interaction.
 
 Tasks:
 
-- Add snap zones and keyboard window switching.
-- Restore window positions.
 - Improve Files.app remaining scale polish.
-- Extend mobile polish beyond the initial maximized window placement policy.
 - Polish troubleshooting flows.
