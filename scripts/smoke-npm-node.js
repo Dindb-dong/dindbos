@@ -151,6 +151,37 @@ const perfHooksImport = await node.evaluate(
 assert(perfHooksImport.status === 0, `perf_hooks import exited with ${perfHooksImport.status}`);
 assert(perfHooksImport.output.trim() === "3 0 true number", `unexpected perf_hooks import output: ${perfHooksImport.output}`);
 
+const asyncHooksRequire = node.evaluate(
+  [
+    "const { AsyncLocalStorage, AsyncResource, createHook, executionAsyncId } = require('async_hooks');",
+    "const storage = new AsyncLocalStorage();",
+    "const resource = new AsyncResource('pkg-task', { triggerAsyncId: 7 });",
+    "let scoped = '';",
+    "const result = storage.run({ trace: 'run' }, () => resource.runInAsyncScope(() => { scoped = `${storage.getStore().trace}:${executionAsyncId()}:${resource.triggerAsyncId()}`; return 'done'; }));",
+    "const hook = createHook({}).enable();",
+    "console.log(result, scoped, hook.enabled, resource.emitDestroy().destroyed);",
+  ].join("\n"),
+  cwd,
+);
+assert(asyncHooksRequire.status === 0, `async_hooks require exited with ${asyncHooksRequire.status}`);
+assert(asyncHooksRequire.output.trim() === "done run:1:7 true true", `unexpected async_hooks require output: ${asyncHooksRequire.output}`);
+
+const asyncHooksImport = await node.evaluate(
+  [
+    "import asyncHooks, { AsyncLocalStorage, AsyncResource, triggerAsyncId } from 'node:async_hooks';",
+    "const storage = new AsyncLocalStorage();",
+    "storage.enterWith('entered');",
+    "const outside = storage.exit(() => String(storage.getStore()));",
+    "const resource = new AsyncResource('esm-task', { triggerAsyncId: 3 });",
+    "const bound = resource.bind(function(value) { return `${this.prefix}:${value}:${triggerAsyncId()}`; }, { prefix: storage.getStore() });",
+    "console.log(outside, bound('ok'), typeof asyncHooks.AsyncLocalStorage.snapshot());",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(asyncHooksImport.status === 0, `async_hooks import exited with ${asyncHooksImport.status}`);
+assert(asyncHooksImport.output.trim() === "undefined entered:ok:3 function", `unexpected async_hooks import output: ${asyncHooksImport.output}`);
+
 const streamRequire = node.evaluate(
   [
     "const { Readable, Writable, PassThrough, pipeline } = require('stream');",
