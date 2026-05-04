@@ -16,6 +16,16 @@ export class LocalFolderMountManager {
     return Boolean(this.picker);
   }
 
+  copyPolicy() {
+    return {
+      ...LOCAL_DIRECTORY_COPY_POLICY,
+      actions: [...LOCAL_DIRECTORY_COPY_POLICY.actions],
+      directoryActions: [...LOCAL_DIRECTORY_COPY_POLICY.directoryActions],
+      fileActions: [...LOCAL_DIRECTORY_COPY_POLICY.fileActions],
+      semantics: { ...LOCAL_DIRECTORY_COPY_POLICY.semantics },
+    };
+  }
+
   async mountLocal(name = "", options = {}) {
     if (!this.supported() && !options.handle) throw new Error("mount-local: File System Access API is not available");
     const handle = options.handle || await this.picker({ mode: options.mode || "readwrite" });
@@ -347,16 +357,17 @@ export class LocalFolderMountManager {
     if (!sourceStat) throw new Error(`cp: ${source}: no such file or directory`);
     if ((sourceStat.type === "directory" || sourceStat.type === "mount") && !options.recursive) throw new Error(`cp: ${source}: is a directory`);
     const destinationStat = await this.stat(destinationInput).catch(() => null);
-    const destination = destinationStat && (destinationStat.type === "directory" || destinationStat.type === "mount")
+    let destination = destinationStat && (destinationStat.type === "directory" || destinationStat.type === "mount")
       ? this.os.fs.join(destinationInput, this.os.fs.basename(source))
       : destinationInput;
     if (destination === source || destination.startsWith(`${source}/`)) throw new Error(`cp: cannot copy ${source} into itself`);
-    if (await this.exists(destination)) throw new Error(`cp: ${destination}: file exists`);
     const operation = this.beginOperation("copy", source, destination, options);
     try {
       operation.total = await this.countEntries(source, sourceStat);
       this.reportProgress(operation, { detail: source });
-      await this.copyEntry(source, destination, sourceStat, operation);
+      const copiedPath = await this.copyEntry(source, destination, sourceStat, operation, options);
+      if (copiedPath) destination = copiedPath;
+      operation.destination = destination;
       this.finishOperation(operation);
     } catch (error) {
       this.finishOperation(operation, error);
@@ -372,17 +383,18 @@ export class LocalFolderMountManager {
     const sourceStat = await this.stat(source);
     if (!sourceStat) throw new Error(`mv: ${source}: no such file or directory`);
     const destinationStat = await this.stat(destinationInput).catch(() => null);
-    const destination = destinationStat && (destinationStat.type === "directory" || destinationStat.type === "mount")
+    let destination = destinationStat && (destinationStat.type === "directory" || destinationStat.type === "mount")
       ? this.os.fs.join(destinationInput, this.os.fs.basename(source))
       : destinationInput;
     if (destination === source || destination.startsWith(`${source}/`)) throw new Error(`mv: cannot move ${source} into itself`);
-    if (await this.exists(destination)) throw new Error(`mv: ${destination}: file exists`);
     const operation = this.beginOperation("move", source, destination, options);
     try {
       operation.total = await this.countEntries(source, sourceStat);
       this.reportProgress(operation, { detail: source });
-      await this.copyEntry(source, destination, sourceStat, operation);
-      await this.remove(source, "/", { recursive: true });
+      const copiedPath = await this.copyEntry(source, destination, sourceStat, operation, options);
+      if (copiedPath) destination = copiedPath;
+      if (copiedPath) await this.remove(source, "/", { recursive: true });
+      operation.destination = destination;
       this.finishOperation(operation);
     } catch (error) {
       this.finishOperation(operation, error);
@@ -392,19 +404,81 @@ export class LocalFolderMountManager {
     return this.stat(destination);
   }
 
-  async copyEntry(source, destination, sourceStat = null, operation = null) {
+  async copyEntry(source, destination, sourceStat = null, operation = null, options = {}) {
     const stat = sourceStat || await this.stat(source);
+    const conflict = await this.resolveCopyConflict(source, destination, stat, options);
+    if (conflict.action === "skip") {
+      this.reportProgress(operation, { detail: source, increment: await this.countEntries(source, stat) });
+      return null;
+    }
+    if (conflict.action === "replace") await this.remove(conflict.path, "/", { recursive: true });
+    destination = conflict.path;
     if (stat.type === "directory" || stat.type === "mount") {
-      await this.createDirectory(destination, "/", { parents: true });
+      if (!await this.exists(destination)) await this.createDirectory(destination, "/", { parents: true });
       this.reportProgress(operation, { detail: source, increment: 1 });
       const entries = await this.list(source);
       for (const entry of entries) {
-        await this.copyEntry(entry.path, this.os.fs.join(destination, entry.name), entry, operation);
+        await this.copyEntry(entry.path, this.os.fs.join(destination, entry.name), entry, operation, options);
       }
-      return;
+      return destination;
     }
     await this.writeFileBytes(destination, await this.readFileBytes(source), "/", { mime: stat.mime || "application/octet-stream" });
     this.reportProgress(operation, { detail: source, increment: 1 });
+    return destination;
+  }
+
+  async resolveCopyConflict(source, destination, sourceStat, options = {}) {
+    const existing = await this.stat(destination).catch(() => null);
+    if (!existing) return { action: "write", path: destination };
+    const requested = await localCopyConflictDecision({
+      action: options.conflictPolicy || LOCAL_DIRECTORY_COPY_POLICY.defaultConflictPolicy,
+      source,
+      path: destination,
+      name: this.os.fs.basename(destination),
+      sourceType: sourceStat?.resolvedType || sourceStat?.type || "file",
+      targetType: existing?.resolvedType || existing?.type || "file",
+      resolveConflict: options.resolveConflict,
+    });
+    if (requested.action === "cancel") {
+      const error = new Error("local mount copy cancelled");
+      error.name = "AbortError";
+      throw error;
+    }
+    if (requested.action === "error") throw new Error(`cp: ${destination}: file exists`);
+    if (requested.action === "rename") {
+      const renamed = requested.name
+        ? this.os.fs.join(this.os.fs.dirname(destination), sanitizeLocalCopyName(requested.name))
+        : await this.uniqueCopyDestination(destination);
+      return {
+        action: "write",
+        path: await this.conflictFreeCopyDestination(renamed),
+      };
+    }
+    if (requested.action === "merge") {
+      const sourceDirectory = sourceStat?.type === "directory" || sourceStat?.type === "mount";
+      const targetDirectory = existing?.resolvedType === "directory" || existing?.type === "mount" || existing?.type === "directory";
+      return sourceDirectory && targetDirectory
+        ? { action: "merge", path: destination }
+        : { action: "skip", path: destination };
+    }
+    return { action: requested.action, path: destination };
+  }
+
+  async uniqueCopyDestination(path) {
+    const directory = this.os.fs.dirname(path);
+    const name = this.os.fs.basename(path);
+    const dotIndex = name.lastIndexOf(".");
+    const base = dotIndex > 0 ? name.slice(0, dotIndex) : name;
+    const extension = dotIndex > 0 ? name.slice(dotIndex) : "";
+    for (let index = 2; index < 1000; index += 1) {
+      const candidate = this.os.fs.join(directory, `${base}-${index}${extension}`);
+      if (!await this.exists(candidate)) return candidate;
+    }
+    throw new Error(`cp: ${path}: could not allocate conflict-free name`);
+  }
+
+  async conflictFreeCopyDestination(path) {
+    return await this.exists(path) ? this.uniqueCopyDestination(path) : path;
   }
 
   async countEntries(path, stat = null) {
@@ -694,6 +768,22 @@ export class LocalFolderMountManager {
 
 }
 
+const LOCAL_DIRECTORY_COPY_POLICY = Object.freeze({
+  defaultConflictPolicy: "error",
+  actions: Object.freeze(["error", "replace", "overwrite", "merge", "skip", "rename", "prompt", "cancel"]),
+  directoryActions: Object.freeze(["replace", "merge", "skip", "rename", "prompt"]),
+  fileActions: Object.freeze(["replace", "skip", "rename", "prompt"]),
+  semantics: Object.freeze({
+    error: "preserve the existing target and throw when a path already exists",
+    replace: "remove the existing target recursively, then copy the source",
+    overwrite: "alias of replace",
+    merge: "copy missing directory children into the existing target and preserve conflicting files",
+    skip: "preserve the existing target and skip the source subtree",
+    rename: "copy to the next available sibling name",
+    prompt: "defer the decision to the caller-supplied resolveConflict callback",
+  }),
+});
+
 function markConflictNode(node, conflict) {
   return {
     ...node,
@@ -701,6 +791,41 @@ function markConflictNode(node, conflict) {
     localMountConflict: conflict,
     children: node.type === "directory" ? node.children || [] : undefined,
   };
+}
+
+async function localCopyConflictDecision(conflict) {
+  const action = String(conflict.action || LOCAL_DIRECTORY_COPY_POLICY.defaultConflictPolicy).trim().toLowerCase();
+  if (action === "prompt") {
+    if (typeof conflict.resolveConflict !== "function") throw new Error(`cp: ${conflict.path}: conflict prompt requires resolver`);
+    return normalizeLocalCopyConflictDecision(await conflict.resolveConflict({ ...conflict, actions: [...LOCAL_DIRECTORY_COPY_POLICY.actions] }));
+  }
+  return normalizeLocalCopyConflictDecision(action);
+}
+
+function normalizeLocalCopyConflictDecision(decision) {
+  if (decision && typeof decision === "object") {
+    return {
+      action: normalizeLocalCopyConflictAction(decision.action || decision.policy || LOCAL_DIRECTORY_COPY_POLICY.defaultConflictPolicy),
+      name: decision.name || "",
+    };
+  }
+  const value = String(decision || LOCAL_DIRECTORY_COPY_POLICY.defaultConflictPolicy).trim();
+  const [action, ...nameParts] = value.split(":");
+  return {
+    action: normalizeLocalCopyConflictAction(action),
+    name: nameParts.join(":").trim(),
+  };
+}
+
+function normalizeLocalCopyConflictAction(action) {
+  const normalized = String(action || LOCAL_DIRECTORY_COPY_POLICY.defaultConflictPolicy).trim().toLowerCase();
+  if (normalized === "overwrite") return "replace";
+  if (["error", "replace", "merge", "skip", "rename", "cancel"].includes(normalized)) return normalized;
+  return LOCAL_DIRECTORY_COPY_POLICY.defaultConflictPolicy;
+}
+
+function sanitizeLocalCopyName(name) {
+  return String(name || "copy").trim().replaceAll("/", "-") || "copy";
 }
 
 function nodeSnapshot(node) {

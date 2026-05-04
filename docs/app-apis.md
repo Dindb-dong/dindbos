@@ -175,6 +175,7 @@ Available as `os.localMounts`.
 - `requestAccess(path, options)` requires `localMount.manage`
 - `forgetMount(path)` requires `localMount.manage`
 - `operations()` requires `localMount.read`
+- `copyPolicy()` requires `localMount.read`
 - `isMountedPath(path, cwd)`
 - `syncDirectory(path)`
 - `list(path, cwd)` requires `localMount.read`
@@ -190,6 +191,7 @@ Available as `os.localMounts`.
 - `exists(path, cwd)`
 
 Local mounts are browser permission-bound and currently a Chromium-family workflow.
+Directory copy conflicts default to `error` at the runtime API boundary. Callers can pass `conflictPolicy: "replace"`, `"merge"`, `"skip"`, `"rename"`, or `"prompt"` to `copy`/`move`; `prompt` requires a `resolveConflict` callback. `merge` copies missing directory children and preserves existing conflicting files, while `replace` removes the existing target recursively before copying.
 
 ## Browser Companion Boundary
 
