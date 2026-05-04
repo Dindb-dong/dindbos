@@ -83,6 +83,7 @@ Current built-ins:
 - `fs`
 - `path`
 - `path/posix`
+- `path/win32`
 - `process`
 - `buffer` / `Buffer`
 - `events` / `EventEmitter`
@@ -110,6 +111,8 @@ Current built-ins:
 - `zlib` policy facade
 
 The `fs` module is backed by the DindbOS VFS and is scoped to the runtime. It does not expose the user's real local filesystem.
+
+The `path` module exposes POSIX helpers used by the DindbOS VFS plus `path/posix` and `path/win32` subpath facades for package string probes. `path/win32` only performs browser-safe path string manipulation; it does not imply Windows host filesystem access.
 
 The `process` module reports a browser/DindbOS runtime identity and common package probe fields including `nextTick`, `hrtime`, `uptime`, `memoryUsage`, `release`, `title`, and `execPath`. These values are conservative compatibility data, not host operating system telemetry.
 

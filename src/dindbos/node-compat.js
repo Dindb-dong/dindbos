@@ -6,6 +6,8 @@ const BUILTIN_MODULES = new Set([
   "node:path",
   "path/posix",
   "node:path/posix",
+  "path/win32",
+  "node:path/win32",
   "process",
   "node:process",
   "buffer",
@@ -249,6 +251,7 @@ class CommonJsRuntime {
       zlib: createZlibModule(),
     };
     this.builtins["path/posix"] = this.builtins.path.posix;
+    this.builtins["path/win32"] = this.builtins.path.win32;
     this.builtins.module = this.createModuleModule();
   }
 
@@ -449,6 +452,7 @@ class CommonJsRuntime {
       relative: (from, to) => relativePath(this.os.fs.normalize(from), this.os.fs.normalize(to)),
     };
     pathModule.posix = pathModule;
+    pathModule.win32 = createWin32PathModule();
     return pathModule;
   }
 
@@ -2471,6 +2475,87 @@ function relativePath(from, to) {
     toParts.shift();
   }
   return [...fromParts.map(() => ".."), ...toParts].join("/") || ".";
+}
+
+function createWin32PathModule() {
+  const normalizeSlashes = (value) => String(value || "").replace(/[\\/]+/g, "\\");
+  const splitRoot = (value) => {
+    const normalized = normalizeSlashes(value);
+    const drive = normalized.match(/^[a-zA-Z]:\\/);
+    if (drive) return { root: drive[0], rest: normalized.slice(drive[0].length) };
+    if (normalized.startsWith("\\\\")) {
+      const parts = normalized.slice(2).split("\\");
+      if (parts.length >= 2) {
+        const root = `\\\\${parts[0]}\\${parts[1]}\\`;
+        return { root, rest: parts.slice(2).join("\\") };
+      }
+    }
+    if (normalized.startsWith("\\")) return { root: "\\", rest: normalized.slice(1) };
+    return { root: "", rest: normalized };
+  };
+  const normalize = (path = ".") => {
+    const { root, rest } = splitRoot(path || ".");
+    const stack = [];
+    rest.split("\\").forEach((part) => {
+      if (!part || part === ".") return;
+      if (part === ".." && stack.length && stack[stack.length - 1] !== "..") stack.pop();
+      else if (part !== ".." || !root) stack.push(part);
+    });
+    const joined = stack.join("\\");
+    if (root) return `${root}${joined}` || root;
+    return joined || ".";
+  };
+  const isAbsolute = (path = "") => /^[a-zA-Z]:[\\/]/.test(String(path)) || String(path).startsWith("\\\\") || String(path).startsWith("\\");
+  const dirname = (path = "") => {
+    const normalized = normalize(path);
+    const { root, rest } = splitRoot(normalized);
+    const parts = rest.split("\\").filter(Boolean);
+    parts.pop();
+    return normalize(`${root}${parts.join("\\")}`) || root || ".";
+  };
+  const basename = (path = "", ext = "") => {
+    const parts = normalize(path).split("\\").filter(Boolean);
+    const base = parts.pop() || "";
+    return ext && base.endsWith(ext) ? base.slice(0, -ext.length) : base;
+  };
+  const extname = (path = "") => {
+    const base = basename(path);
+    const index = base.lastIndexOf(".");
+    return index > 0 ? base.slice(index) : "";
+  };
+  const join = (...parts) => normalize(parts.filter(Boolean).join("\\"));
+  const resolve = (...parts) => {
+    let cursor = "";
+    parts.forEach((part) => {
+      if (!part) return;
+      cursor = isAbsolute(part) ? String(part) : join(cursor, part);
+    });
+    return normalize(cursor || ".");
+  };
+  const relative = (from, to) => {
+    const fromParts = normalize(from).toLowerCase().split("\\").filter(Boolean);
+    const toNormalized = normalize(to);
+    const toParts = toNormalized.toLowerCase().split("\\").filter(Boolean);
+    while (fromParts.length && toParts.length && fromParts[0] === toParts[0]) {
+      fromParts.shift();
+      toParts.shift();
+    }
+    const originalToParts = toNormalized.split("\\").filter(Boolean).slice(-toParts.length);
+    return [...fromParts.map(() => ".."), ...originalToParts].join("\\") || ".";
+  };
+  return {
+    sep: "\\",
+    delimiter: ";",
+    normalize,
+    isAbsolute,
+    join,
+    resolve,
+    dirname,
+    basename,
+    extname,
+    relative,
+    toNamespacedPath: (path) => String(path || ""),
+  };
 }
 
 function formatConsoleValue(value) {
