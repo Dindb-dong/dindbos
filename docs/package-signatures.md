@@ -1,8 +1,8 @@
 # DindbOS Package Signatures
 
-DindbOS currently installs local, remote, and registry packages from `dindbos.app.json` manifests. Remote package records are marked untrusted until manifest signatures are implemented.
+DindbOS installs local, remote, and registry packages from `dindbos.app.json` manifests. Remote manifests are verified with Ed25519 signatures before package files, launchers, records, or app registrations are written.
 
-This document defines the signature model that package verification should implement next.
+This document defines the implemented signature model and the trust states exposed in package records.
 
 ## Goals
 
@@ -37,7 +37,7 @@ Example manifest field:
 }
 ```
 
-The runtime trust store should be a VFS JSON file:
+The runtime trust store is a VFS JSON file:
 
 ```text
 /etc/dindbos/trusted-publishers.json
@@ -119,7 +119,7 @@ No package filesystem mutation should happen before signature and file integrity
 
 ## Trust States
 
-Package records should use these trust states:
+Package records use these trust states:
 
 ```json
 {
@@ -134,7 +134,7 @@ Package records should use these trust states:
       "algorithm": ""
     },
     "warnings": [
-      "remote manifest is untrusted until package signatures are implemented"
+      "remote manifest is unsigned"
     ]
   }
 }
@@ -150,6 +150,18 @@ Supported statuses:
 
 `trusted` is true only for `local` or `valid`.
 
+## Trusted Publisher Commands
+
+Trusted publishers can be managed from the shell:
+
+```text
+pkg trust list
+pkg trust add <publisher-id> <ed25519-public-key> [name]
+pkg trust remove <publisher-id|ed25519-public-key>
+```
+
+`npm run smoke:packages` verifies signed trusted installs, unsigned rejection, invalid signature rejection, untrusted-key rejection, and no filesystem mutation before verification succeeds. `npm run smoke:shell` verifies the `pkg trust` command surface.
+
 ## Verification Failure UX
 
 Terminal:
@@ -164,7 +176,7 @@ Package UI:
 
 - Show the publisher name and key ID.
 - Show whether the package is local, unsigned, invalid, or trusted.
-- Require an explicit user action before installing unsigned remote packages.
+- Require an explicit runtime option before installing unsigned remote packages.
 - Never create a launcher for invalid signatures.
 
 Registry search:
@@ -174,6 +186,6 @@ Registry search:
 
 ## Implementation Notes
 
-Browser support should use Web Crypto when Ed25519 is available. If Ed25519 is not available in the current browser, the runtime should fail verification with a clear unsupported-crypto message instead of silently installing as trusted.
+Browser support uses Web Crypto when Ed25519 is available. If Ed25519 is not available in the current browser, the runtime fails verification with a clear unsupported-crypto message instead of silently installing as trusted.
 
 The package transaction rollback path should remain in place even after signature verification is added. Signature verification prevents known bad installs before mutation; rollback still protects against later file, storage, or registry failures.

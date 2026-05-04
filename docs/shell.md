@@ -85,10 +85,22 @@ Current limits:
 - no job control
 - no full stderr/stdout split
 
+## Package Trust
+
+Remote package trust is managed by the package command:
+
+```text
+pkg trust list
+pkg trust add <publisher-id> <ed25519-public-key> [name]
+pkg trust remove <publisher-id|ed25519-public-key>
+```
+
+Unsigned, invalid, or untrusted remote manifests fail before package files or launchers are written unless a runtime caller explicitly allows unsigned or untrusted installs.
+
 ## Verification
 
 ```bash
 npm run smoke:shell
 ```
 
-The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.
+The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.

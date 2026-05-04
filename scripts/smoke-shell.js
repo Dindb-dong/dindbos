@@ -108,6 +108,17 @@ result = await shell.executeAsync("hello-note");
 assert(result.status === 1, `unknown package typo status mismatch: ${result.status}`);
 assert(result.output.includes("pkg info hello-notes"), `package suggestion mismatch: ${result.output}`);
 
+const trustKey = "ed25519-pub:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+result = await shell.executeAsync(`pkg trust add com.example ${trustKey} Example Publisher`);
+assert(result.status === 0, `pkg trust add status mismatch: ${result.status}`);
+assert(result.output === "trusted publisher added com.example", `pkg trust add output mismatch: ${result.output}`);
+result = await shell.executeAsync("pkg trust list");
+assert(result.status === 0, `pkg trust list status mismatch: ${result.status}`);
+assert(result.output.includes("com.example"), `pkg trust list missing publisher: ${result.output}`);
+result = await shell.executeAsync("pkg trust remove com.example");
+assert(result.status === 0, `pkg trust remove status mismatch: ${result.status}`);
+assert(result.output === "trusted publisher removed com.example", `pkg trust remove output mismatch: ${result.output}`);
+
 const system = shell.os.permissions.systemPrincipal();
 shell.os.fs.createDirectory("/home/guest/bin", "/", { owner: "guest", group: "users" }, system);
 shell.os.fs.writeOrCreateFile(
@@ -163,6 +174,7 @@ console.log("shell smoke ok parser chaining status scripts");
 function bootOs() {
   const permissions = new PermissionPolicy();
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
+  const trustedPublishers = [];
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
@@ -184,6 +196,16 @@ function bootOs() {
     },
     packages: {
       list: () => [{ id: "hello-notes", name: "Hello Notes" }],
+      trustedPublishers: () => [...trustedPublishers],
+      addTrustedPublisher: (publisher) => {
+        trustedPublishers.push(publisher);
+        return publisher;
+      },
+      removeTrustedPublisher: (idOrKey) => {
+        const index = trustedPublishers.findIndex((publisher) => publisher.id === idOrKey || publisher.publicKey === idOrKey);
+        if (index >= 0) trustedPublishers.splice(index, 1);
+        return idOrKey;
+      },
     },
     processes: {
       table: () => "",

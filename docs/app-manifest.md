@@ -65,7 +65,7 @@ Installed package records live in `/var/lib/dindbos/packages`. Package files liv
 
 Remote installs fetch `dindbos.app.json` over `http` or `https`. A remote manifest can declare small package files with inline `content`, UTF-8 `base64`, or a relative/absolute file `url`. Relative file URLs resolve from the manifest URL.
 
-Remote manifests are marked untrusted until package signatures are implemented. `pkg info <package>` shows `trust.source`, `trust.trusted`, and `trust.warnings` so users can see whether an app came from local VFS content or a remote registry/manifest URL.
+Remote manifests must pass package signature verification before files, launchers, records, or app registrations are written. `pkg info <package>` shows `trust.source`, `trust.trusted`, `trust.signature`, `trust.publisher`, and `trust.warnings` so users can see whether an app came from local VFS content or a trusted remote publisher.
 
 When `app.entry` is present, DindbOS reads that file from `/opt/<package>` and imports it as an ES module. The module should export `mount()` or a default function:
 

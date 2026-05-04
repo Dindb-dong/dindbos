@@ -44,6 +44,7 @@ Added:
 - Package transaction rollback for failed install/update/remove paths.
 - Package install smoke coverage for install -> AppRegistry launch -> runtime render -> remove.
 - Package app execute boundary is now explicit: JS entry files stay non-executable while `.app` launchers carry execute permission.
+- Package manager now verifies signed remote manifests with Ed25519, manages trusted publishers through `pkg trust`, and fails closed before package filesystem mutation for missing, invalid, or untrusted signatures.
 - NodeCompat support for CommonJS, JSON modules, simple ESM transforms, simple `exports` resolution, nested dependency lookup, and `events`/`node:events`.
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
 - NodeCompat `stream` builtin facade for browser-safe `Readable`, `Writable`, `PassThrough`, and `pipeline` usage.
@@ -53,7 +54,7 @@ Added:
 - AppRegistry crash isolation renders a crash panel and reports failed app render paths to the process manager.
 - Explicit `app:*` lifecycle events for install, launch, ready, focus, suspend, resume, crash, close, and uninstall.
 - Window minimize now uses a stable delayed-hide animation state and cancels that state cleanly on focus/restore/close.
-- App-facing API docs, app lifecycle docs, Browser companion docs, first app guide, package signature plan, and support policy docs.
+- App-facing API docs, app lifecycle docs, Browser companion docs, first app guide, package signature docs, and support policy docs.
 - GitHub issue templates and PR verification checklist.
 
 Changed:
@@ -65,7 +66,7 @@ Changed:
 
 Known limits:
 
-- Package signatures are documented but not yet enforced.
+- Package signatures require Web Crypto Ed25519 support for trusted remote installs.
 - Cache API-backed package/npm caching exists; document and image preview caching is not implemented.
 - Browser.app clipboard and download routing policies are not complete.
 - Files.app still needs native-helper mount rename.

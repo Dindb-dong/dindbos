@@ -21,7 +21,7 @@ const BUILTIN_MANUALS = {
   node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
-  pkg: "pkg list|info|install|remove|search|registry|update|deps|npm - manage DindbOS packages",
+  pkg: "pkg list|info|install|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -491,6 +491,9 @@ export class ShellSession {
     if (action === "registry" || action === "registries") {
       return this.pkgRegistry(operand, rest);
     }
+    if (action === "trust") {
+      return this.pkgTrust(operand, rest);
+    }
     if (action === "update") {
       if (!operand) return "pkg: usage: pkg update <package>";
       return this.os.packages.update(operand)
@@ -508,7 +511,7 @@ export class ShellSession {
       const record = this.os.packages.remove(operand);
       return `removed ${record.id}`;
     }
-    return "pkg: usage: pkg list | info | install | search | registry | update | deps | npm | remove";
+    return "pkg: usage: pkg list | info | install | search | registry | trust | update | deps | npm | remove";
   }
 
   pkgRegistry(action, args) {
@@ -527,6 +530,27 @@ export class ShellSession {
       return `registry removed ${this.os.packages.removeRegistry(name)}`;
     }
     return "pkg: usage: pkg registry list | add <name> <index-url> | remove <name>";
+  }
+
+  pkgTrust(action, args) {
+    if (!action || action === "list") {
+      const publishers = this.os.packages.trustedPublishers();
+      return publishers.length
+        ? publishers.map((publisher) => `${publisher.id} ${publisher.publicKey} ${publisher.name}`).join("\n")
+        : "pkg: no trusted publishers";
+    }
+    if (action === "add") {
+      const [id, publicKey, ...nameParts] = args;
+      if (!id || !publicKey) return "pkg: usage: pkg trust add <publisher-id> <public-key> [name]";
+      const publisher = this.os.packages.addTrustedPublisher({ id, publicKey, name: nameParts.join(" ") || id });
+      return `trusted publisher added ${publisher.id}`;
+    }
+    if (action === "remove") {
+      const [idOrKey] = args;
+      if (!idOrKey) return "pkg: usage: pkg trust remove <publisher-id|public-key>";
+      return `trusted publisher removed ${this.os.packages.removeTrustedPublisher(idOrKey)}`;
+    }
+    return "pkg: usage: pkg trust list | add <publisher-id> <public-key> [name] | remove <publisher-id|public-key>";
   }
 
   pkgNpm(action, args) {
@@ -1210,6 +1234,8 @@ function formatPackage(record) {
     `sourcePath=${record.sourcePath || "-"}`,
     `trust.source=${record.trust?.source || "local"}`,
     `trust.trusted=${record.trust?.trusted ?? true}`,
+    `trust.signature=${record.trust?.signature?.status || "local"}`,
+    `trust.publisher=${record.trust?.signature?.publisherId || "-"}`,
     `trust.warnings=${record.trust?.warnings?.join("; ") || "-"}`,
     `app.id=${record.app.id}`,
     `app.title=${record.app.title}`,
