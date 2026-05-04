@@ -51,6 +51,7 @@ Added:
 - TextEdit, Viewer.app, and Browser.app now use user-document read scopes instead of root filesystem read scope for file-open paths.
 - Local mount writes now detect disk-side changes since the last sync and report `sync-conflict` instead of silently overwriting external file changes.
 - Files.app large copy, move, import, and export traversals now yield cooperatively while keeping progress, cancellation, and byte-preservation smoke coverage.
+- Viewer.app document and image preview bytes now use the runtime Cache API store with stale-key protection from path, MIME type, size, and modified time.
 - NodeCompat support for CommonJS, JSON modules, simple ESM transforms, simple `exports` resolution, nested dependency lookup, and `events`/`node:events`.
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
 - NodeCompat `stream` builtin facade for browser-safe `Readable`, `Writable`, `PassThrough`, and `pipeline` usage.
@@ -73,7 +74,6 @@ Changed:
 Known limits:
 
 - Package signatures require Web Crypto Ed25519 support for trusted remote installs.
-- Cache API-backed package/npm caching exists; document and image preview caching is not implemented.
 - Browser.app clipboard and download routing policies are not complete.
 - Files.app still needs native-helper mount rename.
 - PDF viewing still relies on native iframe behavior until PDF.js is introduced.

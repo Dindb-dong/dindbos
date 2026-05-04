@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { AppRegistry } from "../src/dindbos/app-registry.js";
 import { AppSandbox } from "../src/dindbos/app-sandbox.js";
-import { cleanupViewerObjectUrl, installBuiltinApps, renderMarkdownPreview, viewerMarkup, viewerPreviewForBytes, viewerZoomValue } from "../src/dindbos/apps/builtins.js";
+import { cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerMarkup, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue } from "../src/dindbos/apps/builtins.js";
+import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 
@@ -86,6 +87,21 @@ assert(resolve(os, "note.txt", "text/plain") === "text", "plain text did not res
 assert(resolve(os, "payload.bin", "application/octet-stream") === "", "unknown binary unexpectedly resolved");
 os.fs.createFile("/home/guest/portfolio.deck.html", "/", { content: "<section>Deck</section>" });
 assert(os.fs.stat("/home/guest/portfolio.deck.html").mime === "application/x-dindbos-deck", "VFS deck MIME detection failed");
+os.fs.writeOrCreateFileBytes("/home/guest/image.png", new Uint8Array([137, 80, 78, 71]), "/", { mime: "image/png" });
+const imageNode = os.fs.stat("/home/guest/image.png");
+const imageKey = viewerPreviewCacheKey(imageNode, imageNode.mime);
+assert(imageKey.includes("viewer-preview"), "viewer preview cache key did not use viewer namespace");
+const imageBytes = await readViewerPreviewBytes(os, imageNode, imageNode.mime);
+assert(imageBytes.byteLength === 4, "viewer preview cache read wrong image bytes");
+assert(os.cache.status().writes === 1, "viewer preview cache did not write first image read");
+const imageHitsBefore = os.cache.status().hits;
+const imageBytesAgain = await readViewerPreviewBytes(os, imageNode, imageNode.mime);
+assert(imageBytesAgain.byteLength === 4, "viewer preview cache hit returned wrong image bytes");
+assert(os.cache.status().hits === imageHitsBefore + 1, "viewer preview cache did not report image cache hit");
+os.fs.writeOrCreateFile("/home/guest/cached.md", "# cached\n", "/", { mime: "text/markdown" });
+const markdownNode = os.fs.stat("/home/guest/cached.md");
+await readViewerPreviewBytes(os, markdownNode, markdownNode.mime);
+assert(os.cache.status().writes === 2, "viewer preview cache did not cache markdown document bytes");
 os.fs.createDirectory("/root", "/", { owner: "root", group: "root", permissions: "drwx------" }, os.permissions.systemPrincipal());
 os.fs.writeOrCreateFile("/root/secret.md", "# secret\n", "/", { mime: "text/markdown", owner: "root", group: "root", permissions: "-rw-------" }, os.permissions.systemPrincipal());
 os.fs.writeOrCreateFile("/root/secret.txt", "secret\n", "/", { mime: "text/plain", owner: "root", group: "root", permissions: "-rw-------" }, os.permissions.systemPrincipal());
@@ -108,6 +124,7 @@ function bootOs() {
   const os = {
     fs,
     permissions,
+    cache: new RuntimeCacheStore({ cacheApi: null }),
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
     localMounts: { isMountedPath: () => false },
     processes: fakeProcesses(),

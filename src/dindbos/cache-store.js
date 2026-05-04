@@ -16,12 +16,10 @@ export class RuntimeCacheStore {
 
   async fetchBytes(fetcher, url, options = {}) {
     const key = cacheKey(url, options);
-    const cached = await this.matchBytes(key);
+    const cached = await this.readBytes(key);
     if (cached) {
-      this.stats.hits += 1;
       return cached;
     }
-    this.stats.misses += 1;
     const response = await fetcher(url, { headers: options.headers || {} });
     if (!response?.ok) throw new Error(`${options.errorPrefix || "cache"}: failed to fetch ${options.label || url}: ${response?.status || "network error"}`);
     const length = Number(response.headers?.get?.("content-length") || 0);
@@ -45,6 +43,18 @@ export class RuntimeCacheStore {
     const bytes = new Uint8Array(await response.arrayBuffer());
     this.memory.set(key, copyBytes(bytes));
     return bytes;
+  }
+
+  async readBytes(key) {
+    const bytes = await this.matchBytes(key);
+    if (bytes) this.stats.hits += 1;
+    else this.stats.misses += 1;
+    return bytes;
+  }
+
+  async rememberBytes(key, bytes) {
+    await this.putBytes(key, bytes);
+    return copyBytes(bytes);
   }
 
   async putBytes(key, bytes) {

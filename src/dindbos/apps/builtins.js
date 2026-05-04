@@ -2126,9 +2126,7 @@ const VIEWER_TEXT_PREVIEW_LIMIT = 256 * 1024;
 
 async function renderViewerBytes(os, content, node) {
   const mime = node?.mime || "application/octet-stream";
-  const bytes = node?.path
-    ? await readNodeBytes(os, node.path)
-    : null;
+  const bytes = node?.path ? await readViewerPreviewBytes(os, node, mime) : null;
   cleanupViewerObjectUrl(content);
   const usesObjectUrl = bytes && (mime.startsWith("image/") || mime === "application/pdf");
   const url = usesObjectUrl ? URL.createObjectURL(new Blob([bytes], { type: mime })) : "";
@@ -2255,6 +2253,35 @@ export function cleanupViewerObjectUrl(content) {
 async function readNodeBytes(os, path) {
   if (os.localMounts?.isMountedPath(path)) return os.localMounts.readFileBytes(path);
   return os.fs.readFileBytes(path);
+}
+
+export async function readViewerPreviewBytes(os, node, mime = node?.mime || "application/octet-stream") {
+  if (!node?.path) return null;
+  const key = viewerPreviewCacheKey(node, mime);
+  if (!isViewerPreviewCacheable(mime) || !os.cache?.readBytes || !os.cache?.rememberBytes) {
+    return readNodeBytes(os, node.path);
+  }
+  const cached = await os.cache.readBytes(key);
+  if (cached) return cached;
+  return os.cache.rememberBytes(key, await readNodeBytes(os, node.path));
+}
+
+export function viewerPreviewCacheKey(node, mime = node?.mime || "application/octet-stream") {
+  const params = new URLSearchParams({
+    path: String(node?.path || ""),
+    mime: String(mime || ""),
+    size: String(node?.size || 0),
+    modified: String(node?.modified || ""),
+  });
+  return `https://dindbos.cache/viewer-preview?${params.toString()}`;
+}
+
+function isViewerPreviewCacheable(mime = "") {
+  return mime === "application/pdf"
+    || mime === "application/x-dindbos-deck"
+    || mime === "text/markdown"
+    || mime === "text/plain"
+    || mime.startsWith("image/");
 }
 
 export function viewerPreviewForBytes(bytes, mime) {
