@@ -408,6 +408,8 @@ Already present:
 - JSON modules.
 - Module cache.
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
+- NodeCompat `process` facade exposes browser-safe feature probe fields including `nextTick`, `hrtime`, `uptime`, `memoryUsage`, `release`, `title`, and `execPath`.
+- `npm run smoke:npm-node` verifies `process` CommonJS and ESM import paths for next-tick callbacks, high-resolution time shape, memory usage shape, and runtime identity fields.
 - Browser-native `Buffer` fallback supports `from`, `alloc`, `concat`, `isBuffer`, `byteLength`, and common string encodings when host `Buffer` is unavailable; `npm run smoke:npm-node` verifies the no-host-Buffer path.
 - `events`/`EventEmitter` builtin facade is available through `events` and `node:events`; `npm run smoke:npm-node` verifies CommonJS and ESM import paths.
 - `path/posix` resolves through CommonJS and ESM import paths to the browser-safe POSIX path facade used by package feature probes.

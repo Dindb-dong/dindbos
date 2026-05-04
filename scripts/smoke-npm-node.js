@@ -139,6 +139,34 @@ const pathPosixImport = await node.evaluate(
 assert(pathPosixImport.status === 0, `path/posix import exited with ${pathPosixImport.status}`);
 assert(pathPosixImport.output.trim() === "/home/guest .md", `unexpected path/posix import output: ${pathPosixImport.output}`);
 
+const processProbeRequire = node.evaluate(
+  [
+    "const processApi = require('process');",
+    "let tick = '';",
+    "processApi.nextTick((value) => { tick = value; }, 'tick-ok');",
+    "const start = processApi.hrtime();",
+    "const diff = processApi.hrtime(start);",
+    "const memory = processApi.memoryUsage();",
+    "console.log(tick, processApi.browser, processApi.release.name, Array.isArray(diff), typeof processApi.hrtime.bigint(), typeof processApi.uptime(), memory.heapUsed);",
+  ].join("\n"),
+  cwd,
+);
+assert(processProbeRequire.status === 0, `process probe require exited with ${processProbeRequire.status}`);
+assert(processProbeRequire.output.trim() === "tick-ok true dindbos-nodecompat true bigint number 0", `unexpected process probe require output: ${processProbeRequire.output}`);
+
+const processProbeImport = await node.evaluate(
+  [
+    "import processApi from 'node:process';",
+    "let seen = '';",
+    "processApi.nextTick(() => { seen = processApi.execPath; });",
+    "console.log(seen, processApi.title, processApi.memoryUsage().arrayBuffers);",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(processProbeImport.status === 0, `process probe import exited with ${processProbeImport.status}`);
+assert(processProbeImport.output.trim() === "/usr/bin/node dindbos-nodecompat 0", `unexpected process probe import output: ${processProbeImport.output}`);
+
 const utilTypesRequire = node.evaluate(
   [
     "const types = require('util/types');",

@@ -68,6 +68,7 @@ Added:
 - Files.app large copy, move, import, and export traversals now yield cooperatively while keeping progress, cancellation, and byte-preservation smoke coverage.
 - Viewer.app document and image preview bytes now use the runtime Cache API store with stale-key protection from path, MIME type, size, and modified time.
 - NodeCompat support for CommonJS, JSON modules, simple ESM transforms, simple `exports` resolution, nested dependency lookup, and `events`/`node:events`.
+- NodeCompat `process` probe fields for `nextTick`, `hrtime`, `uptime`, `memoryUsage`, `release`, `title`, and `execPath`.
 - NodeCompat `path/posix` and `node:path/posix` builtin subpath facades for browser-safe package path probes.
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
 - NodeCompat `util/types` facade for browser-safe package feature probes through `util.types`, `util/types`, and `node:util/types`.
