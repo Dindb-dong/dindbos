@@ -108,6 +108,16 @@ result = await shell.executeAsync("hello-note");
 assert(result.status === 1, `unknown package typo status mismatch: ${result.status}`);
 assert(result.output.includes("pkg info hello-notes"), `package suggestion mismatch: ${result.output}`);
 
+result = await shell.executeAsync("doctor");
+assert(result.status === 0, `doctor status mismatch: ${result.status}`);
+assert(result.output.includes("DindbOS doctor"), `doctor heading missing: ${result.output}`);
+assert(result.output.includes("session user=guest"), `doctor session output missing: ${result.output}`);
+assert(result.output.includes("storage backend=memory"), `doctor storage output missing: ${result.output}`);
+assert(result.output.includes("localMounts supported=false mounted=0"), `doctor mount output missing: ${result.output}`);
+assert(result.output.includes("packages installed=1"), `doctor package output missing: ${result.output}`);
+assert(result.output.includes("processes running=0"), `doctor process output missing: ${result.output}`);
+assert(result.output.includes("docs/support.md"), `doctor troubleshooting output missing: ${result.output}`);
+
 const trustKey = "ed25519-pub:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 result = await shell.executeAsync(`pkg trust add com.example ${trustKey} Example Publisher`);
 assert(result.status === 0, `pkg trust add status mismatch: ${result.status}`);
@@ -184,11 +194,14 @@ function bootOs() {
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
     localMounts: {
       isMountedPath: () => false,
+      supported: () => false,
+      status: async () => [],
     },
     storage: {
       status: () => ({ backend: "memory", bytes: 0 }),
       estimate: async () => ({ backend: "memory", bytes: 0 }),
     },
+    sessionStatus: () => ({ locked: false }),
     apps: {
       list: () => [{ id: "calculator", name: "Calculator" }],
       manifests: () => [],
@@ -208,6 +221,7 @@ function bootOs() {
       },
     },
     processes: {
+      list: () => [],
       table: () => "",
       kill: (pid) => {
         throw new Error(`kill: ${pid}: no such process`);

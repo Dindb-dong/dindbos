@@ -4,6 +4,7 @@ const BUILTIN_MANUALS = {
   chmod: "chmod <mode> <path> - change mode bits, for example chmod 644 note.txt",
   clear: "clear - clear terminal output",
   cp: "cp [-r] <source> <destination> - copy files or directories",
+  doctor: "doctor - print runtime diagnostics for troubleshooting",
   df: "df - show mounted filesystem storage status",
   echo: "echo <text> [> file|>> file] - print or redirect text",
   env: "env - list shell environment",
@@ -258,6 +259,7 @@ export class ShellSession {
     if (command === "id") return `uid=${this.env.USER} gid=${(this.os.session.groups || ["users"]).join(",")}`;
     if (command === "uname") return "DindbOS.js browser-runtime 0.2.0";
     if (command === "date") return new Date().toString();
+    if (command === "doctor") return this.doctor();
     if (command === "history") return this.history.map((entry, index) => `${String(index + 1).padStart(4)}  ${entry}`).join("\n");
     if (command === "env") return Object.entries(this.env).map(([key, value]) => `${key}=${value}`).join("\n");
     if (command === "export") return this.export(args);
@@ -593,6 +595,28 @@ export class ShellSession {
     }
     if (args[0] === "persist") return this.os.storage.persist().then((status) => formatStorage(this.withPersistenceStatus(status)));
     return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
+  }
+
+  async doctor() {
+    const sessionStatus = safeRead(() => this.os.sessionStatus?.(), null);
+    const storage = await safeAsync(() => this.os.storage?.estimate?.(), safeRead(() => this.os.storage?.status?.(), {}));
+    const mounts = await safeAsync(() => this.os.localMounts?.status?.(), []);
+    const packages = safeRead(() => this.os.packages?.list?.(), []);
+    const processes = safeRead(() => this.os.processes?.list?.(), []);
+    const groups = this.os.session.groups || ["users"];
+    const localMountSupported = Boolean(safeRead(() => this.os.localMounts?.supported?.(), false));
+    const mounted = Array.isArray(mounts) ? mounts.filter((mount) => mount.status !== "forgotten").length : 0;
+    const persistedMounts = Array.isArray(mounts) ? mounts.filter((mount) => mount.persisted).length : 0;
+    const mountErrors = Array.isArray(mounts) ? mounts.filter((mount) => mount.error).length : 0;
+    return [
+      "DindbOS doctor",
+      `session user=${this.env.USER} groups=${groups.join(",")} home=${this.env.HOME} cwd=${this.cwd} locked=${sessionStatus?.locked || false}`,
+      `storage backend=${storage?.backend || "memory"} persisted=${storage?.persisted || false} bytes=${storage?.bytes || 0} dirtyInodes=${storage?.dirtyInodes || 0} dirtyFiles=${storage?.dirtyFiles || 0} pending=${storage?.persistPending || false}`,
+      `localMounts supported=${localMountSupported} mounted=${mounted} persisted=${persistedMounts} errors=${mountErrors}`,
+      `packages installed=${Array.isArray(packages) ? packages.length : 0}`,
+      `processes running=${Array.isArray(processes) ? processes.length : 0}`,
+      "troubleshooting docs=docs/support.md command=storage|mount-local --list|ps|pkg list",
+    ].join("\n");
   }
 
   node(args) {
@@ -1193,6 +1217,14 @@ function editDistance(left, right) {
 function safeRead(read, fallback) {
   try {
     return read();
+  } catch {
+    return fallback;
+  }
+}
+
+async function safeAsync(read, fallback) {
+  try {
+    return await read();
   } catch {
     return fallback;
   }

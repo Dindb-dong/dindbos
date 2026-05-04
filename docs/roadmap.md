@@ -284,6 +284,7 @@ Already present:
 - Parser behavior handles quoted separators, escaped quotes, empty string arguments, input redirection, output redirection, and mixed pipes/redirection.
 - `npm run smoke:shell` verifies escaped quotes, empty string arguments, compact output redirection, input redirection, and redirected pipeline status.
 - `npm run smoke:shell` verifies rare builtin-specific failure statuses for `kill`, `stat`, `find`, `man`, and `manifest`.
+- `doctor` prints a compact troubleshooting snapshot with session, cwd, storage, local mount, package, process, docs, and follow-up command details; `npm run smoke:shell` verifies the diagnostic fields.
 
 Completion criteria:
 
@@ -754,4 +755,4 @@ Goal: The OS shell feels stable under normal daily interaction.
 Tasks:
 
 - Improve Files.app remaining scale polish.
-- Polish troubleshooting flows.
+- Extend app-specific troubleshooting flows beyond the shell `doctor` baseline.
