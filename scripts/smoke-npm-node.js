@@ -196,7 +196,10 @@ const fsCallbacksRequire = node.evaluate(
     "        if (listErr) throw listErr;",
     "        fs.stat('./cb-dir/note.txt', (statErr, stat) => {",
     "          if (statErr) throw statErr;",
-    "          fs.access('./cb-dir/missing.txt', (accessErr) => console.log(text, entries[0], stat.isFile(), accessErr instanceof Error));",
+    "          fs.access('./cb-dir/note.txt', fs.constants.R_OK, (okErr) => {",
+    "            if (okErr) throw okErr;",
+    "            fs.access('./cb-dir/missing.txt', fs.constants.F_OK, (accessErr) => console.log(text, entries[0], stat.isFile(), accessErr instanceof Error, fs.constants.W_OK));",
+    "          });",
     "        });",
     "      });",
     "    });",
@@ -206,11 +209,11 @@ const fsCallbacksRequire = node.evaluate(
   cwd,
 );
 assert(fsCallbacksRequire.status === 0, `fs callbacks require exited with ${fsCallbacksRequire.status}`);
-assert(fsCallbacksRequire.output.trim() === "callback note note.txt true true", `unexpected fs callbacks require output: ${fsCallbacksRequire.output}`);
+assert(fsCallbacksRequire.output.trim() === "callback note note.txt true true 2", `unexpected fs callbacks require output: ${fsCallbacksRequire.output}`);
 
 const fsCallbacksImport = await node.evaluate(
   [
-    "import { mkdir, writeFile, readFile, readdir, lstat, unlink } from 'node:fs';",
+    "import { constants, mkdir, writeFile, readFile, readdir, lstat, unlink } from 'node:fs';",
     "const call = (fn, ...args) => new Promise((resolve, reject) => fn(...args, (error, value) => error ? reject(error) : resolve(value)));",
     "await call(mkdir, './cb-esm-dir', { recursive: true });",
     "await call(writeFile, './cb-esm-dir/note.txt', 'esm callback');",
@@ -218,13 +221,13 @@ const fsCallbacksImport = await node.evaluate(
     "const entries = await call(readdir, './cb-esm-dir');",
     "const stat = await call(lstat, './cb-esm-dir/note.txt');",
     "await call(unlink, './cb-esm-dir/note.txt');",
-    "console.log(text, entries[0], stat.isFile());",
+    "console.log(text, entries[0], stat.isFile(), constants.R_OK);",
   ].join("\n"),
   cwd,
   { inputType: "module" },
 );
 assert(fsCallbacksImport.status === 0, `fs callbacks import exited with ${fsCallbacksImport.status}`);
-assert(fsCallbacksImport.output.trim() === "esm callback note.txt true", `unexpected fs callbacks import output: ${fsCallbacksImport.output}`);
+assert(fsCallbacksImport.output.trim() === "esm callback note.txt true 4", `unexpected fs callbacks import output: ${fsCallbacksImport.output}`);
 
 const fsStreamsRequire = node.evaluate(
   [
@@ -647,19 +650,19 @@ assert(stringDecoderImport.status === 0, `string_decoder import exited with ${st
 assert(stringDecoderImport.output.trim() === "ABC aGk=", `unexpected string_decoder import output: ${stringDecoderImport.output}`);
 
 const constantsRequire = node.evaluate(
-  "const constants = require('constants'); console.log(constants.ENOENT, constants.EACCES, constants.O_RDONLY, constants.S_IFDIR > 0);",
+  "const constants = require('constants'); console.log(constants.ENOENT, constants.EACCES, constants.O_RDONLY, constants.S_IFDIR > 0, constants.F_OK, constants.R_OK);",
   cwd,
 );
 assert(constantsRequire.status === 0, `constants require exited with ${constantsRequire.status}`);
-assert(constantsRequire.output.trim() === "2 13 0 true", `unexpected constants require output: ${constantsRequire.output}`);
+assert(constantsRequire.output.trim() === "2 13 0 true 0 4", `unexpected constants require output: ${constantsRequire.output}`);
 
 const constantsImport = await node.evaluate(
-  "import constants, { SIGTERM, O_CREAT } from 'node:constants'; console.log(SIGTERM, O_CREAT, constants.EEXIST);",
+  "import constants, { SIGTERM, O_CREAT } from 'node:constants'; console.log(SIGTERM, O_CREAT, constants.EEXIST, constants.X_OK);",
   cwd,
   { inputType: "module" },
 );
 assert(constantsImport.status === 0, `constants import exited with ${constantsImport.status}`);
-assert(constantsImport.output.trim() === "15 64 17", `unexpected constants import output: ${constantsImport.output}`);
+assert(constantsImport.output.trim() === "15 64 17 1", `unexpected constants import output: ${constantsImport.output}`);
 
 const diagnosticsRequire = node.evaluate(
   [

@@ -409,7 +409,8 @@ Already present:
 - Module cache.
 - VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
 - Callback-style `fs` helpers expose browser-safe VFS-backed read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
-- `npm run smoke:npm-node` verifies callback-style `fs` read/write/readdir/stat/lstat/access/unlink behavior through CommonJS and ESM `node:fs` import paths.
+- `fs.constants` exposes browser-safe access modes, copy flags, and common open flags for package probes.
+- `npm run smoke:npm-node` verifies callback-style `fs` read/write/readdir/stat/lstat/access/unlink behavior plus `fs.constants` access modes through CommonJS and ESM `node:fs` import paths.
 - `fs.promises` exposes browser-safe Promise wrappers for VFS-backed read/write, directory listing, mkdir, rm/unlink, stat/lstat, and access checks.
 - `npm run smoke:npm-node` verifies `fs.promises` CommonJS shape plus ESM async mkdir/write/read/readdir/stat/access/rm behavior inside the DindbOS VFS.
 - `fs.createReadStream` and `fs.createWriteStream` expose browser-safe stream wrappers over VFS files for package compatibility probes.
@@ -448,8 +449,8 @@ Already present:
 - `npm run smoke:npm-node` verifies `module` and `node:module` import paths, builtin probes, `createRequire` scoped package lookup, file URL input, and scoped `require.resolve`.
 - `string_decoder` builtin facade supports CommonJS and ESM import paths for browser-safe package decoding paths.
 - `npm run smoke:npm-node` verifies `string_decoder` and `node:string_decoder` import paths plus `utf8`, `hex`, `latin1`, and `base64` decoding behavior.
-- `constants` builtin facade supports CommonJS and ESM import paths for common errno, signal, open flag, and file mode constants used by browser-safe package probes.
-- `npm run smoke:npm-node` verifies `constants` and `node:constants` import paths plus representative errno, signal, open flag, and file mode values.
+- `constants` builtin facade supports CommonJS and ESM import paths for common access mode, errno, signal, open flag, and file mode constants used by browser-safe package probes.
+- `npm run smoke:npm-node` verifies `constants` and `node:constants` import paths plus representative access mode, errno, signal, open flag, and file mode values.
 - `diagnostics_channel` builtin facade supports CommonJS and ESM import paths for in-runtime browser-safe instrumentation publish/subscribe hooks.
 - `npm run smoke:npm-node` verifies `diagnostics_channel` and `node:diagnostics_channel` import paths, named channel publish/subscribe, unsubscribe, has-subscriber reporting, and tracing channel object shape.
 - `dns` policy facade supports CommonJS and ESM import paths for package DNS feature probes while failing lookup/resolve/reverse APIs with explicit DindbOS network capability guidance.
