@@ -34,7 +34,7 @@ export const DISK_POLICY_AREAS = [
 export class DindbOS {
   constructor(options = {}) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
-    this.session = { user: "guest", groups: ["users"], home: "/home/guest", ...options.session };
+    this.session = normalizeSession(options.session || {});
     this.bus = new EventBus();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
@@ -109,6 +109,7 @@ export class DindbOS {
       this.recoverBootPhase("vfs-mount", "local mount restore failed; continuing without persisted mounts", error);
     }
     this.ensureDiskPolicyRoots();
+    this.ensureSessionHome();
   }
 
   boot() {
@@ -211,6 +212,7 @@ export class DindbOS {
       bootedAt,
       session: {
         user: this.session.user,
+        groups: this.session.groups,
         home: this.session.home,
       },
       phases,
@@ -237,7 +239,40 @@ export class DindbOS {
     DISK_POLICY_AREAS
       .map((area) => area.root)
       .sort((left, right) => left.length - right.length)
-      .forEach((root) => this.ensureSystemDirectory(root, root === "/home" ? "guest" : "root", system));
+      .forEach((root) => this.ensureSystemDirectory(root, "root", system));
+  }
+
+  ensureSessionHome() {
+    const system = this.permissions.systemPrincipal();
+    const user = this.session.user || "guest";
+    const group = this.session.groups?.[0] || "users";
+    const home = this.session.home || `/home/${user}`;
+    this.ensureDirectoryPath(home, {
+      leafOwner: user,
+      leafGroup: group,
+      leafPermissions: "drwxr-xr-x",
+      principal: system,
+    });
+    ["Desktop", "Documents", "Downloads", ".Trash"].forEach((name) => {
+      this.ensureSystemDirectory(this.fs.join(home, name), user, system, {
+        group,
+        permissions: "drwxr-xr-x",
+      });
+    });
+    const profilePath = this.fs.join(home, ".profile");
+    if (!this.fs.exists(profilePath)) {
+      this.fs.writeOrCreateFile(profilePath, [
+        `export USER=${user}`,
+        `export HOME=${home}`,
+        "export SHELL=/bin/dindbsh",
+        "",
+      ].join("\n"), "/", {
+        owner: user,
+        group,
+        permissions: "-rw-r--r--",
+        mime: "text/plain",
+      }, system);
+    }
   }
 
   diskPolicyAreas() {
@@ -272,12 +307,26 @@ export class DindbOS {
     return this.fs.list(resolved.path).reduce((total, entry) => total + this.countBytes(entry.path), 0);
   }
 
-  ensureSystemDirectory(path, owner, principal) {
+  ensureDirectoryPath(path, options = {}) {
+    const normalized = this.fs.normalize(path);
+    const parts = normalized.split("/").filter(Boolean);
+    let cursor = "/";
+    parts.forEach((part, index) => {
+      cursor = this.fs.join(cursor, part);
+      const isLeaf = index === parts.length - 1;
+      this.ensureSystemDirectory(cursor, isLeaf ? options.leafOwner : "root", options.principal, {
+        group: isLeaf ? options.leafGroup : "root",
+        permissions: isLeaf ? options.leafPermissions : "drwxr-xr-x",
+      });
+    });
+  }
+
+  ensureSystemDirectory(path, owner, principal, options = {}) {
     if (this.fs.exists(path)) return;
     this.fs.createDirectory(path, "/", {
       owner,
-      group: "root",
-      permissions: "drwxr-xr-x",
+      group: options.group || "root",
+      permissions: options.permissions || "drwxr-xr-x",
     }, principal);
   }
 
@@ -445,6 +494,40 @@ export class DindbOS {
     }
     return this.apps.openFile(resolved, context);
   }
+}
+
+export function normalizeSession(session = {}) {
+  const user = sanitizeUserName(session.user || "guest");
+  const groups = sanitizeGroups(session.groups);
+  const home = normalizeHomePath(session.home, user);
+  return {
+    ...session,
+    user,
+    groups,
+    home,
+  };
+}
+
+function sanitizeGroups(groups) {
+  const values = Array.isArray(groups) ? groups : ["users"];
+  const sanitized = values.map((group) => sanitizeIdentifier(group, "")).filter(Boolean);
+  return sanitized.length ? [...new Set(sanitized)] : ["users"];
+}
+
+function sanitizeUserName(value) {
+  return sanitizeIdentifier(value, "guest");
+}
+
+function sanitizeIdentifier(value, fallback) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || fallback;
+}
+
+function normalizeHomePath(home, user) {
+  if (!home) return `/home/${user}`;
+  const normalized = String(home).trim().replace(/\/+/g, "/").replace(/\/$/, "");
+  if (!normalized || !normalized.startsWith("/") || normalized.includes("..")) return `/home/${user}`;
+  return normalized === "/" ? `/home/${user}` : normalized;
 }
 
 export { AppRegistry, AppSandbox, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };

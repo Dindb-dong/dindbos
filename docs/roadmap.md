@@ -253,7 +253,8 @@ Already present:
 - `npm run smoke:local-mounts` verifies the local folder mount permission-denied path does not create runtime or VFS mounts.
 - `npm run smoke:app-registry` verifies singleton activation and non-singleton window ID uniqueness.
 - `npm run smoke:boot` verifies runtime boot phase order, completion diagnostics, persisted boot logs, and storage-load failure reporting.
-- `npm run smoke` runs syntax checks plus current boot, storage, persistent storage, Files.app, Settings.app, Viewer.app, Shell, permission, package, npm/node, process, local mount, app registry, window manager, browser address, and browser companion smoke checks as one local confidence command.
+- `npm run smoke:sessions` verifies generated user homes, shell ownership for created files/directories, and active-home built-in app scopes.
+- `npm run smoke` runs syntax checks plus current boot, storage, persistent storage, Files.app, Settings.app, Viewer.app, Shell, session, permission, package, npm/node, process, local mount, app registry, window manager, browser address, and browser companion smoke checks as one local confidence command.
 
 Remaining:
 
@@ -618,12 +619,14 @@ Already present:
 - Denied app capability requests include actionable app id, capability, path, and `sandbox denied`/`capability denied` messages, covered by `npm run smoke:permissions`.
 - `su` and `sudo` are explicit shell placeholders that fail with a browser-runtime fixed-session explanation instead of pretending to elevate privileges.
 - `npm run smoke:shell` verifies `su`/`sudo` unsupported status and chaining behavior.
+- Session users are normalized into browser-safe names and receive generated `/home/<user>` workspaces with Desktop, Documents, Downloads, `.Trash`, and `.profile`.
+- VFS file/directory creation now defaults ownership to the caller principal so non-guest session writes are owned by the active user.
+- Built-in app manifests use the active session home for document read/write scopes instead of hard-coded `/home/guest`, covered by `npm run smoke:sessions`.
 
 Remaining:
 
 - Login session.
 - User/group management.
-- Home directory generation for multiple users.
 - Stricter read/write/execute checks.
 
 Completion criteria:

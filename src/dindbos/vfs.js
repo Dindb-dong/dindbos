@@ -101,8 +101,8 @@ export class VirtualFileSystem {
       content: normalizeFileContent(content, { mime: options.mime || mimeFromName(name) }),
       icon: options.icon || iconFromMime(options.mime || mimeFromName(name)),
       permissions: options.permissions || "-rw-r--r--",
-      owner: options.owner || "guest",
-      group: options.group || "users",
+      owner: options.owner || ownerFromPrincipal(principal),
+      group: options.group || groupFromPrincipal(principal),
     });
     parent.children.push(node);
     this.emitChange("create", normalized);
@@ -129,8 +129,8 @@ export class VirtualFileSystem {
       icon: options.icon || "folder",
       children: [],
       permissions: options.permissions || "drwxr-xr-x",
-      owner: options.owner || "guest",
-      group: options.group || "users",
+      owner: options.owner || ownerFromPrincipal(principal),
+      group: options.group || groupFromPrincipal(principal),
     });
     parent.children.push(node);
     this.emitChange("mkdir", normalized);
@@ -187,8 +187,8 @@ export class VirtualFileSystem {
       transient: true,
       children: [],
       permissions: options.permissions || "drwxrwxrwx",
-      owner: options.owner || "guest",
-      group: options.group || "users",
+      owner: options.owner || ownerFromPrincipal(principal),
+      group: options.group || groupFromPrincipal(principal),
     });
     parent.children.push(node);
     this.emitChange("mount", normalized);
@@ -442,6 +442,14 @@ function cloneNode(node) {
     content: node.type === "file" ? cloneFileContent(node.content) : node.content,
     children: node.children?.map((child) => cloneNode(child)),
   };
+}
+
+function ownerFromPrincipal(principal) {
+  return principal?.user || "guest";
+}
+
+function groupFromPrincipal(principal) {
+  return principal?.groups?.[0] || "users";
 }
 
 function cloneForSnapshot(node) {

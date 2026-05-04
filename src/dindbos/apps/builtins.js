@@ -5,11 +5,13 @@ import { ShellSession } from "../shell.js?v=20260422-browserd";
 const FILES_OPERATION_HISTORY_LIMIT = 12;
 const FILES_OPERATION_YIELD_INTERVAL_MS = 12;
 const FILES_OPERATION_YIELD_STEP_INTERVAL = 24;
-const USER_DOCUMENT_READ_ROOTS = ["/home/guest", "/mnt/portfolio", "/tmp"];
-const USER_DOCUMENT_WRITE_ROOTS = ["/home/guest", "/mnt/portfolio", "/tmp"];
 export const BROWSER_LOCAL_HTML_SANDBOX = "allow-scripts allow-forms allow-popups";
 
 export function installBuiltinApps(os, { portfolioData }) {
+  const userHome = os.session.home || "/home/guest";
+  const userDocumentReadRoots = documentReadRoots(userHome);
+  const userDocumentWriteRoots = documentWriteRoots(userHome);
+
   os.registerApp({
     id: "portfolio",
     name: "Portfolio",
@@ -21,7 +23,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     height: 620,
     manifest: {
       capabilities: ["app.launch"],
-      fileSystem: { read: ["/mnt/portfolio", "/home/guest"], write: [] },
+      fileSystem: { read: ["/mnt/portfolio", userHome], write: [] },
     },
     render: ({ content }) => renderPortfolio(content, portfolioData),
   });
@@ -37,7 +39,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     accepts: ["inode/directory"],
     manifest: {
       capabilities: ["app.launch", "storage.manage", "localMount.read", "localMount.manage"],
-      fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp"] },
+      fileSystem: { read: ["/"], write: userDocumentWriteRoots },
     },
     render: ({ os: runtime, content, context, window }) => (
       renderFiles(runtime, content, context.path || runtime.session.home || "/", window)
@@ -67,7 +69,7 @@ export function installBuiltinApps(os, { portfolioData }) {
         "localMount.read",
         "localMount.manage",
       ],
-      fileSystem: { read: ["/"], write: ["/home/guest", "/mnt/portfolio", "/tmp", "/opt", "/usr/share/applications", "/var/lib/dindbos/packages"] },
+      fileSystem: { read: ["/"], write: [...userDocumentWriteRoots, "/opt", "/usr/share/applications", "/var/lib/dindbos/packages"] },
     },
     render: ({ os: runtime, content }) => renderTerminal(runtime, content),
   });
@@ -98,7 +100,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     height: 520,
     manifest: {
       capabilities: ["storage.manage", "localMount.read", "localMount.manage"],
-      fileSystem: { read: USER_DOCUMENT_READ_ROOTS, write: USER_DOCUMENT_WRITE_ROOTS },
+      fileSystem: { read: userDocumentReadRoots, write: userDocumentWriteRoots },
     },
     render: ({ os: runtime, content, context, window }) => renderText(runtime, content, context.node, window),
   });
@@ -115,7 +117,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     accepts: ["text/html"],
     manifest: {
       capabilities: ["localMount.read"],
-      fileSystem: { read: USER_DOCUMENT_READ_ROOTS, write: [] },
+      fileSystem: { read: userDocumentReadRoots, write: [] },
     },
     render: ({ os: runtime, content, context, window }) => renderBrowser(runtime, content, context, window),
   });
@@ -131,7 +133,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     height: 560,
     manifest: {
       capabilities: ["localMount.read"],
-      fileSystem: { read: USER_DOCUMENT_READ_ROOTS, write: [] },
+      fileSystem: { read: userDocumentReadRoots, write: [] },
     },
     render: ({ os: runtime, content, context }) => renderViewer(runtime, content, context.node),
   });
@@ -162,10 +164,22 @@ export function installBuiltinApps(os, { portfolioData }) {
     height: 380,
     manifest: {
       capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage"],
-      fileSystem: { read: ["/etc", "/proc", "/home/guest"], write: [] },
+      fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
     },
     render: ({ content, os: runtime }) => renderSettings(runtime, content),
   });
+}
+
+function documentReadRoots(userHome) {
+  return uniquePaths([userHome, "/mnt/portfolio", "/tmp"]);
+}
+
+function documentWriteRoots(userHome) {
+  return uniquePaths([userHome, "/mnt/portfolio", "/tmp"]);
+}
+
+function uniquePaths(paths) {
+  return [...new Set(paths.filter(Boolean))];
 }
 
 function renderPortfolio(content, data) {

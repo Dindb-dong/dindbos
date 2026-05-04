@@ -49,6 +49,7 @@ Added:
 - API Lab sample package now ships under `/opt/dindbos/packages/api-lab` and proves third-party use of sandboxed filesystem, package metadata, current-process, and process-log APIs through package smoke coverage.
 - App sandbox now exposes per-app `os.state` JSON persistence backed by `/var/lib/dindbos/app-state`, with relaunch/reload restoration and package uninstall cleanup coverage.
 - TextEdit, Viewer.app, and Browser.app now use user-document read scopes instead of root filesystem read scope for file-open paths.
+- Session users now get generated `/home/<user>` workspaces with Desktop/Documents/Downloads/Trash directories, matching shell ownership, and built-in app scopes based on the active home.
 - Local mount writes now detect disk-side changes since the last sync and report `sync-conflict` instead of silently overwriting external file changes.
 - Files.app large copy, move, import, and export traversals now yield cooperatively while keeping progress, cancellation, and byte-preservation smoke coverage.
 - Viewer.app document and image preview bytes now use the runtime Cache API store with stale-key protection from path, MIME type, size, and modified time.
@@ -66,7 +67,7 @@ Added:
 
 Changed:
 
-- `npm run smoke` is the main local confidence gate and includes boot, storage, persistent storage, Files.app, Settings.app, Viewer.app, Shell, permission, package, npm/node, process, local mount, app registry, window manager, browser address, Browser client, and browser companion checks.
+- `npm run smoke` is the main local confidence gate and includes boot, storage, persistent storage, Files.app, Settings.app, Viewer.app, Shell, session, permission, package, npm/node, process, local mount, app registry, window manager, browser address, Browser client, and browser companion checks.
 - App launcher files now require executable permission before launch.
 - Mobile window placement now starts windows maximized inside the viewport instead of restoring oversized desktop coordinates.
 - Persistent storage now warns before unload when filesystem writes are pending.
