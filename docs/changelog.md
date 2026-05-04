@@ -45,6 +45,7 @@ Added:
 - Package install smoke coverage for install -> AppRegistry launch -> runtime render -> remove.
 - Package app execute boundary is now explicit: JS entry files stay non-executable while `.app` launchers carry execute permission.
 - Package manager now verifies signed remote manifests with Ed25519, manages trusted publishers through `pkg trust`, and fails closed before package filesystem mutation for missing, invalid, or untrusted signatures.
+- Package lifecycle events now distinguish install, update, first-run, uninstall-cleanup, and uninstall, with lifecycle metadata persisted in package records.
 - NodeCompat support for CommonJS, JSON modules, simple ESM transforms, simple `exports` resolution, nested dependency lookup, and `events`/`node:events`.
 - NodeCompat `url`, `util`, and `timers` builtin facades for browser-safe packages.
 - NodeCompat `stream` builtin facade for browser-safe `Readable`, `Writable`, `PassThrough`, and `pipeline` usage.
@@ -52,7 +53,7 @@ Added:
 - NodeCompat package `exports` resolution now supports explicit root/subpath maps with common `import`, `require`, `browser`, and `default` conditions.
 - Process manager activity sampling, crash reports, parent/child process links, and centralized restart behavior.
 - AppRegistry crash isolation renders a crash panel and reports failed app render paths to the process manager.
-- Explicit `app:*` lifecycle events for install, launch, ready, focus, suspend, resume, crash, close, and uninstall.
+- Explicit `app:*` lifecycle events for install, update, first-run, launch, ready, focus, suspend, resume, crash, close, uninstall-cleanup, and uninstall.
 - Window minimize now uses a stable delayed-hide animation state and cancels that state cleanly on focus/restore/close.
 - App-facing API docs, app lifecycle docs, Browser companion docs, first app guide, package signature docs, and support policy docs.
 - GitHub issue templates and PR verification checklist.

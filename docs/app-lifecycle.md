@@ -24,6 +24,8 @@ After desktop render, DindbOS writes selected boot diagnostics to `/var/log/dind
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed
+- `app:update`: package app replaced from the recorded source or a newly installed manifest with the same package id
+- `app:first-run`: package app entry mounted for the first time after install
 - `app:launch`: process spawned for an app
 - `app:ready`: window render completed and the process was marked ready
 - `app:focus`: window focused
@@ -31,6 +33,7 @@ Lifecycle events are emitted on the runtime event bus with explicit app-level na
 - `app:resume`: window restored or maximized after suspension
 - `app:crash`: app process crashed
 - `app:close`: app process exited or was killed
+- `app:uninstall-cleanup`: package install path, launcher, and record cleanup completed
 - `app:uninstall`: package app removed
 
 Lower-level `process:*` and `package:*` events remain available for process-table and package-manager tools, but app clients should prefer the explicit `app:*` lifecycle stream when they only need app lifecycle state.
@@ -47,6 +50,7 @@ The package manager:
 - writes `/var/lib/dindbos/packages/<package>.json`
 - creates `/usr/share/applications/*.app`
 - registers the app with `AppRegistry`
+- records lifecycle metadata in the package record
 
 Install transactions are atomic from the runtime perspective. A failed local or remote install rolls back package files, launcher files, package records, and app registration.
 
@@ -55,6 +59,8 @@ Install transactions are atomic from the runtime perspective. A failed local or 
 Updates reinstall from the recorded source path or URL.
 
 If an update fails, the previous package files, package record, launcher, and app registration remain in place. Apps should treat update as a full package replacement, not as an in-place patch hook.
+
+Successful replacement emits `app:update` and `package:update` instead of a second install event. The package record keeps `lifecycle.installedAt`, sets `lifecycle.updatedAt`, and increments `lifecycle.updateCount`.
 
 ### Launch
 
@@ -70,6 +76,8 @@ The registry:
 - calls the app render function with `{ os, content, window, context }`
 
 Package apps with `app.entry` load `/opt/<package>/<entry>` as an ES module and call `mount()` or the default export with `{ content, os, pkg, package, imports, window }`.
+
+The first successful package entry launch records `lifecycle.firstRunAt` and emits `app:first-run`/`package:first-run` once. Later launches do not repeat the first-run event.
 
 ### Ready
 
@@ -122,7 +130,7 @@ Package removal deletes:
 - `/usr/share/applications/*.app`
 - the app registry entry
 
-Uninstall cleanup hooks are not implemented yet. Packages should keep durable user data outside `/opt/<package>` if it should survive removal.
+Removal emits `app:uninstall-cleanup`/`package:uninstall-cleanup` with the cleaned install path, launcher path, and package record path before the final uninstall event. Packages should keep durable user data outside `/opt/<package>` if it should survive removal.
 
 ## Current Hooks
 
@@ -147,8 +155,7 @@ export function mount({ content, os, pkg, imports, window }) {
 
 ## Current Limits
 
-- No explicit first-run hook.
-- No install, update, or uninstall script hook.
+- No install, update, first-run, or uninstall script execution hook.
 - No suspend/resume hook.
 - No close confirmation hook.
 - No long-running background service model yet.
@@ -169,6 +176,6 @@ npm run smoke
 
 `npm run smoke:app-registry` verifies singleton launch behavior, non-singleton window IDs, and crash isolation when an app render function throws.
 
-`npm run smoke:packages` verifies install rollback, update rollback, remove cleanup, app install/uninstall lifecycle events, and install -> AppRegistry launch -> package runtime render -> remove cleanup.
+`npm run smoke:packages` verifies install rollback, update rollback, remove cleanup, app install/update/first-run/uninstall-cleanup/uninstall lifecycle events, and install -> AppRegistry launch -> package runtime render -> remove cleanup.
 
 `npm run smoke:processes` verifies launch, ready, focus, suspend, resume, crash, and close lifecycle events.

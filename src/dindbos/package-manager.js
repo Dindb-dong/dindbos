@@ -121,6 +121,8 @@ export class PackageManager {
       registry: options.registry || "",
       trust,
     });
+    const previous = this.info(record.id);
+    record.lifecycle = packageLifecycle(record, previous);
     return this.runPackageTransactionAsync(record, async () => {
       this.ensurePackageRoots();
       this.ensurePackageDirectory(record);
@@ -128,13 +130,15 @@ export class PackageManager {
       this.writePackageRecord(record);
       this.installLauncher(record);
       this.registerPackageApp(record);
-      this.emitPackageLifecycle("install", record);
+      this.emitPackageLifecycle(previous ? "update" : "install", record, { previousVersion: previous?.version || "" });
       return record;
     });
   }
 
   install(manifest, options = {}) {
     const record = this.normalizePackage(manifest, options);
+    const previous = this.info(record.id);
+    record.lifecycle = packageLifecycle(record, previous);
     return this.runPackageTransaction(record, () => {
       this.ensurePackageRoots();
       this.ensurePackageDirectory(record);
@@ -142,7 +146,7 @@ export class PackageManager {
       this.writePackageRecord(record);
       this.installLauncher(record);
       this.registerPackageApp(record);
-      this.emitPackageLifecycle("install", record);
+      this.emitPackageLifecycle(previous ? "update" : "install", record, { previousVersion: previous?.version || "" });
       return record;
     });
   }
@@ -248,6 +252,7 @@ export class PackageManager {
   remove(packageId) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    const cleanup = { installPath: record.installPath, launcher: this.launcherPath(record), recordPath: this.packageRecordPath(record.id) };
     const launcher = this.launcherPath(record);
     if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
     if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
@@ -255,11 +260,23 @@ export class PackageManager {
       this.os.fs.remove(this.packageRecordPath(record.id), "/", {}, this.system);
     }
     this.os.unregisterApp(record.app.id);
-    this.emitPackageLifecycle("uninstall", record);
+    this.emitPackageLifecycle("uninstall-cleanup", record, { cleanup });
+    this.emitPackageLifecycle("uninstall", record, { cleanup });
     return record;
   }
 
-  emitPackageLifecycle(type, record) {
+  markFirstRun(packageId) {
+    const record = this.info(packageId);
+    if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    record.lifecycle = record.lifecycle || packageLifecycle(record, null);
+    if (record.lifecycle.firstRunAt) return record;
+    record.lifecycle.firstRunAt = new Date().toISOString();
+    this.writePackageRecord(record);
+    this.emitPackageLifecycle("first-run", record);
+    return record;
+  }
+
+  emitPackageLifecycle(type, record, extra = {}) {
     const payload = {
       type,
       packageId: record.id,
@@ -267,6 +284,7 @@ export class PackageManager {
       name: record.name,
       version: record.version,
       record: packagePublicRecord(record),
+      ...extra,
     };
     this.os.bus?.emit?.(`package:${type}`, payload);
     this.os.bus?.emit?.(`app:${type}`, payload);
@@ -650,7 +668,7 @@ export class PackageManager {
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
       },
-      render: ({ content, os: runtime, window }) => renderPackagedApp(content, runtime, record, window),
+      render: ({ content, os: runtime, window }) => renderPackagedApp(content, runtime, record, window, this),
     });
   }
 
@@ -686,9 +704,9 @@ export class PackageManager {
   }
 }
 
-function renderPackagedApp(content, runtime, record, windowApi) {
+function renderPackagedApp(content, runtime, record, windowApi, manager = null) {
   if (record.app.entryPath) {
-    mountPackageEntrypoint(content, runtime, record, windowApi);
+    mountPackageEntrypoint(content, runtime, record, windowApi, manager);
     return;
   }
   const files = safeRead(() => runtime.fs.list(record.installPath), []);
@@ -707,16 +725,17 @@ function renderPackagedApp(content, runtime, record, windowApi) {
   `;
 }
 
-async function mountPackageEntrypoint(content, runtime, record, windowApi) {
+async function mountPackageEntrypoint(content, runtime, record, windowApi, manager = null) {
+  const activeRecord = safeRead(() => manager?.markFirstRun?.(record.id), record) || record;
   content.innerHTML = `
     <section class="package-app">
-      <p class="dos-kicker">Package ${escapeHtml(record.id)} ${escapeHtml(record.version)}</p>
-      <h2>${escapeHtml(record.app.name)}</h2>
-      <p>Loading ${escapeHtml(record.app.entry)}.</p>
+      <p class="dos-kicker">Package ${escapeHtml(activeRecord.id)} ${escapeHtml(activeRecord.version)}</p>
+      <h2>${escapeHtml(activeRecord.app.name)}</h2>
+      <p>Loading ${escapeHtml(activeRecord.app.entry)}.</p>
     </section>
   `;
   try {
-    const source = runtime.fs.readFile(record.app.entryPath);
+    const source = runtime.fs.readFile(activeRecord.app.entryPath);
     const moduleHandle = createModuleUrl(source);
     const module = await import(moduleHandle.url);
     moduleHandle.revoke();
@@ -726,16 +745,16 @@ async function mountPackageEntrypoint(content, runtime, record, windowApi) {
     await mount({
       content,
       os: runtime,
-      pkg: packagePublicRecord(record),
-      package: packagePublicRecord(record),
-      imports: createImportFacade(record),
+      pkg: packagePublicRecord(activeRecord),
+      package: packagePublicRecord(activeRecord),
+      imports: createImportFacade(activeRecord),
       window: windowApi,
     });
   } catch (error) {
     content.innerHTML = `
       <section class="package-app">
         <p class="dos-kicker">Package runtime error</p>
-        <h2>${escapeHtml(record.app.name)}</h2>
+        <h2>${escapeHtml(activeRecord.app.name)}</h2>
         <pre>${escapeHtml(error.message)}</pre>
       </section>
     `;
@@ -763,6 +782,8 @@ function packagePublicRecord(record) {
     sourcePath: record.sourcePath,
     dependencies: cloneJson(record.dependencies || {}),
     files: [...(record.files || [])],
+    lifecycle: cloneJson(record.lifecycle || {}),
+    trust: cloneJson(record.trust || {}),
   });
 }
 
@@ -884,6 +905,19 @@ function packageTrust(sourcePath, registry = "", signature = null) {
     trusted: !remote || signatureState.status === "valid",
     signature: signatureState,
     warnings,
+  };
+}
+
+function packageLifecycle(record, previous = null) {
+  const now = new Date().toISOString();
+  const previousLifecycle = previous?.lifecycle || {};
+  const updateCount = previous ? Number(previousLifecycle.updateCount || 0) + 1 : 0;
+  return {
+    installedAt: previousLifecycle.installedAt || record.installedAt || now,
+    updatedAt: previous ? now : "",
+    firstRunAt: previousLifecycle.firstRunAt || "",
+    installCount: Number(previousLifecycle.installCount || 0) + (previous ? 0 : 1),
+    updateCount,
   };
 }
 
