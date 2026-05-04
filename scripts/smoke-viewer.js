@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { AppRegistry } from "../src/dindbos/app-registry.js";
 import { AppSandbox } from "../src/dindbos/app-sandbox.js";
-import { cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerMarkup, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue, wirePdfJsViewer } from "../src/dindbos/apps/builtins.js";
+import { cleanupViewerObjectUrl, installBuiltinApps, readViewerPreviewBytes, renderMarkdownPreview, viewerMarkup, viewerPdfAdapterStatus, viewerPreviewCacheKey, viewerPreviewForBytes, viewerZoomValue, wirePdfJsViewer } from "../src/dindbos/apps/builtins.js";
 import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
@@ -46,6 +46,9 @@ const pdfHtml = viewerMarkup({
 assert(pdfHtml.includes("data-viewer-pdf-canvas"), "viewer PDF markup did not include PDF.js canvas");
 assert(pdfHtml.includes('data-viewer-action="page-prev"'), "viewer PDF previous page action missing");
 assert(pdfHtml.includes('data-viewer-action="page-next"'), "viewer PDF next page action missing");
+assert(viewerPdfAdapterStatus(null).includes("deployment-provided, not bundled"), "PDF.js missing status did not document deployment-provided policy");
+assert(viewerPdfAdapterStatus(fakePdfJsLib()).includes("PDF.js adapter available"), "PDF.js available status missing");
+assert(viewerPdfAdapterStatus(null, { failed: true }).includes("adapter failed"), "PDF.js failure status missing");
 assert(viewerZoomValue(1, "zoom-in") === 1.1, "viewer zoom-in value mismatch");
 assert(viewerZoomValue(0.5, "zoom-out") === 0.5, "viewer zoom lower clamp mismatch");
 assert(viewerZoomValue(2.8, "zoom-in") === 2.9, "viewer zoom high value mismatch");

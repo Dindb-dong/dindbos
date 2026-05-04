@@ -2392,17 +2392,20 @@ async function renderViewerBytes(os, content, node) {
   const previewState = bytes
     ? viewerPreviewForBytes(bytes, mime)
     : { preview: node?.content ? fileContentPreview(node.content) : "Preview adapter pending.", status: "" };
+  const status = mime === "application/pdf" ? viewerPdfAdapterStatus() : previewState.status;
   content.innerHTML = viewerMarkup({
     mime,
     name: node?.name || "Document",
     path: node?.path || "",
     preview: previewState.preview,
     url,
-    status: previewState.status,
+    status,
   });
   wireViewerToolbar(os, content, node, bytes || new Uint8Array(), mime);
   if (mime === "application/pdf" && bytes?.byteLength) {
-    wirePdfJsViewer(content, bytes, node?.name || "PDF").catch(() => {});
+    wirePdfJsViewer(content, bytes, node?.name || "PDF").catch(() => {
+      setViewerStatus(content, viewerPdfAdapterStatus(null, { failed: true }));
+    });
   }
   const object = content.querySelector("[data-viewer-object]");
   if (object && url) {
@@ -2481,6 +2484,17 @@ function wireViewerToolbar(os, content, node, bytes, mime) {
       }
     });
   });
+}
+
+export function viewerPdfAdapterStatus(pdfjsLib = globalThis.pdfjsLib, { failed = false } = {}) {
+  if (failed) return "Native PDF preview · PDF.js adapter failed";
+  if (pdfjsLib?.getDocument) return "PDF.js adapter available · canvas preview";
+  return "Native PDF preview · PDF.js adapter is deployment-provided, not bundled";
+}
+
+function setViewerStatus(content, message) {
+  const status = content.querySelector?.("[data-viewer-status]");
+  if (status) status.textContent = message;
 }
 
 export async function wirePdfJsViewer(content, bytes, name = "PDF", pdfjsLib = globalThis.pdfjsLib) {
