@@ -320,6 +320,32 @@ const fsRealpathImport = await node.evaluate(
 assert(fsRealpathImport.status === 0, `fs realpath import exited with ${fsRealpathImport.status}`);
 assert(fsRealpathImport.output.trim() === `${cwd}/real-esm-dir true`, `unexpected fs realpath import output: ${fsRealpathImport.output}`);
 
+const fsMkdtempRequire = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "const syncPath = fs.mkdtempSync('/tmp/pkg-');",
+    "fs.mkdtemp('/tmp/pkg-', (error, callbackPath) => {",
+    "  if (error) throw error;",
+    "  console.log(syncPath.startsWith('/tmp/pkg-'), callbackPath.startsWith('/tmp/pkg-'), fs.statSync(callbackPath).isDirectory(), syncPath !== callbackPath);",
+    "});",
+  ].join("\n"),
+  cwd,
+);
+assert(fsMkdtempRequire.status === 0, `fs mkdtemp require exited with ${fsMkdtempRequire.status}`);
+assert(fsMkdtempRequire.output.trim() === "true true true true", `unexpected fs mkdtemp require output: ${fsMkdtempRequire.output}`);
+
+const fsMkdtempImport = await node.evaluate(
+  [
+    "import { promises as fs, statSync } from 'node:fs';",
+    "const path = await fs.mkdtemp('/tmp/pkg-esm-');",
+    "console.log(path.startsWith('/tmp/pkg-esm-'), statSync(path).isDirectory());",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsMkdtempImport.status === 0, `fs mkdtemp import exited with ${fsMkdtempImport.status}`);
+assert(fsMkdtempImport.output.trim() === "true true", `unexpected fs mkdtemp import output: ${fsMkdtempImport.output}`);
+
 const fsStreamsRequire = node.evaluate(
   [
     "const fs = require('fs');",
@@ -965,6 +991,7 @@ function bootOs() {
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
+  fs.createDirectory("/tmp", "/", { owner: "root", group: "root", permissions: "drwxrwxrwx" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
   fs.createDirectory("/home/guest/Documents", "/", { owner: "guest", group: "users" }, system);
   fs.createDirectory(cwd, "/", { owner: "guest", group: "users" }, system);
