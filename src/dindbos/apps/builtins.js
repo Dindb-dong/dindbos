@@ -11,6 +11,8 @@ import { ShellSession } from "../shell.js?v=20260422-browserd";
 const FILES_OPERATION_HISTORY_LIMIT = 12;
 const FILES_OPERATION_YIELD_INTERVAL_MS = 12;
 const FILES_OPERATION_YIELD_STEP_INTERVAL = 24;
+const FILES_COLUMN_ENTRY_LIMIT = 250;
+const FILES_SEARCH_RESULT_LIMIT = 200;
 export const BROWSER_LOCAL_HTML_SANDBOX = "allow-scripts allow-forms allow-popups";
 const BROWSER_CLOSED_TAB_LIMIT = 8;
 
@@ -251,6 +253,10 @@ function renderFiles(os, content, path, windowApi) {
     const query = searchQuery.trim();
     const columns = query ? buildSearchColumns(os, currentPath, selectedPath, query, sortMode) : buildFileColumns(os, currentPath, selectedPath, sortMode);
     const visibleCount = columns.reduce((total, column) => total + column.entries.length, 0);
+    const currentColumn = columns.find((column) => column.path === currentPath) || columns[columns.length - 1];
+    const currentVisibleCount = Number(currentColumn?.entries?.length || 0);
+    const currentTotalCount = Number(currentColumn?.totalEntries || currentVisibleCount);
+    const cappedSearch = Boolean(query && columns.some((column) => column.capped));
     const selected = os.fs.lstat(selectedPath) || os.fs.stat(selectedPath);
     const mountStatus = await mountStatusForPath(os, currentPath);
     const latestMountOperation = safeRead(() => os.localMounts.operations()[0], null);
@@ -327,11 +333,16 @@ function renderFiles(os, content, path, windowApi) {
                     </button>
                   `;
                 }).join("")}
+                ${column.capped ? `
+                  <div class="files-column-limit" data-files-column-limit>
+                    Showing ${escapeHtml(`${column.entries.length} of ${column.totalEntries}${query ? "+" : ""}`)}. Use search or sorting to narrow this folder.
+                  </div>
+                ` : ""}
               </div>
             `).join("")}
           </div>
           <div class="files-status">
-            <span>${query ? `${visibleCount} matches` : `${os.fs.list(currentPath).length} items`} · ${selectedPaths.size} selected</span>
+            <span>${query ? `${visibleCount}${cappedSearch ? "+" : ""} matches` : currentColumn?.capped ? `${currentVisibleCount}/${currentTotalCount} visible` : `${currentTotalCount} items`} · ${selectedPaths.size} selected</span>
             <span>${clipboard ? `Clipboard: ${escapeHtml(os.fs.basename(clipboard.path))}` : selectedPaths.size > 1 ? `${selectedPaths.size} selected` : escapeHtml(currentPath)}</span>
           </div>
         </div>
@@ -555,19 +566,48 @@ function buildFileColumns(os, currentPath, selectedPath, sortMode = "kind-name")
     cursor = os.fs.dirname(cursor);
   }
   chain.unshift("/");
-  return chain.map((columnPath, index) => ({
-    path: columnPath,
-    selectedPath: chain[index + 1] || selectedPath,
-    entries: sortFilesEntries(os, os.fs.list(columnPath), sortMode),
-  }));
+  return chain.map((columnPath, index) => {
+    const selectedInColumn = chain[index + 1] || selectedPath;
+    const limited = limitFilesColumnEntries(sortFilesEntries(os, os.fs.list(columnPath), sortMode), selectedInColumn);
+    return {
+      path: columnPath,
+      selectedPath: selectedInColumn,
+      entries: limited.entries,
+      totalEntries: limited.total,
+      capped: limited.capped,
+      hiddenEntries: limited.hidden,
+    };
+  });
 }
 
 function buildSearchColumns(os, currentPath, selectedPath, query, sortMode = "kind-name") {
+  const results = searchFileEntries(os, currentPath, query, { limit: FILES_SEARCH_RESULT_LIMIT + 1 });
+  const limited = limitFilesColumnEntries(sortFilesEntries(os, results, sortMode), selectedPath, FILES_SEARCH_RESULT_LIMIT);
   return [{
     path: currentPath,
     selectedPath,
-    entries: sortFilesEntries(os, searchFileEntries(os, currentPath, query), sortMode).slice(0, 200),
+    entries: limited.entries,
+    totalEntries: limited.total,
+    capped: limited.capped,
+    hiddenEntries: limited.hidden,
   }];
+}
+
+export function limitFilesColumnEntries(entries = [], selectedPath = "", limit = FILES_COLUMN_ENTRY_LIMIT) {
+  const all = entries.filter(Boolean);
+  const max = Math.max(1, Number(limit || FILES_COLUMN_ENTRY_LIMIT));
+  if (all.length <= max) {
+    return { entries: all, total: all.length, capped: false, hidden: 0 };
+  }
+  const visible = all.slice(0, max);
+  const selectedIndex = all.findIndex((entry) => entry.path === selectedPath);
+  if (selectedIndex >= max) visible[max - 1] = all[selectedIndex];
+  return {
+    entries: visible,
+    total: all.length,
+    capped: true,
+    hidden: all.length - visible.length,
+  };
 }
 
 function filesSortOptions(active = "kind-name") {
@@ -631,20 +671,23 @@ function fileModifiedTime(stat) {
   return Number.isFinite(time) ? time : 0;
 }
 
-export function searchFileEntries(os, rootPath, query) {
+export function searchFileEntries(os, rootPath, query, options = {}) {
   const filters = parseFilesSearchQuery(query);
   const results = [];
+  const limit = Math.max(0, Number(options.limit || 0));
+  const maxDepth = Math.max(0, Number(options.maxDepth ?? 8));
   const visit = (directory, depth = 0) => {
-    if (depth > 8) return;
+    if (depth > maxDepth || (limit && results.length >= limit)) return;
     const entries = safeRead(() => os.fs.list(directory), []);
-    entries.forEach((entry) => {
+    for (const entry of entries) {
+      if (limit && results.length >= limit) return;
       const stat = os.fs.stat(entry.path) || os.fs.lstat(entry.path) || entry;
       const resolved = os.fs.resolveNode(entry);
       if (matchesFilesSearch(entry, resolved, stat, filters)) {
         results.push(entry);
       }
       if (resolved.type === "directory" || resolved.type === "mount") visit(entry.path, depth + 1);
-    });
+    }
   };
   visit(rootPath);
   return results;

@@ -7,6 +7,7 @@ import {
   createFilesOperationScheduler,
   filesActionTargets,
   importDroppedFiles,
+  limitFilesColumnEntries,
   movePathIntoDirectory,
   moveFilesKeyboardSelection,
   parseFilesSearchQuery,
@@ -197,6 +198,13 @@ const markdownResults = searchFileEntries(os, sourceRoot, "type:text ext:md read
 assert(markdownResults.length === 1 && markdownResults[0].name === "readme.md", "text/ext search filters did not isolate readme.md");
 const folderResults = searchFileEntries(os, sourceRoot, "type:folder nested");
 assert(folderResults.length === 1 && folderResults[0].path === `${sourceRoot}/nested`, "folder search filter did not isolate nested directory");
+const limitedSearchRoot = "/home/guest/Documents/search-limit";
+os.fs.createDirectory(limitedSearchRoot);
+for (let index = 0; index < 20; index += 1) {
+  os.fs.writeOrCreateFile(`${limitedSearchRoot}/match-${index}.txt`, `match-${index}`, "/", { mime: "text/plain" });
+}
+const limitedResults = searchFileEntries(os, limitedSearchRoot, "match", { limit: 6 });
+assert(limitedResults.length === 6, `limited search expected 6 entries, got ${limitedResults.length}`);
 os.fs.createDirectory(`${sourceRoot}/aaa-folder`);
 os.fs.writeOrCreateFile(`${sourceRoot}/zeta.txt`, "z", "/", { mime: "text/plain" });
 os.fs.writeOrCreateFileBytes(`${sourceRoot}/big.bin`, new Uint8Array(128), "/", { mime: "application/octet-stream" });
@@ -211,6 +219,17 @@ const sizeSorted = sortFilesEntries(os, sortEntries, "size").map((entry) => entr
 assert(sizeSorted[0] === "big.bin", `size sort did not put largest file first: ${sizeSorted.join(",")}`);
 const modifiedSorted = sortFilesEntries(os, sortEntries, "modified").map((entry) => entry.name);
 assert(modifiedSorted[0] === "fresh.txt", `modified sort did not put newest file first: ${modifiedSorted.join(",")}`);
+const cappedEntries = Array.from({ length: 12 }, (_, index) => ({
+  path: `${sourceRoot}/cap-${index}.txt`,
+  name: `cap-${index}.txt`,
+}));
+const cappedColumn = limitFilesColumnEntries(cappedEntries, `${sourceRoot}/cap-10.txt`, 5);
+assert(cappedColumn.capped === true, "column cap did not mark capped result");
+assert(cappedColumn.entries.length === 5, `column cap expected 5 visible entries, got ${cappedColumn.entries.length}`);
+assert(cappedColumn.total === 12 && cappedColumn.hidden === 7, "column cap counts mismatch");
+assert(cappedColumn.entries.some((entry) => entry.path.endsWith("cap-10.txt")), "column cap did not preserve selected entry");
+const uncappedColumn = limitFilesColumnEntries(cappedEntries.slice(0, 3), "", 5);
+assert(uncappedColumn.capped === false && uncappedColumn.entries.length === 3, "column cap changed uncapped entries");
 
 const visiblePaths = [
   `${sourceRoot}/alpha.txt`,

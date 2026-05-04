@@ -570,7 +570,7 @@ Completion criteria:
 
 ## 7. Files.app
 
-Status: Done second pass, scale polish remaining.
+Status: Done third pass.
 
 Already present:
 
@@ -594,6 +594,8 @@ Already present:
 - `npm run smoke:files` verifies Files.app search query parsing and type/ext/size filter behavior.
 - Files.app supports folder and search result sorting by kind/name, name, modified time, and size so large folders can be scanned predictably.
 - `npm run smoke:files` verifies Files.app sort ordering for folder-first, alphabetical, largest-first, and newest-first views.
+- Files.app caps rendered rows per column while preserving the selected item, reports capped folders in the column/status UI, and stops search traversal after the visible result budget so large folders do not create unbounded DOM work.
+- `npm run smoke:files` verifies column capping, selected-row preservation beyond the cap, uncapped folders, and bounded search result collection.
 - Multi-select selection model with Ctrl/Cmd toggle and Shift range selection.
 - Multi-select Trash/Delete target calculation for operating on several selected files at once.
 - `npm run smoke:files` verifies Files.app multi-select helper behavior and multi-action target de-duplication.
@@ -765,4 +767,4 @@ Goal: The OS shell feels stable under normal daily interaction.
 
 Tasks:
 
-- Improve Files.app remaining scale polish.
+- No open desktop polish task is currently identified; add new work here only when smoke coverage or real usage exposes a gap.
