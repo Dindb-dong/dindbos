@@ -183,6 +183,42 @@ const fsPromisesImport = await node.evaluate(
 assert(fsPromisesImport.status === 0, `fs promises import exited with ${fsPromisesImport.status}`);
 assert(fsPromisesImport.output.trim() === "async note note.txt true []", `unexpected fs promises import output: ${fsPromisesImport.output}`);
 
+const fsStreamsRequire = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "fs.writeFileSync('./stream-in.txt', 'streamed');",
+    "let seen = '';",
+    "const reader = fs.createReadStream('./stream-in.txt', { encoding: 'utf8' });",
+    "reader.on('data', (chunk) => seen += chunk);",
+    "reader.on('end', () => {",
+    "  const writer = fs.createWriteStream('./stream-out.txt');",
+    "  writer.write(seen.slice(0, 6));",
+    "  writer.end(seen.slice(6), () => console.log(fs.readFileSync('./stream-out.txt', 'utf8'), reader.bytesRead, writer.bytesWritten));",
+    "});",
+  ].join("\n"),
+  cwd,
+);
+assert(fsStreamsRequire.status === 0, `fs streams require exited with ${fsStreamsRequire.status}`);
+assert(fsStreamsRequire.output.trim() === "streamed 8 8", `unexpected fs streams require output: ${fsStreamsRequire.output}`);
+
+const fsStreamsImport = await node.evaluate(
+  [
+    "import { createReadStream, createWriteStream, readFileSync, writeFileSync } from 'node:fs';",
+    "writeFileSync('./stream-esm-in.txt', 'esm-stream');",
+    "let seen = '';",
+    "const reader = createReadStream('./stream-esm-in.txt', 'utf8');",
+    "reader.on('data', (chunk) => seen += chunk);",
+    "reader.on('end', () => {",
+    "  const writer = createWriteStream('./stream-esm-out.txt');",
+    "  writer.end(seen, () => console.log(readFileSync('./stream-esm-out.txt', 'utf8'), reader.bytesRead, writer.bytesWritten));",
+    "});",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsStreamsImport.status === 0, `fs streams import exited with ${fsStreamsImport.status}`);
+assert(fsStreamsImport.output.trim() === "esm-stream 10 10", `unexpected fs streams import output: ${fsStreamsImport.output}`);
+
 const processProbeRequire = node.evaluate(
   [
     "const processApi = require('process');",
