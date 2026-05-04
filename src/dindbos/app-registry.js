@@ -35,6 +35,7 @@ export class AppRegistry {
   }
 
   launch(appId, context = {}) {
+    this.os.assertSessionUnlocked?.("launch");
     const app = this.apps.get(appId);
     if (!app) throw new Error(`Unknown app: ${appId}`);
     const windowId = app.singleton ? app.id : `${app.id}-${Date.now()}-${++this.launchSeq}`;

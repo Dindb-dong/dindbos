@@ -35,6 +35,13 @@ export class DindbOS {
   constructor(options = {}) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
     this.session = normalizeSession(options.session || {});
+    this.sessionAuth = {
+      state: this.session.locked ? "locked" : "authenticated",
+      locked: Boolean(this.session.locked),
+      lockedAt: this.session.locked ? new Date().toISOString() : "",
+      unlockedAt: this.session.locked ? "" : new Date().toISOString(),
+      reason: this.session.lockReason || "",
+    };
     this.bus = new EventBus();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
@@ -114,6 +121,7 @@ export class DindbOS {
     }
     this.ensureDiskPolicyRoots();
     this.ensureSessionHome();
+    this.writeSessionStatus();
   }
 
   boot() {
@@ -279,6 +287,63 @@ export class DindbOS {
     }
   }
 
+  sessionStatus() {
+    return {
+      user: this.session.user,
+      groups: [...(this.session.groups || [])],
+      home: this.session.home,
+      state: this.sessionAuth.state,
+      locked: this.sessionAuth.locked,
+      lockedAt: this.sessionAuth.lockedAt,
+      unlockedAt: this.sessionAuth.unlockedAt,
+      reason: this.sessionAuth.reason,
+    };
+  }
+
+  lockSession(reason = "manual") {
+    if (this.sessionAuth.locked) return this.sessionStatus();
+    Object.assign(this.sessionAuth, {
+      state: "locked",
+      locked: true,
+      lockedAt: new Date().toISOString(),
+      reason: String(reason || "manual"),
+    });
+    this.writeSessionStatus();
+    this.bus.emit("session:lock", this.sessionStatus());
+    return this.sessionStatus();
+  }
+
+  unlockSession() {
+    if (!this.sessionAuth.locked) return this.sessionStatus();
+    Object.assign(this.sessionAuth, {
+      state: "authenticated",
+      locked: false,
+      unlockedAt: new Date().toISOString(),
+      reason: "",
+    });
+    this.writeSessionStatus();
+    this.bus.emit("session:unlock", this.sessionStatus());
+    return this.sessionStatus();
+  }
+
+  assertSessionUnlocked(action = "session") {
+    if (!this.sessionAuth.locked) return;
+    throw new Error(`${action}: session locked for ${this.session.user}; unlock session to continue`);
+  }
+
+  writeSessionStatus() {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/run", "root", system);
+    this.ensureSystemDirectory("/var/run/dindbos", "root", system);
+    this.fs.writeOrCreateFile("/var/run/dindbos/session.json", `${JSON.stringify(this.sessionStatus(), null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+  }
+
   diskPolicyAreas() {
     return DISK_POLICY_AREAS.map((area) => ({
       ...area,
@@ -346,6 +411,7 @@ export class DindbOS {
   }
 
   launch(appId, context = {}) {
+    this.assertSessionUnlocked("launch");
     return this.apps.launch(appId, context);
   }
 
@@ -481,11 +547,13 @@ export class DindbOS {
   }
 
   openPath(path, context = {}) {
+    this.assertSessionUnlocked("open");
     const node = this.fs.resolve(path);
     return this.openNode(node, context);
   }
 
   openNode(node, context = {}) {
+    this.assertSessionUnlocked("open");
     if (!node) return null;
     const resolved = this.fs.resolveNode(node);
     if (resolved.type === "directory" || resolved.type === "mount") {

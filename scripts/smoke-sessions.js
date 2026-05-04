@@ -60,7 +60,30 @@ assert(viewerManifest.fileSystem.read.includes("/home/ada-lovelace"), "Viewer re
 const settingsManifest = os.apps.getManifest("settings");
 assert(settingsManifest.fileSystem.read.includes("/home/ada-lovelace"), "Settings read scope did not use generated home");
 
-console.log("sessions smoke ok generated-home user-scopes ownership");
+const sessionStatus = os.sessionStatus();
+assert(sessionStatus.state === "authenticated" && sessionStatus.locked === false, "initial session was not authenticated");
+const persistedSession = JSON.parse(os.fs.readFile("/var/run/dindbos/session.json"));
+assert(persistedSession.user === "ada-lovelace", "session status file user mismatch");
+assert(persistedSession.state === "authenticated", "session status file state mismatch");
+
+const events = [];
+os.bus.on("session:lock", (event) => events.push(`lock:${event.state}:${event.reason}`));
+os.bus.on("session:unlock", (event) => events.push(`unlock:${event.state}`));
+const locked = os.lockSession("smoke-test");
+assert(locked.locked === true && locked.reason === "smoke-test", "lockSession did not report locked state");
+assert(JSON.parse(os.fs.readFile("/var/run/dindbos/session.json")).state === "locked", "session status file did not record locked state");
+result = await shell.executeAsync("whoami");
+assert(result.status === 1, `locked shell status mismatch: ${result.status}`);
+assert(result.output.includes("session locked for ada-lovelace"), `locked shell output mismatch: ${result.output}`);
+assertRejects(() => os.openPath("/home/ada-lovelace/.profile"), "open: session locked");
+assertRejects(() => os.apps.launch("settings"), "launch: session locked");
+const unlocked = os.unlockSession();
+assert(unlocked.locked === false && unlocked.state === "authenticated", "unlockSession did not restore authenticated state");
+assert(events.join(",") === "lock:locked:smoke-test,unlock:authenticated", `session events mismatch: ${events.join(",")}`);
+result = await shell.executeAsync("whoami");
+assert(result.status === 0 && result.output === "ada-lovelace", `unlocked shell output mismatch: ${result.output}`);
+
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock");
 
 function createStorage() {
   return {
@@ -81,4 +104,14 @@ function createStorage() {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function assertRejects(action, expectedMessage) {
+  try {
+    action();
+  } catch (error) {
+    if (error.message.includes(expectedMessage)) return;
+    throw new Error(`unexpected rejection: ${error.message}`);
+  }
+  throw new Error(`expected rejection: ${expectedMessage}`);
 }

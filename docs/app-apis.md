@@ -147,6 +147,10 @@ Available as `os.state`.
 
 App state is scoped by app id under `/var/lib/dindbos/app-state/<appId>.json`, survives close, relaunch, update, and VFS reload, and is removed during package uninstall cleanup. Apps cannot use this API to read another app's state.
 
+## Session State
+
+The runtime exposes browser-native login session state through `os.sessionStatus()`, `os.lockSession(reason)`, and `os.unlockSession()`. Locking a session blocks Shell command execution and app/path launches until the session is unlocked. The current status is persisted at `/var/run/dindbos/session.json`, and lock transitions emit `session:lock` / `session:unlock` events on the runtime bus.
+
 ## Disk Policy
 
 Available on the runtime object for built-in tools and trusted diagnostics:
