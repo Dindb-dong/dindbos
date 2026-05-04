@@ -363,6 +363,36 @@ assert(dnsPolicyImport.status === 0, `dns policy import exited with ${dnsPolicyI
 assert(dnsPolicyImport.output.includes("ENOTFOUND function function"), "dns ESM policy shape missing");
 assert(dnsPolicyImport.output.includes("NodeCompat dns networking is unavailable"), "dns ESM policy error missing");
 
+const consoleRequire = node.evaluate(
+  [
+    "const { Console, log } = require('console');",
+    "const writes = [];",
+    "const stream = { write(line) { writes.push(line.trim()); } };",
+    "const scoped = new Console(stream);",
+    "scoped.log('scoped', { ok: true });",
+    "log('global-console', 7);",
+    "console.log(writes[0]);",
+  ].join("\n"),
+  cwd,
+);
+assert(consoleRequire.status === 0, `console require exited with ${consoleRequire.status}`);
+assert(consoleRequire.output.trim() === "global-console 7\nscoped {\"ok\":true}", `unexpected console require output: ${consoleRequire.output}`);
+
+const consoleImport = await node.evaluate(
+  [
+    "import consoleApi, { Console } from 'node:console';",
+    "const lines = [];",
+    "const c = new Console({ write(line) { lines.push(line.trim()); } });",
+    "c.warn('warned');",
+    "consoleApi.error('module-error');",
+    "console.log(lines[0]);",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(consoleImport.status === 0, `console import exited with ${consoleImport.status}`);
+assert(consoleImport.output.trim() === "module-error\nwarned", `unexpected console import output: ${consoleImport.output}`);
+
 const networkPolicyRequire = node.evaluate(
   [
     "const http = require('http');",
