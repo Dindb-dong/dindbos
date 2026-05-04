@@ -26,6 +26,7 @@ Added:
 - Browser.app companion identity checks now require the expected health service, protocol version, capabilities, and WebSocket subprotocol before connecting.
 - `browserd` now creates an isolated Chromium browser context per Browser.app WebSocket session so origin storage does not leak between sessions.
 - Browser.app keyboard policy now covers Ctrl/Cmd+L address focus, Escape viewport restore, remote Tab/Shift+Tab focus movement, and remote modifier shortcuts.
+- Browser.app now sends mobile viewport/touch intent to `browserd` for narrow or touch-capable windows and keeps the mobile toolbar/address input usable.
 - `browserd` capability scope is now explicitly browser-only; native-adjacent helpers must use separate companion identities and protocols.
 - Explicit runtime boot phase diagnostics for storage load, VFS mount, package registry load, app registry load, process init, and desktop render, persisted under `/var/log/dindbos`.
 - Recoverable storage-load and VFS mount restore failures now continue booting with `recovered` boot phase diagnostics.

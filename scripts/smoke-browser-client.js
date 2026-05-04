@@ -212,10 +212,16 @@ async function verifyPasteProtocol() {
     const client = new BrowserCompanionClient("ws://127.0.0.1:8787/browser");
     await client.connect();
     assert(sockets[0].protocols[1] === BROWSERD_PROTOCOL, "paste connection did not request browserd WebSocket protocol");
+    await client.resize(390, 640, 2, true);
+    assert(sockets[0].sent.length === 1, `expected one resize command, got ${sockets[0].sent.length}`);
+    assert(sockets[0].sent[0].type === "resize", `resize used wrong protocol: ${sockets[0].sent[0].type}`);
+    assert(sockets[0].sent[0].width === 390 && sockets[0].sent[0].height === 640, "resize dimensions mismatch");
+    assert(sockets[0].sent[0].deviceScaleFactor === 2, "resize scale mismatch");
+    assert(sockets[0].sent[0].mobile === true, "resize mobile flag mismatch");
     await client.paste("clip text");
-    assert(sockets[0].sent.length === 1, `expected one paste command, got ${sockets[0].sent.length}`);
-    assert(sockets[0].sent[0].type === "type", `paste used wrong protocol: ${sockets[0].sent[0].type}`);
-    assert(sockets[0].sent[0].text === "clip text", "paste payload text mismatch");
+    assert(sockets[0].sent.length === 2, `expected resize plus paste command, got ${sockets[0].sent.length}`);
+    assert(sockets[0].sent[1].type === "type", `paste used wrong protocol: ${sockets[0].sent[1].type}`);
+    assert(sockets[0].sent[1].text === "clip text", "paste payload text mismatch");
     client.close();
   } finally {
     globalThis.fetch = originalFetch;

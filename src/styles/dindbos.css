@@ -1419,6 +1419,7 @@ button {
   overflow: hidden;
   outline: 0;
   background: #0b0d0a;
+  touch-action: none;
 }
 
 /* Browser placeholder */
@@ -2004,17 +2005,43 @@ button {
 
   /* Mobile browser toolbar */
   .browser-toolbar {
-    grid-template-columns: repeat(3, max-content) minmax(140px, 1fr) max-content;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  /* Mobile browser toolbar controls */
+  .browser-toolbar button,
+  .browser-toolbar input {
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 8px;
+  }
+
+  /* Mobile browser address input */
+  .browser-toolbar input {
+    order: -1;
+    grid-column: 1 / -1;
+    font-size: 16px;
+  }
+
+  /* Mobile browser go button */
+  .browser-toolbar button[type="submit"] {
+    grid-column: span 1;
   }
 
   /* Mobile browser connect button */
   .browser-toolbar [data-browser-action="connect"] {
-    display: none;
+    grid-column: span 2;
   }
 
   /* Mobile browser status */
   .browser-status code {
     display: none;
+  }
+
+  /* Mobile browser viewport */
+  .browser-viewport {
+    min-height: 280px;
   }
 
   /* Mobile files mount banner */

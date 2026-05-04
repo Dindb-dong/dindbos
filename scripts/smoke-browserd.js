@@ -55,7 +55,8 @@ try {
     received.push(await socketMessage(event.data));
   });
 
-  await sendCommand(socket, 1, "resize", { width: 640, height: 420, deviceScaleFactor: 1 });
+  const resizeResult = await sendCommand(socket, 1, "resize", { width: 640, height: 420, deviceScaleFactor: 1 });
+  assert(resizeResult.mobile === false && resizeResult.width === 640, "desktop resize result mismatch");
   const targetUrl = smokePageUrl();
   await sendCommand(socket, 2, "navigate", { url: targetUrl });
   await sendCommand(socket, 3, "capture");
@@ -104,6 +105,8 @@ try {
       && message.suggestedFilename === "blocked.txt",
     COMMAND_TIMEOUT_MS,
   );
+  const mobileResize = await sendCommand(socket, 14, "resize", { width: 390, height: 680, deviceScaleFactor: 2, mobile: true });
+  assert(mobileResize.mobile === true && mobileResize.deviceScaleFactor === 2, "mobile resize result mismatch");
   await verifyBrowserSessionIsolation(browserPort);
 
   socket.close();
