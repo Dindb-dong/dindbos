@@ -480,6 +480,11 @@ class CommonJsRuntime {
         this.os.fs.appendFile(resolved, stringifyFileData(data), "/", this.node.system);
       },
       existsSync: (path) => this.os.fs.exists(this.node.resolveFsPath(path, this.processContext.cwd), "/"),
+      realpathSync: (path) => {
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
+        if (!this.os.fs.exists(resolved, "/")) throw new Error(`ENOENT: no such file or directory, realpath '${path}'`);
+        return resolved;
+      },
       statSync: (path) => createStats(this.os.fs.stat(this.node.resolveFsPath(path, this.processContext.cwd), "/")),
       lstatSync: (path) => createStats(this.os.fs.lstat(this.node.resolveFsPath(path, this.processContext.cwd), "/")),
       readdirSync: (path = ".", options = {}) => {
@@ -506,6 +511,7 @@ class CommonJsRuntime {
       readFile: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readFileSync(path, optionalOptions(options))),
       writeFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.writeFileSync(path, data)),
       appendFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.appendFileSync(path, data)),
+      realpath: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.realpathSync(path)),
       readdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readdirSync(path, optionalOptions(options))),
       mkdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.mkdirSync(path, optionalOptions(options))),
       rm: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.rmSync(path, optionalOptions(options))),
@@ -553,6 +559,7 @@ class CommonJsRuntime {
       readFile: async (path, encoding = null) => fsModule.readFileSync(path, encoding),
       writeFile: async (path, data) => fsModule.writeFileSync(path, data),
       appendFile: async (path, data) => fsModule.appendFileSync(path, data),
+      realpath: async (path) => fsModule.realpathSync(path),
       readdir: async (path = ".", options = {}) => fsModule.readdirSync(path, options),
       mkdir: async (path, options = {}) => fsModule.mkdirSync(path, options),
       rm: async (path, options = {}) => fsModule.rmSync(path, options),
@@ -565,6 +572,8 @@ class CommonJsRuntime {
         if (!fsModule.existsSync(path)) throw new Error(`ENOENT: no such file or directory, access '${path}'`);
       },
     };
+    fsModule.realpathSync.native = fsModule.realpathSync;
+    fsModule.realpath.native = fsModule.realpath;
     return fsModule;
   }
 }

@@ -291,6 +291,35 @@ const fsMutationsImport = await node.evaluate(
 assert(fsMutationsImport.status === 0, `fs mutations import exited with ${fsMutationsImport.status}`);
 assert(fsMutationsImport.output.trim() === "false esm-append", `unexpected fs mutations import output: ${fsMutationsImport.output}`);
 
+const fsRealpathRequire = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "fs.mkdirSync('./real-dir', { recursive: true });",
+    "fs.writeFileSync('./real-dir/note.txt', 'real');",
+    "fs.realpath.native('./real-dir/note.txt', (error, resolved) => {",
+    "  if (error) throw error;",
+    "  console.log(fs.realpathSync('./real-dir'), resolved.endsWith('/real-dir/note.txt'), fs.realpathSync.native('./real-dir/note.txt').endsWith('/real-dir/note.txt'));",
+    "});",
+  ].join("\n"),
+  cwd,
+);
+assert(fsRealpathRequire.status === 0, `fs realpath require exited with ${fsRealpathRequire.status}`);
+assert(fsRealpathRequire.output.trim() === `${cwd}/real-dir true true`, `unexpected fs realpath require output: ${fsRealpathRequire.output}`);
+
+const fsRealpathImport = await node.evaluate(
+  [
+    "import fs, { promises } from 'node:fs';",
+    "fs.mkdirSync('./real-esm-dir', { recursive: true });",
+    "fs.writeFileSync('./real-esm-dir/note.txt', 'real-esm');",
+    "const resolved = await promises.realpath('./real-esm-dir/note.txt');",
+    "console.log(fs.realpathSync('./real-esm-dir'), resolved.endsWith('/real-esm-dir/note.txt'));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsRealpathImport.status === 0, `fs realpath import exited with ${fsRealpathImport.status}`);
+assert(fsRealpathImport.output.trim() === `${cwd}/real-esm-dir true`, `unexpected fs realpath import output: ${fsRealpathImport.output}`);
+
 const fsStreamsRequire = node.evaluate(
   [
     "const fs = require('fs');",
