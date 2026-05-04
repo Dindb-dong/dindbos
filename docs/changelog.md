@@ -34,6 +34,7 @@ Added:
 - Disk policy areas for `/home`, `/opt`, `/var`, `/var/cache`, `/tmp`, and `/mnt`, exposed through runtime APIs and `df`.
 - Persistence lifecycle flush coverage for `beforeunload`, `pagehide`, and hidden-tab visibility changes.
 - Runtime Cache API store with memory fallback for npm metadata/tarballs and remote package manifests/files.
+- Storage Bucket policy reporting now records support detection, bucket intent for `/tmp` and `/var/cache`, and the current decision to keep the proven OPFS/IndexedDB/Cache storage stack.
 - Files.app import/export archive support with nested binary byte preservation.
 - Files.app local mount banners, reconnect/sync/forget controls, operation progress, and recent operation history.
 - Files.app rich search filters for text, type, extension, size, modified time, and path.

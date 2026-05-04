@@ -56,9 +56,15 @@ async function verifySuccessfulBootPhases() {
   assert(os.diskPolicyForPath("/tmp/payload.bin").type === "temporary", "/tmp did not resolve to temporary disk policy");
   assert(os.diskPolicyForPath("/mnt/portfolio").type === "external", "/mnt did not resolve to external disk policy");
   assert(os.diskPolicyAreas().every((area) => area.exists), "not all disk policy roots exist");
+  assert(os.diskPolicyForPath("/tmp/payload.bin").bucket === "session", "/tmp did not report session bucket policy");
+  assert(os.diskPolicyForPath("/var/cache/npm").bucket === "cache", "/var/cache did not report cache bucket policy");
+  const bucketPolicy = os.storageBucketPolicy();
+  assert(bucketPolicy.decision === "fallback-to-current-storage-stack", `unexpected storage bucket policy: ${bucketPolicy.decision}`);
+  assert(bucketPolicy.areas.some((area) => area.root === "/tmp" && area.bucket === "session"), "storage bucket policy missing /tmp session area");
   const bootDiagnostics = JSON.parse(os.fs.readFile("/var/log/dindbos/boot.json"));
   assert(bootDiagnostics.phases.length === BOOT_PHASES.length, "boot diagnostics did not include all phases");
   assert(bootDiagnostics.phases.every((phase) => phase.status === "complete"), "boot diagnostics included incomplete phases");
+  assert(bootDiagnostics.storageBuckets.decision === "fallback-to-current-storage-stack", "boot diagnostics missing storage bucket policy");
   assert(os.fs.readFile("/var/log/dindbos/boot.log").includes("[complete] desktop-render"), "boot log missing desktop-render completion");
 }
 
