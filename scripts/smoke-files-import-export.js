@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {
+  assertFilesOperationActive,
   collectExportEntries,
   filesActionTargets,
   importDroppedFiles,
@@ -32,6 +33,24 @@ assert(entries.length === 3, `expected 3 exported entries, got ${entries.length}
 const exportedBinary = entries.find((entry) => entry.path === "nested/payload.bin");
 assert(exportedBinary, "nested binary file was not exported");
 assert(exportedBinary.data, "exported binary data is missing");
+
+const abortController = new AbortController();
+let abortSteps = 0;
+await assertRejects(
+  () => collectExportEntries(os, sourceRoot, {
+    signal: abortController.signal,
+    step: () => {
+      abortSteps += 1;
+      abortController.abort();
+    },
+  }),
+  "Files operation cancelled",
+);
+assert(abortSteps === 1, `expected export cancellation after first step, got ${abortSteps}`);
+await assertRejects(
+  () => assertFilesOperationActive(abortController.signal),
+  "Files operation cancelled",
+);
 
 const archiveFile = {
   name: "export-source.dindbos-export.json",
@@ -128,11 +147,17 @@ history = recordFilesOperationHistory(history, {
   detail: sourceRoot,
   finishedAt: "2026-05-04T00:02:00.000Z",
 }, { limit: 2 });
+history = recordFilesOperationHistory(history, {
+  id: "op-4",
+  label: "Copy",
+  status: "cancelled",
+  detail: "Cancelled",
+  finishedAt: "2026-05-04T00:03:00.000Z",
+}, { limit: 2 });
 assert(history.length === 2, `expected operation history limit 2, got ${history.length}`);
-assert(history[0].id === "op-3", "operation history did not put newest item first");
-assert(history[1].id === "op-2", "operation history did not evict oldest item");
-assert(history[1].status === "error", "operation history lost error status");
-assert(history[1].detail === "Cannot move a folder into itself", "operation history lost error detail");
+assert(history[0].id === "op-4", "operation history did not put cancelled item first");
+assert(history[0].status === "cancelled", "operation history lost cancelled status");
+assert(history[1].id === "op-3", "operation history did not evict older items after cancellation");
 
 console.log(`files import/export smoke ok entries=${entries.length} binaryBytes=${binary.byteLength} history=${history.length}`);
 
@@ -159,4 +184,14 @@ function assertBytes(actual, expected, message) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+async function assertRejects(action, expectedMessage) {
+  try {
+    await action();
+  } catch (error) {
+    if (error.message.includes(expectedMessage)) return;
+    throw new Error(`unexpected rejection: ${error.message}`);
+  }
+  throw new Error(`expected rejection containing ${expectedMessage}`);
 }
