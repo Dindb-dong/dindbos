@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
+import { createServer as createTcpServer } from "node:net";
 
 const HEALTH_TIMEOUT_MS = 12000;
 const FRAME_TIMEOUT_MS = 12000;
@@ -103,9 +104,10 @@ try {
       && message.suggestedFilename === "blocked.txt",
     COMMAND_TIMEOUT_MS,
   );
+  await verifyBrowserSessionIsolation(browserPort);
 
   socket.close();
-  console.log(`browserd smoke ok port=${browserPort} cdp=${cdpPort} frameBytes=${frame.payload.byteLength}`);
+  console.log(`browserd smoke ok port=${browserPort} cdp=${cdpPort} frameBytes=${frame.payload.byteLength} session-isolation`);
 } catch (error) {
   console.error(`browserd smoke failed: ${error.message}`);
   if (output.trim()) console.error(output.trim());
@@ -116,13 +118,71 @@ try {
 }
 
 async function openPort() {
-  const server = createServer();
+  const server = createTcpServer();
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const { port } = server.address();
   server.close();
   await once(server, "close");
   return port;
+}
+
+async function verifyBrowserSessionIsolation(browserPort) {
+  const app = await serveSessionPages();
+  const first = new WebSocket(`ws://127.0.0.1:${browserPort}/browser`, "dindbos-browserd.v1");
+  const second = new WebSocket(`ws://127.0.0.1:${browserPort}/browser`, "dindbos-browserd.v1");
+  const firstReceived = [];
+  const secondReceived = [];
+  try {
+    await Promise.all([once(first, "open"), once(second, "open")]);
+    first.addEventListener("message", async (event) => {
+      firstReceived.push(await socketMessage(event.data));
+    });
+    second.addEventListener("message", async (event) => {
+      secondReceived.push(await socketMessage(event.data));
+    });
+    await sendCommand(first, 101, "navigate", { url: `http://127.0.0.1:${app.port}/set` });
+    await waitForMessage(
+      firstReceived,
+      (message) => message.type === "status" && message.title === "stored:alpha:alpha",
+      COMMAND_TIMEOUT_MS,
+    );
+    await sendCommand(second, 201, "navigate", { url: `http://127.0.0.1:${app.port}/read` });
+    await waitForMessage(
+      secondReceived,
+      (message) => message.type === "status" && message.title === "read:none:none",
+      COMMAND_TIMEOUT_MS,
+    );
+  } finally {
+    first.close();
+    second.close();
+    app.server.close();
+    await once(app.server, "close");
+  }
+}
+
+async function serveSessionPages() {
+  const server = createHttpServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    if (request.url === "/set") {
+      response.end(`<!doctype html>
+        <script>
+          document.cookie = "dindbosSession=alpha; SameSite=Lax";
+          localStorage.setItem("dindbosSession", "alpha");
+          const cookie = document.cookie.includes("dindbosSession=alpha") ? "alpha" : "none";
+          document.title = "stored:" + cookie + ":" + localStorage.getItem("dindbosSession");
+        </script>`);
+      return;
+    }
+    response.end(`<!doctype html>
+      <script>
+        const cookie = document.cookie.includes("dindbosSession=alpha") ? "alpha" : "none";
+        document.title = "read:" + cookie + ":" + (localStorage.getItem("dindbosSession") || "none");
+      </script>`);
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  return { server, port: server.address().port };
 }
 
 async function waitForHealth(port) {

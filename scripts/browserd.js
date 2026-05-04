@@ -214,6 +214,8 @@ class BrowserSession {
     this.cdpPort = cdpPort;
     this.send = send;
     this.sendBinaryFrame = sendBinaryFrame;
+    this.browserCdp = null;
+    this.browserContextId = "";
     this.cdp = null;
     this.width = 1280;
     this.height = 800;
@@ -251,7 +253,9 @@ class BrowserSession {
 
   async ensureCdp() {
     if (this.cdp) return;
-    const target = await createTarget(this.cdpPort);
+    const target = await createIsolatedTarget(this.cdpPort);
+    this.browserCdp = target.browserCdp;
+    this.browserContextId = target.browserContextId;
     this.cdp = new CdpClient(target.webSocketDebuggerUrl);
     await this.cdp.connect();
     await this.command("Page.enable");
@@ -262,6 +266,7 @@ class BrowserSession {
     this.cdp.on("Page.frameNavigated", () => this.scheduleMetadataRefresh());
     this.cdp.on("Page.downloadWillBegin", (params) => this.handleDownloadWillBegin(params));
     this.cdp.on("Browser.downloadWillBegin", (params) => this.handleDownloadWillBegin(params));
+    this.browserCdp?.on("Browser.downloadWillBegin", (params) => this.handleDownloadWillBegin(params));
     await this.resize({ width: this.width, height: this.height, deviceScaleFactor: this.deviceScaleFactor, force: true });
     await this.startScreencast();
     this.send({ type: "status", status: "ready", url: "about:blank", title: "" });
@@ -272,7 +277,12 @@ class BrowserSession {
   }
 
   async configureDownloadPolicy() {
-    await this.command("Browser.setDownloadBehavior", { behavior: "deny" }).catch(() => (
+    const browserParams = { behavior: "deny" };
+    if (this.browserContextId) browserParams.browserContextId = this.browserContextId;
+    await this.browserCdp?.send("Browser.setDownloadBehavior", browserParams).catch(() => (
+      this.command("Browser.setDownloadBehavior", browserParams).catch(() => {})
+    ));
+    await this.command("Browser.setDownloadBehavior", browserParams).catch(() => (
       this.command("Page.setDownloadBehavior", { behavior: "deny" }).catch(() => {})
     ));
   }
@@ -450,6 +460,10 @@ class BrowserSession {
     clearTimeout(this.frameTimer);
     if (this.screencastStarted) this.command("Page.stopScreencast").catch(() => {});
     this.cdp?.close();
+    if (this.browserContextId) {
+      this.browserCdp?.send("Target.disposeBrowserContext", { browserContextId: this.browserContextId }).catch(() => {});
+    }
+    this.browserCdp?.close();
   }
 }
 
@@ -568,11 +582,28 @@ function encodeBinaryFrame(metadata, bytes) {
   return Buffer.concat([prefix, header, body]);
 }
 
-async function createTarget(port) {
-  const response = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" })
-    .catch(() => fetch(`http://127.0.0.1:${port}/json/new?about:blank`));
-  if (!response.ok) throw new Error(`browserd: cannot create CDP target (${response.status})`);
-  return response.json();
+async function createIsolatedTarget(port) {
+  const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+  if (!response.ok) throw new Error(`browserd: cannot read CDP version (${response.status})`);
+  const version = await response.json();
+  if (!version.webSocketDebuggerUrl) throw new Error("browserd: CDP browser websocket URL missing");
+  const browserCdp = new CdpClient(version.webSocketDebuggerUrl);
+  await browserCdp.connect();
+  const context = await browserCdp.send("Target.createBrowserContext", { disposeOnDetach: true });
+  const target = await browserCdp.send("Target.createTarget", {
+    url: "about:blank",
+    browserContextId: context.browserContextId,
+  });
+  const targetResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
+  if (!targetResponse.ok) throw new Error(`browserd: cannot list CDP targets (${targetResponse.status})`);
+  const targets = await targetResponse.json();
+  const page = targets.find((entry) => entry.id === target.targetId);
+  if (!page?.webSocketDebuggerUrl) throw new Error("browserd: isolated CDP target websocket URL missing");
+  return {
+    browserCdp,
+    browserContextId: context.browserContextId,
+    webSocketDebuggerUrl: page.webSocketDebuggerUrl,
+  };
 }
 
 async function waitForCdp(port) {
