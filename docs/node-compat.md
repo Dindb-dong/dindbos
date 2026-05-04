@@ -123,6 +123,8 @@ The `assert` and `querystring` modules are browser-safe compatibility facades fo
 
 The `util/types` module is available through `util.types`, `util/types`, and `node:util/types` for browser-safe package feature probes. It covers common ArrayBuffer, typed array, boxed primitive, collection, Date, RegExp, Promise, and Error checks.
 
+The `util` module includes browser-native `TextEncoder` and `TextDecoder` plus a conservative `isDeepStrictEqual` helper for common package equality probes. These are compatibility helpers, not a full clone of every Node.js `util` inspection edge case.
+
 The `punycode` module supports `encode`, `decode`, `toASCII`, `toUnicode`, and `ucs2` helpers for browser-safe packages that still probe or import Node's legacy IDNA utility surface.
 
 The `perf_hooks` module exposes a browser-safe `performance` timeline for marks/measures plus a minimal `PerformanceObserver` shape. Event-loop delay monitoring is not available in the browser runtime.
