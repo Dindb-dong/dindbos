@@ -30,7 +30,7 @@ Health check:
 curl http://127.0.0.1:8787/health
 ```
 
-The response must include `service: "dindbos-browserd"`, `protocol: "dindbos-browserd.v1"`, and required capabilities such as `browser.navigate`, `browser.input`, and `browser.frames.binary`. If another old local server is already using port `8787`, Browser.app will refuse to connect instead of rendering a broken frame.
+The response must include `service: "dindbos-browserd"`, `protocol: "dindbos-browserd.v1"`, required capabilities such as `browser.navigate`, `browser.input`, `browser.frames.binary`, and `browser.frames.cdp-screencast`, plus `stream: { transport: "cdp-screencast", encoding: "binary-jpeg" }`. If another old local server is already using port `8787`, Browser.app will refuse to connect instead of rendering a broken frame.
 
 ## Trust Boundary
 
@@ -60,6 +60,12 @@ Native-adjacent work is split by boundary:
 - Remote hosted browser providers are separate from local `browserd` and require their own provider identity/trust model.
 
 Current identity checks are intentionally local and versioned: Browser.app verifies the health service name, protocol version, and required capabilities before opening a WebSocket, then requests the same protocol as a WebSocket subprotocol. This prevents accidental connection to an unrelated or incompatible local server; it is not a full authentication scheme.
+
+## Stream Transport Decision
+
+Browser.app v1 uses CDP screencast frames encoded as binary JPEG WebSocket payloads. WebRTC is deliberately deferred: it should only be introduced if the proven CDP screencast path cannot meet latency, bandwidth, or quality targets for real workloads.
+
+The `/health` response advertises this decision with `stream.transport: "cdp-screencast"`, `stream.encoding: "binary-jpeg"`, `stream.realtimeVideo: false`, and `stream.webrtc: "deferred"`. Browser.app rejects providers that advertise a different v1 stream shape, which keeps hosted providers compatible with the currently tested protocol instead of silently switching to an unimplemented video stack.
 
 ## Connection Policy
 
@@ -116,7 +122,7 @@ Server events:
 
 Current limits:
 
-- The browser frame is a throttled Chromium screencast stream, not GPU/WebRTC video.
+- The browser frame is a throttled Chromium CDP screencast stream, not GPU/WebRTC video. WebRTC remains deferred until the binary JPEG path fails measured workload targets.
 - Keyboard input covers printable text, common special keys, and modifier metadata, but full browser shortcut/focus policy is still limited.
 - One isolated Chromium browser context and target is created per Browser.app WebSocket session.
 - The companion must be started manually. Web pages cannot install or launch local native processes automatically.

@@ -1,6 +1,8 @@
 export const BROWSERD_SERVICE = "dindbos-browserd";
 export const BROWSERD_PROTOCOL = "dindbos-browserd.v1";
-export const BROWSERD_REQUIRED_CAPABILITIES = ["browser.navigate", "browser.input", "browser.frames.binary"];
+export const BROWSERD_FRAME_TRANSPORT = "cdp-screencast";
+export const BROWSERD_FRAME_ENCODING = "binary-jpeg";
+export const BROWSERD_REQUIRED_CAPABILITIES = ["browser.navigate", "browser.input", "browser.frames.binary", "browser.frames.cdp-screencast"];
 
 export class BrowserCompanionClient {
   constructor(url = "ws://127.0.0.1:8787/browser") {
@@ -99,6 +101,10 @@ export class BrowserCompanionClient {
     const capabilities = Array.isArray(health.capabilities) ? health.capabilities : [];
     const missing = BROWSERD_REQUIRED_CAPABILITIES.filter((capability) => !capabilities.includes(capability));
     if (missing.length) throw new Error(`browserd missing capabilities: ${missing.join(", ")}`);
+    const stream = health.stream || {};
+    if (stream.transport !== BROWSERD_FRAME_TRANSPORT || stream.encoding !== BROWSERD_FRAME_ENCODING) {
+      throw new Error(`browserd stream mismatch: expected ${BROWSERD_FRAME_TRANSPORT}/${BROWSERD_FRAME_ENCODING}`);
+    }
     return health;
   }
 

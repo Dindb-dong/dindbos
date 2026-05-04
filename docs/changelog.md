@@ -24,6 +24,7 @@ Added:
 - Browser.app now accepts configurable local or hosted browser provider URLs and preserves the provider across session snapshots.
 - Browser.app companion frames now use binary WebSocket payloads plus object URLs instead of base64 data URL transport.
 - Browser.app companion identity checks now require the expected health service, protocol version, capabilities, and WebSocket subprotocol before connecting.
+- Browser.app v1 stream compatibility is now explicit: `browserd` health advertises CDP screencast with binary JPEG frame encoding, and Browser.app rejects incompatible stream metadata such as WebRTC-only providers.
 - `browserd` now creates an isolated Chromium browser context per Browser.app WebSocket session so origin storage does not leak between sessions.
 - Browser.app keyboard policy now covers Ctrl/Cmd+L address focus, Escape viewport restore, remote Tab/Shift+Tab focus movement, and remote modifier shortcuts.
 - Browser.app now sends mobile viewport/touch intent to `browserd` for narrow or touch-capable windows and keeps the mobile toolbar/address input usable.

@@ -2,6 +2,8 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
 import {
+  BROWSERD_FRAME_ENCODING,
+  BROWSERD_FRAME_TRANSPORT,
   BROWSERD_PROTOCOL,
   BROWSERD_REQUIRED_CAPABILITIES,
   BROWSERD_SERVICE,
@@ -255,6 +257,8 @@ async function verifyHealthIdentityGuard() {
   await assertHealthRejected(wrongProtocol, "browserd protocol mismatch");
   const missingCapability = await serveHealth({ ...browserdHealth(), capabilities: ["browser.navigate"] });
   await assertHealthRejected(missingCapability, "browserd missing capabilities");
+  const wrongStream = await serveHealth({ ...browserdHealth(), stream: { transport: "webrtc", encoding: "rtp" } });
+  await assertHealthRejected(wrongStream, "browserd stream mismatch");
 }
 
 async function assertRejects(action, expectedMessage) {
@@ -277,6 +281,12 @@ function browserdHealth() {
     service: BROWSERD_SERVICE,
     protocol: BROWSERD_PROTOCOL,
     capabilities: [...BROWSERD_REQUIRED_CAPABILITIES, "browser.download.deny"],
+    stream: {
+      transport: BROWSERD_FRAME_TRANSPORT,
+      encoding: BROWSERD_FRAME_ENCODING,
+      realtimeVideo: false,
+      webrtc: "deferred",
+    },
   };
 }
 
