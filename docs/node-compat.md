@@ -89,6 +89,7 @@ Current built-ins:
 - `util`
 - `timers`
 - `perf_hooks`
+- `async_hooks`
 - `stream`
 - `crypto`
 - `assert`
@@ -116,6 +117,8 @@ The `assert` and `querystring` modules are browser-safe compatibility facades fo
 The `punycode` module supports `encode`, `decode`, `toASCII`, `toUnicode`, and `ucs2` helpers for browser-safe packages that still probe or import Node's legacy IDNA utility surface.
 
 The `perf_hooks` module exposes a browser-safe `performance` timeline for marks/measures plus a minimal `PerformanceObserver` shape. Event-loop delay monitoring is not available in the browser runtime.
+
+The `async_hooks` module exposes a browser-safe subset of `AsyncLocalStorage`, `AsyncResource`, and hook creation for packages that use scoped context or runtime feature probes. It preserves synchronous callback scope; it is not a full Node async lifecycle tracker.
 
 The `os` module is a browser-safe environment facade. It reports DindbOS paths and browser runtime identity for package feature detection; CPU, memory, network interface, load average, and priority APIs return conservative non-host values.
 

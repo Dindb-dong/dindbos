@@ -18,6 +18,8 @@ const BUILTIN_MODULES = new Set([
   "node:timers",
   "perf_hooks",
   "node:perf_hooks",
+  "async_hooks",
+  "node:async_hooks",
   "stream",
   "node:stream",
   "crypto",
@@ -219,6 +221,7 @@ class CommonJsRuntime {
       util: createUtilModule(),
       timers: createTimersModule(),
       perf_hooks: createPerfHooksModule(),
+      async_hooks: createAsyncHooksModule(),
       stream: createStreamModule(events),
       crypto: createCryptoModule(this.buffer),
       assert: createAssertModule(),
@@ -987,6 +990,141 @@ function clearEntries(entries, name) {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     if (entries[index].name === name) entries.splice(index, 1);
   }
+}
+
+function createAsyncHooksModule() {
+  let nextAsyncId = 1;
+  let currentAsyncId = 0;
+  let currentTriggerAsyncId = 0;
+
+  class AsyncLocalStorage {
+    constructor() {
+      this.store = undefined;
+      this.enabled = true;
+    }
+
+    run(store, callback, ...args) {
+      if (typeof callback !== "function") throw new Error("async_hooks: callback must be a function");
+      const previousStore = this.store;
+      const previousEnabled = this.enabled;
+      this.store = store;
+      this.enabled = true;
+      try {
+        return callback(...args);
+      } finally {
+        this.store = previousStore;
+        this.enabled = previousEnabled;
+      }
+    }
+
+    enterWith(store) {
+      this.store = store;
+      this.enabled = true;
+    }
+
+    getStore() {
+      return this.enabled ? this.store : undefined;
+    }
+
+    exit(callback, ...args) {
+      if (typeof callback !== "function") throw new Error("async_hooks: callback must be a function");
+      const previousStore = this.store;
+      const previousEnabled = this.enabled;
+      this.store = undefined;
+      this.enabled = false;
+      try {
+        return callback(...args);
+      } finally {
+        this.store = previousStore;
+        this.enabled = previousEnabled;
+      }
+    }
+
+    disable() {
+      this.store = undefined;
+      this.enabled = false;
+    }
+
+    static bind(callback) {
+      if (typeof callback !== "function") throw new Error("async_hooks: callback must be a function");
+      return (...args) => callback(...args);
+    }
+
+    static snapshot() {
+      return (callback, ...args) => callback(...args);
+    }
+  }
+
+  class AsyncResource {
+    constructor(type = "DindbOSAsyncResource", options = {}) {
+      this.type = String(type || "DindbOSAsyncResource");
+      this.id = nextAsyncId++;
+      this.triggerId = Number(options.triggerAsyncId ?? currentAsyncId);
+      this.destroyed = false;
+    }
+
+    asyncId() {
+      return this.id;
+    }
+
+    triggerAsyncId() {
+      return this.triggerId;
+    }
+
+    runInAsyncScope(callback, thisArg, ...args) {
+      if (typeof callback !== "function") throw new Error("async_hooks: callback must be a function");
+      const previousAsyncId = currentAsyncId;
+      const previousTriggerAsyncId = currentTriggerAsyncId;
+      currentAsyncId = this.id;
+      currentTriggerAsyncId = this.triggerId;
+      try {
+        return callback.apply(thisArg, args);
+      } finally {
+        currentAsyncId = previousAsyncId;
+        currentTriggerAsyncId = previousTriggerAsyncId;
+      }
+    }
+
+    bind(callback, thisArg) {
+      if (typeof callback !== "function") throw new Error("async_hooks: callback must be a function");
+      return (...args) => this.runInAsyncScope(callback, thisArg, ...args);
+    }
+
+    emitDestroy() {
+      this.destroyed = true;
+      return this;
+    }
+
+    static bind(callback, type, thisArg) {
+      return new AsyncResource(type || "DindbOSAsyncResource").bind(callback, thisArg);
+    }
+  }
+
+  const createHook = () => {
+    let enabled = false;
+    return {
+      enable() {
+        enabled = true;
+        return this;
+      },
+      disable() {
+        enabled = false;
+        return this;
+      },
+      get enabled() {
+        return enabled;
+      },
+    };
+  };
+
+  return {
+    AsyncLocalStorage,
+    AsyncResource,
+    createHook,
+    executionAsyncId: () => currentAsyncId,
+    triggerAsyncId: () => currentTriggerAsyncId,
+    executionAsyncResource: () => null,
+  };
 }
 
 function createNetworkModule(protocol) {
