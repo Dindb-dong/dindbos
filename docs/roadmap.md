@@ -219,11 +219,11 @@ Already present:
 - Browser.app connection policy is documented: blank windows require Connect, external URL submissions/context launches auto-connect, and local VFS HTML never starts `browserd`.
 - Browser.app forwards clipboard paste into remote pages and blocks companion downloads with visible status instead of silent writes.
 - Browser.app address/title/status session state is snapshotted into the window state slot and survives minimize/focus/activate flows.
+- Browser.app companion frames use binary WebSocket payloads with JSON headers and object URLs instead of base64 data URL transport.
 
 Remaining:
 
 - Expand Browser.app keyboard policy for focus movement, text selection, and full shortcut behavior.
-- Reduce frame payload overhead by evaluating binary WebSocket frames instead of base64 data URLs.
 - Evaluate WebRTC/video stream only after the current CDP screencast protocol is stable.
 
 Completion criteria:
@@ -484,6 +484,7 @@ Already present:
 - `npm run smoke:browser-client` verifies paste helper behavior and the `type` protocol payload sent to the companion.
 - Browser.app stores address/title/status/frame/local-document session state in the window state slot so minimize, focus, activation, and render restore paths do not reset visible browser state.
 - `npm run smoke:browser-addresses` verifies Browser.app session snapshots; `npm run smoke:window-manager` verifies window state survives minimize/focus/activate.
+- Binary frame transport sends Chromium JPEG screencast bytes over WebSocket binary messages and Browser.app renders them through object URLs, covered by `npm run smoke:browserd` and `npm run smoke:browser-client`.
 
 Remaining:
 
@@ -491,7 +492,6 @@ Remaining:
 - Better tab model: multiple tabs, current tab state, close/reopen, and per-tab history.
 - WebRTC/video stream investigation after CDP screencast is proven reliable.
 - Auth/session isolation per Browser.app session.
-- Binary frame transport to reduce base64 overhead.
 - Better mobile behavior for browser viewport size and input.
 
 Completion criteria:

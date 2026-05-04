@@ -63,7 +63,7 @@ npm run smoke:browserd
 npm run smoke:browserd-failures
 ```
 
-The main smoke test starts `browserd` on temporary ports, verifies the health check, opens a WebSocket session, navigates Chromium to a local `data:` HTML page, and fails unless a real JPEG frame is received. The failure smoke test verifies missing Chrome, CDP startup failure, and WebSocket drop behavior.
+The main smoke test starts `browserd` on temporary ports, verifies the health check, opens a WebSocket session, navigates Chromium to a local `data:` HTML page, and fails unless a real binary JPEG frame is received. The failure smoke test verifies missing Chrome, CDP startup failure, and WebSocket drop behavior.
 
 Run all local syntax and browser companion checks:
 
@@ -96,7 +96,7 @@ Protocol commands:
 Server events:
 
 - `status`
-- `frame`
+- `frame` as a binary WebSocket message. The first four bytes are a big-endian JSON header length, followed by a UTF-8 JSON header with `type: "frame"`, `mime`, `url`, `title`, and `transport: "binary"`, followed by the JPEG bytes.
 - `error`
 
 Current limits:
