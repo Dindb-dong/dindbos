@@ -670,11 +670,8 @@ Already present:
 - `docs/app-apis.md` documents sandboxed filesystem, process, storage, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
 - `docs/package-signatures.md` documents the remote package trust model, publisher key format, signed manifest payload, trust states, trusted publisher commands, and verification failure UX.
 - `docs/app-lifecycle.md` documents install, update, first-run, launch, ready, focus, suspend/resume limits, crash, close, uninstall cleanup, uninstall, current hooks, limits, and lifecycle verification commands.
-- Sample package/app paths in the runtime, including Hello Notes for a minimal package and API Lab for a richer third-party API proof.
-
-Remaining:
-
-- Keep sample apps current: Notes, Paint, Activity Monitor, Browser, PDF Viewer.
+- Sample package/app paths in the runtime, including Hello Notes for Notes, Paint Sample for a canvas tool, PDF Viewer Sample for a file-viewer manifest, and API Lab for a richer third-party API proof.
+- Local sample package sources and the local registry are kept in sync for Hello Notes, API Lab, Paint Sample, and PDF Viewer Sample; `npm run smoke:boot` and `npm run smoke:packages` verify their source manifests, registry entries, install paths, associations, and launch render paths.
 
 Completion criteria:
 

@@ -169,6 +169,21 @@ assert(!os.fs.exists("/usr/share/applications/Flow Demo.app"), "flow package lau
 
 packages.bootstrap();
 assert(os.fs.exists("/opt/dindbos/packages/api-lab/dindbos.app.json"), "API Lab sample manifest was not bootstrapped");
+assert(os.fs.exists("/opt/dindbos/packages/paint-sample/dindbos.app.json"), "Paint sample manifest was not bootstrapped");
+assert(os.fs.exists("/opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json"), "PDF Viewer sample manifest was not bootstrapped");
+const localSamples = await packages.search("sample");
+assert(localSamples.some((entry) => entry.id === "paint-sample"), "local registry search did not include Paint sample");
+assert(localSamples.some((entry) => entry.id === "pdf-viewer-sample"), "local registry search did not include PDF Viewer sample");
+const paintSample = packages.installFromManifestPath("/opt/dindbos/packages/paint-sample/dindbos.app.json");
+assert(paintSample.app.entryPath === "/opt/paint-sample/app.js", "Paint sample entry path mismatch");
+const paintWindow = os.apps.launch("paint-sample");
+await paintWindow.rendered;
+await waitFor(() => paintWindow.content.innerHTML.includes("data-sample-paint"), "Paint sample did not render packaged canvas UI");
+const pdfViewerSample = packages.installFromManifestPath("/opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json");
+assert(pdfViewerSample.app.accepts.includes("application/pdf"), "PDF Viewer sample did not declare PDF association");
+const pdfViewerWindow = os.apps.launch("pdf-viewer-sample");
+await pdfViewerWindow.rendered;
+await waitFor(() => pdfViewerWindow.content.innerHTML.includes("data-sample-pdf-viewer"), "PDF Viewer sample did not render packaged viewer UI");
 const apiLab = packages.installFromManifestPath("/opt/dindbos/packages/api-lab/dindbos.app.json");
 assert(apiLab.id === "api-lab", "API Lab sample install returned wrong id");
 assert(apiLab.app.capabilities.includes("package.read"), "API Lab sample did not declare package.read capability");

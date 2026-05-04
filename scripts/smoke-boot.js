@@ -41,6 +41,11 @@ async function verifySuccessfulBootPhases() {
   assert(os.apps.has("files"), "built-in apps were not registered during app-registry-load");
   assert(os.packages.info("hello-notes"), "package registry did not bootstrap sample package");
   assert(os.fs.exists("/opt/dindbos/packages/api-lab/dindbos.app.json"), "package registry did not bootstrap API Lab sample source");
+  assert(os.fs.exists("/opt/dindbos/packages/paint-sample/dindbos.app.json"), "package registry did not bootstrap Paint sample source");
+  assert(os.fs.exists("/opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json"), "package registry did not bootstrap PDF Viewer sample source");
+  const localRegistry = os.fs.readFile("/opt/dindbos/registry/index.json");
+  assert(localRegistry.includes('"id": "paint-sample"'), "local registry missing Paint sample");
+  assert(localRegistry.includes('"id": "pdf-viewer-sample"'), "local registry missing PDF Viewer sample");
   assert(os.fs.exists("/proc/processes.json"), "process init did not write /proc/processes.json");
   assert(os.fs.exists("/var/log/dindbos/boot.json"), "boot diagnostics JSON was not written");
   assert(os.fs.exists("/var/log/dindbos/boot.log"), "boot diagnostics log was not written");
