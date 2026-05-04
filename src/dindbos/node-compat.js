@@ -497,6 +497,7 @@ class CommonJsRuntime {
         if (options?.recursive) return ensureDirectory(this.os, resolved, "/", this.node.system);
         return this.os.fs.createDirectory(resolved, "/", {}, this.node.system);
       },
+      mkdtempSync: (prefix) => createTempDirectory(this.os, this.node.resolveFsPath(prefix, this.processContext.cwd), this.node.system),
       rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", options, this.node.system),
       unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", {}, this.node.system),
       renameSync: (oldPath, newPath) => this.os.fs.move(this.node.resolveFsPath(oldPath, this.processContext.cwd), this.node.resolveFsPath(newPath, this.processContext.cwd), "/", this.node.system),
@@ -514,6 +515,7 @@ class CommonJsRuntime {
       realpath: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.realpathSync(path)),
       readdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readdirSync(path, optionalOptions(options))),
       mkdir: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.mkdirSync(path, optionalOptions(options))),
+      mkdtemp: (prefix, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.mkdtempSync(prefix)),
       rm: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.rmSync(path, optionalOptions(options))),
       unlink: (path, callback) => invokeFsCallback(callback, () => fsModule.unlinkSync(path)),
       rename: (oldPath, newPath, callback) => invokeFsCallback(callback, () => fsModule.renameSync(oldPath, newPath)),
@@ -562,6 +564,7 @@ class CommonJsRuntime {
       realpath: async (path) => fsModule.realpathSync(path),
       readdir: async (path = ".", options = {}) => fsModule.readdirSync(path, options),
       mkdir: async (path, options = {}) => fsModule.mkdirSync(path, options),
+      mkdtemp: async (prefix) => fsModule.mkdtempSync(prefix),
       rm: async (path, options = {}) => fsModule.rmSync(path, options),
       unlink: async (path) => fsModule.unlinkSync(path),
       rename: async (oldPath, newPath) => fsModule.renameSync(oldPath, newPath),
@@ -2673,6 +2676,19 @@ function createDirent(entry) {
     isDirectory: () => type === "directory",
     isSymbolicLink: () => entry.type === "link" || entry.type === "symlink",
   };
+}
+
+function createTempDirectory(os, prefix, principal) {
+  const normalizedPrefix = os.fs.normalize(prefix || "/tmp/dindbos-", "/");
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const suffix = Math.floor(Math.random() * 0x1000000).toString(36).padStart(6, "0").slice(-6);
+    const candidate = `${normalizedPrefix}${suffix}`;
+    if (!os.fs.exists(candidate, "/")) {
+      os.fs.createDirectory(candidate, "/", {}, principal);
+      return candidate;
+    }
+  }
+  throw new Error(`fs.mkdtemp: could not create a unique directory for prefix '${prefix}'`);
 }
 
 function ensureDirectory(os, path, cwd, principal) {
