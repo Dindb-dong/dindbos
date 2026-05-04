@@ -131,13 +131,14 @@ Already present:
 - Browser.app uses local HTML provider and companion bridge.
 - TextEdit saves into shared VFS.
 - Viewer.app opens real file bytes through object URLs.
+- API Lab sample package installs from `/opt/dindbos/packages/api-lab/dindbos.app.json` and proves third-party access to sandboxed filesystem writes, package metadata reads, current-process reads, and process logging.
 - `docs/app-apis.md` documents app-facing filesystem, process, storage, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
 - App capability and filesystem-scope failures throw explicit `capability denied` or `sandbox denied` errors; `npm run smoke:permissions` verifies these messages for process, package, local mount, and filesystem denials.
+- `npm run smoke:packages` launches API Lab through AppRegistry and verifies its rendered output, `/home/guest/DindbOS API Lab/report.txt` write, package metadata read, and process log side effect.
 
 Remaining:
 
 - Remove privileged shortcuts where built-in apps bypass sandbox boundaries unnecessarily.
-- Add sample third-party apps that prove the APIs.
 - Add app state persistence.
 
 ### Stage 5: External Capability Bridges
@@ -656,7 +657,7 @@ Already present:
 - `docs/app-apis.md` documents sandboxed filesystem, process, storage, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
 - `docs/package-signatures.md` documents the remote package trust model, publisher key format, signed manifest payload, trust states, trusted publisher commands, and verification failure UX.
 - `docs/app-lifecycle.md` documents install, update, first-run, launch, ready, focus, suspend/resume limits, crash, close, uninstall cleanup, uninstall, current hooks, limits, and lifecycle verification commands.
-- Sample package/app paths in the runtime.
+- Sample package/app paths in the runtime, including Hello Notes for a minimal package and API Lab for a richer third-party API proof.
 
 Remaining:
 

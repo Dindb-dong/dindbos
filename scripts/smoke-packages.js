@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { base64UrlFromBytes, canonicalPackageManifestPayload, PackageManager } from "../src/dindbos/package-manager.js";
 import { AppRegistry } from "../src/dindbos/app-registry.js";
+import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
 import { EventBus } from "../src/dindbos/event-bus.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
@@ -8,6 +9,7 @@ import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 
 const os = bootOs();
 const packages = new PackageManager(os);
+os.packages = packages;
 const lifecycleEvents = [];
 let signedRemoteManifest = null;
 let trustedPublisher = null;
@@ -165,26 +167,40 @@ assert(!os.apps.has("flow-demo"), "flow package app remained registered after re
 assert(!os.fs.exists("/opt/flow-demo"), "flow package install path remained after remove");
 assert(!os.fs.exists("/usr/share/applications/Flow Demo.app"), "flow package launcher remained after remove");
 
+packages.bootstrap();
+assert(os.fs.exists("/opt/dindbos/packages/api-lab/dindbos.app.json"), "API Lab sample manifest was not bootstrapped");
+const apiLab = packages.installFromManifestPath("/opt/dindbos/packages/api-lab/dindbos.app.json");
+assert(apiLab.id === "api-lab", "API Lab sample install returned wrong id");
+assert(apiLab.app.capabilities.includes("package.read"), "API Lab sample did not declare package.read capability");
+const apiSource = os.fs.readFile("/opt/api-lab/app.js");
+const apiModule = await import(`data:text/javascript;base64,${Buffer.from(apiSource).toString("base64")}`);
+assert(typeof apiModule.mount === "function", "API Lab sample entry did not export mount");
+const apiWindow = os.apps.launch("api-lab");
+await apiWindow.rendered;
+await waitFor(() => apiWindow.content.innerHTML.includes("package=api-lab"), `API Lab sample did not render sandbox API report: ${apiWindow.content.innerHTML}`);
+assert(os.fs.readFile("/home/guest/DindbOS API Lab/report.txt").includes("version=0.1.0"), "API Lab sample did not write report through sandbox fs");
+const apiProcess = os.processes.get(apiWindow.pid);
+assert(apiProcess.logs.some((entry) => entry.message.includes("api-lab wrote")), "API Lab sample did not log through process facade");
+
 console.log("packages smoke ok transaction rollback launch run remove");
 
 function bootOs() {
   const permissions = new PermissionPolicy();
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
+  const system = permissions.systemPrincipal();
+  fs.createDirectory("/home", "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, system);
+  fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users", permissions: "drwxr-xr-x" }, system);
   const os = {
     fs,
     permissions,
     bus: new EventBus(),
     cache: new RuntimeCacheStore({ cacheApi: null }),
     apps: null,
+    packages: null,
     windows: null,
     processes: null,
-    createSandbox: () => ({
-      fs: {
-        basename: (...args) => fs.basename(...args),
-        list: (...args) => fs.list(...args),
-        readFile: (...args) => fs.readFile(...args),
-      },
-    }),
+    session: { user: "guest", groups: ["users"], home: "/home/guest" },
+    createSandbox: (process) => new AppSandbox(os, process),
     registerApp: (app) => os.apps.register(app),
     unregisterApp: (appId) => os.apps.unregister(appId),
   };
@@ -223,7 +239,17 @@ function fakeProcesses() {
   return {
     records,
     spawn: (app, context) => {
-      const process = { pid: nextPid++, appId: app.id, context, state: "running" };
+      const process = {
+        pid: nextPid++,
+        appId: app.id,
+        context,
+        cwd: "/home/guest",
+        logs: [],
+        manifest: app.manifest || {},
+        name: app.name || app.id,
+        state: "running",
+        user: "guest",
+      };
       records.set(process.pid, process);
       return process;
     },
@@ -241,6 +267,11 @@ function fakeProcesses() {
       const process = records.get(pid);
       if (process) process.error = error.message;
     },
+    get: (pid) => records.get(pid) || null,
+    log: (pid, message, level = "info") => {
+      const process = records.get(pid);
+      if (process) process.logs.push({ level, message });
+    },
   };
 }
 
@@ -254,7 +285,7 @@ function fakeWindows() {
       const windowApi = { setTitle: (title) => { options.title = title; } };
       const windowRecord = { ...options, content };
       records.set(options.id, windowRecord);
-      options.render(content, windowApi);
+      windowRecord.rendered = options.render(content, windowApi);
       return windowRecord;
     },
   };
@@ -262,7 +293,7 @@ function fakeWindows() {
 
 async function waitFor(check, label) {
   const started = Date.now();
-  while (Date.now() - started < 1000) {
+  while (Date.now() - started < 3000) {
     if (check()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
