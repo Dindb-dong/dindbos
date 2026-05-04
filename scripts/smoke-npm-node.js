@@ -244,6 +244,29 @@ const ttyImport = await node.evaluate(
 assert(ttyImport.status === 0, `tty import exited with ${ttyImport.status}`);
 assert(ttyImport.output.trim() === "false false true", `unexpected tty import output: ${ttyImport.output}`);
 
+const moduleRequire = node.evaluate(
+  [
+    "const moduleApi = require('module');",
+    `const scopedRequire = moduleApi.createRequire('${cwd}/node_modules/left/index.js');`,
+    "console.log(moduleApi.isBuiltin('node:fs'), moduleApi.builtinModules.includes('fs'), scopedRequire('shared').name, scopedRequire.resolve('shared').includes('/left/node_modules/shared/index.js'));",
+  ].join("\n"),
+  cwd,
+);
+assert(moduleRequire.status === 0, `module require exited with ${moduleRequire.status}`);
+assert(moduleRequire.output.trim() === "true true nested true", `unexpected module require output: ${moduleRequire.output}`);
+
+const moduleImport = await node.evaluate(
+  [
+    "import moduleApi, { builtinModules, createRequire, isBuiltin } from 'node:module';",
+    `const scopedRequire = createRequire('file://${cwd}/node_modules/left/index.js');`,
+    "console.log(isBuiltin('node:path'), builtinModules.includes('module'), moduleApi.builtinModules.includes('tty'), scopedRequire('shared').name);",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(moduleImport.status === 0, `module import exited with ${moduleImport.status}`);
+assert(moduleImport.output.trim() === "true true true nested", `unexpected module import output: ${moduleImport.output}`);
+
 const networkPolicyRequire = node.evaluate(
   [
     "const http = require('http');",

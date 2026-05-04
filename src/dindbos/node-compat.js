@@ -28,6 +28,8 @@ const BUILTIN_MODULES = new Set([
   "node:os",
   "tty",
   "node:tty",
+  "module",
+  "node:module",
   "http",
   "node:http",
   "https",
@@ -207,6 +209,7 @@ class CommonJsRuntime {
       http: createNetworkModule("http"),
       https: createNetworkModule("https"),
     };
+    this.builtins.module = this.createModuleModule();
   }
 
   evaluate(source, filename) {
@@ -270,6 +273,30 @@ class CommonJsRuntime {
     const resolved = this.node.resolveModule(specifier, fromFilename, this.processContext.cwd);
     if (resolved.type === "builtin") return this.builtins[resolved.id];
     return this.loadModule(resolved.path);
+  }
+
+  createRequire(fromFilename) {
+    const filename = normalizeRequireFilename(this.os, fromFilename, this.processContext.cwd);
+    const requireFrom = (specifier) => this.require(specifier, filename);
+    requireFrom.resolve = (specifier) => {
+      const resolved = this.node.resolveModule(specifier, filename, this.os.fs.dirname(filename));
+      return resolved.type === "builtin" ? resolved.id : resolved.path;
+    };
+    return requireFrom;
+  }
+
+  createModuleModule() {
+    class Module {}
+    Module.builtinModules = builtinModuleNames();
+    Module.createRequire = (filename) => this.createRequire(filename);
+    Module.isBuiltin = (specifier) => isBuiltinSpecifier(specifier);
+    return {
+      Module,
+      builtinModules: Module.builtinModules,
+      createRequire: Module.createRequire,
+      isBuiltin: Module.isBuiltin,
+      syncBuiltinESMExports: () => undefined,
+    };
   }
 
   result() {
@@ -624,6 +651,24 @@ function exportFromProperties(specifiers, moduleName) {
 function commonJsNamespace(exports) {
   if (exports && (typeof exports === "object" || typeof exports === "function")) return { default: exports, ...exports };
   return { default: exports };
+}
+
+function builtinModuleNames() {
+  const names = [...BUILTIN_MODULES].map((name) => name.replace(/^node:/, ""));
+  return [...new Set(names)].sort();
+}
+
+function isBuiltinSpecifier(specifier) {
+  return BUILTIN_MODULES.has(String(specifier || ""));
+}
+
+function normalizeRequireFilename(os, fromFilename, cwd) {
+  const value = String(fromFilename || cwd || "/");
+  const path = value.startsWith("file://")
+    ? decodeURIComponent(new URL(value).pathname || "/")
+    : value;
+  const normalized = os.fs.normalize(path, cwd);
+  return normalized.endsWith("/") ? os.fs.join(normalized, "[require].js") : normalized;
 }
 
 function safeJson(content, fallback) {

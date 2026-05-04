@@ -422,6 +422,8 @@ Already present:
 - `npm run smoke:npm-node` verifies `os` and `node:os` import paths, DindbOS home/tmp paths, browser platform identity, user info, CPU shape, type, and load average shape.
 - `tty` builtin facade supports CommonJS and ESM import paths for browser-safe package terminal probes while reporting a non-interactive browser runtime.
 - `npm run smoke:npm-node` verifies `tty` and `node:tty` import paths, `isatty`, read/write stream shape, terminal size fallback, raw-mode no-op behavior, and no-color policy.
+- `module` builtin facade supports CommonJS and ESM import paths for `builtinModules`, `isBuiltin`, `createRequire`, and a minimal `Module` object.
+- `npm run smoke:npm-node` verifies `module` and `node:module` import paths, builtin probes, `createRequire` scoped package lookup, file URL input, and scoped `require.resolve`.
 - `http` and `https` policy facades support CommonJS and ESM import paths but fail with explicit DindbOS network capability guidance when used; network APIs belong to a future explicit app sandbox/capability boundary, not NodeCompat.
 - `npm run smoke:npm-node` verifies NodeCompat `http`/`https` policy errors for CommonJS and ESM import paths.
 - ESM transform supports simple re-export barrels through `export { ... } from` and `export * from`, which covers common browser-safe package index modules without pretending to implement full Node loader semantics.
