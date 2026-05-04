@@ -588,6 +588,7 @@ Already present:
 - `npm run smoke:files` verifies Files.app keyboard selection movement helper behavior.
 - Large tree copy/move/export operations are cancellable through the operation reporter and abort signal checks; `npm run smoke:files` verifies cancellation stops export traversal and records cancelled history.
 - Copy, move, import, and export naming paths expose conflict/filename choices for replace, rename, skip, and custom export names; `npm run smoke:files` verifies the non-destructive conflict policies.
+- Files.app inspector includes app-specific troubleshooting diagnostics for folder scale, selection count, local mount conflicts, recent operation state, and next-step advice; `npm run smoke:files` verifies the diagnostic summary and conflict/large-folder guidance.
 
 Remaining:
 
@@ -755,4 +756,4 @@ Goal: The OS shell feels stable under normal daily interaction.
 Tasks:
 
 - Improve Files.app remaining scale polish.
-- Extend app-specific troubleshooting flows beyond the shell `doctor` baseline.
+- Extend app-specific troubleshooting flows beyond Files.app and the shell `doctor` baseline.
