@@ -95,8 +95,6 @@ Already present:
 - Viewer.app uses the runtime Cache API store for document and image preview bytes, keyed by path, MIME type, size, and modified time so changed files do not reuse stale previews.
 - `npm run smoke:viewer` verifies image preview cache writes/hits and markdown document preview byte caching.
 
-Remaining:
-
 ### Stage 3: Scriptable Userland
 
 Status: In progress.
@@ -161,15 +159,15 @@ Already present:
 
 ### Stage 6: Desktop UX As A Runtime Client
 
-Status: Later.
+Status: Done first pass, polish continues in detailed app sections.
 
 Goal: Polish the desktop after the runtime primitives are dependable.
 
-Remaining:
+Already present:
 
-- Snap zones, alt-tab, keyboard shortcuts, mobile window policy, and persisted window placement.
-- Files.app keyboard navigation and remaining scale polish.
-- Viewer controls for documents and decks.
+- Snap zones, Alt-Tab, keyboard shortcuts, mobile window policy, and persisted window placement are implemented in Window Manager and covered by `npm run smoke:window-manager`.
+- Files.app keyboard navigation is implemented for selection movement, folder traversal, open, Trash, rename, and copy/paste, covered by `npm run smoke:files`.
+- Viewer.app controls cover zoom, Browser.app handoff, export, copy path, PDF page navigation through the optional PDF.js adapter, and deck/large-preview behavior, covered by `npm run smoke:viewer`.
 
 ## Status Legend
 
