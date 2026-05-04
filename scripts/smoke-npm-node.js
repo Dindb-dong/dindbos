@@ -338,6 +338,31 @@ const diagnosticsImport = await node.evaluate(
 assert(diagnosticsImport.status === 0, `diagnostics_channel import exited with ${diagnosticsImport.status}`);
 assert(diagnosticsImport.output.trim() === "1 trace:start", `unexpected diagnostics_channel import output: ${diagnosticsImport.output}`);
 
+const dnsPolicyRequire = node.evaluate(
+  [
+    "const dns = require('dns');",
+    "console.log(Array.isArray(dns.getServers()), dns.Resolver ? 'resolver' : 'missing');",
+    "try { dns.lookup('example.com'); } catch (error) { console.log(error.message); }",
+  ].join("\n"),
+  cwd,
+);
+assert(dnsPolicyRequire.status === 0, `dns policy require exited with ${dnsPolicyRequire.status}`);
+assert(dnsPolicyRequire.output.includes("true resolver"), "dns policy shape missing");
+assert(dnsPolicyRequire.output.includes("NodeCompat dns networking is unavailable"), "dns policy error missing");
+
+const dnsPolicyImport = await node.evaluate(
+  [
+    "import dns, { promises, resolve4 } from 'node:dns';",
+    "console.log(dns.NOTFOUND, typeof promises.lookup, typeof resolve4);",
+    "try { resolve4('example.com'); } catch (error) { console.log(error.message); }",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(dnsPolicyImport.status === 0, `dns policy import exited with ${dnsPolicyImport.status}`);
+assert(dnsPolicyImport.output.includes("ENOTFOUND function function"), "dns ESM policy shape missing");
+assert(dnsPolicyImport.output.includes("NodeCompat dns networking is unavailable"), "dns ESM policy error missing");
+
 const networkPolicyRequire = node.evaluate(
   [
     "const http = require('http');",
