@@ -92,10 +92,10 @@ Already present:
 - `npm run smoke:local-mounts` verifies local mount permission denial plus disk-change/write-conflict detection and reporting.
 - Files.app large virtual copy/move plus archive import/export paths use cooperative operation scheduling so long traversals yield back to the browser event loop while preserving progress and cancellation.
 - `npm run smoke:files` verifies scheduled copy/import traversal yields and still preserves nested file bytes.
+- Viewer.app uses the runtime Cache API store for document and image preview bytes, keyed by path, MIME type, size, and modified time so changed files do not reuse stale previews.
+- `npm run smoke:viewer` verifies image preview cache writes/hits and markdown document preview byte caching.
 
 Remaining:
-
-- Extend Cache API storage from package/npm fetches to documents and image previews.
 
 ### Stage 3: Scriptable Userland
 
@@ -337,10 +337,10 @@ Already present:
 - `npm run smoke:local-mounts` verifies sync conflict detection, external byte preservation, conflict status, and operation reporting.
 - Files.app copy/move/import/export traversal uses cooperative scheduling with progress/cancel checks instead of running every large tree operation as one uninterrupted main-thread block.
 - `npm run smoke:files` verifies scheduled copy/import yields and nested byte preservation.
+- Viewer.app document/image preview bytes use the runtime Cache API store with memory fallback.
+- `npm run smoke:viewer` verifies preview cache namespace, writes, hits, and byte preservation.
 
 Remaining:
-
-- Extend Cache API storage to document and image previews.
 - Evaluate Storage Buckets for `/tmp`, `/var/cache`, and durable app data separation where available.
 - Define copy semantics for local mount directories: overwrite, merge, skip, or prompt.
 - Add mount rename through a native helper/companion later, instead of browser copy-delete.
@@ -518,6 +518,8 @@ Already present:
 - Large text previews are bounded with a truncation notice and readable status; binary fallback previews include file-size status, covered by `npm run smoke:viewer`.
 - `.deck.html` files use `application/x-dindbos-deck`, resolve to Viewer.app, and render in a sandboxed HTML deck frame.
 - `npm run smoke:viewer` verifies deck MIME detection, deck file association, sandboxed deck markup, and bounded deck text preview behavior.
+- Viewer.app document/image preview bytes use the runtime Cache API store with memory fallback and stale-key protection from path, MIME type, size, and modified time.
+- `npm run smoke:viewer` verifies preview cache namespace, image cache writes/hits, markdown document cache writes, and byte preservation.
 
 Remaining:
 
