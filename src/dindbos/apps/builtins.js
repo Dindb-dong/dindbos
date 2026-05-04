@@ -250,6 +250,7 @@ function renderFiles(os, content, path, windowApi) {
     const visibleOperation = latestMountOperation?.status === "running"
       ? latestMountOperation
       : fileOperation || latestMountOperation;
+    const diagnostics = buildFilesDiagnostics(os, currentPath, [...selectedPaths], operationHistory, visibleOperation, mountStatus);
     content.innerHTML = `
       <section class="files-app" tabindex="0">
         <aside class="files-sidebar">
@@ -326,6 +327,7 @@ function renderFiles(os, content, path, windowApi) {
         </div>
         <aside class="files-inspector">
           ${selected ? renderInspector(selected) : "<p>No selection</p>"}
+          ${renderFilesDiagnostics(diagnostics)}
           ${renderFilesOperationHistory(operationHistory)}
         </aside>
       </section>
@@ -793,6 +795,61 @@ function renderFilesOperationHistory(history = []) {
           `).join("")}
         </ol>
       ` : "<p>No operations yet</p>"}
+    </section>
+  `;
+}
+
+export function buildFilesDiagnostics(os, currentPath = "/", selectedPaths = [], operationHistory = [], operation = null, mountStatus = null) {
+  const entries = safeRead(() => os.fs.list(currentPath), []);
+  const counts = entries.reduce((summary, entry) => {
+    const resolved = safeRead(() => os.fs.resolveNode(entry), entry);
+    if (resolved.type === "directory") summary.folders += 1;
+    else if (resolved.type === "mount") summary.mounts += 1;
+    else if (resolved.type === "app") summary.apps += 1;
+    else summary.files += 1;
+    return summary;
+  }, { files: 0, folders: 0, apps: 0, mounts: 0 });
+  const latest = operation || operationHistory[0] || null;
+  const localMountActive = Boolean(safeRead(() => os.localMounts?.isMountedPath?.(currentPath), false));
+  const conflicts = localMountActive
+    ? Number(mountStatus?.conflicts?.length || safeRead(() => os.localMounts?.conflictStatus?.(currentPath)?.length, 0))
+    : 0;
+  const lastStatus = latest?.status || "idle";
+  const advice = conflicts > 0
+    ? "Resolve local mount sync conflicts before writing."
+    : lastStatus === "error" || lastStatus === "cancelled"
+      ? "Check Operation Log before retrying."
+      : entries.length > 150
+        ? "Use search filters to narrow large folders."
+        : "Use Terminal doctor for full runtime diagnostics.";
+  return {
+    path: os.fs.normalize(currentPath),
+    items: entries.length,
+    selected: selectedPaths.filter(Boolean).length,
+    files: counts.files,
+    folders: counts.folders,
+    apps: counts.apps,
+    mounts: counts.mounts,
+    localMountActive,
+    mountStatus: mountStatus?.status || "",
+    conflicts,
+    lastOperation: latest?.label || latest?.kind || "none",
+    lastStatus,
+    advice,
+  };
+}
+
+function renderFilesDiagnostics(diagnostics) {
+  return `
+    <section class="files-diagnostics" data-files-diagnostics>
+      <p class="dos-kicker">Troubleshooting</p>
+      <dl>
+        <div><dt>Folder</dt><dd>${escapeHtml(`${diagnostics.items} items · ${diagnostics.files} files · ${diagnostics.folders} folders`)}</dd></div>
+        <div><dt>Selection</dt><dd>${escapeHtml(`${diagnostics.selected} selected`)}</dd></div>
+        <div><dt>Mount</dt><dd>${escapeHtml(diagnostics.localMountActive ? `${diagnostics.mountStatus || "mounted"} · ${diagnostics.conflicts} conflicts` : "VFS")}</dd></div>
+        <div><dt>Last Op</dt><dd>${escapeHtml(`${diagnostics.lastOperation} · ${diagnostics.lastStatus}`)}</dd></div>
+      </dl>
+      <p>${escapeHtml(diagnostics.advice)}</p>
     </section>
   `;
 }

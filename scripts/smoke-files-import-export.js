@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {
   assertFilesOperationActive,
+  buildFilesDiagnostics,
   collectExportEntries,
   copyPathIntoDirectory,
   createFilesOperationScheduler,
@@ -272,6 +273,33 @@ assert(history[0].id === "op-4", "operation history did not put cancelled item f
 assert(history[0].status === "cancelled", "operation history lost cancelled status");
 assert(history[1].id === "op-3", "operation history did not evict older items after cancellation");
 
+const largeDiagnosticsRoot = "/home/guest/Documents/diagnostics";
+os.fs.createDirectory(largeDiagnosticsRoot);
+for (let index = 0; index < 151; index += 1) {
+  os.fs.writeOrCreateFile(`${largeDiagnosticsRoot}/item-${index}.txt`, `item-${index}`, "/", { mime: "text/plain" });
+}
+let diagnostics = buildFilesDiagnostics(os, largeDiagnosticsRoot, [
+  `${largeDiagnosticsRoot}/item-1.txt`,
+  `${largeDiagnosticsRoot}/item-2.txt`,
+], []);
+assert(diagnostics.items === 151, `diagnostics item count mismatch: ${diagnostics.items}`);
+assert(diagnostics.files === 151, `diagnostics file count mismatch: ${diagnostics.files}`);
+assert(diagnostics.selected === 2, `diagnostics selection count mismatch: ${diagnostics.selected}`);
+assert(diagnostics.advice.includes("search filters"), `large folder advice mismatch: ${diagnostics.advice}`);
+
+diagnostics = buildFilesDiagnostics(
+  os,
+  "/mnt/disk",
+  ["/mnt/disk/note.txt"],
+  history,
+  { label: "Sync", status: "error", error: "local mount sync conflict" },
+  { path: "/mnt/disk", status: "conflict", conflicts: [{ path: "/mnt/disk/note.txt" }] },
+);
+assert(diagnostics.localMountActive === true, "diagnostics did not mark local mount path active");
+assert(diagnostics.conflicts === 1, `diagnostics conflict count mismatch: ${diagnostics.conflicts}`);
+assert(diagnostics.lastStatus === "error", `diagnostics last status mismatch: ${diagnostics.lastStatus}`);
+assert(diagnostics.advice.includes("Resolve local mount sync conflicts"), `conflict advice mismatch: ${diagnostics.advice}`);
+
 console.log(`files import/export smoke ok entries=${entries.length} binaryBytes=${binary.byteLength} history=${history.length}`);
 
 function bootOs() {
@@ -285,6 +313,10 @@ function bootOs() {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
+    localMounts: {
+      isMountedPath: (path) => String(path || "").startsWith("/mnt/disk"),
+      conflictStatus: () => [{ path: "/mnt/disk/note.txt" }],
+    },
   };
 }
 
