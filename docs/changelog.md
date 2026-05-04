@@ -38,6 +38,7 @@ Added:
 - Files.app import/export archive support with nested binary byte preservation.
 - Files.app local mount banners, reconnect/sync/forget controls, operation progress, and recent operation history.
 - Files.app rich search filters for text, type, extension, size, modified time, and path.
+- Files.app folder and search result sorting for kind/name, name, modified time, and size.
 - Files.app multi-select with Ctrl/Cmd toggle, Shift range selection, and multi-item Trash/Delete targeting.
 - Files.app keyboard navigation for row movement, folder traversal, open, Trash, rename, and copy/paste shortcuts.
 - Files.app large tree operations now expose cancellation state and abort checks for recursive copy/move/export paths.

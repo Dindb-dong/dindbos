@@ -225,6 +225,7 @@ function renderFiles(os, content, path, windowApi) {
   let clickTimer = null;
   let searchQuery = "";
   let searchTimer = null;
+  let sortMode = "kind-name";
   let fileOperation = null;
   let operationHistory = [];
   let selectedPaths = new Set([selectedPath]);
@@ -242,7 +243,7 @@ function renderFiles(os, content, path, windowApi) {
     const currentStat = os.fs.stat(currentPath);
     windowApi.setTitle(`Files - ${currentPath}`);
     const query = searchQuery.trim();
-    const columns = query ? buildSearchColumns(os, currentPath, selectedPath, query) : buildFileColumns(os, currentPath, selectedPath);
+    const columns = query ? buildSearchColumns(os, currentPath, selectedPath, query, sortMode) : buildFileColumns(os, currentPath, selectedPath, sortMode);
     const visibleCount = columns.reduce((total, column) => total + column.entries.length, 0);
     const selected = os.fs.lstat(selectedPath) || os.fs.stat(selectedPath);
     const mountStatus = await mountStatusForPath(os, currentPath);
@@ -286,6 +287,9 @@ function renderFiles(os, content, path, windowApi) {
             <button type="button" data-action="export">Export</button>
             <button type="button" data-action="mount-local">Mount Local</button>
             <button type="button" data-action="delete">Delete</button>
+            <select data-files-sort aria-label="Sort files">
+              ${filesSortOptions(sortMode)}
+            </select>
             <input type="search" data-files-search placeholder="Search" value="${escapeAttr(searchQuery)}" />
           </div>
           <div class="files-dropzone">
@@ -341,6 +345,11 @@ function renderFiles(os, content, path, windowApi) {
       searchQuery = searchInput.value;
       window.clearTimeout(searchTimer);
       searchTimer = window.setTimeout(() => draw(currentPath, selectedPath, { focusSearch: true }), 120);
+    });
+    const sortSelect = content.querySelector("[data-files-sort]");
+    sortSelect?.addEventListener("change", () => {
+      sortMode = sortSelect.value || "kind-name";
+      draw(currentPath, selectedPath, { preserveSelection: true });
     });
     content.querySelectorAll("[data-path]").forEach((button) => {
       button.addEventListener("click", (event) => {
@@ -531,7 +540,7 @@ function renderFiles(os, content, path, windowApi) {
   draw(path);
 }
 
-function buildFileColumns(os, currentPath, selectedPath) {
+function buildFileColumns(os, currentPath, selectedPath, sortMode = "kind-name") {
   const normalizedCurrent = os.fs.normalize(currentPath);
   const chain = [];
   let cursor = normalizedCurrent;
@@ -543,16 +552,77 @@ function buildFileColumns(os, currentPath, selectedPath) {
   return chain.map((columnPath, index) => ({
     path: columnPath,
     selectedPath: chain[index + 1] || selectedPath,
-    entries: os.fs.list(columnPath),
+    entries: sortFilesEntries(os, os.fs.list(columnPath), sortMode),
   }));
 }
 
-function buildSearchColumns(os, currentPath, selectedPath, query) {
+function buildSearchColumns(os, currentPath, selectedPath, query, sortMode = "kind-name") {
   return [{
     path: currentPath,
     selectedPath,
-    entries: searchFileEntries(os, currentPath, query).slice(0, 200),
+    entries: sortFilesEntries(os, searchFileEntries(os, currentPath, query), sortMode).slice(0, 200),
   }];
+}
+
+function filesSortOptions(active = "kind-name") {
+  return [
+    ["kind-name", "Sort: Kind"],
+    ["name", "Sort: Name"],
+    ["modified", "Sort: Modified"],
+    ["size", "Sort: Size"],
+  ].map(([value, label]) => `<option value="${value}" ${active === value ? "selected" : ""}>${label}</option>`).join("");
+}
+
+export function sortFilesEntries(os, entries = [], mode = "kind-name") {
+  const normalizedMode = String(mode || "kind-name");
+  const decorated = entries.map((entry, index) => ({
+    entry,
+    index,
+    stat: safeRead(() => os.fs.stat(entry.path), null) || safeRead(() => os.fs.lstat(entry.path), null) || entry,
+    resolved: safeRead(() => os.fs.resolveNode(entry), entry) || entry,
+  }));
+  decorated.sort((left, right) => {
+    const direction = normalizedMode === "modified" || normalizedMode === "size" ? -1 : 1;
+    if (normalizedMode === "kind-name") {
+      return compareFilesKind(left, right) || compareFilesName(left, right) || left.index - right.index;
+    }
+    if (normalizedMode === "size") {
+      return (Number(left.stat?.size || 0) - Number(right.stat?.size || 0)) * direction
+        || compareFilesKind(left, right)
+        || compareFilesName(left, right)
+        || left.index - right.index;
+    }
+    if (normalizedMode === "modified") {
+      return (fileModifiedTime(left.stat) - fileModifiedTime(right.stat)) * direction
+        || compareFilesKind(left, right)
+        || compareFilesName(left, right)
+        || left.index - right.index;
+    }
+    return compareFilesName(left, right) || left.index - right.index;
+  });
+  return decorated.map((item) => item.entry);
+}
+
+function compareFilesKind(left, right) {
+  return fileKindRank(left.resolved) - fileKindRank(right.resolved);
+}
+
+function compareFilesName(left, right) {
+  return String(left.entry?.name || "").localeCompare(String(right.entry?.name || ""), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function fileKindRank(node) {
+  const type = node?.type || "";
+  if (type === "mount") return 0;
+  if (type === "directory") return 1;
+  if (type === "app") return 2;
+  if (type === "file") return 3;
+  return 4;
+}
+
+function fileModifiedTime(stat) {
+  const time = new Date(stat?.modified || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
 }
 
 export function searchFileEntries(os, rootPath, query) {

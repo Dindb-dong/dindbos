@@ -14,6 +14,7 @@ import {
   resolveFilesConflict,
   resolveFilesExportName,
   searchFileEntries,
+  sortFilesEntries,
   updateFilesSelection,
 } from "../src/dindbos/apps/builtins.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
@@ -196,6 +197,20 @@ const markdownResults = searchFileEntries(os, sourceRoot, "type:text ext:md read
 assert(markdownResults.length === 1 && markdownResults[0].name === "readme.md", "text/ext search filters did not isolate readme.md");
 const folderResults = searchFileEntries(os, sourceRoot, "type:folder nested");
 assert(folderResults.length === 1 && folderResults[0].path === `${sourceRoot}/nested`, "folder search filter did not isolate nested directory");
+os.fs.createDirectory(`${sourceRoot}/aaa-folder`);
+os.fs.writeOrCreateFile(`${sourceRoot}/zeta.txt`, "z", "/", { mime: "text/plain" });
+os.fs.writeOrCreateFileBytes(`${sourceRoot}/big.bin`, new Uint8Array(128), "/", { mime: "application/octet-stream" });
+os.fs.writeOrCreateFile(`${sourceRoot}/fresh.txt`, "fresh", "/", { mime: "text/plain" });
+os.fs.resolve(`${sourceRoot}/fresh.txt`).modified = "2099-01-01T00:00:00.000Z";
+const sortEntries = os.fs.list(sourceRoot);
+const kindSorted = sortFilesEntries(os, sortEntries, "kind-name").map((entry) => entry.name);
+assert(kindSorted.indexOf("aaa-folder") < kindSorted.indexOf("big.bin"), "kind sort did not keep folders before files");
+const nameSorted = sortFilesEntries(os, sortEntries, "name").map((entry) => entry.name);
+assert(nameSorted.indexOf("aaa-folder") < nameSorted.indexOf("big.bin"), "name sort did not sort alphabetically");
+const sizeSorted = sortFilesEntries(os, sortEntries, "size").map((entry) => entry.name);
+assert(sizeSorted[0] === "big.bin", `size sort did not put largest file first: ${sizeSorted.join(",")}`);
+const modifiedSorted = sortFilesEntries(os, sortEntries, "modified").map((entry) => entry.name);
+assert(modifiedSorted[0] === "fresh.txt", `modified sort did not put newest file first: ${modifiedSorted.join(",")}`);
 
 const visiblePaths = [
   `${sourceRoot}/alpha.txt`,
