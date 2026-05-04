@@ -29,11 +29,31 @@ const BUILTIN_MANUALS = {
   shell: "shell syntax - use command chaining with &&, ||, ; plus pipes and redirection",
   stat: "stat [path] - show file metadata",
   storage: "storage [persist|flush] - show quota status, request persistence, or flush pending writes",
+  su: "su [user] - unsupported browser-native privilege boundary placeholder",
+  sudo: "sudo <command> - unsupported browser-native privilege boundary placeholder",
   touch: "touch <path> - create or update a file",
   tree: "tree [path] - render a directory tree",
   umount: "umount [--forget] <path> - unmount a local folder",
   which: "which <command> - locate a command through PATH",
 };
+
+const MAX_SCRIPT_DEPTH = 8;
+const STATUS_PREFIX_COMMANDS = new Set([
+  "find",
+  "kill",
+  "man",
+  "manifest",
+  "mount-local",
+  "node",
+  "npm",
+  "pkg",
+  "stat",
+  "su",
+  "sudo",
+  "tree",
+  "umount",
+  "which",
+]);
 
 export class ShellSession {
   constructor(os) {
@@ -48,6 +68,7 @@ export class ShellSession {
       PATH: "/bin:/usr/bin",
       PWD: this.cwd,
     };
+    this.principal = os.permissions?.principal?.({ user: this.env.USER, groups: os.session.groups }) || os.permissions?.systemPrincipal?.() || null;
   }
 
   prompt() {
@@ -144,43 +165,50 @@ export class ShellSession {
 
   executeSegment(segment, stdin = "") {
     const redirect = extractRedirect(segment);
-    const tokens = tokenizeCommand(redirect.command);
+    const tokens = redirect.tokens;
     const [command, ...args] = tokens;
     if (!command) return { output: stdin, clear: false, reload: false, status: 0 };
-    let output = this.dispatch(command, args, stdin);
+    const input = redirect.input ? this.readFile(redirect.input) : stdin;
+    if (isPromise(input)) throw new Error(`${command}: async input redirection requires executeAsync`);
+    let output = this.dispatch(command, args, input);
     if (isPromise(output)) throw new Error(`${command}: async command requires executeAsync`);
+    const status = shellStatus(command, output);
     if (redirect.target) {
       const value = output.endsWith("\n") ? output : `${output}\n`;
-      if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd);
-      else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd);
+      if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd, this.principal);
+      else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd, {}, this.principal);
       output = "";
     }
-    return { output, clear: command === "clear", reload: command === "resetfs", status: 0 };
+    return { output, clear: command === "clear", reload: command === "resetfs", status };
   }
 
   async executeSegmentAsync(segment, stdin = "") {
     const redirect = extractRedirect(segment);
-    const tokens = tokenizeCommand(redirect.command);
+    const tokens = redirect.tokens;
     const [command, ...args] = tokens;
     if (!command) return { output: stdin, clear: false, reload: false, status: 0 };
-    let output = await this.dispatchAsync(command, args, stdin);
+    const input = redirect.input ? await this.readFile(redirect.input) : stdin;
+    let output = await this.dispatchAsync(command, args, input);
+    const status = shellStatus(command, output);
     if (redirect.target) {
       const value = output.endsWith("\n") ? output : `${output}\n`;
       if (this.isLocalPath(redirect.target)) {
         if (redirect.append) await this.os.localMounts.appendFile(redirect.target, value, this.cwd);
         else await this.os.localMounts.writeFile(redirect.target, value, this.cwd);
-      } else if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd);
-      else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd);
+      } else if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd, this.principal);
+      else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd, {}, this.principal);
       output = "";
     }
-    return { output, clear: command === "clear", reload: command === "resetfs", status: 0 };
+    return { output, clear: command === "clear", reload: command === "resetfs", status };
   }
 
-  async dispatchAsync(command, args, stdin = "") {
-    return this.dispatch(command, args, stdin);
+  async dispatchAsync(command, args, stdin = "", options = {}) {
+    const output = this.dispatch(command, args, stdin, options);
+    if (isPromise(output)) return output;
+    return output;
   }
 
-  dispatch(command, args, stdin = "") {
+  dispatch(command, args, stdin = "", options = {}) {
     if (command === "help") return Object.values(BUILTIN_MANUALS).join("\n");
     if (command === "clear") return "";
     if (command === "pwd") return this.cwd;
@@ -212,6 +240,7 @@ export class ShellSession {
     if (command === "kill") return this.kill(args);
     if (command === "storage") return this.storage(args);
     if (command === "resetfs") return this.resetFileSystem();
+    if (command === "su" || command === "sudo") return this.privilegeEscalation(command);
     if (command === "whoami") return this.env.USER;
     if (command === "id") return `uid=${this.env.USER} gid=${(this.os.session.groups || ["users"]).join(",")}`;
     if (command === "uname") return "DindbOS.js browser-runtime 0.2.0";
@@ -225,7 +254,19 @@ export class ShellSession {
     if (command === "npm") return this.npm(args);
     if (command === "df") return this.df();
     if (command === "mount") return this.mount();
-    throw new Error(`command not found: ${command}`);
+    const script = this.resolveExecutable(command);
+    if (script) return this.executeScript(script.path, args, stdin, options.scriptDepth || 0);
+    throw new Error(this.commandNotFound(command));
+  }
+
+  commandNotFound(command) {
+    const suggestions = commandSuggestions(this.os, command);
+    const suffix = suggestions.length ? `\nDid you mean: ${suggestions.slice(0, 3).join(", ")}?` : "";
+    return `command not found: ${command}${suffix}`;
+  }
+
+  privilegeEscalation(command) {
+    return `${command}: unsupported in DindbOS browser runtime; session user is fixed to ${this.env.USER}`;
   }
 
   cd(path) {
@@ -255,7 +296,7 @@ export class ShellSession {
           return long ? visible.map((entry) => formatLocalLsEntry(entry)).join("\n") : visible.map((entry) => entry.name).join("  ");
         });
     }
-    const entries = this.os.fs.list(path, this.cwd).filter((entry) => showAll || !entry.name.startsWith("."));
+    const entries = this.os.fs.list(path, this.cwd, this.principal).filter((entry) => showAll || !entry.name.startsWith("."));
     if (!long) return entries.map((entry) => entry.name).join("  ");
     return entries.map((entry) => formatLsEntry(this.os, entry)).join("\n");
   }
@@ -265,7 +306,7 @@ export class ShellSession {
     if (!node) return `tree: no such path: ${path}`;
     const lines = depth === 0 ? [node.path] : [];
     if (node.type !== "directory" || depth > 4) return lines.join("\n");
-    const entries = this.os.fs.list(node.path);
+    const entries = this.os.fs.list(node.path, "/", this.principal);
     entries.forEach((entry, index) => {
       const branch = index === entries.length - 1 ? "`-- " : "|-- ";
       const nextPrefix = index === entries.length - 1 ? "    " : "|   ";
@@ -282,7 +323,7 @@ export class ShellSession {
       return this.os.localMounts.readFile(filePath, this.cwd)
         .then((content) => filterGrep(content, needle));
     }
-    const content = filePath ? this.os.fs.readFile(filePath, this.cwd) : stdin;
+    const content = filePath ? this.os.fs.readFile(filePath, this.cwd, this.principal) : stdin;
     return filterGrep(content, needle);
   }
 
@@ -293,9 +334,9 @@ export class ShellSession {
     if (paths.some((path) => this.isLocalPath(path))) {
       return Promise.all(paths.map((path) => this.isLocalPath(path)
         ? this.os.localMounts.createDirectory(path, this.cwd, { parents })
-        : parents ? this.createParents(path) : this.os.fs.createDirectory(path, this.cwd))).then(() => "");
+        : parents ? this.createParents(path) : this.os.fs.createDirectory(path, this.cwd, {}, this.principal))).then(() => "");
     }
-    paths.forEach((path) => parents ? this.createParents(path) : this.os.fs.createDirectory(path, this.cwd));
+    paths.forEach((path) => parents ? this.createParents(path) : this.os.fs.createDirectory(path, this.cwd, {}, this.principal));
     return "";
   }
 
@@ -304,7 +345,7 @@ export class ShellSession {
     let cursor = "/";
     normalized.split("/").filter(Boolean).forEach((part) => {
       cursor = this.os.fs.join(cursor, part);
-      if (!this.os.fs.exists(cursor)) this.os.fs.createDirectory(cursor);
+      if (!this.os.fs.exists(cursor)) this.os.fs.createDirectory(cursor, "/", {}, this.principal);
     });
   }
 
@@ -317,7 +358,7 @@ export class ShellSession {
     paths.forEach((path) => {
       const existing = this.os.fs.resolve(path, this.cwd);
       if (existing?.type === "directory") throw new Error(`touch: ${path}: is a directory`);
-      this.os.fs.writeOrCreateFile(path, existing ? this.os.fs.readFile(path, this.cwd) : "", this.cwd);
+      this.os.fs.writeOrCreateFile(path, existing ? this.os.fs.readFile(path, this.cwd, this.principal) : "", this.cwd, {}, this.principal);
     });
     return "";
   }
@@ -335,7 +376,7 @@ export class ShellSession {
           });
         }
         try {
-          this.os.fs.remove(path, this.cwd, { recursive });
+          this.os.fs.remove(path, this.cwd, { recursive }, this.principal);
           return Promise.resolve();
         } catch (error) {
           if (!force) throw error;
@@ -345,7 +386,7 @@ export class ShellSession {
     }
     paths.forEach((path) => {
       try {
-        this.os.fs.remove(path, this.cwd, { recursive });
+        this.os.fs.remove(path, this.cwd, { recursive }, this.principal);
       } catch (error) {
         if (!force) throw error;
       }
@@ -358,7 +399,7 @@ export class ShellSession {
     const operands = args.filter((arg) => !arg.startsWith("-"));
     if (operands.length < 2) throw new Error("cp: missing source or destination");
     if (this.isLocalPath(operands[0]) || this.isLocalPath(operands[1])) return this.copyWithLocal(operands[0], operands[1], { recursive });
-    this.os.fs.copy(operands[0], operands[1], this.cwd, { recursive });
+    this.os.fs.copy(operands[0], operands[1], this.cwd, { recursive }, this.principal);
     return "";
   }
 
@@ -369,16 +410,16 @@ export class ShellSession {
       return this.copyWithLocal(operands[0], operands[1], { recursive: true })
         .then(() => this.isLocalPath(operands[0])
           ? this.os.localMounts.remove(operands[0], this.cwd, { recursive: true })
-          : this.os.fs.remove(operands[0], this.cwd, { recursive: true }))
+          : this.os.fs.remove(operands[0], this.cwd, { recursive: true }, this.principal))
         .then(() => "");
     }
-    this.os.fs.move(operands[0], operands[1], this.cwd);
+    this.os.fs.move(operands[0], operands[1], this.cwd, this.principal);
     return "";
   }
 
   chmod(args) {
     if (args.length < 2) throw new Error("chmod: usage: chmod <mode> <path>");
-    this.os.fs.chmod(args[1], args[0], this.cwd);
+    this.os.fs.chmod(args[1], args[0], this.cwd, this.principal);
     return "";
   }
 
@@ -531,7 +572,7 @@ export class ShellSession {
 
   readFile(path) {
     if (this.isLocalPath(path)) return this.os.localMounts.readFile(path, this.cwd);
-    return this.os.fs.readFile(path, this.cwd);
+    return this.os.fs.readFile(path, this.cwd, this.principal);
   }
 
   stat(path) {
@@ -553,7 +594,7 @@ export class ShellSession {
     }
     const existing = this.os.fs.resolve(path, this.cwd);
     if (existing?.type === "directory") throw new Error(`touch: ${path}: is a directory`);
-    this.os.fs.writeOrCreateFile(path, existing ? this.os.fs.readFile(path, this.cwd) : "", this.cwd);
+    this.os.fs.writeOrCreateFile(path, existing ? this.os.fs.readFile(path, this.cwd, this.principal) : "", this.cwd, {}, this.principal);
   }
 
   async copyWithLocal(sourcePath, destinationPath, options = {}) {
@@ -570,7 +611,7 @@ export class ShellSession {
     }
     const content = sourceLocal
       ? await this.os.localMounts.readFileBytes(sourcePath, this.cwd)
-      : this.os.fs.readFileBytes(sourcePath, this.cwd);
+      : this.os.fs.readFileBytes(sourcePath, this.cwd, this.principal);
     const sourceName = this.os.fs.basename(this.os.fs.normalize(sourcePath, this.cwd));
     if (destinationLocal) {
       const target = await this.localDestinationPath(destinationPath, sourceName);
@@ -581,7 +622,7 @@ export class ShellSession {
     const target = destination?.type === "directory"
       ? this.os.fs.join(destination.path, sourceName)
       : this.os.fs.normalize(destinationPath, this.cwd);
-    this.os.fs.writeOrCreateFileBytes(target, content);
+    this.os.fs.writeOrCreateFileBytes(target, content, "/", {}, this.principal);
     return "";
   }
 
@@ -644,14 +685,23 @@ export class ShellSession {
   which(command) {
     if (!command) return "which: usage: which <command>";
     if (BUILTIN_MANUALS[command]) return `shell builtin: ${command}`;
-    const found = this.env.PATH.split(":")
-      .map((directory) => this.os.fs.join(directory, command))
-      .find((path) => this.os.fs.exists(path));
-    return found || "";
+    return this.resolveExecutable(command)?.path || "";
   }
 
   df() {
     const status = this.os.storage.status();
+    if (typeof this.os.diskPolicyAreas === "function") {
+      return [
+        "Filesystem     Type       Durability   Used       Policy",
+        ...this.os.diskPolicyAreas().map((area) => [
+          area.root.padEnd(14),
+          area.type.padEnd(10),
+          area.durability.padEnd(12),
+          formatBytes(area.usedBytes).padEnd(10),
+          area.policy,
+        ].join(" ")),
+      ].join("\n");
+    }
     return [
       "Filesystem     Type       Used",
       `dindbos-vfs    ${status.backend || "memory"} ${formatBytes(status.bytes)}`,
@@ -678,22 +728,188 @@ export class ShellSession {
       ...(this.os.persistenceStatus?.() || {}),
     };
   }
+
+  resolveExecutable(command) {
+    const paths = command.includes("/") || command.startsWith("~")
+      ? [this.os.fs.normalize(command, this.cwd)]
+      : this.env.PATH.split(":").filter(Boolean).map((directory) => this.os.fs.join(directory, command));
+    for (const path of paths) {
+      const node = this.os.fs.resolve(path, "/");
+      if (!node) continue;
+      if (node.type !== "file") throw new Error(`${command}: ${path}: not an executable file`);
+      this.os.fs.assertAccess(node, "execute", this.principal, path);
+      return { path, node };
+    }
+    return null;
+  }
+
+  async executeScript(path, args = [], stdin = "", depth = 0) {
+    if (depth >= MAX_SCRIPT_DEPTH) throw new Error(`${path}: maximum script recursion depth exceeded`);
+    const source = this.os.fs.readFile(path, "/", this.principal);
+    const lines = source.replace(/\r\n/g, "\n").split("\n");
+    const shebang = lines[0]?.startsWith("#!") ? lines.shift().slice(2).trim() : "";
+    if (shebang && !isSupportedShellShebang(shebang)) {
+      throw new Error(`${path}: unsupported interpreter: ${shebang}`);
+    }
+    const previousEnv = { ...this.env };
+    this.env["0"] = path;
+    this.env["#"] = String(args.length);
+    this.env["@"] = args.join(" ");
+    args.forEach((arg, index) => {
+      this.env[String(index + 1)] = arg;
+    });
+    const output = [];
+    let status = 0;
+    try {
+      for (const line of lines) {
+        const command = line.trim();
+        if (!command || command.startsWith("#")) continue;
+        const result = await this.executeScriptLine(command, stdin, depth + 1);
+        status = result.status || 0;
+        if (result.output) output.push(result.output);
+        if (result.clear || result.reload) return result;
+      }
+    } finally {
+      const nextPwd = this.cwd;
+      this.env = previousEnv;
+      this.env.PWD = nextPwd;
+    }
+    if (status) throw new Error(`${path}: script exited with status ${status}`);
+    return output.join("\n");
+  }
+
+  async executeScriptLine(commandLine, stdin, depth) {
+    const expanded = expandVariables(commandLine, this.env);
+    const commands = splitCommandList(expanded);
+    const output = [];
+    let previousStatus = 0;
+    for (const item of commands) {
+      if (!shouldExecute(item.operator, previousStatus)) continue;
+      let result;
+      try {
+        result = await this.executePipelineAsyncWithDepth(item.command, stdin, depth);
+        previousStatus = result.status;
+      } catch (error) {
+        result = { output: error.message, clear: false, reload: false, status: 1 };
+        previousStatus = 1;
+      }
+      if (result.clear || result.reload) return { ...result, output: output.concat(result.output || []).join("\n") };
+      if (result.output) output.push(result.output);
+    }
+    return { output: output.join("\n"), clear: false, reload: false, status: previousStatus };
+  }
+
+  async executePipelineAsyncWithDepth(commandLine, stdin = "", depth = 0) {
+    const pipeline = splitPipeline(commandLine);
+    let nextStdin = stdin;
+    let result = { output: "", clear: false, reload: false, status: 0 };
+    for (const segment of pipeline) {
+      result = await this.executeSegmentAsyncWithDepth(segment, nextStdin, depth);
+      nextStdin = result.output;
+      if (result.clear || result.reload) return result;
+    }
+    return result;
+  }
+
+  async executeSegmentAsyncWithDepth(segment, stdin = "", depth = 0) {
+    const redirect = extractRedirect(segment);
+    const tokens = redirect.tokens;
+    const [command, ...args] = tokens;
+    if (!command) return { output: stdin, clear: false, reload: false, status: 0 };
+    const input = redirect.input ? await this.readFile(redirect.input) : stdin;
+    let output = await this.dispatchAsync(command, args, input, { scriptDepth: depth });
+    const status = shellStatus(command, output);
+    if (redirect.target) {
+      const value = output.endsWith("\n") ? output : `${output}\n`;
+      if (this.isLocalPath(redirect.target)) {
+        if (redirect.append) await this.os.localMounts.appendFile(redirect.target, value, this.cwd);
+        else await this.os.localMounts.writeFile(redirect.target, value, this.cwd);
+      } else if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd, this.principal);
+      else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd, {}, this.principal);
+      output = "";
+    }
+    return { output, clear: command === "clear", reload: command === "resetfs", status };
+  }
 }
 
 export function tokenizeCommand(line) {
-  return line.match(/"([^"]*)"|'([^']*)'|\S+/g)?.map((token) => token.replace(/^["']|["']$/g, "")) || [];
+  const tokens = [];
+  let current = "";
+  let quote = "";
+  let tokenStarted = false;
+  const push = () => {
+    if (tokenStarted || current) tokens.push(current);
+    current = "";
+    tokenStarted = false;
+  };
+  for (let index = 0; index < String(line || "").length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === "\\" && next !== undefined) {
+      current += next;
+      tokenStarted = true;
+      index += 1;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = "";
+      else current += char;
+      tokenStarted = true;
+      continue;
+    }
+    if (char === "\"" || char === "'") {
+      quote = char;
+      tokenStarted = true;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      push();
+      continue;
+    }
+    if (char === ">" || char === "<") {
+      push();
+      if (char === ">" && next === ">") {
+        tokens.push(">>");
+        index += 1;
+      } else {
+        tokens.push(char);
+      }
+      continue;
+    }
+    current += char;
+    tokenStarted = true;
+  }
+  push();
+  return tokens;
 }
 
 function extractRedirect(segment) {
   const tokens = tokenizeCommand(segment);
-  const appendIndex = tokens.indexOf(">>");
-  const writeIndex = tokens.indexOf(">");
-  const index = appendIndex >= 0 ? appendIndex : writeIndex;
-  if (index < 0) return { command: segment, target: "", append: false };
+  const commandTokens = [];
+  let target = "";
+  let input = "";
+  let append = false;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token === ">" || token === ">>") {
+      target = tokens[index + 1] || "";
+      append = token === ">>";
+      index += 1;
+      continue;
+    }
+    if (token === "<") {
+      input = tokens[index + 1] || "";
+      index += 1;
+      continue;
+    }
+    commandTokens.push(token);
+  }
   return {
-    command: tokens.slice(0, index).join(" "),
-    target: tokens[index + 1] || "",
-    append: appendIndex >= 0,
+    command: commandTokens.join(" "),
+    tokens: commandTokens,
+    target,
+    input,
+    append,
   };
 }
 
@@ -705,6 +921,11 @@ function splitCommandList(line) {
   for (let index = 0; index < line.length; index += 1) {
     const char = line[index];
     const next = line[index + 1];
+    if (char === "\\" && next !== undefined) {
+      current += char + next;
+      index += 1;
+      continue;
+    }
     if ((char === "\"" || char === "'") && !quote) {
       quote = char;
     } else if (char === quote) {
@@ -751,7 +972,14 @@ function splitPipeline(line) {
   const parts = [];
   let current = "";
   let quote = "";
-  for (const char of line) {
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === "\\" && next !== undefined) {
+      current += char + next;
+      index += 1;
+      continue;
+    }
     if ((char === "\"" || char === "'") && !quote) quote = char;
     else if (char === quote) quote = "";
     if (char === "|" && !quote) {
@@ -766,7 +994,16 @@ function splitPipeline(line) {
 }
 
 function expandVariables(line, env) {
-  return line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, key) => env[key] ?? "");
+  return line.replace(/\$([A-Za-z_][A-Za-z0-9_]*|[0-9#@])/g, (_, key) => env[key] ?? "");
+}
+
+function isSupportedShellShebang(value) {
+  return [
+    "dindbsh",
+    "/bin/dindbsh",
+    "/usr/bin/dindbsh",
+    "/usr/bin/env dindbsh",
+  ].includes(value);
 }
 
 function formatLsEntry(os, node) {
@@ -784,6 +1021,26 @@ function formatLocalLsEntry(node) {
 
 function filterGrep(content, needle) {
   return String(content).split("\n").filter((line) => line.toLowerCase().includes(needle.toLowerCase())).join("\n");
+}
+
+function shellStatus(command, output) {
+  const text = String(output ?? "");
+  if (command === "grep" && text === "") return 1;
+  if (command === "which" && text === "") return 1;
+  if (!STATUS_PREFIX_COMMANDS.has(command)) return 0;
+  if (text.startsWith(`${command}: usage`)) return 2;
+  if (new RegExp(`^${escapeRegExp(command)}: missing(\\s|$)`).test(text)) return 2;
+  if (text.startsWith(`${command}: invalid`)) return 2;
+  if ((command === "su" || command === "sudo") && text.startsWith(`${command}: unsupported`)) return 1;
+  if (text.startsWith(`${command}: unsupported`)) return 2;
+  if (text.startsWith(`${command}:`) && text.includes("no such")) return 1;
+  if (text.startsWith(`${command}:`) && text.includes("package not installed")) return 1;
+  if (text.startsWith(`${command}:`) && text.includes("registry not found")) return 1;
+  if (command === "man" && text.includes(": no manual entry")) return 1;
+  if (command === "stat" && text.startsWith("stat: no such")) return 1;
+  if (command === "manifest" && text.startsWith("manifest:") && text.includes("no such app")) return 1;
+  if (command === "mount-local" && text.includes("not available in this browser")) return 1;
+  return 0;
 }
 
 function formatStat(stat) {
@@ -845,6 +1102,65 @@ function formatMountRestore(mounts) {
   }).join("\n");
 }
 
+function commandSuggestions(os, command) {
+  const query = String(command || "").toLowerCase();
+  const candidates = new Map();
+  Object.keys(BUILTIN_MANUALS).forEach((name) => candidates.set(name, name));
+  safeRead(() => os.fs.list("/bin"), [])
+    .concat(safeRead(() => os.fs.list("/usr/bin"), []))
+    .filter((entry) => entry.type === "file" || entry.type === "app")
+    .forEach((entry) => candidates.set(entry.name, entry.name));
+  safeRead(() => os.apps.list(), []).forEach((app) => {
+    if (app.id) candidates.set(app.id, `open ${app.id}`);
+    if (app.name) candidates.set(String(app.name).toLowerCase(), `open ${app.name}`);
+  });
+  safeRead(() => os.packages.list(), []).forEach((record) => {
+    if (record.id) candidates.set(record.id, `pkg info ${record.id}`);
+    if (record.name) candidates.set(String(record.name).toLowerCase(), `pkg info ${record.id || record.name}`);
+  });
+  return [...candidates.entries()]
+    .map(([key, label]) => ({ label, score: suggestionScore(query, key.toLowerCase()) }))
+    .filter((entry) => entry.score <= Math.max(2, Math.ceil(query.length / 3)))
+    .sort((left, right) => left.score - right.score || left.label.length - right.label.length || left.label.localeCompare(right.label))
+    .map((entry) => entry.label)
+    .filter((label, index, values) => values.indexOf(label) === index);
+}
+
+function suggestionScore(left, right) {
+  if (!left || !right) return 99;
+  if (left === right) return 0;
+  if (right.includes(left) || left.includes(right)) return Math.abs(left.length - right.length);
+  return editDistance(left, right);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function editDistance(left, right) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= right.length; column += 1) {
+      current[column] = Math.min(
+        previous[column] + 1,
+        current[column - 1] + 1,
+        previous[column - 1] + (left[row - 1] === right[column - 1] ? 0 : 1),
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+
+function safeRead(read, fallback) {
+  try {
+    return read();
+  } catch {
+    return fallback;
+  }
+}
+
 function formatNodeResult(result) {
   if (result.status) throw new Error(`node: process exited with status ${result.status}`);
   return result.output || "";
@@ -892,6 +1208,9 @@ function formatPackage(record) {
     `description=${record.description || "-"}`,
     `installPath=${record.installPath}`,
     `sourcePath=${record.sourcePath || "-"}`,
+    `trust.source=${record.trust?.source || "local"}`,
+    `trust.trusted=${record.trust?.trusted ?? true}`,
+    `trust.warnings=${record.trust?.warnings?.join("; ") || "-"}`,
     `app.id=${record.app.id}`,
     `app.title=${record.app.title}`,
     `app.entry=${record.app.entryPath || "-"}`,

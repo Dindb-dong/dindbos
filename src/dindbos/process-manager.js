@@ -10,8 +10,12 @@ export class ProcessManager {
 
   spawn(app, context = {}) {
     const now = new Date().toISOString();
+    const parentPid = normalizePid(context.parentPid);
+    const parent = parentPid ? this.processes.get(parentPid) : null;
     const process = {
       pid: this.nextPid++,
+      parentPid,
+      parentAppId: parent?.appId || "",
       appId: app.id,
       name: app.name || app.id,
       state: "running",
@@ -22,6 +26,7 @@ export class ProcessManager {
       startedAt: now,
       endedAt: "",
       lastActiveAt: now,
+      activitySamples: [],
       windowId: "",
       windowState: "starting",
     };
@@ -29,8 +34,10 @@ export class ProcessManager {
     this.history.push({ ...process });
     this.logs.set(process.pid, []);
     this.log(process.pid, `spawn ${process.appId}`);
+    this.sampleActivity(process.pid, "spawn", 2);
     this.syncProcfs();
     this.os.bus.emit("process:spawn", process);
+    this.emitAppLifecycle("launch", process);
     return process;
   }
 
@@ -41,6 +48,7 @@ export class ProcessManager {
     process.windowState = "attached";
     process.lastActiveAt = new Date().toISOString();
     this.log(process.pid, `attach-window ${windowId}`);
+    this.sampleActivity(process.pid, "attach-window", 1);
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
   }
@@ -52,8 +60,12 @@ export class ProcessManager {
     process.state = state === "minimized" ? "sleeping" : "running";
     process.lastActiveAt = new Date().toISOString();
     this.log(process.pid, `window-${state}${details.windowId ? ` ${details.windowId}` : ""}`);
+    this.sampleActivity(process.pid, `window-${state}`, state === "focused" || state === "ready" ? 2 : 1);
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
+    if (state === "focused") this.emitAppLifecycle("focus", process, details);
+    if (state === "minimized") this.emitAppLifecycle("suspend", process, details);
+    if (state === "restored" || state === "maximized") this.emitAppLifecycle("resume", process, details);
     return { ...this.withRuntimeMetrics(process) };
   }
 
@@ -64,8 +76,10 @@ export class ProcessManager {
     process.windowState = "ready";
     process.lastActiveAt = new Date().toISOString();
     this.log(process.pid, "ready");
+    this.sampleActivity(process.pid, "ready", 2);
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
+    this.emitAppLifecycle("ready", process);
     return { ...this.withRuntimeMetrics(process) };
   }
 
@@ -77,8 +91,11 @@ export class ProcessManager {
     process.endedAt = new Date().toISOString();
     process.lastActiveAt = process.endedAt;
     this.log(process.pid, `crash ${error?.message || String(error)}`, "error");
+    this.sampleActivity(process.pid, "crash", 4);
+    this.writeCrashReport(process, error);
     this.syncProcfs();
     this.os.bus.emit("process:crash", process);
+    this.emitAppLifecycle("crash", process, { error: error?.message || String(error) });
     return { ...this.withRuntimeMetrics(process) };
   }
 
@@ -91,7 +108,13 @@ export class ProcessManager {
     return process ? this.withRuntimeMetrics(process) : null;
   }
 
+  current() {
+    const process = this.list()[0];
+    return process || null;
+  }
+
   log(pid, message, level = "info") {
+    if (message === undefined) return this.readLog(pid);
     const normalizedPid = Number(pid);
     const entries = this.logs.get(normalizedPid) || [];
     entries.push({
@@ -100,6 +123,7 @@ export class ProcessManager {
       message,
     });
     this.logs.set(normalizedPid, entries.slice(-200));
+    this.sampleActivity(normalizedPid, `log:${level}`, level === "error" ? 2 : 0.5, { touch: false });
   }
 
   readLog(pid) {
@@ -114,6 +138,7 @@ export class ProcessManager {
     process.endedAt = new Date().toISOString();
     process.lastActiveAt = process.endedAt;
     this.log(process.pid, `exit ${reason}`);
+    this.sampleActivity(process.pid, "exit", 1);
     this.processes.delete(process.pid);
     this.history.push({ ...this.withRuntimeMetrics(process) });
     this.syncProcfs();
@@ -121,14 +146,35 @@ export class ProcessManager {
       this.os.windows.close(process.windowId, { skipOnClose: true });
     }
     this.os.bus.emit("process:exit", process);
+    this.emitAppLifecycle("close", process, { reason });
     return { ...process };
+  }
+
+  emitAppLifecycle(type, process, details = {}) {
+    this.os.bus?.emit?.(`app:${type}`, {
+      type,
+      pid: process.pid,
+      appId: process.appId,
+      name: process.name,
+      state: process.state,
+      windowState: process.windowState,
+      process: this.withRuntimeMetrics(process),
+      ...details,
+    });
+  }
+
+  restart(pid) {
+    const process = this.get(pid);
+    if (!process) throw new Error(`restart: ${pid}: no such process`);
+    this.kill(pid, "restarting");
+    return this.os.launch(process.appId, { restartedFromPid: process.pid });
   }
 
   formatTable() {
     const rows = this.list();
-    if (!rows.length) return "PID USER     STATE    APP          WINDOW     UPTIME";
+    if (!rows.length) return "PID USER     STATE    APP          WINDOW     UPTIME ACTIVITY";
     return [
-      "PID USER     STATE    APP          WINDOW     UPTIME",
+      "PID USER     STATE    APP          WINDOW     UPTIME ACTIVITY",
       ...rows.map((process) => [
         String(process.pid).padEnd(3),
         process.user.padEnd(8),
@@ -136,6 +182,7 @@ export class ProcessManager {
         process.appId.padEnd(12),
         (process.windowId || "-").padEnd(10),
         formatDuration(process.uptimeMs),
+        String(process.activityScore || 0).padStart(8),
       ].join(" ")),
     ].join("\n");
   }
@@ -149,6 +196,9 @@ export class ProcessManager {
     const processes = this.list();
     const payload = JSON.stringify(processes.map((process) => ({
       pid: process.pid,
+      parentPid: process.parentPid,
+      parentAppId: process.parentAppId,
+      childPids: process.childPids,
       appId: process.appId,
       state: process.state,
       user: process.user,
@@ -158,6 +208,9 @@ export class ProcessManager {
       lastActiveAt: process.lastActiveAt,
       uptimeMs: process.uptimeMs,
       runtimeBytes: process.runtimeBytes,
+      activityScore: process.activityScore,
+      activitySamples: process.activitySamples,
+      activityLastSampleAt: process.activityLastSampleAt,
     })), null, 2);
     this.os.fs.writeOrCreateFile("/proc/processes.json", `${payload}\n`, "/", {
       mime: "application/json",
@@ -219,17 +272,76 @@ export class ProcessManager {
     }, system);
   }
 
+  writeCrashReport(process, error) {
+    const system = this.os.permissions.systemPrincipal();
+    ensureDirectory(this.os, "/var", system);
+    ensureDirectory(this.os, "/var/log", system);
+    ensureDirectory(this.os, "/var/log/dindbos", system);
+    const report = [
+      `At: ${process.endedAt}`,
+      `PID: ${process.pid}`,
+      `App: ${process.appId}`,
+      `Name: ${process.name}`,
+      `User: ${process.user}`,
+      `Window: ${process.windowId || "-"}`,
+      `Message: ${error?.message || String(error)}`,
+      error?.stack ? `Stack: ${error.stack}` : "",
+      "",
+    ].filter((line) => line !== "").join("\n");
+    const path = `/var/log/dindbos/crash-${process.pid}.log`;
+    this.os.fs.writeOrCreateFile(path, `${report}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    const indexPath = "/var/log/dindbos/crashes.log";
+    const line = `${process.endedAt} pid=${process.pid} app=${process.appId} ${error?.message || String(error)}\n`;
+    if (this.os.fs.exists(indexPath)) this.os.fs.appendFile(indexPath, line, "/", system);
+    else this.os.fs.writeOrCreateFile(indexPath, line, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+  }
+
   withRuntimeMetrics(process) {
     const uptimeMs = process.endedAt
       ? new Date(process.endedAt).getTime() - new Date(process.startedAt).getTime()
       : Date.now() - new Date(process.startedAt).getTime();
     const runtimeBytes = estimateRuntimeBytes(process, this.logs.get(process.pid) || []);
+    const activity = processActivity(process);
     return {
       ...process,
       uptimeMs: Math.max(0, uptimeMs),
       runtimeBytes,
       logLines: this.logs.get(process.pid)?.length || 0,
+      activityScore: activity.score,
+      activitySamples: activity.samples,
+      activityLastSampleAt: activity.lastSampleAt,
+      childPids: this.childPids(process.pid),
     };
+  }
+
+  childPids(parentPid) {
+    const pid = Number(parentPid);
+    return [...this.processes.values()]
+      .filter((process) => Number(process.parentPid || 0) === pid)
+      .map((process) => process.pid)
+      .sort((left, right) => left - right);
+  }
+
+  sampleActivity(pid, label = "activity", weight = 1, options = {}) {
+    const process = this.processes.get(Number(pid));
+    if (!process) return null;
+    const now = new Date().toISOString();
+    const samples = Array.isArray(process.activitySamples) ? process.activitySamples : [];
+    samples.push({ at: now, label: String(label || "activity"), weight: Number(weight || 1) });
+    process.activitySamples = pruneActivitySamples(samples);
+    if (options.touch !== false) process.lastActiveAt = now;
+    this.os.bus.emit("process:activity", this.withRuntimeMetrics(process));
+    return this.withRuntimeMetrics(process);
   }
 }
 
@@ -247,6 +359,9 @@ function formatProcessStatus(process) {
   return [
     `Name:\t${process.name}`,
     `Pid:\t${process.pid}`,
+    `ParentPid:\t${process.parentPid || 0}`,
+    `ParentApp:\t${process.parentAppId || "-"}`,
+    `ChildPids:\t${process.childPids?.join(",") || "-"}`,
     `User:\t${process.user}`,
     `State:\t${process.state}`,
     `App:\t${process.appId}`,
@@ -257,7 +372,31 @@ function formatProcessStatus(process) {
     `Uptime:\t${formatDuration(process.uptimeMs)}`,
     `RuntimeBytes:\t${process.runtimeBytes}`,
     `LogLines:\t${process.logLines}`,
+    `ActivityScore:\t${process.activityScore}`,
+    `ActivitySamples:\t${process.activitySamples}`,
+    `ActivityLastSample:\t${process.activityLastSampleAt || "-"}`,
   ].join("\n");
+}
+
+function processActivity(process) {
+  const samples = pruneActivitySamples(process.activitySamples || []);
+  process.activitySamples = samples;
+  const cutoff = Date.now() - 60_000;
+  const score = samples
+    .filter((sample) => new Date(sample.at).getTime() >= cutoff)
+    .reduce((total, sample) => total + Number(sample.weight || 0), 0);
+  return {
+    score: Math.round(score * 10) / 10,
+    samples: samples.length,
+    lastSampleAt: samples[samples.length - 1]?.at || "",
+  };
+}
+
+function pruneActivitySamples(samples) {
+  const cutoff = Date.now() - 5 * 60_000;
+  return samples
+    .filter((sample) => new Date(sample.at).getTime() >= cutoff)
+    .slice(-120);
 }
 
 function formatDuration(ms) {
@@ -273,6 +412,17 @@ function formatSeconds(ms) {
   return (Number(ms || 0) / 1000).toFixed(2);
 }
 
+function normalizePid(value) {
+  const pid = Number(value || 0);
+  return Number.isFinite(pid) && pid > 0 ? pid : 0;
+}
+
 function byteLength(value) {
   return new TextEncoder().encode(String(value)).byteLength;
+}
+
+function ensureDirectory(os, path, principal) {
+  if (!os.fs.exists(path)) {
+    os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, principal);
+  }
 }

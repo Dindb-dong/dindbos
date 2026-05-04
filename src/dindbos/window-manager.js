@@ -1,5 +1,7 @@
 const MIN_WIDTH = 340;
 const MIN_HEIGHT = 240;
+const MINIMIZE_ANIMATION_MS = 160;
+const WINDOW_PLACEMENTS_PATH = "/var/lib/dindbos/window-placements.json";
 
 export class WindowManager {
   constructor(os) {
@@ -9,11 +11,16 @@ export class WindowManager {
     this.windows = new Map();
     this.z = 20;
     this.cascade = 0;
+    this.activeWindowId = "";
+    this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
+    this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
   }
 
   mount(layer, taskStrip) {
     this.layer = layer;
     this.taskStrip = taskStrip;
+    globalThis.window?.addEventListener?.("resize", this.boundKeepWindowsInViewport);
+    globalThis.window?.addEventListener?.("keydown", this.boundHandleGlobalKeyDown);
   }
 
   has(id) {
@@ -40,13 +47,14 @@ export class WindowManager {
     frame.className = "dos-window";
     frame.dataset.windowId = config.id;
     frame.dataset.appId = config.appId;
-    const position = this.nextPosition(config.width, config.height);
+    const placement = this.initialPlacement(config);
     Object.assign(frame.style, {
-      width: `${config.width}px`,
-      height: `${config.height}px`,
-      left: `${position.x}px`,
-      top: `${position.y}px`,
+      width: `${placement.width}px`,
+      height: `${placement.height}px`,
+      left: `${placement.left}px`,
+      top: `${placement.top}px`,
     });
+    frame.classList.toggle("is-maximized", Boolean(placement.maximized));
 
     const titlebar = document.createElement("header");
     titlebar.className = "dos-window-titlebar";
@@ -68,21 +76,26 @@ export class WindowManager {
       id: config.id,
       close: () => this.close(config.id),
       focus: () => this.focus(config.id),
+      getState: (key) => cloneState(key ? task.state[key] : task.state),
+      setState: (key, value) => {
+        task.state[key] = cloneState(value);
+        return cloneState(task.state[key]);
+      },
       setTitle: (title) => {
         titlebar.querySelector("strong").textContent = title;
         task.title = title;
         this.renderTasks();
       },
     };
-    const task = { ...config, frame, titlebar, content, api, minimized: false, maximized: false };
+    const task = { ...config, frame, titlebar, content, api, state: {}, minimized: false, maximized: Boolean(placement.maximized) };
     this.windows.set(config.id, task);
 
     titlebar.querySelector("[data-window-minimize]").addEventListener("click", () => this.minimize(config.id));
     titlebar.querySelector("[data-window-maximize]").addEventListener("click", () => this.maximize(config.id));
     titlebar.querySelector("[data-window-close]").addEventListener("click", () => this.close(config.id));
     frame.addEventListener("pointerdown", () => this.focus(config.id));
-    makeDraggable(frame, titlebar);
-    makeResizable(frame);
+    makeDraggable(frame, titlebar, () => this.saveWindowPlacement(config.id));
+    makeResizable(frame, () => this.saveWindowPlacement(config.id));
 
     config.render(content, api);
     this.os.processes.markReady?.(config.pid);
@@ -94,8 +107,10 @@ export class WindowManager {
   focus(id) {
     const task = this.windows.get(id);
     if (!task) return;
+    cancelMinimizeAnimation(task);
     task.frame.hidden = false;
     task.minimized = false;
+    this.activeWindowId = id;
     task.frame.style.zIndex = `${++this.z}`;
     this.windows.forEach((item) => item.frame.classList.toggle("is-active", item === task));
     this.os.processes.updateWindowState?.(task.pid, "focused", { windowId: id });
@@ -105,8 +120,17 @@ export class WindowManager {
   minimize(id) {
     const task = this.windows.get(id);
     if (!task) return;
+    if (task.minimized && task.frame.hidden) return;
     task.minimized = true;
-    task.frame.hidden = true;
+    task.frame.hidden = false;
+    task.frame.classList.add("is-minimizing");
+    clearTimeout(task.minimizeTimer);
+    task.minimizeTimer = setTimeout(() => {
+      task.minimizeTimer = null;
+      if (!task.minimized) return;
+      task.frame.hidden = true;
+      task.frame.classList.remove("is-minimizing");
+    }, MINIMIZE_ANIMATION_MS);
     this.os.processes.updateWindowState?.(task.pid, "minimized", { windowId: id });
     this.renderTasks();
   }
@@ -124,6 +148,7 @@ export class WindowManager {
     if (!task) return;
     task.maximized = !task.maximized;
     task.frame.classList.toggle("is-maximized", task.maximized);
+    this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, task.maximized ? "maximized" : "restored", { windowId: id });
     this.focus(id);
   }
@@ -131,11 +156,38 @@ export class WindowManager {
   close(id, options = {}) {
     const task = this.windows.get(id);
     if (!task) return;
+    cancelMinimizeAnimation(task);
+    this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, "closing", { windowId: id });
     task.frame.remove();
     this.windows.delete(id);
+    if (this.activeWindowId === id) this.activeWindowId = newestWindowId(this.windows);
     if (!options.skipOnClose) task.onClose?.();
     this.renderTasks();
+  }
+
+  handleGlobalKeyDown(event) {
+    if (event.altKey && event.key === "Tab") {
+      event.preventDefault();
+      this.cycleFocus(event.shiftKey ? -1 : 1);
+      return;
+    }
+    if (!(event.metaKey || event.ctrlKey)) return;
+    const key = String(event.key || "").toLowerCase();
+    if (key === "w" && this.activeWindowId) {
+      event.preventDefault();
+      this.close(this.activeWindowId);
+    }
+    if (key === "m" && this.activeWindowId) {
+      event.preventDefault();
+      this.minimize(this.activeWindowId);
+    }
+  }
+
+  cycleFocus(direction = 1) {
+    const nextId = nextFocusWindowId([...this.windows.keys()], this.activeWindowId, direction);
+    if (nextId) this.activate(nextId);
+    return nextId;
   }
 
   renderTasks() {
@@ -152,6 +204,29 @@ export class WindowManager {
     });
   }
 
+  keepWindowsInViewport() {
+    const viewport = {
+      width: globalThis.window?.innerWidth || 1024,
+      height: globalThis.window?.innerHeight || 768,
+    };
+    this.windows.forEach((task) => {
+      if (task.maximized) return;
+      const rect = {
+        left: Number.parseFloat(task.frame.style.left) || 0,
+        top: Number.parseFloat(task.frame.style.top) || 0,
+        width: Number.parseFloat(task.frame.style.width) || task.frame.getBoundingClientRect().width || MIN_WIDTH,
+        height: Number.parseFloat(task.frame.style.height) || task.frame.getBoundingClientRect().height || MIN_HEIGHT,
+      };
+      const next = constrainWindowRect(rect, viewport);
+      Object.assign(task.frame.style, {
+        left: `${next.left}px`,
+        top: `${next.top}px`,
+        width: `${next.width}px`,
+        height: `${next.height}px`,
+      });
+    });
+  }
+
   nextPosition(width, height) {
     const offset = (this.cascade++ % 7) * 28;
     return {
@@ -159,6 +234,142 @@ export class WindowManager {
       y: Math.max(72, Math.min(96 + offset, window.innerHeight - height - 16)),
     };
   }
+
+  initialPlacement(config) {
+    const saved = this.readWindowPlacements()[placementKey(config)] || null;
+    const viewport = {
+      width: globalThis.window?.innerWidth || 1024,
+      height: globalThis.window?.innerHeight || 768,
+    };
+    if (isMobileWindowViewport(viewport)) return mobileWindowPlacement(viewport);
+    const position = this.nextPosition(config.width, config.height);
+    const fallback = {
+      left: position.x,
+      top: position.y,
+      width: config.width,
+      height: config.height,
+      maximized: false,
+    };
+    return restoreWindowPlacement(saved, fallback, viewport);
+  }
+
+  saveWindowPlacement(id) {
+    const task = this.windows.get(id);
+    if (!task || !this.os.fs) return null;
+    const placements = this.readWindowPlacements();
+    placements[placementKey(task)] = windowPlacementForTask(task);
+    writeWindowPlacements(this.os, placements);
+    return placements[placementKey(task)];
+  }
+
+  readWindowPlacements() {
+    return readWindowPlacements(this.os);
+  }
+}
+
+export function constrainWindowRect(rect, viewport) {
+  const viewportWidth = Number(viewport.width || 1024);
+  const viewportHeight = Number(viewport.height || 768);
+  const maxWidth = Math.max(160, viewportWidth - 16);
+  const maxHeight = Math.max(160, viewportHeight - 66);
+  const width = Math.min(Math.max(Number(rect.width || MIN_WIDTH), 160), maxWidth);
+  const height = Math.min(Math.max(Number(rect.height || MIN_HEIGHT), 160), maxHeight);
+  return {
+    left: Math.round(clamp(Number(rect.left || 0), 8, viewportWidth - Math.min(120, width))),
+    top: Math.round(clamp(Number(rect.top || 0), 58, viewportHeight - 80)),
+    width: Math.round(width),
+    height: Math.round(height),
+  };
+}
+
+export function nextFocusWindowId(ids, activeId, direction = 1) {
+  const visible = ids.filter(Boolean);
+  if (!visible.length) return "";
+  const activeIndex = visible.indexOf(activeId);
+  const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+  const offset = direction < 0 ? -1 : 1;
+  return visible[(currentIndex + offset + visible.length) % visible.length];
+}
+
+export function snapZoneForPoint(point, viewport, threshold = 24) {
+  const x = Number(point.x || 0);
+  const y = Number(point.y || 0);
+  const width = Number(viewport.width || 1024);
+  const height = Number(viewport.height || 768);
+  if (y <= threshold) return "top";
+  if (x <= threshold) return "left";
+  if (x >= width - threshold) return "right";
+  if (y >= height - threshold) return "bottom";
+  return "";
+}
+
+export function snapWindowRect(zone, viewport) {
+  const width = Number(viewport.width || 1024);
+  const height = Number(viewport.height || 768);
+  const top = 58;
+  const bottomInset = 16;
+  const availableHeight = Math.max(160, height - top - bottomInset);
+  const rightStart = Math.round(width / 2);
+  if (zone === "left") return { left: 8, top, width: Math.max(160, rightStart - 8), height: availableHeight };
+  if (zone === "right") return { left: rightStart, top, width: Math.max(160, width - rightStart - 8), height: availableHeight };
+  if (zone === "bottom") return { left: 8, top: Math.round(height / 2), width: Math.max(160, width - 16), height: Math.max(160, height - Math.round(height / 2) - bottomInset) };
+  if (zone === "top") return { left: 8, top, width: Math.max(160, width - 16), height: availableHeight };
+  return null;
+}
+
+export function isMobileWindowViewport(viewport) {
+  return Number(viewport.width || 0) <= 700;
+}
+
+export function mobileWindowPlacement(viewport) {
+  const width = Math.max(200, Number(viewport.width || 390) - 20);
+  const height = Math.max(160, Number(viewport.height || 640) - 162);
+  return {
+    left: 10,
+    top: 70,
+    width,
+    height,
+    maximized: true,
+  };
+}
+
+export function restoreWindowPlacement(saved, fallback, viewport) {
+  const candidate = saved && typeof saved === "object" ? saved : fallback;
+  const constrained = constrainWindowRect({
+    left: candidate.left ?? fallback.left,
+    top: candidate.top ?? fallback.top,
+    width: candidate.width ?? fallback.width,
+    height: candidate.height ?? fallback.height,
+  }, viewport);
+  return {
+    ...constrained,
+    maximized: Boolean(candidate.maximized),
+  };
+}
+
+export function readWindowPlacements(os) {
+  try {
+    if (!os?.fs?.exists?.(WINDOW_PLACEMENTS_PATH)) return {};
+    const parsed = JSON.parse(os.fs.readFile(WINDOW_PLACEMENTS_PATH, "/", os.permissions?.systemPrincipal?.()));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeWindowPlacements(os, placements) {
+  if (!os?.fs) return;
+  const system = os.permissions?.systemPrincipal?.();
+  ensureDirectory(os, "/var", system);
+  ensureDirectory(os, "/var/lib", system);
+  ensureDirectory(os, "/var/lib/dindbos", system);
+  os.fs.writeOrCreateFile(
+    WINDOW_PLACEMENTS_PATH,
+    `${JSON.stringify(placements || {}, null, 2)}\n`,
+    "/",
+    { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+    system,
+  );
 }
 
 function createResizeHandles() {
@@ -172,7 +383,7 @@ function createResizeHandles() {
   return fragment;
 }
 
-function makeDraggable(frame, titlebar) {
+function makeDraggable(frame, titlebar, onPlacement = () => {}) {
   let drag = null;
   titlebar.addEventListener("pointerdown", (event) => {
     if (event.target.closest("button") || frame.classList.contains("is-maximized")) return;
@@ -186,12 +397,26 @@ function makeDraggable(frame, titlebar) {
     frame.style.top = `${clamp(drag.top + event.clientY - drag.y, 58, window.innerHeight - 80)}px`;
   });
   titlebar.addEventListener("pointerup", (event) => {
+    if (drag) {
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const zone = snapZoneForPoint({ x: event.clientX, y: event.clientY }, viewport);
+      const snapped = snapWindowRect(zone, viewport);
+      if (snapped) {
+        Object.assign(frame.style, {
+          left: `${snapped.left}px`,
+          top: `${snapped.top}px`,
+          width: `${snapped.width}px`,
+          height: `${snapped.height}px`,
+        });
+      }
+      onPlacement();
+    }
     drag = null;
     if (titlebar.hasPointerCapture(event.pointerId)) titlebar.releasePointerCapture(event.pointerId);
   });
 }
 
-function makeResizable(frame) {
+function makeResizable(frame, onPlacement = () => {}) {
   frame.querySelectorAll("[data-resize]").forEach((handle) => {
     let start = null;
     const move = (event) => {
@@ -211,6 +436,7 @@ function makeResizable(frame) {
     };
     const end = () => {
       start = null;
+      onPlacement();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
@@ -230,6 +456,42 @@ function makeResizable(frame) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function newestWindowId(windows) {
+  return [...windows.keys()].at(-1) || "";
+}
+
+function cancelMinimizeAnimation(task) {
+  clearTimeout(task.minimizeTimer);
+  task.minimizeTimer = null;
+  task.frame.classList.remove("is-minimizing");
+}
+
+function cloneState(value) {
+  if (value === undefined) return undefined;
+  if (typeof structuredClone === "function") return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+function placementKey(config) {
+  return config.appId || config.id;
+}
+
+function windowPlacementForTask(task) {
+  return {
+    left: Number.parseFloat(task.frame.style.left) || 0,
+    top: Number.parseFloat(task.frame.style.top) || 0,
+    width: Number.parseFloat(task.frame.style.width) || task.width || MIN_WIDTH,
+    height: Number.parseFloat(task.frame.style.height) || task.height || MIN_HEIGHT,
+    maximized: Boolean(task.maximized),
+  };
+}
+
+function ensureDirectory(os, path, principal) {
+  if (!os.fs.exists(path)) {
+    os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, principal);
+  }
 }
 
 function escapeHtml(value) {

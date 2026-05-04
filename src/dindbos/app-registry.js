@@ -1,9 +1,10 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260422-activity-monitor";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260422-browserd";
 
 export class AppRegistry {
   constructor(os) {
     this.os = os;
     this.apps = new Map();
+    this.launchSeq = 0;
   }
 
   register(app) {
@@ -36,7 +37,7 @@ export class AppRegistry {
   launch(appId, context = {}) {
     const app = this.apps.get(appId);
     if (!app) throw new Error(`Unknown app: ${appId}`);
-    const windowId = app.singleton ? app.id : `${app.id}-${Date.now()}`;
+    const windowId = app.singleton ? app.id : `${app.id}-${Date.now()}-${++this.launchSeq}`;
     if (app.singleton && this.os.windows.has(windowId)) return this.os.windows.activate(windowId);
     const process = this.os.processes.spawn(app, context);
     const sandbox = this.os.createSandbox(process);
@@ -78,7 +79,11 @@ export class AppRegistry {
 
   resolveFileApp(node) {
     if (node.appId && this.apps.has(node.appId)) return this.apps.get(node.appId);
-    return this.list().find((app) => (app.accepts || []).some((mime) => matchesMime(node.mime, mime)));
+    return this.list()
+      .map((app, index) => ({ app, index }))
+      .filter(({ app }) => (app.accepts || []).some((mime) => matchesMime(node.mime, mime)))
+      .sort((left, right) => (right.app.associationPriority || 0) - (left.app.associationPriority || 0) || left.index - right.index)
+      [0]?.app || null;
   }
 
   manifests() {

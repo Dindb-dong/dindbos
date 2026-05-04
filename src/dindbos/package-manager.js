@@ -111,30 +111,37 @@ export class PackageManager {
     const sourceUrl = normalizePackageUrl(url);
     const fetcher = options.fetch || globalThis.fetch;
     if (typeof fetcher !== "function") throw new Error("pkg: fetch is not available in this runtime");
-    const manifestText = await fetchText(fetcher, sourceUrl, MAX_REMOTE_MANIFEST_BYTES, "manifest");
+    const manifestText = await fetchText(this.os, fetcher, sourceUrl, MAX_REMOTE_MANIFEST_BYTES, "manifest");
     const manifest = parseJson(manifestText, sourceUrl);
     const record = this.normalizePackage(manifest, {
       sourcePath: sourceUrl,
       sourceUrl,
+      registry: options.registry || "",
     });
-    this.ensurePackageRoots();
-    this.ensurePackageDirectory(record);
-    await this.installDeclaredFiles(record, manifest.files || [], sourceUrl, fetcher);
-    this.writePackageRecord(record);
-    this.installLauncher(record);
-    this.registerPackageApp(record);
-    return record;
+    return this.runPackageTransactionAsync(record, async () => {
+      this.ensurePackageRoots();
+      this.ensurePackageDirectory(record);
+      await this.installDeclaredFiles(record, manifest.files || [], sourceUrl, fetcher);
+      this.writePackageRecord(record);
+      this.installLauncher(record);
+      this.registerPackageApp(record);
+      this.emitPackageLifecycle("install", record);
+      return record;
+    });
   }
 
   install(manifest, options = {}) {
     const record = this.normalizePackage(manifest, options);
-    this.ensurePackageRoots();
-    this.ensurePackageDirectory(record);
-    this.installDeclaredInlineFiles(record, manifest.files || []);
-    this.writePackageRecord(record);
-    this.installLauncher(record);
-    this.registerPackageApp(record);
-    return record;
+    return this.runPackageTransaction(record, () => {
+      this.ensurePackageRoots();
+      this.ensurePackageDirectory(record);
+      this.installDeclaredInlineFiles(record, manifest.files || []);
+      this.writePackageRecord(record);
+      this.installLauncher(record);
+      this.registerPackageApp(record);
+      this.emitPackageLifecycle("install", record);
+      return record;
+    });
   }
 
   async installFromRegistry(packageId, options = {}) {
@@ -142,7 +149,7 @@ export class PackageManager {
       .find((entry) => entry.id === packageId || entry.name === packageId);
     if (!match) throw new Error(`pkg: ${packageId}: package not found in registries`);
     if (!match.manifestUrl) throw new Error(`pkg: ${packageId}: registry entry has no manifestUrl`);
-    if (isHttpUrl(match.manifestUrl)) return this.installFromUrl(match.manifestUrl, options);
+    if (isHttpUrl(match.manifestUrl)) return this.installFromUrl(match.manifestUrl, { ...options, registry: match.registry });
     return this.installFromManifestPath(match.manifestUrl);
   }
 
@@ -222,17 +229,64 @@ export class PackageManager {
       this.os.fs.remove(this.packageRecordPath(record.id), "/", {}, this.system);
     }
     this.os.unregisterApp(record.app.id);
+    this.emitPackageLifecycle("uninstall", record);
     return record;
+  }
+
+  emitPackageLifecycle(type, record) {
+    const payload = {
+      type,
+      packageId: record.id,
+      appId: record.app?.id || "",
+      name: record.name,
+      version: record.version,
+      record: packagePublicRecord(record),
+    };
+    this.os.bus?.emit?.(`package:${type}`, payload);
+    this.os.bus?.emit?.(`app:${type}`, payload);
   }
 
   registerInstalledPackages() {
     this.list().forEach((record) => this.registerPackageApp(record));
   }
 
+  runPackageTransaction(record, install) {
+    const beforeRoot = this.os.fs.snapshot();
+    const previousApp = this.os.apps?.apps?.get?.(record.app.id) || null;
+    try {
+      return install();
+    } catch (error) {
+      this.rollbackPackageTransaction(record, beforeRoot, previousApp);
+      throw error;
+    }
+  }
+
+  async runPackageTransactionAsync(record, install) {
+    const beforeRoot = this.os.fs.snapshot();
+    const previousApp = this.os.apps?.apps?.get?.(record.app.id) || null;
+    try {
+      return await install();
+    } catch (error) {
+      this.rollbackPackageTransaction(record, beforeRoot, previousApp);
+      throw error;
+    }
+  }
+
+  rollbackPackageTransaction(record, beforeRoot, previousApp) {
+    this.os.fs.root = beforeRoot;
+    if (this.os.apps?.apps instanceof Map) {
+      if (previousApp) this.os.apps.apps.set(record.app.id, previousApp);
+      else this.os.apps.apps.delete(record.app.id);
+    } else if (!previousApp) {
+      this.os.unregisterApp?.(record.app.id);
+    }
+    this.os.fs.emitChange?.("package-rollback", record.installPath);
+  }
+
   async readRegistryIndex(registry, fetcher = globalThis.fetch) {
     if (isHttpUrl(registry.url)) {
       if (typeof fetcher !== "function") throw new Error("pkg: fetch is not available in this runtime");
-      return parseJson(await fetchText(fetcher, registry.url, MAX_REMOTE_MANIFEST_BYTES, `registry ${registry.name}`), registry.url);
+      return parseJson(await fetchText(this.os, fetcher, registry.url, MAX_REMOTE_MANIFEST_BYTES, `registry ${registry.name}`), registry.url);
     }
     return parseJson(this.os.fs.readFile(registry.url, "/", this.system), registry.url);
   }
@@ -269,6 +323,7 @@ export class PackageManager {
       description: String(manifest.description || app.description || ""),
       installPath,
       sourcePath: options.sourcePath || manifest.sourcePath || "",
+      trust: packageTrust(options.sourcePath || manifest.sourcePath || "", options.registry || ""),
       installedAt: new Date().toISOString(),
       originalManifest: manifest,
       files: [],
@@ -445,7 +500,7 @@ export class PackageManager {
     for (const file of files) {
       if (file.url) {
         const fileUrl = normalizePackageUrl(new URL(file.url, sourceUrl).toString());
-        const content = await fetchText(fetcher, fileUrl, MAX_REMOTE_FILE_BYTES, `file ${file.path || fileUrl}`);
+        const content = await fetchText(this.os, fetcher, fileUrl, MAX_REMOTE_FILE_BYTES, `file ${file.path || fileUrl}`);
         await verifyIntegrity(content, file.integrity, file.path || fileUrl);
         this.writePackageFile(record, { ...file, sourceUrl: fileUrl }, content);
         continue;
@@ -751,6 +806,19 @@ function normalizeRegistryPackage(entry, registry) {
     description: String(entry.description || ""),
     manifestUrl: entry.manifestUrl || entry.url || "",
     registry: registry.name,
+    trust: packageTrust(entry.manifestUrl || entry.url || "", registry.name),
+  };
+}
+
+function packageTrust(sourcePath, registry = "") {
+  const remote = isHttpUrl(sourcePath);
+  const warnings = [];
+  if (remote) warnings.push("remote manifest is untrusted until package signatures are implemented");
+  return {
+    source: remote ? "remote" : "local",
+    registry,
+    trusted: !remote,
+    warnings,
   };
 }
 
@@ -774,7 +842,16 @@ function isHttpUrl(value) {
   }
 }
 
-async function fetchText(fetcher, url, maxBytes, label) {
+async function fetchText(os, fetcher, url, maxBytes, label) {
+  if (os.cache?.fetchText) {
+    return os.cache.fetchText(fetcher, url, {
+      namespace: "packages",
+      headers: { Accept: "application/json, text/plain, */*" },
+      maxBytes,
+      label,
+      errorPrefix: "pkg",
+    });
+  }
   const response = await fetcher(url, { headers: { Accept: "application/json, text/plain, */*" } });
   if (!response?.ok) throw new Error(`pkg: failed to fetch ${label}: ${response?.status || "network error"}`);
   const length = Number(response.headers?.get?.("content-length") || 0);
@@ -827,6 +904,7 @@ function mimeFromName(path) {
   if (/\.md$/i.test(path)) return "text/markdown";
   if (/\.txt$/i.test(path)) return "text/plain";
   if (/\.json$/i.test(path)) return "application/json";
+  if (/\.deck\.html?$/i.test(path)) return "application/x-dindbos-deck";
   if (/\.html?$/i.test(path)) return "text/html";
   if (/\.css$/i.test(path)) return "text/css";
   if (/\.js$/i.test(path)) return "text/javascript";

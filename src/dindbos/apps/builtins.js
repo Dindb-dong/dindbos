@@ -1,5 +1,9 @@
-import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260422-activity-monitor";
-import { ShellSession } from "../shell.js?v=20260422-activity-monitor";
+import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260422-browserd";
+import { BrowserCompanionClient, pasteClipboardText } from "../browser-client.js?v=20260422-browserd";
+import { ShellSession } from "../shell.js?v=20260422-browserd";
+
+const FILES_OPERATION_HISTORY_LIMIT = 12;
+export const BROWSER_LOCAL_HTML_SANDBOX = "allow-scripts allow-forms allow-popups";
 
 export function installBuiltinApps(os, { portfolioData }) {
   os.registerApp({
@@ -96,11 +100,29 @@ export function installBuiltinApps(os, { portfolioData }) {
   });
 
   os.registerApp({
+    id: "browser",
+    name: "Browser",
+    title: ({ node, url }) => node?.name || url || "Browser.app",
+    icon: "browser",
+    pinned: true,
+    width: 940,
+    height: 640,
+    associationPriority: 20,
+    accepts: ["text/html"],
+    manifest: {
+      capabilities: ["process.read", "localMount.read"],
+      fileSystem: { read: ["/"], write: [] },
+    },
+    render: ({ os: runtime, content, context, window }) => renderBrowser(runtime, content, context, window),
+  });
+
+  os.registerApp({
     id: "viewer",
     name: "Viewer",
     title: ({ node }) => node?.name || "Viewer",
     icon: "pdf",
-    accepts: ["application/pdf", "text/html", "image/*"],
+    accepts: ["application/pdf", "image/*", "text/markdown", "application/x-dindbos-deck"],
+    associationPriority: 10,
     width: 820,
     height: 560,
     manifest: {
@@ -185,12 +207,19 @@ function renderFiles(os, content, path, windowApi) {
   let searchQuery = "";
   let searchTimer = null;
   let fileOperation = null;
+  let operationHistory = [];
+  let selectedPaths = new Set([selectedPath]);
+  let selectionAnchorPath = selectedPath;
 
   const draw = async (nextPath, nextSelectedPath = null, options = {}) => {
     currentPath = os.fs.normalize(nextPath);
     if (!os.fs.resolve(currentPath)) currentPath = os.session.home || "/";
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.syncDirectory(currentPath);
     selectedPath = nextSelectedPath ? os.fs.normalize(nextSelectedPath) : currentPath;
+    if (!options.preserveSelection) {
+      selectedPaths = new Set([selectedPath]);
+      selectionAnchorPath = selectedPath;
+    }
     const currentStat = os.fs.stat(currentPath);
     windowApi.setTitle(`Files - ${currentPath}`);
     const query = searchQuery.trim();
@@ -203,7 +232,7 @@ function renderFiles(os, content, path, windowApi) {
       ? latestMountOperation
       : fileOperation || latestMountOperation;
     content.innerHTML = `
-      <section class="files-app">
+      <section class="files-app" tabindex="0">
         <aside class="files-sidebar">
           ${sidebar.map((group) => `
             <section>
@@ -250,11 +279,12 @@ function renderFiles(os, content, path, windowApi) {
                 ${column.entries.map((entry) => {
                   const stat = os.fs.lstat(entry.path) || os.fs.stat(entry.path);
                   const resolved = os.fs.resolveNode(entry);
-                  const isSelected = entry.path === column.selectedPath;
+                  const isSelected = selectedPaths.has(entry.path);
                   return `
                     <button
                       type="button"
                       class="files-row ${isSelected ? "is-selected" : ""}"
+                      aria-selected="${isSelected ? "true" : "false"}"
                       data-path="${escapeAttr(entry.path)}"
                       data-openable="${resolved.type === "directory" || resolved.type === "mount" ? "false" : "true"}"
                       data-drop-path="${resolved.type === "directory" || resolved.type === "mount" ? escapeAttr(entry.path) : ""}"
@@ -271,15 +301,17 @@ function renderFiles(os, content, path, windowApi) {
             `).join("")}
           </div>
           <div class="files-status">
-            <span>${query ? `${visibleCount} matches` : `${os.fs.list(currentPath).length} items`}</span>
-            <span>${clipboard ? `Clipboard: ${escapeHtml(os.fs.basename(clipboard.path))}` : escapeHtml(currentPath)}</span>
+            <span>${query ? `${visibleCount} matches` : `${os.fs.list(currentPath).length} items`} · ${selectedPaths.size} selected</span>
+            <span>${clipboard ? `Clipboard: ${escapeHtml(os.fs.basename(clipboard.path))}` : selectedPaths.size > 1 ? `${selectedPaths.size} selected` : escapeHtml(currentPath)}</span>
           </div>
         </div>
         <aside class="files-inspector">
           ${selected ? renderInspector(selected) : "<p>No selection</p>"}
+          ${renderFilesOperationHistory(operationHistory)}
         </aside>
       </section>
     `;
+    const appRoot = content.querySelector(".files-app");
     content.querySelectorAll("[data-nav]").forEach((button) => {
       button.addEventListener("click", () => draw(button.dataset.nav));
     });
@@ -290,8 +322,21 @@ function renderFiles(os, content, path, windowApi) {
       searchTimer = window.setTimeout(() => draw(currentPath, selectedPath, { focusSearch: true }), 120);
     });
     content.querySelectorAll("[data-path]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", (event) => {
         clearTimeout(clickTimer);
+        if (event.metaKey || event.ctrlKey || event.shiftKey) {
+          const column = columns.find((item) => item.entries.some((entry) => entry.path === button.dataset.path));
+          const nextSelection = updateFilesSelection([...selectedPaths], column?.entries.map((entry) => entry.path) || [], button.dataset.path, {
+            mode: event.shiftKey ? "range" : "toggle",
+            anchorPath: selectionAnchorPath,
+          });
+          selectedPaths = new Set(nextSelection.selectedPaths);
+          selectionAnchorPath = nextSelection.anchorPath;
+          draw(currentPath, button.dataset.path, { preserveSelection: true });
+          return;
+        }
+        selectedPaths = new Set([button.dataset.path]);
+        selectionAnchorPath = button.dataset.path;
         clickTimer = window.setTimeout(() => {
           const node = os.fs.resolve(button.dataset.path) || os.fs.lstat(button.dataset.path);
           const resolved = os.fs.resolveNode(node);
@@ -299,7 +344,7 @@ function renderFiles(os, content, path, windowApi) {
             draw(button.dataset.path, button.dataset.path);
             return;
           }
-          draw(currentPath, button.dataset.path);
+          draw(currentPath, button.dataset.path, { preserveSelection: true });
         }, 180);
       });
       button.addEventListener("dblclick", () => {
@@ -308,7 +353,11 @@ function renderFiles(os, content, path, windowApi) {
       });
       button.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        draw(currentPath, button.dataset.path).then(() => {
+        if (!selectedPaths.has(button.dataset.path)) {
+          selectedPaths = new Set([button.dataset.path]);
+          selectionAnchorPath = button.dataset.path;
+        }
+        draw(currentPath, button.dataset.path, { preserveSelection: true }).then(() => {
           showFilesContextMenu(content, event, button.dataset.path, clipboard, runAction);
         });
       });
@@ -325,7 +374,9 @@ function renderFiles(os, content, path, windowApi) {
         button.addEventListener("drop", async (event) => {
           event.preventDefault();
           button.classList.remove("is-drop-target");
-          await handleFilesDrop(os, event, button.dataset.dropPath, draw, windowApi, content);
+          await handleFilesDrop(os, event, button.dataset.dropPath, draw, windowApi, content, (operation) => {
+            operationHistory = recordFilesOperationHistory(operationHistory, operation);
+          });
         });
       }
     });
@@ -339,7 +390,56 @@ function renderFiles(os, content, path, windowApi) {
         await runAction(button.dataset.mountAction, button.dataset.mountPath || currentPath);
       });
     });
-    content.addEventListener("contextmenu", (event) => {
+    appRoot.addEventListener("keydown", async (event) => {
+      if (event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        await runAction("copy");
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        await runAction("paste");
+        return;
+      }
+      if (event.key === "F2") {
+        event.preventDefault();
+        await runAction("rename");
+        return;
+      }
+      if (event.key === "Delete") {
+        event.preventDefault();
+        await runAction("trash");
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        openSelectedPath();
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        if (currentPath !== "/") await draw(os.fs.dirname(currentPath), currentPath, { focusSelected: true });
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        const node = os.fs.resolve(selectedPath) || os.fs.lstat(selectedPath);
+        const resolved = os.fs.resolveNode(node);
+        if (resolved.type === "directory" || resolved.type === "mount") await draw(selectedPath, selectedPath, { focusSelected: true });
+        return;
+      }
+      if (["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        const column = columns.find((item) => item.entries.some((entry) => entry.path === selectedPath)) || columns.at(-1);
+        const nextSelection = moveFilesKeyboardSelection(selectedPath, column?.entries.map((entry) => entry.path) || [], event.key);
+        selectedPath = nextSelection.selectedPath || selectedPath;
+        selectedPaths = new Set(nextSelection.selectedPaths);
+        selectionAnchorPath = nextSelection.anchorPath;
+        await draw(currentPath, selectedPath, { preserveSelection: true, focusSelected: true });
+      }
+    });
+    appRoot.addEventListener("contextmenu", (event) => {
       if (event.target.closest("[data-path]")) return;
       event.preventDefault();
       showFilesContextMenu(content, event, currentPath, clipboard, runAction);
@@ -358,24 +458,46 @@ function renderFiles(os, content, path, windowApi) {
     dropTarget.addEventListener("drop", async (event) => {
       event.preventDefault();
       setDragging(false);
-      await handleFilesDrop(os, event, currentPath, draw, windowApi, content);
+      await handleFilesDrop(os, event, currentPath, draw, windowApi, content, (operation) => {
+        operationHistory = recordFilesOperationHistory(operationHistory, operation);
+      });
     });
     if (options.focusSearch) {
       const nextSearchInput = content.querySelector("[data-files-search]");
       nextSearchInput.focus();
       nextSearchInput.setSelectionRange(nextSearchInput.value.length, nextSearchInput.value.length);
     }
+    if (options.focusSelected) {
+      const focusedRow = [...content.querySelectorAll("[data-path]")].find((row) => row.dataset.path === selectedPath);
+      focusedRow?.focus();
+    }
+  };
+  const openSelectedPath = () => {
+    const node = os.fs.resolve(selectedPath) || os.fs.lstat(selectedPath);
+    const resolved = os.fs.resolveNode(node);
+    if (resolved.type === "directory" || resolved.type === "mount") {
+      draw(selectedPath, selectedPath);
+      return;
+    }
+    os.openPath(selectedPath);
   };
   const runAction = async (action, actionPath = selectedPath) => {
     const reporter = createFilesOperationReporter(content, operationLabel(action));
     try {
-      const result = await handleFileAction(os, currentPath, actionPath, action, { clipboard, reporter });
+      const result = await handleFileAction(os, currentPath, actionPath, action, { clipboard, reporter, selectedPaths: [...selectedPaths] });
       if (Object.hasOwn(result, "clipboard")) clipboard = result.clipboard;
       await os.storage?.flush?.();
-      if (reporter.started) fileOperation = reporter.complete("Complete");
+      if (reporter.started) {
+        fileOperation = reporter.complete("Complete");
+        operationHistory = recordFilesOperationHistory(operationHistory, fileOperation);
+      }
+      selectedPaths = new Set([result.selectedPath || result.path || currentPath]);
       await draw(result.path || currentPath, result.selectedPath || result.path || currentPath);
     } catch (error) {
-      if (reporter.started) fileOperation = reporter.fail(error);
+      if (reporter.started) {
+        fileOperation = reporter.fail(error);
+        operationHistory = recordFilesOperationHistory(operationHistory, fileOperation);
+      }
       windowApi.setTitle(`Files - ${error.message}`);
       updateFilesOperation(content, fileOperation);
     }
@@ -407,22 +529,140 @@ function buildSearchColumns(os, currentPath, selectedPath, query) {
   }];
 }
 
-function searchFileEntries(os, rootPath, query) {
-  const normalizedQuery = query.toLowerCase();
+export function searchFileEntries(os, rootPath, query) {
+  const filters = parseFilesSearchQuery(query);
   const results = [];
   const visit = (directory, depth = 0) => {
     if (depth > 8) return;
     const entries = safeRead(() => os.fs.list(directory), []);
     entries.forEach((entry) => {
-      if (entry.name.toLowerCase().includes(normalizedQuery) || entry.path.toLowerCase().includes(normalizedQuery)) {
+      const stat = os.fs.stat(entry.path) || os.fs.lstat(entry.path) || entry;
+      const resolved = os.fs.resolveNode(entry);
+      if (matchesFilesSearch(entry, resolved, stat, filters)) {
         results.push(entry);
       }
-      const resolved = os.fs.resolveNode(entry);
       if (resolved.type === "directory" || resolved.type === "mount") visit(entry.path, depth + 1);
     });
   };
   visit(rootPath);
   return results;
+}
+
+export function parseFilesSearchQuery(query = "") {
+  const filters = { text: [], type: "", ext: "", min: 0, max: 0, modified: "" };
+  String(query || "").trim().split(/\s+/).filter(Boolean).forEach((token) => {
+    const [rawKey, ...rawValue] = token.split(":");
+    const key = rawKey.toLowerCase();
+    const value = rawValue.join(":").trim();
+    if (!value) {
+      filters.text.push(token.toLowerCase());
+      return;
+    }
+    if (key === "type") filters.type = value.toLowerCase();
+    else if (key === "ext") filters.ext = value.replace(/^\./, "").toLowerCase();
+    else if (key === "min") filters.min = parseSizeFilter(value);
+    else if (key === "max") filters.max = parseSizeFilter(value);
+    else if (key === "modified") filters.modified = value.toLowerCase();
+    else filters.text.push(token.toLowerCase());
+  });
+  return filters;
+}
+
+function matchesFilesSearch(entry, resolved, stat, filters) {
+  const haystack = `${entry.name || ""} ${entry.path || ""}`.toLowerCase();
+  if (filters.text.some((needle) => !haystack.includes(needle))) return false;
+  if (filters.type && !matchesFilesSearchType(resolved, stat, filters.type)) return false;
+  if (filters.ext && fileExtension(entry.name || "") !== filters.ext) return false;
+  const size = Number(stat?.size || resolved?.size || 0);
+  if (filters.min && size < filters.min) return false;
+  if (filters.max && size > filters.max) return false;
+  if (filters.modified && !matchesModifiedFilter(stat?.modified || resolved?.modified, filters.modified)) return false;
+  return true;
+}
+
+function matchesFilesSearchType(resolved, stat, type) {
+  if (type === "folder" || type === "directory") return resolved.type === "directory" || resolved.type === "mount";
+  if (type === "file") return resolved.type === "file";
+  if (type === "app") return resolved.type === "app";
+  const mime = String(stat?.mime || resolved?.mime || "").toLowerCase();
+  if (type === "image") return mime.startsWith("image/");
+  if (type === "text") return mime.startsWith("text/") || mime === "application/json";
+  if (type === "pdf") return mime === "application/pdf";
+  return mime.includes(type);
+}
+
+function parseSizeFilter(value) {
+  const match = String(value || "").trim().toLowerCase().match(/^(\d+(?:\.\d+)?)(b|kb|mb|gb)?$/);
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  const unit = match[2] || "b";
+  const scale = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 }[unit] || 1;
+  return Math.round(amount * scale);
+}
+
+function matchesModifiedFilter(value, filter) {
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return false;
+  const now = Date.now();
+  if (filter === "today") return new Date(value).toDateString() === new Date(now).toDateString();
+  const match = filter.match(/^([<>]=?)(\d{4}-\d{2}-\d{2})$/);
+  if (!match) return String(value).toLowerCase().startsWith(filter);
+  const target = new Date(`${match[2]}T00:00:00`).getTime();
+  if (match[1] === ">") return time > target;
+  if (match[1] === ">=") return time >= target;
+  if (match[1] === "<") return time < target;
+  return time <= target;
+}
+
+function fileExtension(name) {
+  const base = String(name || "").toLowerCase();
+  const index = base.lastIndexOf(".");
+  return index > 0 ? base.slice(index + 1) : "";
+}
+
+export function updateFilesSelection(selectedPaths = [], visiblePaths = [], path = "", options = {}) {
+  const mode = options.mode || "single";
+  const current = new Set(selectedPaths.filter(Boolean));
+  const target = String(path || "");
+  if (!target) return { selectedPaths: [...current], anchorPath: options.anchorPath || "" };
+  if (mode === "single") return { selectedPaths: [target], anchorPath: target };
+  if (mode === "toggle") {
+    if (current.has(target) && current.size > 1) current.delete(target);
+    else current.add(target);
+    return { selectedPaths: [...current], anchorPath: target };
+  }
+  if (mode === "range") {
+    const anchor = options.anchorPath && visiblePaths.includes(options.anchorPath) ? options.anchorPath : target;
+    const start = visiblePaths.indexOf(anchor);
+    const end = visiblePaths.indexOf(target);
+    if (start < 0 || end < 0) return { selectedPaths: [target], anchorPath: target };
+    const [left, right] = start <= end ? [start, end] : [end, start];
+    visiblePaths.slice(left, right + 1).forEach((item) => current.add(item));
+    return { selectedPaths: [...current], anchorPath: anchor };
+  }
+  return { selectedPaths: [target], anchorPath: target };
+}
+
+export function moveFilesKeyboardSelection(selectedPath = "", visiblePaths = [], key = "ArrowDown") {
+  const paths = visiblePaths.filter(Boolean);
+  if (!paths.length) return { selectedPath, selectedPaths: selectedPath ? [selectedPath] : [], anchorPath: selectedPath };
+  const currentIndex = paths.indexOf(selectedPath);
+  const lastIndex = paths.length - 1;
+  let nextIndex = currentIndex >= 0 ? currentIndex : 0;
+  if (key === "ArrowUp") nextIndex = currentIndex <= 0 ? 0 : currentIndex - 1;
+  else if (key === "ArrowDown") nextIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, currentIndex + 1);
+  else if (key === "Home") nextIndex = 0;
+  else if (key === "End") nextIndex = lastIndex;
+  const nextPath = paths[nextIndex];
+  return { selectedPath: nextPath, selectedPaths: [nextPath], anchorPath: nextPath };
+}
+
+export function filesActionTargets(currentPath, selectedPath, selectedPaths = []) {
+  const unique = [...new Set(selectedPaths.filter((path) => path && path !== currentPath))];
+  if (unique.length) return unique;
+  if (selectedPath && selectedPath !== currentPath) return [selectedPath];
+  return [];
 }
 
 function renderBreadcrumb(os, currentPath) {
@@ -494,6 +734,41 @@ function renderFilesOperation(operation) {
 function updateFilesOperation(content, operation) {
   const target = content.querySelector(".files-operation");
   if (target) target.outerHTML = renderFilesOperation(operation);
+}
+
+export function recordFilesOperationHistory(history = [], operation = {}, options = {}) {
+  const limit = Number(options.limit || FILES_OPERATION_HISTORY_LIMIT);
+  const detail = operation.error || operation.detail || operation.destination || operation.source || "";
+  const item = {
+    id: operation.id || `files-history-${Date.now()}`,
+    label: operation.label || operation.kind || "Operation",
+    status: operation.status || "complete",
+    detail,
+    done: Number(operation.done || 0),
+    total: Number(operation.total || 0),
+    startedAt: operation.startedAt || "",
+    finishedAt: operation.finishedAt || new Date().toISOString(),
+  };
+  return [item, ...history].slice(0, Math.max(1, limit));
+}
+
+function renderFilesOperationHistory(history = []) {
+  return `
+    <section class="files-operation-history">
+      <p class="dos-kicker">Operation Log</p>
+      ${history.length ? `
+        <ol>
+          ${history.map((item) => `
+            <li data-operation-history-status="${escapeAttr(item.status)}">
+              <strong>${escapeHtml(item.label)}</strong>
+              <span>${escapeHtml(item.status)} · ${escapeHtml(item.detail || "Complete")}</span>
+              <small>${escapeHtml(shortTime(item.finishedAt || item.startedAt))}</small>
+            </li>
+          `).join("")}
+        </ol>
+      ` : "<p>No operations yet</p>"}
+    </section>
+  `;
 }
 
 function createFilesOperationReporter(content, label) {
@@ -618,21 +893,21 @@ function showFilesContextMenu(content, event, targetPath, clipboard, runAction) 
   }, 0);
 }
 
-async function handleFilesDrop(os, event, destinationPath, draw, windowApi, content) {
+async function handleFilesDrop(os, event, destinationPath, draw, windowApi, content, onHistory = null) {
   const reporter = createFilesOperationReporter(content, "Drop");
   try {
     const sourcePath = event.dataTransfer?.getData("application/x-dindbos-path");
     if (sourcePath) {
       const moved = await movePathIntoDirectory(os, sourcePath, destinationPath, reporter);
-      reporter.complete("Complete");
+      onHistory?.(reporter.complete("Complete"));
       await draw(destinationPath, moved);
       return;
     }
     const imported = await importDroppedFiles(os, destinationPath, event.dataTransfer?.files || [], reporter);
-    reporter.complete("Complete");
+    onHistory?.(reporter.complete("Complete"));
     await draw(destinationPath, imported[0] || destinationPath);
   } catch (error) {
-    reporter.fail(error);
+    onHistory?.(reporter.fail(error));
     windowApi.setTitle(`Files - ${error.message}`);
   }
 }
@@ -751,9 +1026,15 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
     return { path: currentPath, selectedPath: pasted, clipboard: state.clipboard };
   }
   if (action === "trash") {
-    const target = actionTarget(currentPath, selectedPath);
-    const trashed = await movePathToTrash(os, target, reporter);
-    return { path: currentPath, selectedPath: trashed };
+    const targets = filesActionTargets(currentPath, selectedPath, state.selectedPaths);
+    if (!targets.length) throw new Error("Select an item first");
+    reporter?.start(targets.length, `Moving ${targets.length} item${targets.length === 1 ? "" : "s"} to Trash`);
+    let trashed = currentPath;
+    for (const target of targets) {
+      trashed = await movePathToTrash(os, target);
+      reporter?.step(target);
+    }
+    return { path: currentPath, selectedPath: targets.length === 1 ? trashed : currentPath };
   }
   if (action === "import") {
     const imported = await importFilesWithPicker(os, currentPath, reporter);
@@ -765,8 +1046,13 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
     return { path: currentPath, selectedPath };
   }
   if (action === "delete") {
-    const target = actionTarget(currentPath, selectedPath);
-    await removePath(os, target, reporter);
+    const targets = filesActionTargets(currentPath, selectedPath, state.selectedPaths);
+    if (!targets.length) throw new Error("Select an item first");
+    reporter?.start(targets.length, `Deleting ${targets.length} item${targets.length === 1 ? "" : "s"}`);
+    for (const target of targets) {
+      await removePath(os, target);
+      reporter?.step(target);
+    }
     return { path: currentPath, selectedPath: currentPath };
   }
   return { path: currentPath, selectedPath };
@@ -789,7 +1075,7 @@ async function importFilesWithPicker(os, currentPath, reporter = null) {
   }
 }
 
-async function importDroppedFiles(os, currentPath, fileList, reporter = null) {
+export async function importDroppedFiles(os, currentPath, fileList, reporter = null) {
   const files = [...fileList];
   const imported = [];
   if (files.length) reporter?.start(files.length, `Importing ${files.length} file${files.length === 1 ? "" : "s"}`);
@@ -808,7 +1094,7 @@ async function importDroppedFiles(os, currentPath, fileList, reporter = null) {
   return imported;
 }
 
-async function importDindbArchive(os, currentPath, file, reporter = null) {
+export async function importDindbArchive(os, currentPath, file, reporter = null) {
   const archive = JSON.parse(await file.text());
   if (archive?.kind !== "dindbos-export-v1" || !Array.isArray(archive.entries)) throw new Error("Invalid DindbOS export");
   const imported = [];
@@ -1070,7 +1356,7 @@ async function exportPath(os, path, reporter = null) {
   reporter?.step(normalized);
 }
 
-async function collectExportEntries(os, rootPath, reporter = null) {
+export async function collectExportEntries(os, rootPath, reporter = null) {
   const root = os.fs.normalize(rootPath);
   const entries = [];
   const walk = async (path) => {
@@ -1206,6 +1492,357 @@ async function renderTextEditor(os, content, node, windowApi) {
   });
 }
 
+function renderBrowser(os, content, context = {}, windowApi) {
+  const client = new BrowserCompanionClient();
+  const restoredState = windowApi?.getState?.("browser");
+  const state = createBrowserSessionState(context, restoredState);
+  content.innerHTML = `
+    <section class="browser-app">
+      <form class="browser-toolbar">
+        <button type="button" data-browser-action="back">Back</button>
+        <button type="button" data-browser-action="forward">Forward</button>
+        <button type="button" data-browser-action="reload">Reload</button>
+        <input name="address" autocomplete="off" spellcheck="false" value="${escapeAttr(state.address)}" />
+        <button type="submit">Go</button>
+        <button type="button" data-browser-action="connect">Connect</button>
+      </form>
+      <div class="browser-status">
+        <span data-browser-status>${escapeHtml(state.status)}</span>
+        <code>${escapeHtml(state.companionUrl)}</code>
+      </div>
+      <div class="browser-viewport" tabindex="0" data-browser-viewport>
+        <div class="browser-placeholder">
+          <p class="dos-kicker">Local companion</p>
+          <h2>Start browserd to open real URLs.</h2>
+          <pre>npm run browserd</pre>
+        </div>
+        <img data-browser-frame alt="Remote browser frame" decoding="async" hidden />
+        <iframe data-browser-local title="DindbOS HTML document" sandbox="${escapeAttr(BROWSER_LOCAL_HTML_SANDBOX)}" hidden></iframe>
+      </div>
+    </section>
+  `;
+  const refs = {
+    form: content.querySelector(".browser-toolbar"),
+    address: content.querySelector("[name='address']"),
+    status: content.querySelector("[data-browser-status]"),
+    viewport: content.querySelector("[data-browser-viewport]"),
+    frame: content.querySelector("[data-browser-frame]"),
+    local: content.querySelector("[data-browser-local]"),
+    placeholder: content.querySelector(".browser-placeholder"),
+    connect: content.querySelector("[data-browser-action='connect']"),
+  };
+  let resizeTimer = null;
+  let frameRaf = 0;
+  let pendingFrameSrc = "";
+  let wheelTimer = null;
+  let wheelDeltaX = 0;
+  let wheelDeltaY = 0;
+  let wheelPoint = { x: 0, y: 0 };
+  const lastResize = { width: 0, height: 0, scale: 0 };
+  const persistState = () => windowApi?.setState?.("browser", browserSessionSnapshot(state));
+  const setStatus = (status) => {
+    const nextStatus = String(status || "");
+    if (state.status === nextStatus) return;
+    state.status = nextStatus;
+    refs.status.textContent = nextStatus;
+    persistState();
+    os.processes.logSelf?.(`browser ${nextStatus}`);
+  };
+  const showFrame = (src) => {
+    state.mode = "companion";
+    state.frame = src;
+    refs.placeholder.hidden = true;
+    refs.local.hidden = true;
+    refs.frame.hidden = false;
+    refs.frame.src = src;
+    persistState();
+  };
+  const queueFrame = (src) => {
+    pendingFrameSrc = src;
+    if (frameRaf) return;
+    frameRaf = requestAnimationFrame(() => {
+      frameRaf = 0;
+      showFrame(pendingFrameSrc);
+      pendingFrameSrc = "";
+    });
+  };
+  const resizeRemote = () => {
+    if (!client.connected) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const rect = refs.viewport.getBoundingClientRect();
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
+      const scale = globalThis.devicePixelRatio || 1;
+      const unchanged = Math.abs(width - lastResize.width) < 2
+        && Math.abs(height - lastResize.height) < 2
+        && Math.abs(scale - lastResize.scale) < 0.01;
+      if (unchanged) return;
+      lastResize.width = width;
+      lastResize.height = height;
+      lastResize.scale = scale;
+      client.resize(width, height, scale).catch((error) => setStatus(error.message));
+    }, 120);
+  };
+  client.on("status", (message) => {
+    if (message.url) {
+      state.address = message.url;
+      refs.address.value = message.url;
+    }
+    if (message.title) {
+      state.title = message.title;
+      windowApi.setTitle(`${message.title} - Browser`);
+    }
+    if (message.reconnect) refs.connect.textContent = "Reconnect";
+    else if (message.status === "connected") refs.connect.textContent = "Connect";
+    const status = [message.status, message.url].filter(Boolean).join(" ");
+    setStatus(message.message || status || "browserd connected");
+    persistState();
+  });
+  client.on("frame", (message) => {
+    if (!message.data?.startsWith("data:image/")) {
+      setStatus("browserd frame missing image data");
+      return;
+    }
+    if (message.url) {
+      state.address = message.url;
+      refs.address.value = message.url;
+    }
+    if (message.title) {
+      state.title = message.title;
+      windowApi.setTitle(`${message.title} - Browser`);
+    }
+    setStatus(message.url ? `ready ${message.url}` : "ready");
+    queueFrame(message.data);
+  });
+  client.on("error", (error) => setStatus(error.message));
+  refs.form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await openAddress(refs.address.value);
+  });
+  refs.form.querySelectorAll("[data-browser-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const action = button.dataset.browserAction;
+      try {
+        if (action === "connect") await connectCompanion();
+        if (action === "back") await client.back();
+        if (action === "forward") await client.forward();
+        if (action === "reload") {
+          if (state.mode === "local") await openLocalPath(refs.address.value);
+          else await client.reload();
+        }
+      } catch (error) {
+        setStatus(error.message);
+      }
+    });
+  });
+  refs.viewport.addEventListener("click", (event) => {
+    if (!client.connected || refs.frame.hidden) return;
+    const point = browserViewportPoint(refs.frame, event);
+    client.click(point.x, point.y).catch((error) => setStatus(error.message));
+    refs.viewport.focus();
+  });
+  refs.viewport.addEventListener("wheel", (event) => {
+    if (!client.connected || refs.frame.hidden) return;
+    event.preventDefault();
+    wheelPoint = browserViewportPoint(refs.frame, event);
+    wheelDeltaX += event.deltaX;
+    wheelDeltaY += event.deltaY;
+    if (wheelTimer) return;
+    wheelTimer = setTimeout(() => {
+      const deltaX = wheelDeltaX;
+      const deltaY = wheelDeltaY;
+      const point = wheelPoint;
+      wheelDeltaX = 0;
+      wheelDeltaY = 0;
+      wheelTimer = null;
+      client.scroll(deltaX, deltaY, point.x, point.y).catch((error) => setStatus(error.message));
+    }, 33);
+  }, { passive: false });
+  refs.viewport.addEventListener("keydown", async (event) => {
+    if (!client.connected || refs.frame.hidden) return;
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v") {
+      event.preventDefault();
+      try {
+        const result = await pasteClipboardText(
+          () => globalThis.navigator?.clipboard?.readText?.(),
+          (text) => client.paste(text),
+        );
+        setStatus(result.pasted ? `pasted ${result.bytes} clipboard bytes` : "clipboard empty");
+      } catch (error) {
+        setStatus(`paste blocked: ${error.message}`);
+      }
+      return;
+    }
+    const payload = browserKeyEventPayload(event);
+    if (!payload) return;
+    event.preventDefault();
+    client.key(payload).catch((error) => setStatus(error.message));
+  });
+  new ResizeObserver(resizeRemote).observe(refs.viewport);
+
+  async function connectCompanion() {
+    if (!client.connected) {
+      setStatus("connecting browserd");
+      await client.reconnect();
+      refs.connect.textContent = "Connect";
+      resizeRemote();
+    }
+    return client;
+  }
+
+  async function openAddress(value) {
+    const address = String(value || "").trim();
+    if (!address) return;
+    state.address = address;
+    refs.address.value = address;
+    persistState();
+    if (isDindbPath(address)) {
+      await openLocalPath(address);
+      return;
+    }
+    await connectCompanion();
+    setStatus(`navigating ${address}`);
+    await client.navigate(normalizeBrowserAddress(address));
+  }
+
+  async function openLocalPath(path) {
+    const normalized = os.fs.normalize(path);
+    const node = os.fs.resolve(normalized) || os.fs.lstat(normalized);
+    if (!node || node.mime !== "text/html") throw new Error(`Browser can only open HTML files: ${path}`);
+    const html = os.localMounts?.isMountedPath(normalized)
+      ? await os.localMounts.readFile(normalized)
+      : os.fs.readFile(normalized);
+    refs.placeholder.hidden = true;
+    refs.frame.hidden = true;
+    refs.local.hidden = false;
+    refs.local.srcdoc = html;
+    state.mode = "local";
+    state.address = normalized;
+    state.localHtml = html;
+    state.title = node.name;
+    refs.address.value = normalized;
+    setStatus(`local document ${normalized}`);
+    windowApi.setTitle(`${node.name} - Browser`);
+    persistState();
+  }
+
+  restoreBrowserView();
+
+  if (restoredState?.address) {
+    persistState();
+  } else if (context.node?.path && context.node.mime === "text/html") {
+    openLocalPath(context.node.path).catch((error) => setStatus(error.message));
+  } else if (state.address) {
+    openAddress(state.address).catch((error) => setStatus(error.message));
+  }
+
+  function restoreBrowserView() {
+    refs.status.textContent = state.status;
+    refs.address.value = state.address;
+    if (state.title && state.title !== "Browser") windowApi.setTitle(`${state.title} - Browser`);
+    if (state.mode === "local" && state.localHtml) {
+      refs.placeholder.hidden = true;
+      refs.frame.hidden = true;
+      refs.local.hidden = false;
+      refs.local.srcdoc = state.localHtml;
+      return;
+    }
+    if (state.mode === "companion" && state.frame) showFrame(state.frame);
+  }
+}
+
+function initialBrowserAddress(context = {}) {
+  if (context.url) return context.url;
+  if (context.node?.path) return context.node.path;
+  return "";
+}
+
+export function createBrowserSessionState(context = {}, restored = null) {
+  const state = {
+    mode: "idle",
+    status: "browserd not connected",
+    address: initialBrowserAddress(context),
+    title: "Browser",
+    frame: "",
+    localHtml: "",
+    companionUrl: "ws://127.0.0.1:8787/browser",
+  };
+  if (!restored || typeof restored !== "object") return state;
+  return {
+    ...state,
+    mode: sanitizeBrowserMode(restored.mode) || state.mode,
+    status: String(restored.status || state.status),
+    address: String(restored.address || state.address),
+    title: String(restored.title || state.title),
+    frame: String(restored.frame || ""),
+    localHtml: String(restored.localHtml || ""),
+  };
+}
+
+export function browserSessionSnapshot(state = {}) {
+  return {
+    mode: sanitizeBrowserMode(state.mode) || "idle",
+    status: String(state.status || ""),
+    address: String(state.address || ""),
+    title: String(state.title || "Browser"),
+    frame: String(state.frame || ""),
+    localHtml: String(state.localHtml || ""),
+  };
+}
+
+function sanitizeBrowserMode(mode) {
+  return ["idle", "local", "companion"].includes(mode) ? mode : "";
+}
+
+function isDindbPath(value) {
+  return String(value || "").startsWith("/") || String(value || "").startsWith("~");
+}
+
+export function normalizeBrowserAddress(value) {
+  const address = String(value || "").trim();
+  if (!address) return "about:blank";
+  if (/^https?:\/\//i.test(address)) return address;
+  if (/^about:blank$/i.test(address)) return "about:blank";
+  if (/^data:text\/html[,;]/i.test(address)) return address;
+  if (isLocalhostAddress(address)) return `http://${address}`;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(address)) throw new Error(`Browser does not support this URL scheme: ${address.split(":")[0]}:`);
+  if (address.includes(".")) return `https://${address}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(address)}`;
+}
+
+function isLocalhostAddress(address) {
+  return address === "localhost"
+    || address.startsWith("localhost:")
+    || address.startsWith("127.0.0.1")
+    || address.startsWith("[::1]");
+}
+
+function browserViewportPoint(element, event) {
+  const rect = element.getBoundingClientRect();
+  const naturalWidth = element.naturalWidth || rect.width;
+  const naturalHeight = element.naturalHeight || rect.height;
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * naturalWidth,
+    y: ((event.clientY - rect.top) / rect.height) * naturalHeight,
+  };
+}
+
+function browserKeyEventPayload(event) {
+  const key = String(event.key || "");
+  if (!key || key === "Unidentified") return null;
+  const modifiers = (event.altKey ? 1 : 0)
+    | (event.ctrlKey ? 2 : 0)
+    | (event.metaKey ? 4 : 0)
+    | (event.shiftKey ? 8 : 0);
+  return {
+    key,
+    code: event.code || undefined,
+    modifiers,
+    text: key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey ? key : undefined,
+  };
+}
+
 function renderViewer(os, content, node) {
   content.innerHTML = `
     <section class="viewer-app">
@@ -1225,22 +1862,134 @@ function renderViewer(os, content, node) {
   });
 }
 
+const VIEWER_TEXT_PREVIEW_LIMIT = 256 * 1024;
+
 async function renderViewerBytes(os, content, node) {
   const mime = node?.mime || "application/octet-stream";
   const bytes = node?.path
     ? await readNodeBytes(os, node.path)
     : null;
-  const url = bytes ? URL.createObjectURL(new Blob([bytes], { type: mime })) : "";
-  const preview = bytes ? previewBytes(bytes, mime) : (node?.content ? fileContentPreview(node.content) : "Preview adapter pending.");
-  content.innerHTML = `
+  cleanupViewerObjectUrl(content);
+  const usesObjectUrl = bytes && (mime.startsWith("image/") || mime === "application/pdf");
+  const url = usesObjectUrl ? URL.createObjectURL(new Blob([bytes], { type: mime })) : "";
+  if (url && content.dataset) content.dataset.viewerObjectUrl = url;
+  const previewState = bytes
+    ? viewerPreviewForBytes(bytes, mime)
+    : { preview: node?.content ? fileContentPreview(node.content) : "Preview adapter pending.", status: "" };
+  content.innerHTML = viewerMarkup({
+    mime,
+    name: node?.name || "Document",
+    path: node?.path || "",
+    preview: previewState.preview,
+    url,
+    status: previewState.status,
+  });
+  wireViewerToolbar(os, content, node, bytes || new Uint8Array(), mime);
+  const object = content.querySelector("[data-viewer-object]");
+  if (object && url) {
+    const release = () => {
+      if (content.dataset?.viewerObjectUrl === url) delete content.dataset.viewerObjectUrl;
+      URL.revokeObjectURL(url);
+    };
+    object.addEventListener("load", release, { once: true });
+    object.addEventListener("error", release, { once: true });
+  }
+}
+
+export function viewerMarkup({ mime, name, path = "", preview, url, status = "" }) {
+  const browserDisabled = mime === "text/html" && path ? "" : "disabled";
+  const statusText = status || (path ? path : "No file path");
+  return `
     <section class="viewer-app">
-      <p class="dos-kicker">${escapeHtml(mime)}</p>
-      <h2>${escapeHtml(node?.name || "Document")}</h2>
-      ${mime.startsWith("image/") && url ? `<img src="${escapeAttr(url)}" alt="${escapeAttr(node?.name || "Image")}" />` : ""}
-      ${mime === "application/pdf" && url ? `<iframe src="${escapeAttr(url)}" title="${escapeAttr(node?.name || "PDF")}"></iframe>` : ""}
-      ${!mime.startsWith("image/") && mime !== "application/pdf" ? `<pre>${escapeHtml(preview)}</pre>` : ""}
+      <header class="viewer-header">
+        <div>
+          <p class="dos-kicker">${escapeHtml(mime)}</p>
+          <h2>${escapeHtml(name || "Document")}</h2>
+        </div>
+        <div class="viewer-toolbar" role="toolbar" aria-label="Viewer controls">
+          <button type="button" data-viewer-action="zoom-out">-</button>
+          <button type="button" data-viewer-action="zoom-reset">100%</button>
+          <button type="button" data-viewer-action="zoom-in">+</button>
+          <button type="button" data-viewer-action="page-prev" disabled>Prev</button>
+          <button type="button" data-viewer-action="page-next" disabled>Next</button>
+          <button type="button" data-viewer-action="open-browser" ${browserDisabled}>Browser</button>
+          <button type="button" data-viewer-action="export">Export</button>
+          <button type="button" data-viewer-action="copy-path" ${path ? "" : "disabled"}>Copy path</button>
+        </div>
+      </header>
+      <p class="viewer-status" data-viewer-status>${escapeHtml(statusText)}</p>
+      <div class="viewer-preview" data-viewer-preview style="--viewer-zoom: 1">
+        ${mime.startsWith("image/") && url ? `<img data-viewer-object src="${escapeAttr(url)}" alt="${escapeAttr(name || "Image")}" />` : ""}
+        ${mime === "application/pdf" && url ? `<iframe data-viewer-object src="${escapeAttr(url)}" title="${escapeAttr(name || "PDF")}"></iframe>` : ""}
+        ${mime === "application/x-dindbos-deck" ? `<iframe class="viewer-deck" sandbox="" srcdoc="${escapeAttr(preview)}" title="${escapeAttr(name || "Deck")}"></iframe>` : ""}
+        ${mime === "text/markdown" ? `<article class="viewer-markdown">${renderMarkdownPreview(preview)}</article>` : ""}
+        ${!mime.startsWith("image/") && mime !== "application/pdf" && mime !== "application/x-dindbos-deck" && mime !== "text/markdown" ? `<pre>${escapeHtml(preview)}</pre>` : ""}
+      </div>
     </section>
   `;
+}
+
+function wireViewerToolbar(os, content, node, bytes, mime) {
+  let zoom = 1;
+  const preview = content.querySelector("[data-viewer-preview]");
+  const status = content.querySelector("[data-viewer-status]");
+  const setStatus = (message) => {
+    if (status) status.textContent = message;
+  };
+  const setZoom = (action) => {
+    zoom = viewerZoomValue(zoom, action);
+    preview?.style.setProperty("--viewer-zoom", String(zoom));
+    setStatus(`Zoom ${Math.round(zoom * 100)}%`);
+  };
+  content.querySelectorAll("[data-viewer-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const action = button.dataset.viewerAction;
+      if (action?.startsWith("zoom")) {
+        setZoom(action);
+        return;
+      }
+      if (action === "copy-path") {
+        await copyText(node?.path || "");
+        setStatus(`Copied ${node?.path || ""}`);
+      }
+      if (action === "open-browser" && node?.path && mime === "text/html") {
+        os.launch?.("browser", { url: node.path });
+        setStatus(`Opened ${node.path} in Browser.app`);
+      }
+      if (action === "export") {
+        exportViewerBytes(node?.name || "document", bytes, mime);
+        setStatus(`Exported ${node?.name || "document"}`);
+      }
+    });
+  });
+}
+
+export function viewerZoomValue(current, action) {
+  if (action === "zoom-reset") return 1;
+  const delta = action === "zoom-in" ? 0.1 : action === "zoom-out" ? -0.1 : 0;
+  return Math.min(3, Math.max(0.5, Math.round((Number(current || 1) + delta) * 10) / 10));
+}
+
+async function copyText(value) {
+  if (!value) return;
+  if (globalThis.navigator?.clipboard?.writeText) await globalThis.navigator.clipboard.writeText(value);
+}
+
+function exportViewerBytes(name, bytes, mime) {
+  if (typeof document === "undefined" || typeof URL === "undefined" || typeof Blob === "undefined") return;
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime || "application/octet-stream" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name || "document";
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export function cleanupViewerObjectUrl(content) {
+  const previous = content.dataset?.viewerObjectUrl;
+  if (!previous) return;
+  delete content.dataset.viewerObjectUrl;
+  URL.revokeObjectURL(previous);
 }
 
 async function readNodeBytes(os, path) {
@@ -1248,13 +1997,88 @@ async function readNodeBytes(os, path) {
   return os.fs.readFileBytes(path);
 }
 
-function previewBytes(bytes, mime) {
-  if (!isTextMime(mime)) return `Binary file · ${formatBytes(bytes.byteLength)}`;
-  return new TextDecoder().decode(bytes);
+export function viewerPreviewForBytes(bytes, mime) {
+  const size = bytes?.byteLength || 0;
+  if (!isTextMime(mime)) {
+    return {
+      preview: `Binary file · ${formatBytes(size)}`,
+      status: size ? `Binary preview · ${formatBytes(size)}` : "Empty binary file",
+    };
+  }
+  if (size > VIEWER_TEXT_PREVIEW_LIMIT) {
+    const slice = bytes.slice(0, VIEWER_TEXT_PREVIEW_LIMIT);
+    return {
+      preview: `${new TextDecoder().decode(slice)}\n\n[Preview truncated at ${formatBytes(VIEWER_TEXT_PREVIEW_LIMIT)} of ${formatBytes(size)}]`,
+      status: `Large text preview · showing ${formatBytes(VIEWER_TEXT_PREVIEW_LIMIT)} of ${formatBytes(size)}`,
+    };
+  }
+  return {
+    preview: new TextDecoder().decode(bytes),
+    status: size ? `Text preview · ${formatBytes(size)}` : "Empty text file",
+  };
 }
 
 function isTextMime(mime) {
-  return mime.startsWith("text/") || ["application/json", "application/javascript", "text/javascript"].includes(mime);
+  return mime.startsWith("text/") || ["application/json", "application/javascript", "application/x-dindbos-deck", "text/javascript"].includes(mime);
+}
+
+export function renderMarkdownPreview(markdown) {
+  const lines = String(markdown || "").split(/\r?\n/);
+  const html = [];
+  let inList = false;
+  let inCode = false;
+  let codeLines = [];
+  const closeList = () => {
+    if (!inList) return;
+    html.push("</ul>");
+    inList = false;
+  };
+  const closeCode = () => {
+    if (!inCode) return;
+    html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    codeLines = [];
+    inCode = false;
+  };
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (inCode) closeCode();
+      else {
+        closeList();
+        inCode = true;
+        codeLines = [];
+      }
+      continue;
+    }
+    if (inCode) {
+      codeLines.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      closeList();
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length + 2;
+      html.push(`<h${level}>${escapeHtml(heading[2])}</h${level}>`);
+      continue;
+    }
+    const listItem = line.match(/^\s*[-*]\s+(.+)$/);
+    if (listItem) {
+      if (!inList) {
+        html.push("<ul>");
+        inList = true;
+      }
+      html.push(`<li>${escapeHtml(listItem[1])}</li>`);
+      continue;
+    }
+    closeList();
+    html.push(`<p>${escapeHtml(line)}</p>`);
+  }
+  closeCode();
+  closeList();
+  return html.join("");
 }
 
 function renderTerminal(os, content) {
@@ -1317,12 +2141,19 @@ function renderTerminal(os, content) {
 function renderActivityMonitor(os, content) {
   let selectedPid = os.processes.current()?.pid || null;
   let refreshTimer = null;
+  const view = {
+    query: "",
+    state: "all",
+    sort: "pid",
+    direction: "asc",
+  };
   const draw = () => {
     if (!content.isConnected) {
       window.clearInterval(refreshTimer);
       return;
     }
-    const processes = safeRead(() => os.processes.list(), []);
+    const allProcesses = safeRead(() => os.processes.list(), []);
+    const processes = filterAndSortActivityProcesses(allProcesses, view);
     if (!processes.some((process) => process.pid === selectedPid)) selectedPid = processes[0]?.pid || null;
     const selected = selectedPid ? processes.find((process) => process.pid === selectedPid) : null;
     const processLog = selected ? safeRead(() => os.processes.log(selected.pid), "") : "";
@@ -1334,10 +2165,22 @@ function renderActivityMonitor(os, content) {
             <h2>Activity Monitor</h2>
           </div>
           <div class="activity-summary">
-            <span>${processes.length} running</span>
-            <span>${formatBytes(processes.reduce((total, process) => total + Number(process.runtimeBytes || 0), 0))} runtime</span>
+            <span>${allProcesses.length} running</span>
+            <span>${processes.length} visible</span>
+            <span>${formatBytes(allProcesses.reduce((total, process) => total + Number(process.runtimeBytes || 0), 0))} runtime</span>
+            <span>${formatActivityScore(allProcesses.reduce((total, process) => total + Number(process.activityScore || 0), 0))} activity</span>
           </div>
         </header>
+        <div class="activity-controls">
+          <input data-activity-filter autocomplete="off" spellcheck="false" placeholder="Filter app or state" value="${escapeAttr(view.query)}" />
+          <select data-activity-state aria-label="State filter">
+            ${activityStateOptions(allProcesses, view.state)}
+          </select>
+          <select data-activity-sort aria-label="Sort processes">
+            ${activitySortOptions(view.sort)}
+          </select>
+          <button type="button" data-activity-direction="${escapeAttr(view.direction)}">${view.direction === "asc" ? "Asc" : "Desc"}</button>
+        </div>
         <div class="activity-grid">
           <div class="activity-table" role="table" aria-label="Processes">
             <div class="activity-row activity-row-head" role="row">
@@ -1345,6 +2188,7 @@ function renderActivityMonitor(os, content) {
               <span>App</span>
               <span>State</span>
               <span>Uptime</span>
+              <span>Activity</span>
               <span>Runtime</span>
             </div>
             ${processes.map((process) => `
@@ -1353,6 +2197,7 @@ function renderActivityMonitor(os, content) {
                 <span>${escapeHtml(process.appId)}</span>
                 <span>${escapeHtml(process.state)}</span>
                 <span>${escapeHtml(formatDuration(process.uptimeMs))}</span>
+                <span>${escapeHtml(formatActivityScore(process.activityScore))}</span>
                 <span>${escapeHtml(formatBytes(process.runtimeBytes))}</span>
               </button>
             `).join("") || `<p class="activity-empty">No running processes.</p>`}
@@ -1369,6 +2214,22 @@ function renderActivityMonitor(os, content) {
         draw();
       });
     });
+    content.querySelector("[data-activity-filter]")?.addEventListener("input", (event) => {
+      view.query = event.target.value;
+      draw();
+    });
+    content.querySelector("[data-activity-state]")?.addEventListener("change", (event) => {
+      view.state = event.target.value;
+      draw();
+    });
+    content.querySelector("[data-activity-sort]")?.addEventListener("change", (event) => {
+      view.sort = event.target.value;
+      draw();
+    });
+    content.querySelector("[data-activity-direction]")?.addEventListener("click", () => {
+      view.direction = view.direction === "asc" ? "desc" : "asc";
+      draw();
+    });
     content.querySelectorAll("[data-process-action]").forEach((button) => {
       button.addEventListener("click", async () => {
         const pid = Number(button.dataset.pid);
@@ -1376,10 +2237,7 @@ function renderActivityMonitor(os, content) {
         try {
           if (button.dataset.processAction === "open-proc") os.openPath(`/proc/${pid}`);
           if (button.dataset.processAction === "kill") os.processes.kill(pid);
-          if (button.dataset.processAction === "restart" && process?.appId) {
-            os.processes.kill(pid);
-            os.launch(process.appId);
-          }
+          if (button.dataset.processAction === "restart" && process?.appId) os.processes.restart(pid);
         } finally {
           selectedPid = selectedPid === pid && button.dataset.processAction !== "open-proc"
             ? os.processes.current()?.pid || null
@@ -1391,6 +2249,56 @@ function renderActivityMonitor(os, content) {
   };
   draw();
   refreshTimer = window.setInterval(draw, 1000);
+}
+
+export function filterAndSortActivityProcesses(processes = [], options = {}) {
+  const query = String(options.query || "").trim().toLowerCase();
+  const state = String(options.state || "all");
+  const sort = String(options.sort || "pid");
+  const direction = options.direction === "desc" ? -1 : 1;
+  return [...processes]
+    .filter((process) => {
+      const stateMatch = state === "all" || process.state === state || process.windowState === state;
+      const queryMatch = !query || [
+        process.appId,
+        process.name,
+        process.state,
+        process.windowState,
+        process.user,
+        process.windowId,
+      ].some((value) => String(value || "").toLowerCase().includes(query));
+      return stateMatch && queryMatch;
+    })
+    .sort((left, right) => compareActivityProcess(left, right, sort) * direction || Number(left.pid || 0) - Number(right.pid || 0));
+}
+
+function compareActivityProcess(left, right, sort) {
+  if (sort === "app") return String(left.appId || "").localeCompare(String(right.appId || ""));
+  if (sort === "state") return String(left.state || "").localeCompare(String(right.state || ""));
+  if (sort === "uptime") return Number(left.uptimeMs || 0) - Number(right.uptimeMs || 0);
+  if (sort === "activity") return Number(left.activityScore || 0) - Number(right.activityScore || 0);
+  if (sort === "runtime") return Number(left.runtimeBytes || 0) - Number(right.runtimeBytes || 0);
+  return Number(left.pid || 0) - Number(right.pid || 0);
+}
+
+function activityStateOptions(processes, selected) {
+  const states = ["all", ...new Set(processes.flatMap((process) => [process.state, process.windowState]).filter(Boolean))];
+  return states.map((state) => `
+    <option value="${escapeAttr(state)}" ${state === selected ? "selected" : ""}>${escapeHtml(state === "all" ? "All states" : state)}</option>
+  `).join("");
+}
+
+function activitySortOptions(selected) {
+  return [
+    ["pid", "PID"],
+    ["app", "App"],
+    ["state", "State"],
+    ["uptime", "Uptime"],
+    ["activity", "Activity"],
+    ["runtime", "Runtime"],
+  ].map(([value, label]) => `
+    <option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>
+  `).join("");
 }
 
 function renderActivityDetail(process, processLog) {
@@ -1408,16 +2316,24 @@ function renderActivityDetail(process, processLog) {
     </div>
     <dl>
       <div><dt>App</dt><dd>${escapeHtml(process.appId)}</dd></div>
+      <div><dt>Parent</dt><dd>${process.parentPid ? `${process.parentPid} · ${escapeHtml(process.parentAppId || "-")}` : "-"}</dd></div>
+      <div><dt>Children</dt><dd>${escapeHtml(process.childPids?.join(", ") || "-")}</dd></div>
       <div><dt>User</dt><dd>${escapeHtml(process.user)}</dd></div>
       <div><dt>State</dt><dd>${escapeHtml(process.state)} · ${escapeHtml(process.windowState || "-")}</dd></div>
       <div><dt>Window</dt><dd>${escapeHtml(process.windowId || "-")}</dd></div>
       <div><dt>Started</dt><dd>${escapeHtml(shortTime(process.startedAt))}</dd></div>
       <div><dt>Active</dt><dd>${escapeHtml(shortTime(process.lastActiveAt))}</dd></div>
       <div><dt>Uptime</dt><dd>${escapeHtml(formatDuration(process.uptimeMs))}</dd></div>
+      <div><dt>Activity</dt><dd>${escapeHtml(formatActivityScore(process.activityScore))} · ${process.activitySamples || 0} samples</dd></div>
       <div><dt>Runtime</dt><dd>${escapeHtml(formatBytes(process.runtimeBytes))} · ${process.logLines || 0} logs</dd></div>
     </dl>
     <pre>${escapeHtml(processLog || "No process log yet.")}</pre>
   `;
+}
+
+function formatActivityScore(value) {
+  const score = Number(value || 0);
+  return `${score.toFixed(score % 1 ? 1 : 0)}/min`;
 }
 
 function renderCalculator(content) {
@@ -1835,6 +2751,7 @@ function mimeFromName(name) {
   if (/\.md$/i.test(name)) return "text/markdown";
   if (/\.txt$/i.test(name)) return "text/plain";
   if (/\.json$/i.test(name)) return "application/json";
+  if (/\.deck\.html?$/i.test(name)) return "application/x-dindbos-deck";
   if (/\.html?$/i.test(name)) return "text/html";
   if (/\.pdf$/i.test(name)) return "application/pdf";
   if (/\.png$/i.test(name)) return "image/png";

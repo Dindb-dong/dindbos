@@ -47,7 +47,7 @@ export class NpmInstaller {
 
   async fetchMetadata(fetcher, packageName) {
     const url = `${this.registry.replace(/\/$/, "")}/${encodePackageName(packageName)}`;
-    return JSON.parse(await fetchText(fetcher, url, MAX_METADATA_BYTES, `metadata ${packageName}`));
+    return JSON.parse(await fetchText(this.os, fetcher, url, MAX_METADATA_BYTES, `metadata ${packageName}`));
   }
 
   async metadataFor(context, packageName) {
@@ -73,11 +73,12 @@ export class NpmInstaller {
       if (satisfies(existingAtPath.version, request.range)) return existingAtPath;
       throw new Error(`npm: dependency conflict at ${packageRoot}: ${existingAtPath.version} does not satisfy ${request.range}`);
     }
-    const tarball = await fetchBytes(context.fetcher, versionMeta.dist.tarball, MAX_TARBALL_BYTES, `${request.name} tarball`);
+    const tarball = await fetchBytes(this.os, context.fetcher, versionMeta.dist.tarball, MAX_TARBALL_BYTES, `${request.name} tarball`);
     await verifyIntegrity(tarball, versionMeta.dist.integrity || versionMeta.dist.shasum || "", `${request.name}@${version}`);
     const files = await extractPackageTarball(tarball);
     this.installFiles(packageRoot, files);
     const dependencies = dependencyMap(versionMeta.dependencies || {});
+    const policy = npmPackagePolicy(versionMeta);
     const record = {
       name: request.name,
       version,
@@ -87,6 +88,10 @@ export class NpmInstaller {
       integrity: versionMeta.dist.integrity || versionMeta.dist.shasum || "",
       fileCount: files.length,
       dependencies,
+      peerDependencies: policy.peerDependencies,
+      optionalDependencies: policy.optionalDependencies,
+      unsupportedNative: policy.unsupportedNative,
+      warnings: policy.warnings,
       depth: request.depth,
       dependencyOf: request.parent?.name || "",
       topLevel: Boolean(request.topLevel),
@@ -254,6 +259,9 @@ export class NpmInstaller {
         resolved: record.tarball,
         integrity: record.integrity,
         ...(Object.keys(record.dependencies || {}).length ? { dependencies: record.dependencies } : {}),
+        ...(record.peerDependencies && Object.keys(record.peerDependencies).length ? { peerDependencies: record.peerDependencies } : {}),
+        ...(record.optionalDependencies && Object.keys(record.optionalDependencies).length ? { optionalDependencies: record.optionalDependencies } : {}),
+        ...(record.warnings?.length ? { dindbosWarnings: record.warnings } : {}),
       };
       if (record.topLevel || !nextLock.dependencies[record.name]) {
         nextLock.dependencies[record.name] = {
@@ -292,6 +300,43 @@ function dependencyMap(dependencies) {
       if (!/^(@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/i.test(name)) throw new Error(`npm: unsupported dependency name: ${name}`);
       return [name, normalizeDependencyRange(range, name)];
     }));
+}
+
+export function npmPackagePolicy(versionMeta = {}) {
+  const peerDependencies = dependencyMap(versionMeta.peerDependencies || {});
+  const optionalDependencies = dependencyMap(versionMeta.optionalDependencies || {});
+  const unsupportedNative = nativeSignals(versionMeta);
+  const warnings = [];
+  if (Object.keys(peerDependencies).length) {
+    warnings.push("peerDependencies are recorded but not auto-installed");
+  }
+  if (Object.keys(optionalDependencies).length) {
+    warnings.push("optionalDependencies are recorded but not auto-installed");
+  }
+  if (unsupportedNative.length) {
+    warnings.push(`native or lifecycle features are unsupported: ${unsupportedNative.join(", ")}`);
+  }
+  return {
+    peerDependencies,
+    optionalDependencies,
+    unsupportedNative,
+    warnings,
+  };
+}
+
+function nativeSignals(versionMeta = {}) {
+  const signals = new Set();
+  const scripts = versionMeta.scripts || {};
+  ["preinstall", "install", "postinstall", "prepare"].forEach((name) => {
+    if (scripts[name]) signals.add(`script:${name}`);
+  });
+  const bundled = versionMeta.bundleDependencies || versionMeta.bundledDependencies || [];
+  if (Array.isArray(bundled) && bundled.length) signals.add("bundledDependencies");
+  const gypfile = versionMeta.gypfile;
+  if (gypfile) signals.add("node-gyp");
+  if (versionMeta.os) signals.add("os-field");
+  if (versionMeta.cpu) signals.add("cpu-field");
+  return [...signals].sort();
 }
 
 function normalizeDependencyRange(range, name) {
@@ -464,12 +509,21 @@ function stripPackagePrefix(path) {
   return String(path || "").replace(/^package\/?/, "").replace(/^\/+/, "");
 }
 
-async function fetchText(fetcher, url, maxBytes, label) {
-  const bytes = await fetchBytes(fetcher, url, maxBytes, label, { Accept: "application/vnd.npm.install-v1+json, application/json" });
+async function fetchText(os, fetcher, url, maxBytes, label) {
+  const bytes = await fetchBytes(os, fetcher, url, maxBytes, label, { Accept: "application/vnd.npm.install-v1+json, application/json" });
   return textFromBytes(bytes);
 }
 
-async function fetchBytes(fetcher, url, maxBytes, label, headers = {}) {
+async function fetchBytes(os, fetcher, url, maxBytes, label, headers = {}) {
+  if (os.cache?.fetchBytes) {
+    return os.cache.fetchBytes(fetcher, url, {
+      namespace: "npm",
+      headers,
+      maxBytes,
+      label,
+      errorPrefix: "npm",
+    });
+  }
   const response = await fetcher(url, { headers });
   if (!response?.ok) throw new Error(`npm: failed to fetch ${label}: ${response?.status || "network error"}`);
   const length = Number(response.headers?.get?.("content-length") || 0);
@@ -548,6 +602,7 @@ function mimeFromName(path) {
   if (/\.json$/i.test(path)) return "application/json";
   if (/\.md$/i.test(path)) return "text/markdown";
   if (/\.txt$/i.test(path)) return "text/plain";
+  if (/\.deck\.html?$/i.test(path)) return "application/x-dindbos-deck";
   if (/\.html?$/i.test(path)) return "text/html";
   if (/\.css$/i.test(path)) return "text/css";
   if (/\.m?js$/i.test(path)) return "text/javascript";

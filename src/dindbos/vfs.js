@@ -1,4 +1,4 @@
-import { cloneFileContent, fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent, normalizeFileContentAsync } from "./file-data.js?v=20260422-activity-monitor";
+import { cloneFileContent, fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent, normalizeFileContentAsync } from "./file-data.js?v=20260422-browserd";
 
 export class VirtualFileSystem {
   constructor(rootNode, options = {}) {
@@ -464,6 +464,7 @@ function mimeFromName(name) {
   if (/\.md$/i.test(name)) return "text/markdown";
   if (/\.txt$/i.test(name)) return "text/plain";
   if (/\.json$/i.test(name)) return "application/json";
+  if (/\.deck\.html?$/i.test(name)) return "application/x-dindbos-deck";
   if (/\.html?$/i.test(name)) return "text/html";
   if (/\.pdf$/i.test(name)) return "application/pdf";
   if (/\.png$/i.test(name)) return "image/png";
@@ -474,6 +475,7 @@ function mimeFromName(name) {
 }
 
 function iconFromMime(mime) {
+  if (mime === "application/x-dindbos-deck") return "pdf";
   if (mime === "text/html") return "browser";
   if (mime === "application/pdf") return "pdf";
   if (mime?.startsWith("image/")) return "image";

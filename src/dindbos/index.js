@@ -1,16 +1,35 @@
-import { AppRegistry } from "./app-registry.js?v=20260422-activity-monitor";
-import { AppSandbox } from "./app-sandbox.js?v=20260422-activity-monitor";
-import { DesktopShell } from "./desktop-shell.js?v=20260422-activity-monitor";
-import { EventBus } from "./event-bus.js?v=20260422-activity-monitor";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260422-activity-monitor";
-import { NodeCompat } from "./node-compat.js?v=20260422-activity-monitor";
-import { NpmInstaller } from "./npm-installer.js?v=20260422-activity-monitor";
-import { PackageManager } from "./package-manager.js?v=20260422-activity-monitor";
-import { PermissionPolicy } from "./permission-policy.js?v=20260422-activity-monitor";
-import { PersistentStorage } from "./persistent-storage.js?v=20260422-activity-monitor";
-import { ProcessManager } from "./process-manager.js?v=20260422-activity-monitor";
-import { VirtualFileSystem } from "./vfs.js?v=20260422-activity-monitor";
-import { WindowManager } from "./window-manager.js?v=20260422-activity-monitor";
+import { AppRegistry } from "./app-registry.js?v=20260422-browserd";
+import { AppSandbox } from "./app-sandbox.js?v=20260422-browserd";
+import { RuntimeCacheStore } from "./cache-store.js?v=20260422-browserd";
+import { DesktopShell } from "./desktop-shell.js?v=20260422-browserd";
+import { EventBus } from "./event-bus.js?v=20260422-browserd";
+import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260422-browserd";
+import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
+import { NpmInstaller } from "./npm-installer.js?v=20260422-browserd";
+import { PackageManager } from "./package-manager.js?v=20260422-browserd";
+import { PermissionPolicy } from "./permission-policy.js?v=20260422-browserd";
+import { PersistentStorage } from "./persistent-storage.js?v=20260422-browserd";
+import { ProcessManager } from "./process-manager.js?v=20260422-browserd";
+import { VirtualFileSystem } from "./vfs.js?v=20260422-browserd";
+import { WindowManager } from "./window-manager.js?v=20260422-browserd";
+
+export const BOOT_PHASES = [
+  { id: "storage-load", label: "Storage load" },
+  { id: "vfs-mount", label: "VFS mount" },
+  { id: "package-registry-load", label: "Package registry load" },
+  { id: "app-registry-load", label: "App registry load" },
+  { id: "process-init", label: "Process init" },
+  { id: "desktop-render", label: "Desktop render" },
+];
+
+export const DISK_POLICY_AREAS = [
+  { root: "/home", type: "user", durability: "persistent", policy: "browser-backed user files" },
+  { root: "/opt", type: "packages", durability: "persistent", policy: "installed package files" },
+  { root: "/var/cache", type: "cache", durability: "evictable", policy: "package and document cache" },
+  { root: "/var", type: "runtime", durability: "persistent", policy: "runtime records and logs" },
+  { root: "/tmp", type: "temporary", durability: "session", policy: "scratch files" },
+  { root: "/mnt", type: "external", durability: "user-granted", policy: "local and virtual mounts" },
+];
 
 export class DindbOS {
   constructor(options = {}) {
@@ -19,6 +38,7 @@ export class DindbOS {
     this.bus = new EventBus();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
+    this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
     this.persistDelayMs = options.persistDelayMs ?? 120;
     this.persistTimer = null;
     this.persistPending = false;
@@ -46,6 +66,16 @@ export class DindbOS {
     this.npm = new NpmInstaller(this);
     this.node = new NodeCompat(this);
     this.localMounts = new LocalFolderMountManager(this, options.localMounts || {});
+    this.bootPhases = new Map(BOOT_PHASES.map((phase, index) => [phase.id, {
+      ...phase,
+      index,
+      status: "pending",
+      detail: "",
+      startedAt: "",
+      finishedAt: "",
+      durationMs: 0,
+      error: "",
+    }]));
   }
 
   createFileSystem(rootNode) {
@@ -56,21 +86,199 @@ export class DindbOS {
     });
   }
 
-  async loadPersistentFileSystem() {
-    const storedFileSystem = await this.storage.loadFileSystem();
-    if (storedFileSystem) this.fs = this.createFileSystem(storedFileSystem);
-    await this.localMounts.restorePersistedMounts();
+  async loadPersistentFileSystem(options = {}) {
+    const recover = options.recover !== false;
+    try {
+      await this.runBootPhase("storage-load", async () => {
+        const storedFileSystem = await this.storage.loadFileSystem();
+        if (storedFileSystem) this.fs = this.createFileSystem(storedFileSystem);
+        return storedFileSystem ? "restored persisted filesystem" : "using initial filesystem";
+      });
+    } catch (error) {
+      if (!recover) throw error;
+      this.fs = this.createFileSystem(this.initialFileSystem);
+      this.recoverBootPhase("storage-load", "storage load failed; recovered with initial filesystem", error);
+    }
+    try {
+      await this.runBootPhase("vfs-mount", async () => {
+        await this.localMounts.restorePersistedMounts();
+        return "filesystem and persisted local mounts ready";
+      });
+    } catch (error) {
+      if (!recover) throw error;
+      this.recoverBootPhase("vfs-mount", "local mount restore failed; continuing without persisted mounts", error);
+    }
+    this.ensureDiskPolicyRoots();
   }
 
   boot() {
     if (!this.root) throw new Error("DindbOS root element was not found.");
-    this.shell.mount(this.root);
-    this.windows.mount(this.shell.refs.windowLayer, this.shell.refs.taskStrip);
-    this.shell.renderDesktop();
-    this.shell.renderDock();
-    this.processes.syncProcfs();
+    this.runBootPhaseSync("process-init", () => {
+      this.processes.syncProcfs();
+      return "process table and /proc ready";
+    });
+    this.runBootPhaseSync("desktop-render", () => {
+      this.shell.mount(this.root);
+      this.windows.mount(this.shell.refs.windowLayer, this.shell.refs.taskStrip);
+      this.shell.renderDesktop();
+      this.shell.renderDock();
+      return "desktop shell, dock, and window layer ready";
+    });
     this.installPersistenceLifecycleHooks();
-    this.bus.emit("boot", { session: this.session });
+    this.writeBootDiagnostics();
+    this.bus.emit("boot", { session: this.session, phases: this.bootStatus() });
+  }
+
+  async runBootPhase(id, action) {
+    this.startBootPhase(id);
+    const startedAt = Date.now();
+    try {
+      const detail = await action();
+      return this.finishBootPhase(id, "complete", detail, startedAt);
+    } catch (error) {
+      this.finishBootPhase(id, "error", "", startedAt, error);
+      throw error;
+    }
+  }
+
+  runBootPhaseSync(id, action) {
+    this.startBootPhase(id);
+    const startedAt = Date.now();
+    try {
+      const detail = action();
+      return this.finishBootPhase(id, "complete", detail, startedAt);
+    } catch (error) {
+      this.finishBootPhase(id, "error", "", startedAt, error);
+      throw error;
+    }
+  }
+
+  startBootPhase(id) {
+    const phase = this.bootPhases.get(id);
+    if (!phase) throw new Error(`unknown boot phase: ${id}`);
+    Object.assign(phase, {
+      status: "running",
+      startedAt: new Date().toISOString(),
+      finishedAt: "",
+      durationMs: 0,
+      error: "",
+    });
+    this.bus.emit("boot:phase", { ...phase });
+    return { ...phase };
+  }
+
+  finishBootPhase(id, status, detail = "", startedAt = Date.now(), error = null) {
+    const phase = this.bootPhases.get(id);
+    if (!phase) throw new Error(`unknown boot phase: ${id}`);
+    Object.assign(phase, {
+      status,
+      detail: detail || (status === "complete" ? `${phase.label} complete` : ""),
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      error: error ? error.message || String(error) : "",
+    });
+    this.bus.emit("boot:phase", { ...phase });
+    return { ...phase };
+  }
+
+  recoverBootPhase(id, detail, error = null) {
+    const phase = this.bootPhases.get(id);
+    if (!phase) throw new Error(`unknown boot phase: ${id}`);
+    Object.assign(phase, {
+      status: "recovered",
+      detail,
+      finishedAt: new Date().toISOString(),
+      error: error ? error.message || String(error) : phase.error,
+    });
+    this.bus.emit("boot:phase", { ...phase });
+    return { ...phase };
+  }
+
+  bootStatus() {
+    return [...this.bootPhases.values()]
+      .sort((left, right) => left.index - right.index)
+      .map((phase) => ({ ...phase }));
+  }
+
+  writeBootDiagnostics() {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/log", "root", system);
+    this.ensureSystemDirectory("/var/log/dindbos", "root", system);
+    const phases = this.bootStatus();
+    const bootedAt = new Date().toISOString();
+    const payload = {
+      bootedAt,
+      session: {
+        user: this.session.user,
+        home: this.session.home,
+      },
+      phases,
+      persistence: this.persistenceStatus(),
+    };
+    this.fs.writeOrCreateFile("/var/log/dindbos/boot.json", `${JSON.stringify(payload, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/var/log/dindbos/boot.log", `${phases.map((phase) => (
+      `[${phase.status}] ${phase.id} ${phase.durationMs}ms ${phase.detail || phase.error}`
+    )).join("\n")}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "text/plain",
+    }, system);
+  }
+
+  ensureDiskPolicyRoots() {
+    const system = this.permissions.systemPrincipal();
+    DISK_POLICY_AREAS
+      .map((area) => area.root)
+      .sort((left, right) => left.length - right.length)
+      .forEach((root) => this.ensureSystemDirectory(root, root === "/home" ? "guest" : "root", system));
+  }
+
+  diskPolicyAreas() {
+    return DISK_POLICY_AREAS.map((area) => ({
+      ...area,
+      exists: this.fs.exists(area.root),
+      usedBytes: this.fs.exists(area.root) ? this.countBytes(area.root) : 0,
+    }));
+  }
+
+  diskPolicyForPath(path) {
+    const normalized = this.fs.normalize(path);
+    return this.diskPolicyAreas()
+      .filter((area) => normalized === area.root || normalized.startsWith(`${area.root}/`))
+      .sort((left, right) => right.root.length - left.root.length)
+      [0] || {
+        root: "/",
+        type: "root",
+        durability: "persistent",
+        policy: "root filesystem",
+        exists: true,
+        usedBytes: this.countBytes("/"),
+      };
+  }
+
+  countBytes(path) {
+    const node = this.fs.resolve(path) || this.fs.lstat(path);
+    if (!node) return 0;
+    const resolved = this.fs.resolveNode(node);
+    if (resolved.type === "file") return Number(resolved.size || this.fs.readFileBytes(resolved.path).byteLength || 0);
+    if (resolved.type !== "directory" && resolved.type !== "mount") return 0;
+    return this.fs.list(resolved.path).reduce((total, entry) => total + this.countBytes(entry.path), 0);
+  }
+
+  ensureSystemDirectory(path, owner, principal) {
+    if (this.fs.exists(path)) return;
+    this.fs.createDirectory(path, "/", {
+      owner,
+      group: "root",
+      permissions: "drwxr-xr-x",
+    }, principal);
   }
 
   registerApp(app) {
@@ -185,14 +393,35 @@ export class DindbOS {
     };
   }
 
+  hasPendingPersistenceWork() {
+    const storageStatus = this.storage.status?.() || {};
+    return Boolean(
+      this.persistPending
+      || this.persistTimer
+      || this.persisting
+      || storageStatus.writePending
+      || storageStatus.persistPending
+      || storageStatus.persistInFlight,
+    );
+  }
+
   installPersistenceLifecycleHooks() {
     if (this.persistenceHooksInstalled || typeof globalThis.window === "undefined") return;
     this.persistenceHooksInstalled = true;
     const flush = () => {
       this.flushPersistentFileSystem();
     };
+    const flushBeforeUnload = (event) => {
+      const pending = this.hasPendingPersistenceWork();
+      flush();
+      if (!pending) return undefined;
+      const message = "DindbOS is still saving filesystem changes.";
+      event?.preventDefault?.();
+      if (event) event.returnValue = message;
+      return message;
+    };
     globalThis.window.addEventListener("pagehide", flush);
-    globalThis.window.addEventListener("beforeunload", flush);
+    globalThis.window.addEventListener("beforeunload", flushBeforeUnload);
     globalThis.document?.addEventListener?.("visibilitychange", () => {
       if (globalThis.document.visibilityState === "hidden") flush();
     });
@@ -210,10 +439,12 @@ export class DindbOS {
       return this.launch("files", { path: resolved.path });
     }
     if (resolved.type === "app") {
+      const principal = this.permissions.principal({ user: this.session.user, groups: this.session.groups });
+      this.fs.assertAccess(resolved, "execute", principal, resolved.path || node.path);
       return this.launch(resolved.appId, { node: resolved, ...context });
     }
     return this.apps.openFile(resolved, context);
   }
 }
 
-export { AppRegistry, AppSandbox, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
+export { AppRegistry, AppSandbox, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };

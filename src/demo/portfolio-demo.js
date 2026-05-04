@@ -88,6 +88,7 @@ export const demoFileSystem = directory("", [
       directory("Desktop", [
         symlink("Portfolio.app", "/usr/share/applications/Portfolio.app", "portfolio"),
         symlink("Files.app", "/usr/share/applications/Files.app", "folder"),
+        symlink("Browser.app", "/usr/share/applications/Browser.app", "browser"),
         symlink("Terminal.app", "/usr/share/applications/Terminal.app", "terminal"),
         symlink("Activity Monitor.app", "/usr/share/applications/Activity Monitor.app", "activity"),
         symlink("Calculator.app", "/usr/share/applications/Calculator.app", "calculator"),
@@ -237,6 +238,7 @@ export const demoFileSystem = directory("", [
       directory("applications", [
         app("Portfolio.app", "portfolio", "portfolio"),
         app("Files.app", "files", "folder"),
+        app("Browser.app", "browser", "browser"),
         app("Terminal.app", "terminal", "terminal"),
         app("Activity Monitor.app", "activity-monitor", "activity"),
         app("Calculator.app", "calculator", "calculator"),

@@ -6,7 +6,26 @@
   "description": "Browser-native desktop runtime for portfolio and web OS demos.",
   "scripts": {
     "dev": "python3 -m http.server 5174 --bind 127.0.0.1",
-    "check": "node --check src/main.js && node --check src/dindbos/index.js && node --check src/dindbos/app-manifest.js && node --check src/dindbos/app-registry.js && node --check src/dindbos/app-sandbox.js && node --check src/dindbos/desktop-shell.js && node --check src/dindbos/event-bus.js && node --check src/dindbos/file-data.js && node --check src/dindbos/local-folder-mount.js && node --check src/dindbos/node-compat.js && node --check src/dindbos/npm-installer.js && node --check src/dindbos/package-manager.js && node --check src/dindbos/permission-policy.js && node --check src/dindbos/persistent-storage.js && node --check src/dindbos/process-manager.js && node --check src/dindbos/shell.js && node --check src/dindbos/vfs.js && node --check src/dindbos/window-manager.js && node --check src/dindbos/apps/builtins.js && node --check src/demo/portfolio-demo.js"
+    "browserd": "node scripts/browserd.js",
+    "smoke": "npm run check && npm run smoke:boot && npm run smoke:storage && npm run smoke:persistent-storage && npm run smoke:files && npm run smoke:viewer && npm run smoke:shell && npm run smoke:permissions && npm run smoke:packages && npm run smoke:npm-node && npm run smoke:processes && npm run smoke:local-mounts && npm run smoke:app-registry && npm run smoke:window-manager && npm run smoke:browser-addresses && npm run smoke:browser-client && npm run smoke:browserd && npm run smoke:browserd-failures",
+    "smoke:boot": "node scripts/smoke-boot.js",
+    "smoke:browser-addresses": "node scripts/smoke-browser-addresses.js",
+    "smoke:app-registry": "node scripts/smoke-app-registry.js",
+    "smoke:browser-client": "node scripts/smoke-browser-client.js",
+    "smoke:browserd": "node scripts/smoke-browserd.js",
+    "smoke:browserd-failures": "node scripts/smoke-browserd-failures.js",
+    "smoke:files": "node scripts/smoke-files-import-export.js",
+    "smoke:viewer": "node scripts/smoke-viewer.js",
+    "smoke:shell": "node scripts/smoke-shell.js",
+    "smoke:permissions": "node scripts/smoke-permissions.js",
+    "smoke:packages": "node scripts/smoke-packages.js",
+    "smoke:storage": "node scripts/smoke-storage.js",
+    "smoke:npm-node": "node scripts/smoke-npm-node.js",
+    "smoke:persistent-storage": "node scripts/smoke-persistent-storage.js",
+    "smoke:processes": "node scripts/smoke-processes.js",
+    "smoke:local-mounts": "node scripts/smoke-local-mounts.js",
+    "smoke:window-manager": "node scripts/smoke-window-manager.js",
+    "check": "node --check src/main.js && node --check src/dindbos/index.js && node --check src/dindbos/app-manifest.js && node --check src/dindbos/app-registry.js && node --check src/dindbos/app-sandbox.js && node --check src/dindbos/browser-client.js && node --check src/dindbos/cache-store.js && node --check src/dindbos/desktop-shell.js && node --check src/dindbos/event-bus.js && node --check src/dindbos/file-data.js && node --check src/dindbos/local-folder-mount.js && node --check src/dindbos/node-compat.js && node --check src/dindbos/npm-installer.js && node --check src/dindbos/package-manager.js && node --check src/dindbos/permission-policy.js && node --check src/dindbos/persistent-storage.js && node --check src/dindbos/process-manager.js && node --check src/dindbos/shell.js && node --check src/dindbos/vfs.js && node --check src/dindbos/window-manager.js && node --check src/dindbos/apps/builtins.js && node --check src/demo/portfolio-demo.js && node --check scripts/browserd.js && node --check scripts/smoke-app-registry.js && node --check scripts/smoke-boot.js && node --check scripts/smoke-browser-addresses.js && node --check scripts/smoke-browser-client.js && node --check scripts/smoke-browserd.js && node --check scripts/smoke-browserd-failures.js && node --check scripts/smoke-files-import-export.js && node --check scripts/smoke-local-mounts.js && node --check scripts/smoke-npm-node.js && node --check scripts/smoke-packages.js && node --check scripts/smoke-permissions.js && node --check scripts/smoke-persistent-storage.js && node --check scripts/smoke-processes.js && node --check scripts/smoke-shell.js && node --check scripts/smoke-storage.js && node --check scripts/smoke-viewer.js && node --check scripts/smoke-window-manager.js"
   },
   "keywords": [
     "web-os",

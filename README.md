@@ -76,6 +76,30 @@ npm install, npm root, node -e, node --input-type=module -e, node <file>
 
 Runtime state is shared across apps. Files created from Terminal appear in Files.app, and TextEdit saves back into the same VFS.
 Shell syntax supports command chaining with `&&`, `||`, and `;`, plus pipes and redirection.
+See `docs/shell.md` for status codes, chaining semantics, and the supported script dialect.
+
+## Browser Companion
+
+Browser.app can open local HTML files directly. For real external URLs, start the local companion:
+
+```bash
+npm run browserd
+```
+
+Then open Browser.app and connect to `ws://127.0.0.1:8787/browser`. The companion launches local Chromium through CDP and streams frames back into DindbOS.
+
+Useful companion commands:
+
+```bash
+node scripts/browserd.js --port 8787 --cdp-port 9223
+node scripts/browserd.js --headful
+CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm run browserd
+curl http://127.0.0.1:8787/health
+npm run smoke:browserd
+npm run smoke:browserd-failures
+```
+
+Browser.app refuses to connect when port `8787` is occupied by a non-DindbOS service. More protocol details and failure modes are in `docs/browserd.md`.
 
 ## Runtime Kernel
 
@@ -103,6 +127,8 @@ storage persist
 ```
 
 The current model is still a browser runtime, not a Linux kernel emulator, but app execution now flows through process, manifest, sandbox, permission, and storage layers.
+
+See `docs/app-lifecycle.md` for install, update, launch, crash, close, and uninstall behavior.
 
 ## Packages
 
@@ -135,6 +161,8 @@ pkg npm add hello-notes lodash-es@4.17.21
 
 Package apps can execute `/opt/<package>/app.js` when the manifest sets `app.entry`. npm dependencies are installed as browser ESM dependency records and loaded at runtime through `imports.npm("package-name")`; this is not a Node.js `npm install` or native binary execution path.
 
+Remote package trust and the planned signature model are documented in `docs/package-signatures.md`.
+
 ## npm Compatibility
 
 DindbOS has an early npm-compatible installer:
@@ -160,6 +188,86 @@ Current limits:
 - does not execute native addons
 - provides only a partial Node built-in surface
 - supports only simple ESM import/export transforms
+
+## Verification
+
+Run the broad local confidence gate before shipping runtime changes:
+
+```bash
+npm run smoke
+```
+
+Focused gates:
+
+```bash
+npm run check
+npm run smoke:boot
+npm run smoke:storage
+npm run smoke:persistent-storage
+npm run smoke:files
+npm run smoke:shell
+npm run smoke:permissions
+npm run smoke:packages
+npm run smoke:npm-node
+npm run smoke:processes
+npm run smoke:local-mounts
+npm run smoke:app-registry
+npm run smoke:window-manager
+npm run smoke:browser-addresses
+npm run smoke:browser-client
+npm run smoke:browserd
+npm run smoke:browserd-failures
+```
+
+The browser companion smoke starts real Chromium through CDP and fails unless it receives a real JPEG frame. The npm/node smoke fetches a real package from the npm registry and runs it through NodeCompat.
+
+## Troubleshooting
+
+Storage reset:
+
+```text
+storage
+storage flush
+resetfs
+```
+
+`resetfs` clears the persisted VFS snapshot and reloads the browser tab. Use it when old demo state is masking runtime changes.
+
+Local folder mounts:
+
+```text
+mount-local --list
+mount-local --restore
+mount-local --forget /mnt/mydisk
+```
+
+The File System Access API requires a Chromium-family browser and explicit user permission. If a mount shows as denied or unavailable, reconnect it from Files.app or forget and mount it again.
+
+Chrome detection for Browser.app:
+
+```bash
+CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm run browserd
+curl http://127.0.0.1:8787/health
+```
+
+If `browserd` cannot find Chrome automatically, set `CHROME_PATH`. If the health check does not return `service: "dindbos-browserd"`, stop the process using port `8787` or start `browserd` with `--port`.
+
+npm package limits:
+
+```text
+npm install <package>
+node <file>
+```
+
+Only browser-safe JavaScript packages are expected to work. Native addons, lifecycle scripts, broad Node built-ins, peer dependencies, and optional dependencies are intentionally limited until the package trust and sandbox model is hardened.
+
+## Support Policy
+
+Supported browser targets, stability labels, manifest/registry versioning expectations, and local environment safety rules are documented in `docs/support.md`. Runtime changes and pre-tag release notes are tracked in `docs/changelog.md`.
+
+## App Development
+
+Start with `docs/first-app.md` to build and install a small DindbOS package app. Manifest fields and package examples are documented in `docs/app-manifest.md`, and sandboxed app APIs are documented in `docs/app-apis.md`.
 
 ## Goal
 
