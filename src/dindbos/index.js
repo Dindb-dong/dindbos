@@ -11,6 +11,7 @@ import { PackageManager } from "./package-manager.js?v=20260422-browserd";
 import { PermissionPolicy } from "./permission-policy.js?v=20260422-browserd";
 import { PersistentStorage } from "./persistent-storage.js?v=20260422-browserd";
 import { ProcessManager } from "./process-manager.js?v=20260422-browserd";
+import { SyscallDispatcher } from "./syscalls.js?v=20260422-browserd";
 import { VirtualFileSystem } from "./vfs.js?v=20260422-browserd";
 import { WindowManager } from "./window-manager.js?v=20260422-browserd";
 
@@ -73,6 +74,7 @@ export class DindbOS {
     this.shell = new DesktopShell(this);
     this.windows = new WindowManager(this);
     this.processes = new ProcessManager(this);
+    this.syscalls = new SyscallDispatcher(this);
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);
     this.npm = new NpmInstaller(this);
@@ -514,6 +516,11 @@ export class DindbOS {
     return compatibilitySnapshot(this);
   }
 
+  syscall(name, args = {}, context = {}) {
+    const principal = context.principal || this.permissions.principal({ user: this.session.user, groups: this.session.groups });
+    return this.syscalls.call(name, args, { ...context, principal });
+  }
+
   diskPolicyForPath(path) {
     const normalized = this.fs.normalize(path);
     return this.diskPolicyAreas()
@@ -777,4 +784,4 @@ function normalizeBrowserProviderUrl(url) {
   }
 }
 
-export { AppRegistry, AppSandbox, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, VirtualFileSystem, WindowManager };
+export { AppRegistry, AppSandbox, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WindowManager };

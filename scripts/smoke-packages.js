@@ -5,6 +5,7 @@ import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
 import { EventBus } from "../src/dindbos/event-bus.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
+import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 
 const os = bootOs();
@@ -206,6 +207,8 @@ await waitFor(() => apiWindow.content.innerHTML.includes("package=api-lab"), `AP
 assert(os.fs.readFile("/home/guest/DindbOS API Lab/report.txt").includes("launches=1"), "API Lab sample did not write first app-state value through sandbox fs");
 const apiProcess = os.processes.get(apiWindow.pid);
 assert(apiProcess.logs.some((entry) => entry.message.includes("api-lab wrote")), "API Lab sample did not log through process facade");
+assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("fs.writeText OK"), "API Lab sample did not write syscall trace under /proc");
+assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("process.log OK"), "API Lab sample did not write global syscall log");
 assert(os.fs.readFile("/var/lib/dindbos/app-state/api-lab.json").includes('"launches": 1'), "API Lab sample did not persist app state under app-state");
 const apiWindowAgain = os.apps.launch("api-lab");
 await apiWindowAgain.rendered;
@@ -244,7 +247,9 @@ function bootOs(root = null) {
     unregisterApp: (appId) => os.apps.unregister(appId),
   };
   os.apps = new AppRegistry(os);
-  os.processes = fakeProcesses();
+  os.processes = fakeProcesses(os);
+  os.syscalls = new SyscallDispatcher(os);
+  os.syscall = (name, args = {}, context = {}) => os.syscalls.call(name, args, context);
   os.windows = fakeWindows();
   return os;
 }
@@ -273,9 +278,11 @@ function titleFor(id) {
   return "Broken Pkg.app";
 }
 
-function fakeProcesses() {
+function fakeProcesses(os) {
   let nextPid = 100;
   const records = new Map();
+  const system = os.permissions.systemPrincipal();
+  if (!os.fs.exists("/proc")) os.fs.createDirectory("/proc", "/", { owner: "root", group: "root" }, system);
   return {
     records,
     spawn: (app, context) => {
@@ -291,6 +298,8 @@ function fakeProcesses() {
         user: "guest",
       };
       records.set(process.pid, process);
+      const procPath = `/proc/${process.pid}`;
+      if (!os.fs.exists(procPath)) os.fs.createDirectory(procPath, "/", { owner: "root", group: "root" }, system);
       return process;
     },
     attachWindow: (pid, windowId) => {

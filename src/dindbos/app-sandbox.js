@@ -17,6 +17,12 @@ export class AppSandbox {
     this.storage = this.createStorageFacade();
     this.state = this.createStateFacade();
     this.localMounts = this.createLocalMountFacade();
+    this.syscall = (name, args = {}) => this.os.syscall(name, args, {
+      process: this.process,
+      principal: this.principal,
+      assertCapability: (capability) => this.assertCapability(capability),
+      assertFileSystem: (path, access) => this.assertFileSystem(path, access),
+    });
     this.session = Object.freeze({ ...os.session });
   }
 
