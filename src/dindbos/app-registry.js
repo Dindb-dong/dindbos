@@ -10,20 +10,39 @@ export class AppRegistry {
   register(app) {
     if (!app?.id) throw new Error("App must define an id.");
     const manifest = normalizeAppManifest(app);
-    this.apps.set(app.id, { ...app, manifest });
-    this.writeManifestFile(manifest);
-    this.writeApplicationFile(app, manifest);
+    const previous = this.apps.get(app.id) || null;
+    const beforeRoot = this.os.fs.snapshot();
+    try {
+      this.apps.set(app.id, { ...app, manifest });
+      this.writeManifestFile(manifest);
+      this.removePreviousApplicationFile(previous, app, manifest);
+      this.writeApplicationFile(app, manifest);
+      return this.getManifest(app.id);
+    } catch (error) {
+      this.os.fs.root = beforeRoot;
+      if (previous) this.apps.set(app.id, previous);
+      else this.apps.delete(app.id);
+      throw error;
+    }
   }
 
   unregister(appId) {
     const app = this.apps.get(appId);
     if (!app) return false;
-    this.apps.delete(appId);
-    const manifestPath = `/usr/share/dindbos/manifests/${appId}.json`;
-    if (this.os.fs.exists(manifestPath)) {
-      this.os.fs.remove(manifestPath, "/", {}, this.os.permissions.systemPrincipal());
+    const beforeRoot = this.os.fs.snapshot();
+    try {
+      this.apps.delete(appId);
+      const system = this.os.permissions.systemPrincipal();
+      const manifestPath = `/usr/share/dindbos/manifests/${appId}.json`;
+      if (this.os.fs.exists(manifestPath)) this.os.fs.remove(manifestPath, "/", {}, system);
+      const applicationPath = this.applicationPathFor(app, app.manifest);
+      if (this.os.fs.exists(applicationPath)) this.os.fs.remove(applicationPath, "/", {}, system);
+      return true;
+    } catch (error) {
+      this.os.fs.root = beforeRoot;
+      this.apps.set(appId, app);
+      throw error;
     }
-    return true;
   }
 
   has(appId) {
@@ -121,15 +140,27 @@ export class AppRegistry {
   writeApplicationFile(app, manifest) {
     if (!this.os.fs.exists("/usr/share/applications")) return;
     const system = this.os.permissions.systemPrincipal();
-    const appName = sanitizeLauncherName(typeof app.name === "string" && app.name ? app.name : manifest.name);
     this.os.fs.createApp(
-      `/usr/share/applications/${appName}.app`,
+      this.applicationPathFor(app, manifest),
       manifest.id,
       app.icon || "app",
       "/",
       { owner: "root", group: "root", permissions: "-rwxr-xr-x" },
       system,
     );
+  }
+
+  removePreviousApplicationFile(previous, app, manifest) {
+    if (!previous || !this.os.fs.exists("/usr/share/applications")) return;
+    const previousPath = this.applicationPathFor(previous, previous.manifest);
+    const nextPath = this.applicationPathFor(app, manifest);
+    if (previousPath === nextPath || !this.os.fs.exists(previousPath)) return;
+    this.os.fs.remove(previousPath, "/", {}, this.os.permissions.systemPrincipal());
+  }
+
+  applicationPathFor(app, manifest = app?.manifest || {}) {
+    const appName = sanitizeLauncherName(typeof app?.name === "string" && app.name ? app.name : manifest.name);
+    return `/usr/share/applications/${appName}.app`;
   }
 }
 
