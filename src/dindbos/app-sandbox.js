@@ -18,6 +18,7 @@ export class AppSandbox {
     this.npm = this.createNpmFacade();
     this.node = this.createNodeFacade();
     this.ipc = this.createIpcFacade();
+    this.keychain = this.createKeychainFacade();
     this.storage = this.createStorageFacade();
     this.state = this.createStateFacade();
     this.localMounts = this.createLocalMountFacade();
@@ -376,6 +377,28 @@ export class AppSandbox {
       register: (endpoint, handler) => this.os.registerIpcEndpoint(this.process, endpoint, handler),
       send: (endpoint, payload = {}) => this.os.sendIpcMessage(this.process, endpoint, payload),
       list: () => this.os.listIpcEndpoints(this.process),
+    };
+  }
+
+  createKeychainFacade() {
+    const context = () => ({ process: this.process, principal: this.principal });
+    return {
+      list: () => {
+        this.assertCapability("keychain.read");
+        return this.os.keychain.list(context());
+      },
+      get: (name) => {
+        this.assertCapability("keychain.read");
+        return this.os.keychain.getSecret(name, context()).value;
+      },
+      set: (name, value, options = {}) => {
+        this.assertCapability("keychain.write");
+        return this.os.keychain.setSecret(name, value, { ...cloneJson(options || {}), ownerAppId: this.process.appId }, context());
+      },
+      delete: (name) => {
+        this.assertCapability("keychain.write");
+        return this.os.keychain.deleteSecret(name, context());
+      },
     };
   }
 

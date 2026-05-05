@@ -1049,18 +1049,19 @@ Why it matters:
 
 Implementation tasks:
 
-- Add a keychain service with per-user vaults, app-scoped secrets, access prompts, unlock state, audit records, and revocation.
-- Use WebCrypto for key wrapping, signing, verification, random generation, and optional encrypted secret blobs.
+- Already present: first-pass keychain service exposes per-user vault metadata, app-scoped secrets, lock/unlock state, temporary grants, revocation, redacted metadata files, and audit records without storing raw secret values in ordinary VFS records.
+- Already present: keychain records use WebCrypto-backed random secret references and package signing key public identifiers for first-pass signing-key lookup; encrypted wrapping, verification, and passkey-backed unlock remain future hardening.
 - Add passkey/WebAuthn-backed unlock or reauthentication flows where supported, with password-derived fallback clearly marked as weaker.
 - Add secret references in package manifests so apps ask for named credentials instead of reading raw files.
-- Add signing key management for package authors, trusted publisher records, repository credentials, and companion pairing keys.
-- Add `keychain` shell commands for list, get, set, delete, lock, unlock, grant, revoke, and audit.
+- Already present: first-pass signing key management creates auditable package-author signing key references and public key ids without exposing private key material through shell lookup.
+- Already present: `keychain` shell commands cover list, status, get, set, delete, lock, unlock, grant, revoke, audit, signing create, and signing lookup.
 - Add Settings UI for active grants, denied requests, stale credentials, and export/recovery warnings.
 
 Verification:
 
-- Add smoke coverage for app-scoped secret denial, temporary grant expiry, vault lock/unlock, package signing key lookup, revoked access, and audit log creation.
-- Add tests proving secrets are never exposed through ordinary VFS reads or package export unless explicitly exported by the keychain service.
+- Already present: `npm run smoke:keychain` verifies app-scoped secret denial, temporary grant expiry, vault lock/unlock, package signing key lookup, revoked access, and audit log creation.
+- Already present: `npm run smoke:keychain` verifies raw secret values are not exposed through ordinary keychain metadata VFS reads or keychain audit logs.
+- Add tests proving secrets are never exposed through package export unless explicitly exported by the keychain service.
 
 Completion criteria:
 

@@ -3,6 +3,7 @@ import { AppSandbox } from "../../src/dindbos/app-sandbox.js";
 import { RuntimeCacheStore } from "../../src/dindbos/cache-store.js";
 import { DescriptorManager } from "../../src/dindbos/descriptors.js";
 import { EventBus } from "../../src/dindbos/event-bus.js";
+import { KeychainManager } from "../../src/dindbos/keychain.js";
 import { PackageManager } from "../../src/dindbos/package-manager.js";
 import { PermissionPolicy } from "../../src/dindbos/permission-policy.js";
 import { ProcessExecutor } from "../../src/dindbos/process-executor.js";
@@ -36,6 +37,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
     executor: null,
     syscalls: null,
     wasm: null,
+    keychain: null,
     session,
     createSandbox: (process) => new AppSandbox(os, process),
     registerApp: (app) => os.apps.register(app),
@@ -61,6 +63,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
   os.wasm = new WasmRunner(os);
   os.apps = new AppRegistry(os);
   os.packages = new PackageManager(os);
+  os.keychain = new KeychainManager(os);
 
   return os;
 }

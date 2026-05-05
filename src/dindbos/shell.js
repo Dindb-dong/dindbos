@@ -14,6 +14,7 @@ const BUILTIN_MANUALS = {
   find: "find [path] [name] - search files by name",
   grep: "grep <text> <file> - search lines in a text file",
   kill: "kill <pid> - terminate a process",
+  keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|signing - manage DindbOS secrets",
   ls: "ls [-la] [path] - list directory contents",
   man: "man <command> - show command help",
   manifest: "manifest [app] - show app manifests",
@@ -46,6 +47,7 @@ const BUILTIN_MANUALS = {
 const MAX_SCRIPT_DEPTH = 8;
 const STATUS_PREFIX_COMMANDS = new Set([
   "find",
+  "keychain",
   "kill",
   "man",
   "manifest",
@@ -271,6 +273,7 @@ export class ShellSession {
     if (command === "pkg") return this.pkg(args);
     if (command === "ps") return this.os.processes.table();
     if (command === "kill") return this.kill(args);
+    if (command === "keychain") return this.keychain(args);
     if (command === "storage") return this.storage(args);
     if (command === "sync") return this.sync(args);
     if (command === "syscall") return this.syscall(args);
@@ -644,6 +647,86 @@ export class ShellSession {
       return `trusted publisher removed ${this.os.packages.removeTrustedPublisher(idOrKey)}`;
     }
     return "pkg: usage: pkg trust list | add <publisher-id> <public-key> [name] | remove <publisher-id|public-key>";
+  }
+
+  keychain(args) {
+    const [action, name, ...rest] = args;
+    const context = { appId: "shell", principal: this.principal };
+    if (!action || action === "list") {
+      const records = this.os.keychain.list(context);
+      return records.length
+        ? records.map((record) => formatKeychainRecord(record)).join("\n")
+        : "keychain: no secrets";
+    }
+    if (action === "status") {
+      const status = this.os.keychain.status(context);
+      return [
+        `user=${status.user}`,
+        `locked=${status.locked}`,
+        `records=${status.records}`,
+        `grants=${status.grants}`,
+        `unlock=${status.unlockMethod}`,
+        `webcrypto=${status.webCrypto}`,
+        `warning=${status.fallbackWarning || "-"}`,
+      ].join(" ");
+    }
+    if (action === "get") {
+      if (!name) return "keychain: usage: keychain get <name>";
+      return this.os.keychain.getSecret(name, context).value;
+    }
+    if (action === "set") {
+      const value = rest.join(" ");
+      if (!name || !value) return "keychain: usage: keychain set <name> <value>";
+      const record = this.os.keychain.setSecret(name, value, { ownerAppId: "shell" }, context);
+      return `keychain secret set ${record.name}`;
+    }
+    if (action === "delete" || action === "rm") {
+      if (!name) return "keychain: usage: keychain delete <name>";
+      return `keychain secret deleted ${this.os.keychain.deleteSecret(name, context).name}`;
+    }
+    if (action === "lock") {
+      this.os.keychain.lock(context);
+      return "keychain locked";
+    }
+    if (action === "unlock") {
+      const status = this.os.keychain.unlock(rest.join(" ") || name || "", context);
+      return `keychain unlocked ${status.unlockMethod}${status.fallbackWarning ? ` warning=${status.fallbackWarning}` : ""}`;
+    }
+    if (action === "grant") {
+      const [appId, ttl] = rest;
+      if (!name || !appId) return "keychain: usage: keychain grant <name> <app-id> [ttl-ms]";
+      const record = this.os.keychain.grant(name, appId, { ttlMs: Number(ttl || 0) || undefined }, context);
+      return `keychain grant ${record.name} ${appId}`;
+    }
+    if (action === "revoke") {
+      const [appId] = rest;
+      if (!name || !appId) return "keychain: usage: keychain revoke <name> <app-id>";
+      const record = this.os.keychain.revoke(name, appId, context);
+      return `keychain revoke ${record.name} ${appId}`;
+    }
+    if (action === "audit") {
+      const entries = this.os.keychain.auditEntries(context).slice(-20);
+      return entries.length
+        ? entries.map((entry) => `${entry.at} ${entry.action} ${entry.name} requester=${entry.requester} result=${entry.result}${entry.detail ? ` ${entry.detail}` : ""}`).join("\n")
+        : "keychain: no audit records";
+    }
+    if (action === "signing") return this.keychainSigning(name, rest, context);
+    return "keychain: usage: keychain list|get|set|delete|lock|unlock|grant|revoke|audit|signing";
+  }
+
+  keychainSigning(action, args, context) {
+    const [name, publisherId] = args;
+    if (action === "create") {
+      if (!name || !publisherId) return "keychain: usage: keychain signing create <name> <publisher-id>";
+      const record = this.os.keychain.createSigningKey(name, publisherId, context);
+      return `keychain signing key ${record.name} ${record.publicKey}`;
+    }
+    if (action === "lookup") {
+      if (!name) return "keychain: usage: keychain signing lookup <name>";
+      const record = this.os.keychain.signingKey(name, context);
+      return `keychain signing key ${record.name} publisher=${record.publisherId || "-"} publicKey=${record.publicKey} ref=${record.secretRef}`;
+    }
+    return "keychain: usage: keychain signing create|lookup";
   }
 
   pkgNpm(action, args) {
@@ -1567,6 +1650,16 @@ function formatDependencies(dependencies) {
   const npmDeps = Object.entries(dependencies.npm || {})
     .map(([name, dependency]) => `npm ${name}@${dependency.version || "latest"} ${dependency.url || ""}`);
   return [...packageDeps, ...npmDeps].join("\n") || "pkg: no dependencies";
+}
+
+function formatKeychainRecord(record = {}) {
+  return [
+    record.name,
+    record.kind || "generic",
+    `owner=${record.ownerAppId || "-"}`,
+    `grants=${(record.grants || []).map((grant) => grant.appId).join(",") || "-"}`,
+    `encrypted=${Boolean(record.encrypted)}`,
+  ].join(" ");
 }
 
 function walkNodes(os, path, visit) {

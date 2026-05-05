@@ -5,6 +5,7 @@ import { DescriptorManager } from "./descriptors.js?v=20260422-browserd";
 import { RuntimeCacheStore } from "./cache-store.js?v=20260422-browserd";
 import { DesktopShell } from "./desktop-shell.js?v=20260422-browserd";
 import { EventBus } from "./event-bus.js?v=20260422-browserd";
+import { KeychainManager } from "./keychain.js?v=20260422-browserd";
 import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260422-browserd";
 import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
 import { NpmInstaller } from "./npm-installer.js?v=20260422-browserd";
@@ -234,6 +235,7 @@ export class DindbOS {
     this.syscalls = new SyscallDispatcher(this);
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);
+    this.keychain = new KeychainManager(this);
     this.npm = new NpmInstaller(this);
     this.node = new NodeCompat(this);
     this.wasm = new WasmRunner(this);
