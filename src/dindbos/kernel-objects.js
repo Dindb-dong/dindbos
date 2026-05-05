@@ -55,6 +55,7 @@ export class KernelObjectRegistry {
     if (!object) return null;
     if (patch.name !== undefined) object.name = String(patch.name || object.name);
     if (patch.ref !== undefined) object.ref = String(patch.ref || "");
+    if (patch.ownerPid !== undefined) object.ownerPid = Number(patch.ownerPid || 0);
     if (patch.namespace !== undefined) object.namespace = cloneJson(patch.namespace || null);
     if (patch.user !== undefined) object.user = String(patch.user || "");
     if (patch.rights !== undefined) object.rights = normalizeRights(patch.rights);
