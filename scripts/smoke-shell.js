@@ -154,6 +154,22 @@ result = await shell.executeAsync("mount");
 assert(result.status === 0, `mount status mismatch: ${result.status}`);
 assert(result.output.includes("rootfs / rootfs rw"), `mount output missing rootfs entry: ${result.output}`);
 assert(result.output.includes("procfs /proc procfs ro"), `mount output missing procfs entry: ${result.output}`);
+result = await shell.executeAsync("mount -t memfs /mnt/scratch --readonly");
+assert(result.status === 0, `memfs mount status mismatch: ${result.status}`);
+assert(result.output.includes("mounted /mnt/scratch memfs ro"), `memfs mount output mismatch: ${result.output}`);
+assert(shell.os.fs.exists("/mnt/scratch"), "memfs mount did not create VFS mount root");
+result = await shell.executeAsync("syscall mount.list '{}'");
+assert(result.status === 0, `mount.list status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value.some((entry) => entry.root === "/mnt/scratch" && entry.readonly === true), `mount.list missing memfs entry: ${result.output}`);
+result = await shell.executeAsync("syscall mount.mount '{\"path\":\"/mnt/sysmem\",\"driver\":\"memfs\"}'");
+assert(result.status === 0, `mount.mount status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value.root === "/mnt/sysmem", `mount.mount output mismatch: ${result.output}`);
+result = await shell.executeAsync("syscall mount.unmount '{\"path\":\"/mnt/sysmem\"}'");
+assert(result.status === 0, `mount.unmount status mismatch: ${result.status}`);
+assert(!shell.os.fs.exists("/mnt/sysmem"), "mount.unmount left VFS mount root");
+result = await shell.executeAsync("umount /mnt/scratch");
+assert(result.status === 0, `shell umount status mismatch: ${result.status}`);
+assert(!shell.os.fs.exists("/mnt/scratch"), "shell umount left VFS mount root");
 
 result = await shell.executeAsync("mount-local --helper");
 assert(result.status === 0, `mount helper status mismatch: ${result.status}`);
@@ -265,6 +281,8 @@ function bootOs() {
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
+  fs.createDirectory("/mnt", "/", { owner: "root", group: "root" }, system);
+  const virtualMounts = new Map();
   const os = {
     fs,
     permissions,
@@ -283,10 +301,45 @@ function bootOs() {
         renameSupported: false,
       }),
     },
-    mountLines: () => [
-      "rootfs / rootfs rw owner=root durability=persistent quota=browser-storage caps=-",
-      "procfs /proc procfs ro owner=root durability=runtime quota=generated caps=-",
-    ],
+    mountTable() {
+      return [
+        { id: "rootfs", root: "/", driver: "rootfs", readonly: false, owner: "root", durability: "persistent", quotaPolicy: "browser-storage", capabilities: [] },
+        { id: "procfs", root: "/proc", driver: "procfs", readonly: true, owner: "root", durability: "runtime", quotaPolicy: "generated", capabilities: [] },
+        ...virtualMounts.values(),
+      ];
+    },
+    mountLines() {
+      return this.mountTable().map((entry) => `${entry.id} ${entry.root} ${entry.driver} ${entry.readonly ? "ro" : "rw"} owner=${entry.owner} durability=${entry.durability} quota=${entry.quotaPolicy} caps=${entry.capabilities?.join(",") || "-"}`);
+    },
+    mountVirtual(path, options = {}, principal = system) {
+      const normalized = this.fs.normalize(path);
+      this.fs.createMount(normalized, {
+        mountType: options.driver || "memfs",
+        permissions: options.readonly ? "dr-xr-xr-x" : "drwxrwxrwx",
+        owner: principal.user || "guest",
+        group: principal.groups?.[0] || "users",
+      }, system);
+      const record = {
+        id: `virtual:${normalized}`,
+        root: normalized,
+        driver: options.driver || "memfs",
+        readonly: Boolean(options.readonly),
+        owner: principal.user || "guest",
+        durability: "runtime",
+        quotaPolicy: "memory",
+        capabilities: ["mount.manage"],
+      };
+      virtualMounts.set(normalized, record);
+      return record;
+    },
+    unmountVirtual(path) {
+      const normalized = this.fs.normalize(path);
+      const record = virtualMounts.get(normalized);
+      if (!record) throw new Error(`umount: ${normalized}: not a virtual mount`);
+      this.fs.remove(normalized, "/", { recursive: true }, system);
+      virtualMounts.delete(normalized);
+      return record;
+    },
     storage: {
       status: () => ({ backend: "memory", bytes: 0 }),
       estimate: async () => ({ backend: "memory", bytes: 0 }),

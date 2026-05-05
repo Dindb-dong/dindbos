@@ -960,7 +960,7 @@ Implementation tasks:
 
 - Already present: DindbOS exposes a first-pass mount table with mount id, root path, driver type, readonly flag, owner, durability, quota policy, capability requirements, local mount entries, text `/proc/mounts`, JSON `/proc/mounts.json`, and shell `mount` output.
 - Split VFS behavior into drivers such as `memfs`, `opfsfs`, `cachefs`, `procfs`, `devfs`, `pkgfs`, `zipfs`, `localfs`, and future `netfs`.
-- Add mount and unmount syscalls plus shell commands with explicit permission checks.
+- Already present: `mount.list`, `mount.mount`, and `mount.unmount` syscalls expose the mount table and runtime `memfs` mount/unmount operations. Shell `mount -t memfs <path> [--readonly]` and `umount <path>` route through the syscall boundary, while sandboxed apps need `mount.read` / `mount.manage` capability checks.
 - Add overlay mounts for package development, safe mode, and staged updates.
 - Add readonly package image mounts so installed packages can be verified and mounted before activation.
 - Add driver-level metadata normalization so stat, lstat, symlink, hard-link-like aliases, timestamps, and errors are stable across drivers where possible.
@@ -969,7 +969,8 @@ Implementation tasks:
 Verification:
 
 - Already present: `npm run smoke:boot` verifies mount table entries for browser-backed user storage, package storage, cache storage, and procfs; `npm run smoke:shell` verifies `mount` output; `npm run smoke:local-mounts` verifies local mounts refresh mount table procfs.
-- Add smoke coverage for mount/unmount, readonly denial, overlay precedence, package image mount, zip mount listing, `/proc/mounts`, and driver error normalization.
+- Already present: `npm run smoke:shell` verifies shell `mount -t memfs`, shell `umount`, `mount.list`, `mount.mount`, and `mount.unmount`; `npm run smoke:permissions` verifies sandbox denial for mount management without capability.
+- Add smoke coverage for readonly denial, overlay precedence, package image mount, zip mount listing, and driver error normalization.
 - Add cross-driver tests proving shell, app APIs, NodeCompat, and WASI see the same path behavior for mounted trees.
 
 Completion criteria:
@@ -2190,6 +2191,284 @@ Completion criteria:
 
 - DindbOS can state exactly which native-like features work in which browser/install/companion mode.
 - Future roadmap claims are grounded in repeatable verification rather than memory or visual inspection.
+
+## Further Technically Feasible Native-OS Push
+
+These items are beyond the current convergence backlog, but they are still technically possible. They should be treated as hard engineering tracks, not product polish. Most of them require a stricter kernel boundary, Service Workers, dedicated Workers, cross-origin isolation, WASM Component Model support, WebCrypto/WebAuthn, WebRTC, OPFS, or narrowly scoped helper companions.
+
+The acceptance bar is unchanged: the feature only counts when it becomes a reusable DindbOS primitive with a documented syscall/API boundary, shell diagnostics, package manifest policy, and smoke coverage. If it cannot be exercised by at least two caller surfaces, such as shell plus package app or WASM plus NodeCompat, it is still experimental infrastructure.
+
+### Native-Like 51: Service Worker Boot Kernel And Offline Command Queue
+
+Status: Later.
+
+Goal: move the parts of DindbOS that can survive tab refreshes into a Service Worker-backed boot and offline coordination layer.
+
+Why it matters:
+
+- Native OSes do not disappear just because one window closes.
+- Browsers cannot provide a fully resident kernel, but Service Workers can own fetch routing, offline asset availability, background sync where supported, push wakeups where approved, and install/update lifecycle.
+- This gives DindbOS a more realistic boot path for installed PWA mode while still reporting closed-page limitations honestly.
+
+Implementation tasks:
+
+- Add a Service Worker runtime manifest that records DindbOS build id, boot schema, cached core assets, offline shell assets, package index snapshots, and migration compatibility.
+- Add a boot handshake between the page runtime and Service Worker that reports cache state, update state, offline capability, storage availability, and pending commands.
+- Add an offline command queue for safe deferred work such as package index refresh, sync retry, backup enqueue, notification scheduling, and companion health probes.
+- Add per-command credentials, capability requirements, retry policy, idempotency key, expiration, and audit log metadata.
+- Add Service Worker-owned fetch policy for DindbOS system assets, package repository metadata, update manifests, and local documentation routes.
+- Add `bootctl worker`, `queuectl list`, `queuectl retry`, `queuectl cancel`, and `doctor offline` shell diagnostics.
+- Add degraded modes for browsers without Background Sync, Push, persistent storage, or installed PWA affordances.
+- Ensure Service Worker tasks never receive raw VFS or keychain access; they must request privileged mutation through the page runtime broker when the page is alive.
+
+Verification:
+
+- Add smoke coverage for first install cache population, offline boot shell availability, pending queue persistence, retry after network restore, cancellation, unsupported browser degradation, and update conflict reporting.
+- Add tests proving queued commands retain declared user/process credentials and cannot exceed package manifest capabilities.
+- Add tests proving DindbOS does not claim closed-page execution on browsers that only allow Service Worker fetch handling.
+
+Completion criteria:
+
+- Installed DindbOS can boot into a useful offline recovery shell or degraded desktop when network is unavailable.
+- Deferred work is auditable, cancellable, credentialed, and honest about browser wakeup limits.
+
+### Native-Like 52: Kernel Worker Isolation And Object-Capability Handles
+
+Status: Later.
+
+Goal: move kernel-owned services behind a dedicated Worker boundary and replace broad object access with narrow, revocable handles.
+
+Why it matters:
+
+- Native OS kernels isolate privileged state from ordinary user programs.
+- DindbOS currently has kernel-like services, but stronger isolation requires message passing, structured capabilities, and revocation rather than direct object references.
+- A Worker kernel boundary makes future app containers, process cleanup, crash handling, and multi-core scheduling much more credible.
+
+Implementation tasks:
+
+- Define a kernel Worker protocol for filesystem, process, descriptor, mount, device, network, package, keychain, registry, and policy requests.
+- Replace direct privileged object exposure with object-capability handles that carry type, owner pid, rights, expiry, revocation state, and audit metadata.
+- Add handle inheritance rules for child processes, package launches, WASM modules, NodeCompat tasks, services, and IPC endpoints.
+- Add handle revocation for process exit, crash, suspend, logout, permission change, package uninstall, and companion disconnect.
+- Add a kernel message budget, request deadline, result size limit, and backpressure behavior so one process cannot starve the runtime.
+- Add `/proc/handles`, `/proc/kernel-worker`, `handlectl`, and Activity Monitor diagnostics.
+- Add a compatibility shim so high-level APIs can migrate gradually onto the handle protocol without breaking existing apps at once.
+- Add structured clone and transferable buffer rules for binary IO without leaking mutable kernel state.
+
+Verification:
+
+- Add smoke coverage for allowed handle use, denied rights, revocation after crash, inherited stdout/stderr descriptors, filesystem handle expiry, and oversized kernel response failure.
+- Add cross-runtime tests proving shell, WASM, package apps, and NodeCompat observe the same handle rights.
+- Add regression tests proving a crashed app cannot keep writing through stale handles.
+
+Completion criteria:
+
+- Privileged runtime state is no longer passed to apps as mutable JavaScript objects.
+- Process cleanup can revoke every filesystem, descriptor, device, IPC, network, and companion capability owned by a pid.
+
+### Native-Like 53: Process Checkpointing, Fork-Like Snapshots, And Restore
+
+Status: Later.
+
+Goal: support controlled process snapshots for restart, suspend/resume, crash reproduction, and fork-like worker cloning where browser constraints allow it.
+
+Why it matters:
+
+- Native OSes can suspend processes, checkpoint state, create child processes, and preserve enough diagnostics to reproduce failures.
+- Browsers cannot clone arbitrary JavaScript execution stacks, but DindbOS can snapshot declarative process state, VFS state, environment, descriptors, WASM memory where allowed, app UI state, and worker launch metadata.
+- This makes long-running apps, CLI jobs, and package tests more resilient.
+
+Implementation tasks:
+
+- Define a process checkpoint format with pid lineage, executable identity, argv, env, cwd, uid/gid, filesystem scopes, capabilities, descriptors, mount namespace, signal state, resource limits, and package metadata.
+- Add checkpoint hooks for app state, WASM memory buffers, worker task state, shell command state, NodeCompat module graph metadata, and service state.
+- Add explicit snapshot modes: diagnostic-only, restartable, suspendable, fork-template, and package-test fixture.
+- Add `checkpoint create`, `checkpoint list`, `checkpoint inspect`, `checkpoint restore`, and `checkpoint prune` shell commands.
+- Add restore policy that refuses unsafe snapshots when runtime ABI, package version, trust state, or mount layout no longer matches.
+- Add crash reproduction bundles that include checkpoint metadata, syscall trace, process log, mount table, resource limits, and browser capability report.
+- Add storage quotas, retention policy, encryption hooks, and user consent for checkpoints containing sensitive files or keychain handles.
+- Add fork-like cloning only for supported runtimes such as worker-backed WASM or deterministic task runners, with clear `ENOTSUP` for ordinary live JavaScript stacks.
+
+Verification:
+
+- Add smoke coverage for diagnostic checkpoint creation, restore refusal on ABI mismatch, WASM restartable snapshot where supported, app state restore, stale descriptor denial, retention pruning, and crash bundle contents.
+- Add tests proving checkpoints do not bypass filesystem scopes, mount namespace restrictions, user credentials, or revoked capabilities.
+- Add tests proving unsupported live-stack cloning fails explicitly instead of pretending to fork.
+
+Completion criteria:
+
+- DindbOS can suspend, restore, or reproduce supported workloads through declared checkpoint data.
+- Unsupported process cloning boundaries are visible to users and package authors.
+
+### Native-Like 54: WASM Component Model, Dynamic Linking, And Shared Runtime Libraries
+
+Status: Later.
+
+Goal: let compiled programs share stable DindbOS runtime interfaces and libraries instead of bundling every dependency into one opaque `.wasm` file.
+
+Why it matters:
+
+- Native OSes support shared libraries, ABI negotiation, dynamic loading, and language-neutral system interfaces.
+- WASM Component Model and interface types are the browser-safe path toward multi-language programs that target one OS contract.
+- This can make C, Rust, Zig, Go, TinyGo, and future languages feel like first-class DindbOS targets.
+
+Implementation tasks:
+
+- Define DindbOS component interfaces for filesystem, descriptors, process, clock, entropy, environment, package metadata, network, devices, keychain, and UI handoff.
+- Add component manifest fields for required interfaces, optional interfaces, ABI version range, memory limits, filesystem scopes, and capability needs.
+- Add runtime linking for shared DindbOS libraries stored under `/lib`, package-provided components under `/opt`, and trusted system components under `/system`.
+- Add interface version negotiation with clear errors for missing interface, incompatible ABI, denied capability, unsupported browser feature, and unsafe shared library trust state.
+- Add package install validation that checks component imports before activation.
+- Add `wasmctl components`, `ldd`-style diagnostics, component cache management, and syscall trace integration.
+- Add shared-library update policy so a library upgrade can be rolled back if dependent packages fail compatibility checks.
+- Map WASI Preview 2 or successor interfaces onto DindbOS syscalls where practical, while documenting unsupported host assumptions.
+
+Verification:
+
+- Add smoke coverage for component import success, missing interface denial, ABI mismatch, shared library update rollback, package activation gate, and cross-language fixture packages.
+- Add tests proving component calls flow through the same syscall tracing and permission checks as JavaScript package APIs.
+- Add tests proving untrusted package libraries cannot replace trusted system components.
+
+Completion criteria:
+
+- Compiled DindbOS programs can target stable OS interfaces instead of private runtime imports.
+- Shared runtime libraries are versioned, permissioned, diagnosable, and rollback-safe.
+
+### Native-Like 55: Poll, Select, Epoll-Like Multiplexing, And Async IO Readiness
+
+Status: Later.
+
+Goal: provide a portable readiness model for descriptors, sockets, pipes, devices, timers, and IPC endpoints.
+
+Why it matters:
+
+- Native CLI and server programs rely on `select`, `poll`, `epoll`, `kqueue`, or equivalent readiness APIs.
+- DindbOS already has descriptors and async browser operations, but portable programs need one way to wait on multiple IO sources.
+- A readiness layer makes terminal programs, virtual sockets, IPC services, and WASM ports more realistic.
+
+Implementation tasks:
+
+- Add readiness states for readable, writable, closed, errored, hung up, priority event, timer expired, device changed, and signal pending.
+- Add syscalls such as `io.poll`, `io.wait`, `timer.create`, `timer.cancel`, and descriptor readiness subscription APIs.
+- Add descriptor adapters for VFS files, pipes, PTYs, `/dev` devices, virtual sockets, IPC endpoints, browser fetch streams, WebSocket streams, and worker message channels.
+- Add timeout handling, cancellation tokens, fairness rules, max watched descriptors, and backpressure reporting.
+- Add shell diagnostics through `pollctl`, `lsof`, and richer `/proc/<pid>/fd` readiness metadata.
+- Add WASI and NodeCompat mappings so portable packages can use the readiness model without private shims.
+- Add browser throttling reports so hidden-tab timer delays are surfaced as degraded readiness, not silent scheduler failure.
+- Add cleanup rules that remove readiness watchers when a process exits, crashes, loses permission, or closes a descriptor.
+
+Verification:
+
+- Add smoke coverage for waiting on pipe output, PTY input, timer expiry, socket message, descriptor close, cancellation, timeout, hidden-tab degradation report, and process cleanup.
+- Add cross-runtime tests proving shell, WASM, NodeCompat, and package apps observe the same readiness events.
+- Add stress tests for many descriptors so starvation and leaked watchers are caught.
+
+Completion criteria:
+
+- Event-driven programs can wait on multiple DindbOS IO sources through one documented OS boundary.
+- Readiness behavior is fair, cancellable, observable, and honest about browser timer limits.
+
+### Native-Like 56: Network Namespaces, Loopback Services, And Policy Firewalls
+
+Status: Later.
+
+Goal: make network access feel like an OS-managed subsystem with namespaces, loopback services, routing policy, and audit logs instead of direct browser fetch calls.
+
+Why it matters:
+
+- Native OSes separate processes with network namespaces, firewall rules, DNS policy, socket ownership, and service binding.
+- Browsers prevent raw sockets, but DindbOS can still broker Fetch, WebSocket, WebRTC data channels, loopback service endpoints, and companion-backed raw networking behind explicit policy.
+- This is required before server-like packages can run credibly inside the OS.
+
+Implementation tasks:
+
+- Add per-process network namespaces with allowed hosts, schemes, ports, protocols, loopback bindings, DNS policy, proxy policy, and companion requirements.
+- Add loopback service registry where DindbOS services can bind virtual ports, advertise health, and receive descriptor-backed stream requests.
+- Add firewall profiles for deny-by-default apps, package-specific allowlists, managed mode, offline mode, metered mode, and companion-assisted raw socket mode.
+- Add `net.open`, `net.listen`, `net.accept`, `net.resolve`, and `net.policy` syscalls mapped onto browser-safe transports.
+- Add `netstat`, `ss`, `route`, `firewallctl`, `curl`, and DNS policy probe commands.
+- Add network audit logs under `/var/log/dindbos/network.log` and `/proc/<pid>/network`.
+- Add user prompts and revocation behavior for sensitive network classes such as LAN discovery, WebRTC peer connections, and companion raw socket access.
+- Add failure normalization for CORS denial, browser offline, DNS failure, TLS failure, policy denial, companion missing, and protocol unsupported.
+
+Verification:
+
+- Add smoke coverage for allowed fetch stream, denied host, loopback service request, WebSocket policy, namespace isolation, audit log entry, revoked permission, and companion-missing raw socket refusal.
+- Add tests proving packages cannot bypass the network broker through direct `fetch` when sandboxed.
+- Add tests proving CORS/browser failures are reported distinctly from DindbOS policy denials.
+
+Completion criteria:
+
+- Networked DindbOS programs use declared OS policy and virtual sockets rather than raw browser globals.
+- Users can inspect which process contacted which endpoint, through which policy, and why a request was allowed or denied.
+
+### Native-Like 57: Real-Time Media Server And Low-Latency Device Graph
+
+Status: Later.
+
+Goal: provide an OS-level graph for audio, video, screen, capture, speech, and low-latency media routing.
+
+Why it matters:
+
+- Native OSes have media servers that route devices, streams, permissions, effects, and app isolation.
+- Browsers expose powerful media APIs, but DindbOS needs a broker so apps do not call camera, microphone, screen capture, audio output, or speech APIs directly.
+- A media server makes communication apps, recording tools, browser streams, accessibility tools, and creative workloads possible.
+
+Implementation tasks:
+
+- Add a media device registry with input/output devices, stream ids, owner process, permission state, sample/video format, latency, muted state, and browser support metadata.
+- Add graph nodes for microphone, camera, screen capture, tab capture where available, audio output, analyser, mixer, recorder, encoder, decoder, speech recognition, and speech synthesis.
+- Add manifest capabilities and user prompts for `media.audioInput`, `media.videoInput`, `media.screenCapture`, `media.audioOutput`, `media.record`, and `media.speech`.
+- Add descriptor or stream APIs for media frames/chunks with backpressure and cleanup on process crash or permission revocation.
+- Add Settings and Activity Monitor views for active media use, device access history, mute controls, and degraded browser states.
+- Add `mediactl devices`, `mediactl sessions`, `mediactl revoke`, and `/proc/media` diagnostics.
+- Add companion protocol only for native-only media paths that browser APIs cannot provide, such as virtual audio drivers or system-wide screen capture outside browser policy.
+- Add privacy indicators and data access reports integrated with the privacy ledger.
+
+Verification:
+
+- Add smoke coverage with mockable media devices for permission denial, granted session, revoke cleanup, stream descriptor close, process crash cleanup, and diagnostics output.
+- Add browser-profile tests for unsupported capture classes and permission-denied browser prompts.
+- Add tests proving an app cannot access raw media APIs through the sandbox when it lacks manifest capabilities.
+
+Completion criteria:
+
+- Media-capable apps consume DindbOS media devices through a visible OS broker.
+- Users can see, revoke, and audit active media access without trusting each app UI.
+
+### Native-Like 58: Policy-Proven Package Sandboxes And Reproducible App Environments
+
+Status: Later.
+
+Goal: make every installed app run in a reproducible environment whose permissions, dependencies, mounts, devices, network, and secrets can be explained and replayed.
+
+Why it matters:
+
+- Native OS package managers and container systems give each app a predictable runtime contract.
+- DindbOS already has packages and scopes, but native-like trust needs reproducible environment resolution and policy proofs before launch.
+- This is the bridge between package install, compatibility tiers, security profiles, mount namespaces, keychain access, and update rollback.
+
+Implementation tasks:
+
+- Add environment lockfiles that pin package version, dependency graph, syscall ABI, compatibility tier, mount namespace, filesystem scopes, devices, network policy, service units, and secret references.
+- Add launch-time policy proof generation that explains every granted capability and every denied request source.
+- Add reproducible app profile creation for browser-only, PWA, companion-assisted, managed, offline, and test-lab modes.
+- Add immutable package root mounts plus writable overlay mounts for app data, cache, temp, and user-selected document scopes.
+- Add environment diffing so updates show changed permissions, changed dependencies, changed network hosts, changed device access, and changed migration requirements before activation.
+- Add `appctl env`, `appctl diff`, `appctl explain`, `appctl replay`, and package test fixture export.
+- Add deterministic test harness support that can replay the same app environment against local smoke tests and compatibility lab profiles.
+- Add rollback behavior that restores previous package root, writable overlay metadata, service state, and registry entries when activation fails.
+
+Verification:
+
+- Add smoke coverage for environment lock creation, launch proof contents, denied capability explanation, update diff, rollback after failed activation, and deterministic fixture replay.
+- Add tests proving app code cannot mutate its immutable package root and cannot obtain undeclared mounts, devices, network hosts, or secrets.
+- Add tests proving the same package produces the same resolved environment under the same compatibility profile.
+
+Completion criteria:
+
+- Package launches are explainable, reproducible, testable, and rollback-safe.
+- Security review can inspect one environment proof instead of reverse-engineering runtime behavior.
 
 ## Status Legend
 

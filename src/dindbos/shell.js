@@ -290,7 +290,7 @@ export class ShellSession {
     if (command === "wasm") return this.wasm(args, stdin);
     if (command === "npm") return this.npm(args);
     if (command === "df") return this.df();
-    if (command === "mount") return this.mount();
+    if (command === "mount") return this.mount(args);
     const script = this.resolveExecutable(command);
     if (script?.path.endsWith(".wasm")) return this.executeWasm(script.path, args, stdin);
     if (script) return this.executeScript(script.path, args, stdin, options.scriptDepth || 0);
@@ -864,8 +864,14 @@ export class ShellSession {
     const forget = args[0] === "--forget";
     const path = forget ? args[1] : args[0];
     if (!path) return "umount: usage: umount [--forget] <path>";
-    return this.os.localMounts.unmount(this.os.fs.normalize(path, this.cwd), { forget })
-      .then((mount) => `unmounted ${mount.path}${forget ? " and forgot persisted handle" : ""}`);
+    const normalized = this.os.fs.normalize(path, this.cwd);
+    if (this.os.localMounts?.isMountedPath?.(normalized)) {
+      return this.os.localMounts.unmount(normalized, { forget })
+        .then((mount) => `unmounted ${mount.path}${forget ? " and forgot persisted handle" : ""}`);
+    }
+    const result = this.os.syscall("mount.unmount", { path: normalized }, { principal: this.principal, env: this.env });
+    if (!result.ok) throw new Error(result.error.message);
+    return `unmounted ${result.value.root}`;
   }
 
   kill(args) {
@@ -918,13 +924,27 @@ export class ShellSession {
     ].join("\n");
   }
 
-  mount() {
+  mount(args = []) {
     try {
+      if (args.length) return this.mountVirtual(args);
       if (typeof this.os.mountLines === "function") return this.os.mountLines().join("\n");
       return this.os.fs.readFile("/proc/mounts").trim().split("\n").filter(Boolean).join("\n");
     } catch {
       return "rootfs / virtualfs rw 0 0";
     }
+  }
+
+  mountVirtual(args = []) {
+    const [flag, driver, path, ...rest] = args;
+    if (flag !== "-t" || !driver || !path) return "mount: usage: mount -t memfs <path> [--readonly]";
+    const result = this.os.syscall("mount.mount", {
+      driver,
+      path: this.os.fs.normalize(path, this.cwd),
+      readonly: rest.includes("--readonly") || rest.includes("-r"),
+      source: "shell",
+    }, { principal: this.principal, env: this.env });
+    if (!result.ok) throw new Error(result.error.message);
+    return `mounted ${result.value.root} ${result.value.driver} ${result.value.readonly ? "ro" : "rw"}`;
   }
 
   isLocalPath(path) {
