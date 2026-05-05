@@ -2,6 +2,7 @@
 import { DindbOS } from "../src/dindbos/index.js";
 import { PersistentStorage } from "../src/dindbos/persistent-storage.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
+import { serializeFileContentRecord } from "../src/dindbos/file-data.js";
 
 const binaryPath = "/home/guest/Documents/persist.bin";
 const binary = new Uint8Array([3, 9, 27, 81, 128, 255]);
@@ -9,6 +10,7 @@ const binary = new Uint8Array([3, 9, 27, 81, 128, 255]);
 await verifySnapshotAdapterFallback();
 await verifyOpfsTransactionGroupJournal();
 await verifyInterruptedOpfsTransactionRecoveryDecision();
+await verifyInodeContentMismatchDiagnostics();
 await verifyQuotaReservationDeniesBeforeMutation();
 await verifyOpfsFailureFallsBackToSnapshot();
 await verifyLifecyclePendingWriteFlushes();
@@ -140,6 +142,34 @@ async function verifyInterruptedOpfsTransactionRecoveryDecision() {
   assert(recovery?.transactionId === "storage-tx-interrupted", `recovery transaction id mismatch: ${JSON.stringify(recovery)}`);
   assert(recovery.decision === "load-last-complete-manifest", `recovery decision mismatch: ${JSON.stringify(recovery)}`);
   assert(reloadedStorage.journal().some((entry) => entry.action === "write-recovery" && entry.transactionId === "storage-tx-interrupted"), "recovery journal entry missing");
+}
+
+async function verifyInodeContentMismatchDiagnostics() {
+  const opfsRoot = createOpfsRoot();
+  const storage = new PersistentStorage({
+    key: "smoke:opfs-integrity",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: async () => opfsRoot,
+  });
+  const fs = bootVfs();
+  fs.writeOrCreateFileBytes(binaryPath, binary, "/", { mime: "application/octet-stream" });
+  storage.saveFileSystem(fs.snapshot());
+  await storage.flush();
+  const manifest = JSON.parse(opfsRoot.files.get(opfsFileName("smoke:opfs-integrity")));
+  const fileRecord = manifest.fileRecords.find((record) => record.path === binaryPath);
+  opfsRoot.files.set(opfsFileName(fileRecord.key), serializeFileContentRecord("tampered bytes"));
+
+  const reloadedStorage = new PersistentStorage({
+    key: "smoke:opfs-integrity",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: async () => opfsRoot,
+  });
+  await reloadedStorage.loadFileSystem();
+  const mismatches = reloadedStorage.status().storageIntegrityMismatches || [];
+  assert(mismatches.some((entry) => entry.kind === "file-content-record" && entry.path === binaryPath), `inode/content mismatch was not reported: ${JSON.stringify(mismatches)}`);
+  assert(reloadedStorage.journal().some((entry) => entry.action === "storage-integrity-mismatch" && entry.error === "inode-content-mismatch"), "inode/content mismatch journal entry missing");
 }
 
 async function verifyQuotaReservationDeniesBeforeMutation() {

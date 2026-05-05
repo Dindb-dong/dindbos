@@ -210,6 +210,7 @@ Implementation cuts:
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
 - Already present: package `fsck` detects package DB/app registry disagreement when an installed package app is missing from the app registry or its manifest/launcher files are absent, and `fsck --repair` can re-register the package app from the package DB record.
 - Already present: `fsck --explain` reports why each problem is repairable or non-repairable, every shell `fsck` run appends a summary to `/var/log/dindbos/fsck.log`, and repair/refusal audit JSONL records are written to `/var/log/dindbos/fsck-audit.log`.
+- Already present: OPFS inode-record loads validate manifest inode/file content hashes against actual records and report inode/content mismatches through storage status and the storage journal.
 - Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts beyond DB/root drift, partial journals, stale local mount metadata, and conservative salvage export.
 - Already present: large app writes and Files.app imports reserve storage bytes before VFS mutation so quota denial preserves existing files and prevents archive staging.
 - Already present: PersistentStorage supports first-pass storage-class quota arbitration for package roots, package state, cache, temp, snapshots, logs, backups, sync staging, recovery data, and user data using explicit reservation metadata or path/transaction inference.
@@ -234,9 +235,9 @@ Verification:
 - Already present: `npm run smoke:files` and `npm run smoke:permissions` verify quota denial happens before Files.app import replacement/archive staging and AppSandbox write mutation.
 - Already present: `npm run smoke:storage` verifies fsck repair preserves owner, group, permissions, security label, quarantine state, and encrypted-volume lock metadata while repairing corrupt size metadata.
 - Already present: `npm run smoke:persistent-storage` verifies storage-class quota reservation, class-specific denial, denial journaling, and path-based cache class inference.
+- Already present: `npm run smoke:persistent-storage` verifies an OPFS file content record whose hash no longer matches its manifest entry is reported as an inode/content mismatch and journaled.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, journal replay, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
-- Add regression fixtures for VFS inode/content mismatch.
 
 Completion criteria:
 
