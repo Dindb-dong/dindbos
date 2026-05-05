@@ -499,7 +499,7 @@ export class AppSandbox {
   }
 
   statePath() {
-    return appStatePath(this.process.appId);
+    return appStatePath(this.process.appId, this.process.user || this.os.session.user);
   }
 
   emptyStateRecord() {
@@ -527,7 +527,7 @@ export class AppSandbox {
   }
 
   writeStateRecord(record, event = {}) {
-    ensureStateDirectory(this.os);
+    ensureStateDirectory(this.os, this.process.user || this.os.session.user);
     const payload = {
       version: 1,
       appId: this.process.appId,
@@ -643,25 +643,50 @@ export class AppSandbox {
   }
 }
 
-export function appStatePath(appId) {
+export function appStatePath(appId, user = "guest") {
+  return appStatePathForUser(appId, user);
+}
+
+export function appStatePathForUser(appId, user) {
   const safeId = encodeURIComponent(String(appId || "app"));
-  return `${APP_STATE_DIR}/${safeId && safeId !== "." && safeId !== ".." ? safeId : "app"}.json`;
+  const safeUser = encodeURIComponent(String(user || "guest"));
+  return `${APP_STATE_DIR}/${safeUser && safeUser !== "." && safeUser !== ".." ? safeUser : "guest"}/${safeId && safeId !== "." && safeId !== ".." ? safeId : "app"}.json`;
 }
 
 export function removeAppState(os, appId) {
-  const path = appStatePath(appId);
-  if (os.fs.exists(path)) os.fs.remove(path, "/", {}, os.permissions.systemPrincipal());
-  os.publishSessionAppStateChange?.("remove-app", { appId, path });
-  return path;
+  const system = os.permissions.systemPrincipal();
+  const removed = [];
+  const legacyPath = `${APP_STATE_DIR}/${encodeURIComponent(String(appId || "app"))}.json`;
+  if (os.fs.exists(legacyPath)) {
+    os.fs.remove(legacyPath, "/", {}, system);
+    removed.push(legacyPath);
+  }
+  if (os.fs.exists(APP_STATE_DIR)) {
+    os.fs.list(APP_STATE_DIR, "/", system)
+      .filter((entry) => entry.type === "directory")
+      .forEach((entry) => {
+        const path = appStatePathForUser(appId, decodeURIComponent(entry.name));
+        if (os.fs.exists(path)) {
+          os.fs.remove(path, "/", {}, system);
+          removed.push(path);
+        }
+      });
+  }
+  os.publishSessionAppStateChange?.("remove-app", { appId, path: removed.join(",") });
+  return removed[0] || appStatePath(appId);
 }
 
-function ensureStateDirectory(os) {
+function ensureStateDirectory(os, user = "guest") {
   const system = os.permissions.systemPrincipal();
   ["/var", "/var/lib", "/var/lib/dindbos", APP_STATE_DIR].forEach((path) => {
     if (!os.fs.exists(path)) {
       os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, system);
     }
   });
+  const userDir = `${APP_STATE_DIR}/${encodeURIComponent(String(user || "guest"))}`;
+  if (!os.fs.exists(userDir)) {
+    os.fs.createDirectory(userDir, "/", { owner: user || "guest", group: "users", permissions: "drwx------" }, system);
+  }
 }
 
 function normalizeStateKey(key) {

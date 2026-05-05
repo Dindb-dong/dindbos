@@ -582,7 +582,7 @@ assert(os.processes.readLog(apiWindow.pid).includes("api-lab wrote"), "API Lab s
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("fs.writeText OK"), "API Lab sample did not write syscall trace under /proc");
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("package.info OK"), "API Lab sample did not read package info through syscall");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("process.log OK"), "API Lab sample did not write global syscall log");
-assert(os.fs.readFile("/var/lib/dindbos/app-state/api-lab.json").includes('"launches": 1'), "API Lab sample did not persist app state under app-state");
+assert(os.fs.readFile("/var/lib/dindbos/app-state/guest/api-lab.json").includes('"launches": 1'), "API Lab sample did not persist app state under per-user app-state");
 const apiWindowAgain = os.apps.launch("api-lab");
 await apiWindowAgain.rendered;
 await waitFor(() => apiWindowAgain.content.innerHTML.includes("launches=2"), `API Lab sample did not restore app state on relaunch: ${apiWindowAgain.content.innerHTML}`);
@@ -594,7 +594,7 @@ await reloadedApiWindow.rendered;
 await waitFor(() => reloadedApiWindow.content.innerHTML.includes("launches=3"), `API Lab sample did not restore app state after VFS reload: ${reloadedApiWindow.content.innerHTML}`);
 const removedApiLab = packages.remove("api-lab");
 assert(removedApiLab.id === "api-lab", "API Lab package remove returned wrong id");
-assert(!os.fs.exists("/var/lib/dindbos/app-state/api-lab.json"), "API Lab app state remained after package remove");
+assert(!os.fs.exists("/var/lib/dindbos/app-state/guest/api-lab.json"), "API Lab app state remained after package remove");
 
 console.log("packages smoke ok transaction rollback launch run state remove runtime-testbed");
 
