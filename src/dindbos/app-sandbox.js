@@ -54,16 +54,22 @@ export class AppSandbox {
   }
 
   assertFileSystem(path, access) {
-    if (canAccessFileSystem(this.process.manifest, path, access)) return;
-    throw new Error(`${this.process.appId}: ${access}: ${path}: sandbox denied`);
+    const effectiveAccess = access === "list" ? "read" : access;
+    this.os.packages?.assertDependencyPathAllowed?.(this.process.manifest.namespace || {}, path, access);
+    if (canAccessFileSystem(this.process.manifest, path, effectiveAccess)) return;
+    throw new Error(`${this.process.appId}: ${effectiveAccess}: ${path}: sandbox denied`);
+  }
+
+  filterDependencyList(path, entries) {
+    return this.os.packages?.filterDependencyList?.(this.process.manifest.namespace || {}, path, entries) || entries;
   }
 
   createFileSystemFacade() {
     return {
       list: (path = "/", cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
-        this.assertFileSystem(normalized, "read");
-        return this.os.fs.list(normalized, "/", this.principal);
+        this.assertFileSystem(normalized, "list");
+        return this.filterDependencyList(normalized, this.os.fs.list(normalized, "/", this.principal));
       },
       resolve: (path = "/", cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
@@ -248,6 +254,12 @@ export class AppSandbox {
       dependencies: (packageId) => {
         this.assertCapability("package.read");
         return this.os.packages.dependencies(packageId);
+      },
+      dependencyView: (packageId = this.process.manifest.namespace?.packageId || "") => {
+        this.assertCapability("package.read");
+        const target = String(packageId || "").trim();
+        if (!target) throw new Error(`${this.process.appId}: package dependency view target required`);
+        return this.os.packages.dependencyView(target);
       },
       registries: () => {
         this.assertCapability("package.read");

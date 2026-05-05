@@ -67,6 +67,7 @@ export class WasmRunner {
       env,
       assertFileSystem: (path, access) => this.assertFileSystem(path, access, process),
       assertCapability: (capability) => this.assertCapability(capability, process),
+      filterDirectoryEntries: (path, entries) => this.filterDependencyList(path, entries, process),
     };
     const readMemory = (ptr, length) => {
       const memory = instance?.exports?.memory;
@@ -487,6 +488,7 @@ export class WasmRunner {
           read: readScopes,
           write: writeScopes,
         },
+        namespace: cloneJson(manifest.namespace || options.namespace || null),
       },
     };
   }
@@ -503,9 +505,15 @@ export class WasmRunner {
   }
 
   assertFileSystem(path, access, process) {
-    if (access === "read" && process.manifest.fileSystem.read.some((scope) => path === scope || path.startsWith(`${scope}/`))) return;
-    if (access === "write" && process.manifest.fileSystem.write.some((scope) => path === scope || path.startsWith(`${scope}/`))) return;
+    const effectiveAccess = access === "list" ? "read" : access;
+    this.os.packages?.assertDependencyPathAllowed?.(process.manifest.namespace || {}, path, access);
+    if (effectiveAccess === "read" && process.manifest.fileSystem.read.some((scope) => path === scope || path.startsWith(`${scope}/`))) return;
+    if (effectiveAccess === "write" && process.manifest.fileSystem.write.some((scope) => path === scope || path.startsWith(`${scope}/`))) return;
     throw new Error(`wasm: ${access}: ${path}: sandbox denied`);
+  }
+
+  filterDependencyList(path, entries, process) {
+    return this.os.packages?.filterDependencyList?.(process.manifest.namespace || {}, path, entries) || entries;
   }
 
   assertCapability(capability, process) {
@@ -662,4 +670,9 @@ function cStringBytes(values) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function cloneJson(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
 }

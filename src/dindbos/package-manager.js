@@ -457,6 +457,43 @@ export class PackageManager {
     return cloneJson(record.dependencies || { packages: {}, npm: {} });
   }
 
+  dependencyView(packageId) {
+    const record = this.info(packageId);
+    if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    return packageDependencyView(record);
+  }
+
+  dependencyViewForNamespace(namespace = {}) {
+    const packageId = String(namespace.packageId || "").trim();
+    const record = packageId ? safeRead(() => this.info(packageId), null) : null;
+    if (record) return packageDependencyView(record);
+    return packageDependencyViewFromNamespace(namespace);
+  }
+
+  assertDependencyPathAllowed(namespace = {}, path = "", access = "read") {
+    const view = this.dependencyViewForNamespace(namespace);
+    const dependency = dependencyPathPackage(this.os.fs.normalize(path, "/"), view.dependencyRoot);
+    if (!dependency.inside || !dependency.packageName) return true;
+    if (view.allowedPackages.includes(dependency.packageName)) return true;
+    throw new Error(`package dependency view denied: ${path}`);
+  }
+
+  filterDependencyList(namespace = {}, path = "", entries = []) {
+    const view = this.dependencyViewForNamespace(namespace);
+    const normalized = this.os.fs.normalize(path, "/");
+    if (!view.dependencyRoot) return entries;
+    if (normalized === view.dependencyRoot) {
+      const visible = new Set(view.allowedPackages.map((name) => name.split("/")[0]));
+      return entries.filter((entry) => visible.has(entry.name));
+    }
+    const scope = dependencyScopeForPath(normalized, view.dependencyRoot);
+    if (!scope) return entries;
+    const visible = new Set(view.allowedPackages
+      .filter((name) => name.startsWith(`${scope}/`))
+      .map((name) => name.slice(scope.length + 1)));
+    return entries.filter((entry) => visible.has(entry.name));
+  }
+
   strictNamespaceCheck(target, cwd = "/") {
     const value = String(target || "").trim();
     if (!value) throw new Error("pkg: strict namespace target is required");
@@ -1638,6 +1675,52 @@ function packageNamespace(packageId, appId, installPath, sandbox = {}, dependenc
     childProcessLimit: Number(sandbox.childProcessLimit || 0),
     dependencyAllowlist: Object.keys(dependencies.npm || {}),
   };
+}
+
+function packageDependencyView(record) {
+  const namespace = record.namespace || {};
+  const dependencies = record.dependencies || { packages: {}, npm: {} };
+  const allowedPackages = [...(namespace.dependencyAllowlist || Object.keys(dependencies.npm || {}))].sort();
+  const dependencyRoot = namespace.dependencyRoot || `${record.installPath}/node_modules`;
+  return {
+    packageId: record.id,
+    dependencyRoot,
+    allowedPackages,
+    allowedPaths: allowedPackages.map((name) => `${dependencyRoot}/${name}`),
+    npm: Object.fromEntries(allowedPackages
+      .filter((name) => dependencies.npm?.[name])
+      .map((name) => [name, cloneJson(dependencies.npm[name])])),
+  };
+}
+
+function packageDependencyViewFromNamespace(namespace = {}) {
+  const allowedPackages = [...(namespace.dependencyAllowlist || [])].sort();
+  const dependencyRoot = namespace.dependencyRoot || "";
+  return {
+    packageId: namespace.packageId || "",
+    dependencyRoot,
+    allowedPackages,
+    allowedPaths: dependencyRoot ? allowedPackages.map((name) => `${dependencyRoot}/${name}`) : [],
+    npm: {},
+  };
+}
+
+function dependencyPathPackage(path, dependencyRoot = "") {
+  if (!dependencyRoot || (path !== dependencyRoot && !path.startsWith(`${dependencyRoot}/`))) {
+    return { inside: false, packageName: "" };
+  }
+  const relative = path === dependencyRoot ? "" : path.slice(dependencyRoot.length + 1);
+  const parts = relative.split("/").filter(Boolean);
+  if (!parts.length) return { inside: true, packageName: "" };
+  if (parts[0].startsWith("@")) return { inside: true, packageName: parts.length > 1 ? `${parts[0]}/${parts[1]}` : "" };
+  return { inside: true, packageName: parts[0] };
+}
+
+function dependencyScopeForPath(path, dependencyRoot = "") {
+  if (!dependencyRoot || !path.startsWith(`${dependencyRoot}/@`)) return "";
+  const relative = path.slice(dependencyRoot.length + 1);
+  const [scope, extra] = relative.split("/").filter(Boolean);
+  return scope?.startsWith("@") && !extra ? scope : "";
 }
 
 function inferPackageRuntime(entry) {

@@ -247,11 +247,37 @@ export class ServiceManager {
   }
 
   serviceContext(service, record) {
+    const dependencyView = service.packageId && this.os.packages?.dependencyView
+      ? this.os.packages.dependencyView(service.packageId)
+      : null;
     return {
       os: this.os,
       service: { ...service },
       record: { ...record },
+      dependencyView,
+      assertFileSystem: (path, access = "read") => this.assertServiceFileSystem(service, path, access),
+      fs: this.serviceFileSystemFacade(service),
       log: (message, level = "info") => this.log(service.id, message, level),
+    };
+  }
+
+  assertServiceFileSystem(service, path, access = "read") {
+    const normalized = this.os.fs.normalize(path, "/");
+    const effectiveAccess = access === "list" ? "read" : access;
+    this.os.packages?.assertDependencyPathAllowed?.(service.namespace || {}, normalized, access);
+    const scopes = effectiveAccess === "write" ? service.fileSystem.write : service.fileSystem.read;
+    if (scopes.some((scope) => normalized === scope || normalized.startsWith(`${scope}/`))) return normalized;
+    throw new Error(`service: ${service.id}: ${effectiveAccess}: ${normalized}: sandbox denied`);
+  }
+
+  serviceFileSystemFacade(service) {
+    return {
+      readFile: (path) => this.os.fs.readFile(this.assertServiceFileSystem(service, path, "read"), "/", this.os.permissions.systemPrincipal()),
+      list: (path) => {
+        const normalized = this.assertServiceFileSystem(service, path, "list");
+        const entries = this.os.fs.list(normalized, "/", this.os.permissions.systemPrincipal());
+        return this.os.packages?.filterDependencyList?.(service.namespace || {}, normalized, entries) || entries;
+      },
     };
   }
 

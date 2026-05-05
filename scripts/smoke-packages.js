@@ -109,22 +109,47 @@ packages.install(packageManifest("namespace-probe", "0.1.0", [
       "  let dependencyIsolation = 'not-denied';",
       "  try { os.node.evaluate(\"const secret = require('secret-lib'); console.log(secret);\", pkg.installPath); }",
       "  catch (error) { dependencyIsolation = error.message.includes('dependency not declared') ? 'dependency-denied' : error.message; }",
+      "  let directDependencyIsolation = 'not-denied';",
+      "  try { os.fs.readFile('/opt/namespace-probe/node_modules/secret-lib/index.js'); }",
+      "  catch (error) { directDependencyIsolation = error.message.includes('dependency view denied') ? 'direct-dependency-denied' : error.message; }",
+      "  const declaredDependency = os.fs.readFile('/opt/namespace-probe/node_modules/declared-lib/index.js').includes('declared') ? 'declared-ok' : 'declared-missing';",
+      "  const visibleDependencies = os.fs.list('/opt/namespace-probe/node_modules').map((entry) => entry.name).join(',');",
+      "  const dependencyView = os.packages.dependencyView();",
       "  let ipcIsolation = 'not-denied';",
       "  try { os.ipc.send('namespace-target.echo', { probe: true }); }",
       "  catch (error) { ipcIsolation = error.message.includes('send denied') ? 'ipc-denied' : error.message; }",
       "  const child = os.launch('namespace-child');",
-      "  content.innerHTML = `<main data-namespace-probe data-child-pid=\"${child.pid}\">${rootIsolation}:${dependencyIsolation}:${ipcIsolation}</main>`;",
+      "  content.innerHTML = `<main data-namespace-probe data-child-pid=\"${child.pid}\">${rootIsolation}:${dependencyIsolation}:${directDependencyIsolation}:${declaredDependency}:${visibleDependencies}:${dependencyView.allowedPackages.join(',')}:${ipcIsolation}</main>`;",
       "}",
     ].join("\n"),
   },
+  { path: "node_modules/declared-lib/index.js", mime: "text/javascript", content: "module.exports = 'declared';\n" },
   { path: "node_modules/secret-lib/index.js", mime: "text/javascript", content: "module.exports = 'undeclared secret';\n" },
-], { permissions: { capabilities: ["app.launch", "node.execute"] } }));
+], {
+  dependencies: { npm: { "declared-lib": "1.0.0" } },
+  permissions: { capabilities: ["app.launch", "node.execute", "package.read"] },
+}));
 const namespaceProbeWindow = os.apps.launch("namespace-probe");
 await namespaceProbeWindow.rendered;
 await waitFor(() => namespaceProbeWindow.content.innerHTML.includes("data-namespace-probe"), `namespace probe did not render: ${namespaceProbeWindow.content.innerHTML}`);
-assert(namespaceProbeWindow.content.innerHTML.includes("root-denied:dependency-denied:ipc-denied"), `package namespace isolation mismatch: ${namespaceProbeWindow.content.innerHTML}`);
+assert(namespaceProbeWindow.content.innerHTML.includes("root-denied:dependency-denied:direct-dependency-denied:declared-ok:declared-lib:declared-lib:ipc-denied"), `package namespace isolation mismatch: ${namespaceProbeWindow.content.innerHTML}`);
+const namespaceProbeRecord = packages.info("namespace-probe");
+assert(packages.dependencyView("namespace-probe").allowedPaths.includes("/opt/namespace-probe/node_modules/declared-lib"), "package dependency view missing declared dependency path");
 const namespaceChild = os.processes.list().find((process) => process.parentPid === namespaceProbeWindow.pid && process.appId === "namespace-child");
 assert(namespaceChild?.manifest?.namespace?.processGroup === "package:namespace-probe", `child process did not inherit package namespace: ${JSON.stringify(namespaceChild)}`);
+const wasmPolicyApp = os.wasm.processApp({
+  path: "/opt/namespace-probe/tool.wasm",
+  cwd: "/opt/namespace-probe",
+  manifest: {
+    namespace: namespaceProbeRecord.namespace,
+    fileSystem: { read: [namespaceProbeRecord.installPath], write: [] },
+  },
+});
+os.wasm.assertFileSystem("/opt/namespace-probe/node_modules/declared-lib/index.js", "read", { manifest: wasmPolicyApp.manifest });
+await assertRejects(
+  () => os.wasm.assertFileSystem("/opt/namespace-probe/node_modules/secret-lib/index.js", "read", { manifest: wasmPolicyApp.manifest }),
+  "dependency view denied",
+);
 const namespaceChildStatus = os.fs.readFile(`/proc/${namespaceChild.pid}/status`);
 assert(namespaceChildStatus.includes("Namespace:\tpackage:namespace-probe"), "child /proc status missing inherited package namespace");
 assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === namespaceChild.pid && entry.namespace?.processGroup === "package:namespace-probe"), "/proc processes JSON missing inherited package namespace");
@@ -500,7 +525,10 @@ packages.remove("worker-namespace");
 const serviceNamespace = packages.install({
   ...packageManifest("service-namespace", "0.1.0", [
     { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+    { path: "node_modules/service-lib/index.js", mime: "text/javascript", content: "module.exports = 'service';\n" },
+    { path: "node_modules/secret-lib/index.js", mime: "text/javascript", content: "module.exports = 'secret';\n" },
   ]),
+  dependencies: { npm: { "service-lib": "1.0.0" } },
   services: [
     {
       id: "sync",
@@ -518,6 +546,13 @@ const packageService = await os.services.start(serviceId);
 const packageServiceProcess = os.processes.get(packageService.pid);
 assert(packageServiceProcess?.manifest?.namespace?.processGroup === "package:service-namespace", `package service process missing namespace: ${JSON.stringify(packageServiceProcess)}`);
 assert(packageServiceProcess.executorKind === "service", "package service process missing service executor kind");
+const serviceContext = os.services.serviceContext(os.services.definitions.get(serviceId), os.services.records.get(serviceId));
+assert(serviceContext.dependencyView.allowedPackages.includes("service-lib"), "package service dependency view missing declared dependency");
+assert(serviceContext.fs.readFile("/opt/service-namespace/node_modules/service-lib/index.js").includes("service"), "package service dependency view blocked declared dependency");
+await assertRejects(
+  () => serviceContext.fs.readFile("/opt/service-namespace/node_modules/secret-lib/index.js"),
+  "dependency view denied",
+);
 packages.remove("service-namespace");
 assert(!os.services.get(serviceId), "package uninstall left package service registered");
 assert(!os.processes.get(packageService.pid), "package uninstall left package service process running");
