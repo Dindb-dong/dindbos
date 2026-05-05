@@ -241,7 +241,8 @@ Implementation tasks:
 - Already present: stdout/stderr-only DindbOS ABI and basic WASI modules can opt into worker execution through `ProcessExecutor` output buffers.
 - Broaden process filesystem scopes beyond the first-pass executable-directory policy.
 - Already present: WASM trap paths flow through process crash handling and return crash report paths for `/var/log/dindbos/crash-<pid>.log` diagnostics.
-- Add memory and execution guards: max memory pages, cooperative timeout, and abort handling.
+- Already present: first-pass `maxMemoryPages` guards stop oversized WASM runs before `_start` in the main runner and worker output backend.
+- Add execution guards: cooperative timeout, grow-time memory enforcement, and abort handling.
 - Add developer docs for compiling small C/Rust/Zig examples to the supported WASM/WASI target.
 
 Verification:
@@ -250,6 +251,7 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies permission-denied syscall behavior, EACCES syscall tracing, trap crash report files, and crash index entries.
 - Already present: `npm run smoke:wasm` verifies basic WASI `fd_write` stdout and `proc_exit`.
 - Already present: `npm run smoke:wasm` verifies worker-backed WASM stdout, exit status, and process backend history for output-only modules.
+- Already present: `npm run smoke:wasm` verifies `maxMemoryPages` crash reporting in the main runner and worker memory-limit denial.
 - Already present: `npm run smoke:packages` verifies a WASM-backed package install, AppRegistry launch, stdout rendering, package-scoped syscall write, and package removal.
 
 Completion criteria:
