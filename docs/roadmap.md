@@ -1096,12 +1096,13 @@ Implementation tasks:
 - Already present: runtime instances have stable `instanceId` values, storage-backed session locks, primary/secondary election, readonly secondary diagnostics, and stale-lock recovery for tabs sharing one browser profile.
 - Already present: BroadcastChannel-backed session messages deliver cross-tab VFS file-change events and expose channel diagnostics in session coordination status.
 - Already present: same-path VFS edits from different runtime instances are recorded as pending session conflicts and exposed through `/proc/sessions` plus Settings.
-- Add BroadcastChannel or SharedWorker coordination for package installs, app state, and storage flushes.
+- Already present: storage flush start/complete/error phases are broadcast to peer sessions and exposed through session coordination diagnostics.
+- Add BroadcastChannel or SharedWorker coordination for package installs and app state.
 - Add conflict policy for two active sessions modifying package DB records.
 - Add optional remote sync backend for encrypted snapshots, package cache indexes, settings, and selected user files.
 - Add remote desktop/session handoff protocol for viewing or controlling a running DindbOS instance from another tab or device.
 - Already present: `/proc/sessions`, Settings, and `doctor` expose the local runtime instance id, primary/secondary role, lock owner, readonly fallback, and stale-lock recovery state.
-- Already present: Settings exposes session channel connection state, received message count, and pending conflict count.
+- Already present: Settings exposes session channel connection state, received message count, pending conflict count, and latest peer storage flush phase.
 - Add richer Settings diagnostics for sync status and last successful snapshot.
 - Add offline-first merge rules for user documents, app state, package metadata, and search indexes.
 
@@ -1110,6 +1111,7 @@ Verification:
 - Already present: `npm run smoke:sessions` verifies primary election, secondary readonly fallback diagnostics, stale lock recovery, and `/proc/sessions`.
 - Already present: `npm run smoke:sessions` verifies cross-tab file event delivery over the session channel.
 - Already present: `npm run smoke:sessions` verifies same-path session conflict detection, conflict event delivery, and `/proc/sessions` conflict diagnostics.
+- Already present: `npm run smoke:sessions` verifies peer storage flush event delivery and session coordination status updates.
 - Add smoke coverage for reload-safe session recovery.
 - Add tests proving package install/update cannot run concurrently from two primary runtimes against the same storage root.
 

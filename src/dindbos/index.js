@@ -90,6 +90,16 @@ export class DindbOS {
     };
     this.sessionFileChanges = new Map();
     this.sessionConflicts = [];
+    this.sessionStorageFlushes = new Map();
+    this.sessionStorageFlushStatus = {
+      localFlushes: 0,
+      peerFlushes: 0,
+      lastLocalPhase: "",
+      lastLocalAt: "",
+      lastPeerSource: "",
+      lastPeerPhase: "",
+      lastPeerAt: "",
+    };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
@@ -206,7 +216,45 @@ export class DindbOS {
       if (conflict) event.conflict = conflict;
       this.bus.emit("session:file-change", event);
     }
+    if (message.type === "storage-flush") this.recordSessionStorageFlush(message.source, message.payload, message.at);
     return message;
+  }
+
+  publishSessionStorageFlush(phase, extra = {}) {
+    const at = new Date().toISOString();
+    const payload = {
+      phase,
+      pending: this.persistPending || Boolean(this.persistTimer),
+      inFlight: this.persisting,
+      flushes: this.persistenceStats.flushed,
+      lastPath: this.persistenceStats.lastPath,
+      lastAction: this.persistenceStats.lastAction,
+      error: extra.error || "",
+    };
+    this.sessionStorageFlushStatus.lastLocalPhase = phase;
+    this.sessionStorageFlushStatus.lastLocalAt = at;
+    if (phase === "complete") this.sessionStorageFlushStatus.localFlushes += 1;
+    return this.publishSessionEvent("storage-flush", payload);
+  }
+
+  recordSessionStorageFlush(source, payload = {}, at = "") {
+    const entry = {
+      source: String(source || "unknown"),
+      phase: String(payload.phase || "unknown"),
+      at: at || new Date().toISOString(),
+      pending: Boolean(payload.pending),
+      inFlight: Boolean(payload.inFlight),
+      flushes: Number(payload.flushes || 0),
+      lastPath: String(payload.lastPath || ""),
+      error: String(payload.error || ""),
+    };
+    this.sessionStorageFlushes.set(entry.source, entry);
+    this.sessionStorageFlushStatus.peerFlushes += 1;
+    this.sessionStorageFlushStatus.lastPeerSource = entry.source;
+    this.sessionStorageFlushStatus.lastPeerPhase = entry.phase;
+    this.sessionStorageFlushStatus.lastPeerAt = entry.at;
+    this.bus.emit("session:storage-flush", { ...entry });
+    return entry;
   }
 
   recordSessionFileChange(source, event = {}, at = "") {
@@ -792,6 +840,10 @@ export class DindbOS {
         lastConflictAt: pendingConflicts.at(-1)?.secondAt || "",
         items: pendingConflicts.slice(-10).map((conflict) => ({ ...conflict })),
       },
+      storageFlush: {
+        ...this.sessionStorageFlushStatus,
+        peers: [...this.sessionStorageFlushes.values()].map((entry) => ({ ...entry })),
+      },
     };
   }
 
@@ -1064,6 +1116,8 @@ export class DindbOS {
     const startedAt = Date.now();
     this.persistenceStats.lastFlushStartedAt = new Date(startedAt).toISOString();
     this.persistenceStats.lastFlushError = "";
+    this.publishSessionStorageFlush("start");
+    let failure = null;
     try {
       do {
         this.persistRequestedDuringFlush = false;
@@ -1079,11 +1133,13 @@ export class DindbOS {
         this.persistenceStats.lastFlushDurationMs = Date.now() - startedAt;
       } while (this.persistRequestedDuringFlush || this.persistPending);
     } catch (error) {
+      failure = error;
       this.persistenceStats.lastFlushError = error?.message || String(error);
       throw error;
     } finally {
       this.persisting = false;
       this.persistenceStats.lastFlushDurationMs = Date.now() - startedAt;
+      this.publishSessionStorageFlush(failure ? "error" : "complete", { error: this.persistenceStats.lastFlushError });
     }
     return this.persistenceStatus();
   }
