@@ -13,6 +13,7 @@ import { PermissionPolicy } from "./permission-policy.js?v=20260422-browserd";
 import { PersistentStorage } from "./persistent-storage.js?v=20260422-browserd";
 import { ProcessExecutor } from "./process-executor.js?v=20260422-browserd";
 import { ProcessManager } from "./process-manager.js?v=20260422-browserd";
+import { ServiceManager } from "./service-manager.js?v=20260422-browserd";
 import { SyscallDispatcher } from "./syscalls.js?v=20260422-browserd";
 import { VirtualFileSystem } from "./vfs.js?v=20260422-browserd";
 import { WasmRunner } from "./wasm-runner.js?v=20260422-browserd";
@@ -79,6 +80,7 @@ export class DindbOS {
     this.shell = new DesktopShell(this);
     this.windows = new WindowManager(this);
     this.processes = new ProcessManager(this);
+    this.services = new ServiceManager(this);
     this.executor = new ProcessExecutor(this);
     this.descriptors = new DescriptorManager(this);
     this.syscalls = new SyscallDispatcher(this);
