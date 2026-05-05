@@ -210,7 +210,8 @@ Implementation cuts:
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
 - Already present: `fsck --explain` reports why each problem is repairable or non-repairable, and every shell `fsck` run appends a summary to `/var/log/dindbos/fsck.log`.
 - Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts beyond DB/root drift, partial journals, stale local mount metadata, and conservative salvage export.
-- Add storage-class quota arbitration for user data, package roots, package state, cache, temp, snapshots, logs, backups, sync staging, and recovery data.
+- Already present: large app writes and Files.app imports reserve storage bytes before VFS mutation so quota denial preserves existing files and prevents archive staging.
+- Add storage-class quota arbitration for package roots, package state, cache, temp, snapshots, logs, backups, sync staging, and recovery data.
 - Add conservative repair rules: never weaken ownership, permissions, security labels, quarantine state, or encrypted-volume locks during repair.
 
 Verification:
@@ -228,7 +229,8 @@ Verification:
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Already present: `npm run smoke:shell` verifies `fsck --explain` prints repair policy explanations and `/var/log/dindbos/fsck.log` records dry-run and repaired runs.
 - Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, `npm run smoke:descriptors`, `npm run smoke:services`, `npm run smoke:packages`, and `npm run smoke:wasm` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, descriptor-backed `fd.sync`, service/package-service lifecycle sync barriers, and WASM async syscall / WASI `fd_sync` barriers, while sandboxed callers without `storage.read` are denied.
-- Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
+- Already present: `npm run smoke:files` and `npm run smoke:permissions` verify quota denial happens before Files.app import replacement/archive staging and AppSandbox write mutation.
+- Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
 
@@ -790,7 +792,7 @@ Implementation tasks:
 - Already present: persistent storage can reserve estimated write bytes before browser persistence mutation and deny quota-exceeding writes without touching the backing adapter.
 - Already present: inline package installs reserve estimated package file, package record, and launcher bytes before filesystem/app registry mutation, then fail closed on quota denial.
 - Already present: remote package installs reserve declared remote file sizes plus package record and launcher bytes before package file fetch or filesystem/app registry mutation, then fail closed on quota denial.
-- Extend quota reservation to large app/import writes.
+- Already present: AppSandbox write APIs and Files.app file/archive imports reserve estimated bytes before mutating the VFS, so quota denial preserves existing files and avoids archive staging.
 - Already present: first-pass `fsck` integrity checks detect VFS structure problems and file size drift, expose dry-run repair plans, and can repair safe size/children metadata.
 - Extend `fsck`-style integrity checks to inode/content mismatches, orphaned content records, broken mount metadata, package DB drift, and salvage exports.
 - Add optional per-user encrypted volumes using WebCrypto-derived keys.
@@ -806,7 +808,8 @@ Verification:
 - Already present: `npm run smoke:packages` verifies activation phase diagnostics and rollback when package activation fails at app registration.
 - Already present: `npm run smoke:packages` verifies package-root staged activation, cleanup of successful/failed staging roots, and package DB exclusion of staging paths.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run and safe repair behavior for corrupt file size metadata.
-- Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, large app/import quota denial before mutation, and repair of orphaned records.
+- Already present: `npm run smoke:files` and `npm run smoke:permissions` verify large app/import quota denial before mutation.
+- Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, and repair of orphaned records.
 
 Completion criteria:
 

@@ -78,6 +78,24 @@ assert(imported.includes(`${importRoot}/note.txt`), "imported paths missing text
 assertBytes(os.fs.readFileBytes(`${importRoot}/nested/payload.bin`), binary, "imported binary bytes changed");
 assert(os.fs.readFile(`${importRoot}/note.txt`) === text, "imported text changed");
 
+const quotaUploadOs = bootOs();
+const quotaUploadReservations = [];
+quotaUploadOs.storage = {
+  reserveStorageBytes(bytes, details = {}) {
+    quotaUploadReservations.push({ bytes, details });
+    throw new Error("storage quota exceeded: upload refused");
+  },
+};
+quotaUploadOs.fs.writeOrCreateFile("/home/guest/Documents/quota.txt", "existing", "/", { mime: "text/plain" });
+await assertRejects(
+  () => importDroppedFiles(quotaUploadOs, "/home/guest/Documents", [fileLike("quota.txt", "replacement")], null, {
+    conflictPolicy: "replace",
+  }),
+  "storage quota exceeded",
+);
+assert(quotaUploadReservations.length === 1 && quotaUploadReservations[0].details.scope === "files-import", "file import did not reserve quota before mutation");
+assert(quotaUploadOs.fs.readFile("/home/guest/Documents/quota.txt") === "existing", "quota-denied file import replaced an existing file");
+
 os.fs.createDirectory("/home/guest/Documents/import-scheduled");
 const importSchedulerReporter = operationReporter("Scheduled Import");
 importSchedulerReporter.scheduler = createFilesOperationScheduler({
@@ -95,6 +113,21 @@ const archiveNote = entries.find((entry) => entry.path === "note.txt");
 assert(archiveNote, "archive note fixture missing");
 const archiveNestedEntries = entries.filter((entry) => entry.path !== "note.txt");
 const atomicArchiveFile = archiveFileWithEntries([archiveNote, ...archiveNestedEntries]);
+const quotaArchiveOs = bootOs();
+const quotaArchiveReservations = [];
+quotaArchiveOs.storage = {
+  reserveStorageBytes(bytes, details = {}) {
+    quotaArchiveReservations.push({ bytes, details });
+    throw new Error("storage quota exceeded: archive refused");
+  },
+};
+await assertRejects(
+  () => importDroppedFiles(quotaArchiveOs, "/home/guest/Documents", [atomicArchiveFile]),
+  "storage quota exceeded",
+);
+assert(quotaArchiveReservations.length === 1 && quotaArchiveReservations[0].details.source === "archive", "archive import did not reserve quota before staging");
+assert(!quotaArchiveOs.fs.exists("/home/guest/Documents/note.txt"), "quota-denied archive import wrote target file");
+assert(!quotaArchiveOs.fs.exists("/tmp/dindbos/archive-import-staging"), "quota-denied archive import created staging directory");
 const atomicRoot = "/home/guest/Documents/import-atomic";
 os.fs.createDirectory(atomicRoot);
 os.fs.writeOrCreateFile(`${atomicRoot}/note.txt`, "atomic existing", "/", { mime: "text/plain" });
@@ -379,6 +412,9 @@ function bootOs() {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
+    storage: {
+      reserveStorageBytes: () => true,
+    },
     localMounts: {
       isMountedPath: (path) => String(path || "").startsWith("/mnt/disk"),
       conflictStatus: () => [{ path: "/mnt/disk/note.txt" }],
