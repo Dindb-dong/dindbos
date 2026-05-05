@@ -998,7 +998,7 @@ Why it matters:
 
 Implementation tasks:
 
-- Add package namespaces with package root, writable state root, cache root, temp root, process group, IPC endpoints, device grants, and network grants.
+- Already present: package records include first-pass namespace metadata for package root, private state root, private cache root, private temp root, process group, dependency root, device grants, network grants, IPC endpoints, and child-process limit.
 - Add namespace inheritance for child processes, WASM programs, NodeCompat commands, workers, and service units launched by a package.
 - Add per-package dependency views so NodeCompat and SDK resolution cannot read undeclared dependency trees by default.
 - Add namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics.
@@ -1008,7 +1008,8 @@ Implementation tasks:
 
 Verification:
 
-- Add smoke coverage for package root isolation, denied undeclared dependency read, child namespace inheritance, namespace cleanup on uninstall, and denied cross-package IPC.
+- Already present: `npm run smoke:packages` verifies package namespace root metadata, state/cache/temp root creation, app manifest namespace exposure, and namespace root cleanup on uninstall.
+- Add smoke coverage for package root isolation, denied undeclared dependency read, child namespace inheritance, and denied cross-package IPC.
 - Add tests proving namespace restrictions apply identically to GUI apps, CLI apps, WASM entries, NodeCompat tools, and background services.
 
 Completion criteria:
@@ -2475,6 +2476,270 @@ Completion criteria:
 
 - Package launches are explainable, reproducible, testable, and rollback-safe.
 - Security review can inspect one environment proof instead of reverse-engineering runtime behavior.
+
+### Native-Like 59: Linux Syscall Compatibility Facade For WASM Userland
+
+Status: Later.
+
+Goal: let selected Linux-oriented WASM programs run against a DindbOS syscall translation layer without pretending DindbOS is a full Linux kernel.
+
+Why it matters:
+
+- A native OS becomes useful when existing command-line and library ecosystems can be ported with limited changes.
+- DindbOS already has a syscall ABI and WASI direction, but many real tools expect Linux-shaped errno, fd, process, signal, time, and filesystem behavior.
+- A compatibility facade would make browser-safe ports of BusyBox-like tools, SQLite shells, archive tools, language runtimes, and build utilities more realistic.
+
+Implementation tasks:
+
+- Define a Linux-compat syscall subset document that maps each supported syscall to native DindbOS primitives, browser constraints, or explicit `ENOSYS`/`ENOTSUP` failures.
+- Add descriptor-table translation for `openat`, `close`, `read`, `write`, `pread64`, `pwrite64`, `lseek`, `fcntl`, `ioctl` probes, `statx`, `fstat`, `getdents64`, `renameat`, `unlinkat`, `mkdirat`, and `readlinkat`.
+- Add process/time/sysinfo compatibility for `getpid`, `getppid`, `clock_gettime`, `nanosleep`, `uname`, `getrandom`, `brk`/memory probes, and conservative resource-limit probes.
+- Map Linux-style path resolution to DindbOS mount namespaces, package roots, permissions, and current working directory.
+- Add signal and process-control compatibility where DindbOS can model it, and fail unsupported fork/exec/native thread semantics with documented compatibility errors.
+- Add a `linux-compat` package/runtime flag so packages can declare that they require the facade and receive compatibility diagnostics before launch.
+- Add tooling that records unsupported syscall traces during test runs so package authors can see what blocks a port.
+
+Verification:
+
+- Add smoke fixtures compiled to WASM that exercise fd IO, directory reads, metadata, time, random bytes, and unsupported syscall failures through the Linux-compat layer.
+- Add regression tests proving the same VFS permissions apply through DindbOS syscalls, WASI imports, NodeCompat, and Linux-compat syscalls.
+- Add compatibility reports for at least one small real-world browser-safe C/Rust/Zig utility compiled to WASM.
+
+Completion criteria:
+
+- A documented subset of Linux-oriented WASM CLI tools can run as DindbOS processes with real VFS, argv/env, stdio, exit status, and `/proc` visibility.
+- Unsupported Linux behavior is visible in traces and compatibility reports instead of being silently faked.
+
+### Native-Like 60: Browser-Native Container Images, Rootfs Layers, And Chroots
+
+Status: Later.
+
+Goal: make packages launch inside inspectable root filesystem views built from immutable layers plus writable overlays.
+
+Why it matters:
+
+- Native OSes and container platforms isolate programs by controlling rootfs, mounts, dependency views, writable data, and runtime identity.
+- DindbOS package roots and mount drivers are first-pass primitives; a container-like rootfs model would make app environments more reproducible.
+- This is technically possible in the browser if DindbOS treats container images as VFS layers, not as host OS containers.
+
+Implementation tasks:
+
+- Define a DindbOS image manifest containing base layer refs, package layer refs, mount table entries, environment variables, users/groups, device grants, network policy, and startup commands.
+- Add immutable layer formats backed by `pkgfs`, `zipfs`, tar-like archives, OPFS snapshots, or signed package blobs.
+- Add per-process rootfs views so `/`, `/usr`, `/opt`, `/home`, `/tmp`, and `/run` can resolve differently by package namespace while sharing kernel services.
+- Add readonly lower layers and writable upper overlays for app state, cache, temp, and selected user document scopes.
+- Add `chroot`/`rootfs`-style runtime APIs for process launch, shell command execution, WASM execution, NodeCompat resolution, and service units.
+- Add image import/export commands with signatures, manifest digests, layer digests, and compatibility-tier requirements.
+- Add garbage collection for unreferenced layers, stale writable overlays, failed activation roots, and abandoned temp mounts.
+
+Verification:
+
+- Add smoke coverage for rootfs path isolation, readonly lower-layer denial, writable overlay persistence, package update layer diffing, and uninstall garbage collection.
+- Add tests proving two apps can see different `/opt`, `/tmp`, and dependency views while sharing the same kernel process table and permission broker.
+- Add recovery tests proving a failed image activation rolls back to the previous rootfs view.
+
+Completion criteria:
+
+- A package can launch inside a reproducible DindbOS rootfs view without app code receiving global filesystem access.
+- Rootfs contents, mounts, policies, and writable overlays are inspectable through shell/API diagnostics.
+
+### Native-Like 61: Deterministic Replay, Core Dumps, And Time-Travel Diagnostics
+
+Status: Later.
+
+Goal: make crashes and hard-to-reproduce package failures replayable from OS-level traces.
+
+Why it matters:
+
+- Native operating systems provide crash dumps, logs, traces, and debuggers because real software fails in complex states.
+- Browser-native apps can still produce deterministic-enough replay when the OS records syscalls, events, random seeds, timers, storage versions, network broker decisions, and permission prompts.
+- This would turn DindbOS from a demo runtime into a debuggable platform.
+
+Implementation tasks:
+
+- Add structured kernel event recording for process spawn, syscalls, descriptor operations, VFS reads/writes, mount changes, permission decisions, IPC messages, network broker decisions, timers, and device events.
+- Add per-process core dump records containing manifest, compatibility tier, argv/env, cwd, namespace, mount table digest, open descriptors, recent logs, crash reason, and relevant stack summaries.
+- Add deterministic replay mode that replays recorded syscall responses, VFS snapshots, permission outcomes, random bytes, time ticks, and network fixtures.
+- Add `coredumpctl`, `tracectl`, and `replay` shell commands for listing, exporting, pruning, replaying, and comparing runs.
+- Add privacy controls so traces redact secrets, keychain values, personal paths, pasted clipboard data, and app-declared sensitive payload fields.
+- Add developer UI for crash timeline, last syscalls, storage mutations, denied permissions, network attempts, and replay drift.
+- Add trace size quotas, sampling policy, retention policy, and compression for long-running sessions.
+
+Verification:
+
+- Add smoke coverage for a crashing package that emits a core dump, a replayable syscall trace, redacted sensitive fields, and deterministic replay output.
+- Add tests proving replay does not mutate live user files unless launched in an explicit replay sandbox.
+- Add regression tests for trace retention, quota eviction, and export/import of replay bundles.
+
+Completion criteria:
+
+- A developer can reproduce a package failure from a DindbOS trace bundle without manually reconstructing the runtime state.
+- Crash records are useful for debugging but do not leak secrets through ordinary logs.
+
+### Native-Like 62: Coherent File Cache, Writeback Daemon, And Offline Sync Journal
+
+Status: Later.
+
+Goal: make local mounts, browser-backed storage, package caches, and remote sync behave like coherent storage layers with explicit writeback and conflict policy.
+
+Why it matters:
+
+- Native OSes do not treat every file operation as an isolated app-level save; they coordinate caches, dirty pages, flushes, fsync, conflicts, and recovery.
+- DindbOS already has durable VFS and local mount concepts, but native-like behavior needs a storage daemon that owns dirty state and sync policy.
+- This remains browser-feasible by using OPFS/IndexedDB, File System Access handles, service workers where available, and explicit companion helpers only for host-only operations.
+
+Implementation tasks:
+
+- Add a storage daemon responsible for dirty file tracking, writeback queues, fsync-like barriers, cache eviction, local mount refresh, quota pressure, and sync conflict records.
+- Add per-volume journal records for pending writes, completed flushes, failed flushes, external file changes, tombstones, and recovery checkpoints.
+- Add `sync`, `fsync`, `mount --flush`, `mount --refresh`, `journalctl -u storage`, and Settings diagnostics for storage health.
+- Add conflict strategies: block write, keep both versions, user-mediated merge, package-defined resolver, and readonly degraded mode.
+- Add background sync hooks that flush safe browser-backed operations when page lifecycle allows, and explicit offline queue replay after restart.
+- Add volume-level policies for package cache, app state, user documents, local mounts, remote volumes, and temporary files.
+- Add write amplification and quota diagnostics so large workloads can explain why storage is slow or degraded.
+
+Verification:
+
+- Add smoke coverage for dirty write tracking, flush success, flush failure, external-change conflict, restart recovery, quota pressure, and readonly degraded volume behavior.
+- Add tests proving shell, GUI apps, NodeCompat, and WASM writes all go through the same dirty-state and writeback policy.
+- Add browser-profile tests for OPFS/IndexedDB availability, File System Access absence, private-mode storage failures, and quota denial.
+
+Completion criteria:
+
+- DindbOS can explain whether data is clean, dirty, syncing, conflicted, degraded, or lost before an app claims a save succeeded.
+- File writes survive restarts or fail with explicit recoverable storage state.
+
+### Native-Like 63: System Call Fuzzing, Kernel Invariant Tests, And Policy Verification
+
+Status: Later.
+
+Goal: harden DindbOS kernel primitives with automated adversarial tests rather than relying only on happy-path smoke checks.
+
+Why it matters:
+
+- Native OS kernels are stress-tested because bugs often appear in invalid inputs, race conditions, permission edges, and cleanup paths.
+- A browser-native OS still needs kernel invariants: no cross-package escape, no descriptor leak, no permission bypass, no unbounded query, no corrupted mount table, and no broken rollback.
+- This is feasible locally with deterministic test runtimes, property-based generators, and replayable fuzz seeds.
+
+Implementation tasks:
+
+- Add property-based generators for paths, mount tables, descriptors, package manifests, permission scopes, IPC payloads, network policies, and service lifecycle events.
+- Define kernel invariants for VFS tree consistency, mount resolution, descriptor lifecycle, process cleanup, package rollback, namespace isolation, permission denial, and procfs visibility.
+- Add fuzz harnesses for syscalls, shell parsing, package install/update/remove, NodeCompat module resolution, WASI path operations, mount/unmount, and IPC brokers.
+- Add deterministic seed recording and minimal reproduction output for every fuzz failure.
+- Add policy verification for package environments that proves requested permissions match declared scopes before launch.
+- Add CI-friendly fast fuzz suites plus slower local stress suites with documented runtime budgets.
+- Add `doctor invariants` and `kernel test` diagnostics that report invariant status in developer builds.
+
+Verification:
+
+- Add seeded regression tests for every discovered kernel invariant failure.
+- Add tests proving fuzz runs cannot mutate the developer's real local files or external credentials.
+- Add coverage reports that distinguish deterministic smoke tests, property tests, fuzz tests, and browser-profile tests.
+
+Completion criteria:
+
+- DindbOS can reject malformed runtime inputs without filesystem corruption, leaked process state, or permission bypass.
+- Kernel confidence is backed by reproducible adversarial tests, not only demo workflows.
+
+### Native-Like 64: Runtime ABI Versioning, Stable SDK Contracts, And Long-Term Compatibility
+
+Status: Later.
+
+Goal: make DindbOS programs keep working across runtime updates through explicit ABI and SDK compatibility rules.
+
+Why it matters:
+
+- Native OSes maintain ABI contracts so apps are not rewritten for every kernel or SDK change.
+- DindbOS already has API negotiation, but a native-like platform needs versioned syscall contracts, SDK contracts, package metadata, migration rules, and deprecation policy.
+- This is technically feasible because the browser runtime can keep compatibility shims in userland if the contracts are measured and tested.
+
+Implementation tasks:
+
+- Version the syscall ABI, package manifest schema, SDK modules, app sandbox APIs, NodeCompat facades, WASI imports, mount driver ABI, device ABI, and companion protocols separately.
+- Add a compatibility resolver that selects shims based on package target version, runtime version, browser profile, and companion availability.
+- Add deprecation metadata with replacement APIs, removal windows, runtime warnings, package audit output, and documentation links.
+- Add migration adapters for package records, registry state, service units, app state, keychain references, and environment lockfiles.
+- Add `abi inspect`, `abi diff`, `pkg audit`, and `doctor abi` commands for developers and users.
+- Add fixtures for old packages so runtime changes must prove backward compatibility before merge.
+- Add an ABI policy document that defines what counts as stable, experimental, internal, deprecated, removed, and impossible.
+
+Verification:
+
+- Add smoke coverage that installs and runs packages targeting older SDK/syscall/package manifest versions.
+- Add tests proving incompatible packages fail before mutation and compatible packages receive the correct shim.
+- Add ABI diff tests that flag breaking changes to stable contracts unless an explicit migration is present.
+
+Completion criteria:
+
+- A DindbOS package can declare its required runtime contracts and either run with a known shim or fail before install/launch with a clear reason.
+- Stable APIs are enforced by tests rather than maintained only by convention.
+
+### Native-Like 65: System Installer, First-Boot Setup, And Factory Reset
+
+Status: Later.
+
+Goal: make DindbOS install, initialize, repair, and reset itself like an operating system distribution instead of a single web app state blob.
+
+Why it matters:
+
+- Native OSes have installation media, first-boot setup, user creation, disk layout, recovery tools, and factory reset paths.
+- Browser-native DindbOS can model this with a signed system image, storage bootstrap, user/session setup, default packages, service graph, and recovery profiles.
+- This makes the project easier to treat as an actual OS environment with lifecycle boundaries.
+
+Implementation tasks:
+
+- Add signed system image metadata for kernel/runtime version, built-in apps, default packages, service units, storage schema, compatibility tiers, and recovery assets.
+- Add first-boot setup for user creation, storage backend selection, optional encryption, local companion pairing, default package installation, and privacy settings.
+- Add boot profile selection for normal boot, safe mode, offline mode, repair mode, reset mode, and developer mode.
+- Add factory reset that preserves or wipes user home, keychain, package cache, companion pairing, logs, and local mount references according to explicit user choice.
+- Add repair tools for missing system files, broken manifests, incompatible package records, corrupt registry state, and failed migrations.
+- Add install/import/export flows for portable system images and test-lab fixtures.
+- Add clear versioned boundaries between immutable system files, mutable config, user data, package state, cache, temp, and logs.
+
+Verification:
+
+- Add smoke coverage for first boot, second boot, safe mode, repair mode, factory reset with preserve-home, factory reset wipe-all, and failed setup rollback.
+- Add tests proving reset does not leave stale package apps, broken services, leaked keychain grants, or orphaned mount entries.
+- Add migration fixtures for old system images and partial setup states.
+
+Completion criteria:
+
+- DindbOS can be initialized, repaired, reset, and re-imported through OS-level workflows with inspectable state transitions.
+- Users can distinguish system files, user data, package state, cache, logs, and recovery assets.
+
+### Native-Like 66: Capability-Aware Local Companion Fleet
+
+Status: Later.
+
+Goal: extend optional native-adjacent helpers into a managed fleet of narrow companions without collapsing the browser sandbox boundary.
+
+Why it matters:
+
+- Some native OS capabilities remain impossible in browser-only mode: raw TCP/UDP, host filesystem rename semantics, native build tools, virtual audio devices, hardware inventory, and system-wide capture.
+- DindbOS can still approach native behavior by treating helpers like separate drivers with identity, attestation, pairing, permissions, health, and audit.
+- This keeps the "real OS in the browser" claim honest: browser-safe work stays in the browser, native-only work crosses explicit companion boundaries.
+
+Implementation tasks:
+
+- Define companion identities for browser provider, file helper, network helper, build helper, device helper, media helper, test-lab helper, and remote administration helper.
+- Add pairing with signed capability manifests, protocol versions, local/remote origin policy, user approval, keychain-backed credentials, revocation, and expiry.
+- Add a companion manager service that tracks health, permissions, active sessions, protocol mismatches, update requirements, logs, and degraded fallback state.
+- Route all companion access through DindbOS brokers; apps must never receive raw companion URLs, tokens, sockets, or host paths.
+- Add least-privilege protocols for each helper instead of one all-powerful local daemon.
+- Add trust labels and audit logs in Settings, Activity Monitor, package environment proofs, and `doctor compat`.
+- Add failure modes that keep browser-only DindbOS usable when companions are absent, stale, denied, or compromised.
+
+Verification:
+
+- Add smoke coverage for companion pairing, permission denial, protocol mismatch, revocation, expired trust, helper crash, degraded fallback, and audit log creation.
+- Add tests proving app code cannot bypass brokers to use companion credentials directly.
+- Add separate browser-only and companion-assisted compatibility profiles so support claims remain measurable.
+
+Completion criteria:
+
+- Native-only capabilities are available only through explicit, inspectable, revocable OS boundaries.
+- DindbOS remains useful in browser-only mode and clearer, not less secure, when companions are present.
 
 ## Status Legend
 

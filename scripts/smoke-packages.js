@@ -18,6 +18,16 @@ const installed = packages.install(packageManifest("rollback-demo", "0.1.0", [
 assert(installed.id === "rollback-demo", "valid package install returned wrong id");
 assert(installed.compatibility.tier === "A", `default compatibility tier mismatch: ${installed.compatibility.tier}`);
 assert(os.fs.exists("/opt/rollback-demo/app.js"), "valid package file missing");
+const rollbackNamespace = installed.namespace;
+assert(rollbackNamespace.packageRoot === "/opt/rollback-demo", `package namespace root mismatch: ${JSON.stringify(rollbackNamespace)}`);
+assert(rollbackNamespace.stateRoot === "/var/lib/dindbos/package-state/rollback-demo", `package namespace state root mismatch: ${JSON.stringify(rollbackNamespace)}`);
+assert(rollbackNamespace.cacheRoot === "/var/cache/dindbos/packages/rollback-demo", `package namespace cache root mismatch: ${JSON.stringify(rollbackNamespace)}`);
+assert(rollbackNamespace.tempRoot === "/tmp/dindbos/packages/rollback-demo", `package namespace temp root mismatch: ${JSON.stringify(rollbackNamespace)}`);
+assert(rollbackNamespace.processGroup === "package:rollback-demo", `package namespace process group mismatch: ${JSON.stringify(rollbackNamespace)}`);
+assert(os.fs.exists(rollbackNamespace.stateRoot), "package namespace state root missing");
+assert(os.fs.exists(rollbackNamespace.cacheRoot), "package namespace cache root missing");
+assert(os.fs.exists(rollbackNamespace.tempRoot), "package namespace temp root missing");
+assert(os.apps.getManifest("rollback-demo").namespace.processGroup === "package:rollback-demo", "package namespace was not exposed through app manifest");
 const rollbackRoot = os.fs.stat("/opt/rollback-demo");
 assert(rollbackRoot.type === "mount" && rollbackRoot.resolvedType === "directory", `package root was not mounted as a directory: ${JSON.stringify(rollbackRoot)}`);
 assert(rollbackRoot.permissions === "dr-xr-xr-x", `package image mount permissions mismatch: ${rollbackRoot.permissions}`);
@@ -95,6 +105,9 @@ assert(packages.info("rollback-demo")?.version === "0.2.0", "missing remove muta
 const removed = packages.remove("rollback-demo");
 assert(removed.id === "rollback-demo", "remove returned wrong package id");
 assert(!os.fs.exists("/opt/rollback-demo"), "remove left install directory");
+assert(!os.fs.exists(rollbackNamespace.stateRoot), "remove left package namespace state root");
+assert(!os.fs.exists(rollbackNamespace.cacheRoot), "remove left package namespace cache root");
+assert(!os.fs.exists(rollbackNamespace.tempRoot), "remove left package namespace temp root");
 assert(!os.fs.exists("/var/lib/dindbos/packages/rollback-demo.json"), "remove left package record");
 assert(!os.fs.exists("/usr/share/applications/Rollback Demo.app"), "remove left launcher");
 assert(!os.apps.apps.has("rollback-demo"), "remove left app registration");
