@@ -387,6 +387,14 @@ export class AppSandbox {
         this.assertCapability("keychain.read");
         return this.os.keychain.list(context());
       },
+      status: () => {
+        this.assertCapability("keychain.read");
+        return this.os.keychain.status(context());
+      },
+      settingsStatus: () => {
+        this.assertCapability("keychain.read");
+        return this.os.keychain.settingsStatus(context());
+      },
       get: (name) => {
         this.assertCapability("keychain.read");
         return this.os.keychain.getSecret(this.resolveKeychainReference(name), context()).value;

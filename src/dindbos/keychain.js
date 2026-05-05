@@ -155,6 +155,53 @@ export class KeychainManager {
     return [...vault.audit];
   }
 
+  settingsStatus(context = {}) {
+    const vault = this.vaultFor(context);
+    const status = this.status(context);
+    const now = Date.now();
+    const staleBefore = now - (90 * 24 * 60 * 60 * 1000);
+    const records = [...vault.records.values()];
+    const activeGrants = records.flatMap((record) => record.grants
+      .filter((grant) => !grant.expiresAt || Date.parse(grant.expiresAt) > now)
+      .map((grant) => ({
+        name: record.name,
+        kind: record.kind,
+        appId: grant.appId,
+        grantedAt: grant.grantedAt,
+        expiresAt: grant.expiresAt || "",
+      })));
+    const staleCredentials = records
+      .filter((record) => Date.parse(record.updatedAt || record.createdAt || "") < staleBefore)
+      .map((record) => ({
+        name: record.name,
+        kind: record.kind,
+        ownerAppId: record.ownerAppId,
+        updatedAt: record.updatedAt,
+      }));
+    const deniedRequests = vault.audit
+      .filter((entry) => entry.result === "denied")
+      .slice(-20)
+      .map((entry) => ({ ...entry }));
+    const nonExportable = records.filter((record) => !record.exportable).length;
+    const exportWarnings = [
+      nonExportable ? `${nonExportable} secret${nonExportable === 1 ? "" : "s"} require keychain-mediated export` : "",
+      "raw secret values are excluded from ordinary package and filesystem exports",
+    ].filter(Boolean);
+    const recoveryWarnings = [
+      vault.fallbackWarning ? `unlock fallback: ${vault.fallbackWarning}` : "",
+      status.locked ? "vault locked; recovery package export requires unlock" : "",
+      "recovery packages must be explicitly exported by the keychain service",
+    ].filter(Boolean);
+    return {
+      ...status,
+      activeGrants,
+      deniedRequests,
+      staleCredentials,
+      exportWarnings,
+      recoveryWarnings,
+    };
+  }
+
   vaultFor(context = {}) {
     const user = context.principal?.user || this.os.session?.user || "guest";
     if (!this.vaults.has(user)) {

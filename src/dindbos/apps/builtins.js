@@ -172,7 +172,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 520,
     height: 380,
     manifest: {
-      capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage"],
+      capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
     },
     render: ({ content, os: runtime }) => renderSettings(runtime, content),
@@ -3441,6 +3441,7 @@ export async function settingsRuntimeSnapshot(os) {
   const sync = safeRead(() => os.remoteSyncStatus?.(), null);
   const syncMerge = safeRead(() => os.remoteSyncMergePolicy?.(), null);
   const syncConflicts = safeRead(() => os.listRemoteSyncConflicts?.(), []);
+  const keychain = safeRead(() => os.keychain?.settingsStatus?.({ appId: "settings", principal: os.permissions?.principal?.(os.session) }), null);
   return {
     user,
     home,
@@ -3457,6 +3458,7 @@ export async function settingsRuntimeSnapshot(os) {
     sync,
     syncMerge,
     syncConflicts,
+    keychain,
   };
 }
 
@@ -3513,12 +3515,66 @@ export function settingsRuntimeMarkup(snapshot) {
       </section>
       <section class="settings-panel">
         <header>
+          <h3>Keychain</h3>
+        </header>
+        ${renderSettingsKeychain(snapshot.keychain)}
+      </section>
+      <section class="settings-panel">
+        <header>
           <h3>Local Folders</h3>
           <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
         </header>
         ${renderSettingsMounts(snapshot.mounts)}
       </section>
     </section>
+  `;
+}
+
+function renderSettingsKeychain(keychain) {
+  if (!keychain) return `<p class="settings-muted">Keychain service is unavailable.</p>`;
+  return `
+    <dl>
+      <div><dt>Vault</dt><dd>${keychain.locked ? "locked" : "unlocked"} · records=${Number(keychain.records || 0)}</dd></div>
+      <div><dt>Active Grants</dt><dd>${Number(keychain.activeGrants?.length || 0)}</dd></div>
+      <div><dt>Denied Requests</dt><dd>${Number(keychain.deniedRequests?.length || 0)}</dd></div>
+      <div><dt>Stale Credentials</dt><dd>${Number(keychain.staleCredentials?.length || 0)}</dd></div>
+      <div><dt>Export Warning</dt><dd>${escapeHtml((keychain.exportWarnings || [])[0] || "none")}</dd></div>
+      <div><dt>Recovery Warning</dt><dd>${escapeHtml((keychain.recoveryWarnings || [])[0] || "none")}</dd></div>
+    </dl>
+    ${renderSettingsKeychainGrants(keychain.activeGrants || [])}
+    ${renderSettingsKeychainDenied(keychain.deniedRequests || [])}
+  `;
+}
+
+function renderSettingsKeychainGrants(grants = []) {
+  if (!grants.length) return `<p class="settings-muted">No active keychain grants.</p>`;
+  return `
+    <div class="settings-mount-list">
+      ${grants.map((grant) => `
+        <article class="settings-mount-card" data-keychain-grant="${escapeAttr(grant.name)}">
+          <div>
+            <strong>${escapeHtml(grant.name)}</strong>
+            <small>${escapeHtml(grant.kind || "generic")} · app=${escapeHtml(grant.appId || "-")} · expires=${escapeHtml(shortTime(grant.expiresAt))}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderSettingsKeychainDenied(requests = []) {
+  if (!requests.length) return `<p class="settings-muted">No denied keychain requests.</p>`;
+  return `
+    <div class="settings-mount-list">
+      ${requests.slice(-5).map((entry) => `
+        <article class="settings-mount-card" data-keychain-denied="${escapeAttr(entry.name)}">
+          <div>
+            <strong>${escapeHtml(entry.name || "-")}</strong>
+            <small>${escapeHtml(entry.action || "request")} · requester=${escapeHtml(entry.requester || "-")} · ${escapeHtml(shortTime(entry.at))}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 
