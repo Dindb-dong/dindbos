@@ -190,6 +190,19 @@ export class WasmRunner {
             return errnoNumber(error.code || "EIO");
           }
         },
+        path_create_directory: (dirfd, pathPtr, pathLength) => {
+          try {
+            const directory = this.os.descriptors.stat(process, { fd: Number(dirfd) }, context);
+            if (directory.kind !== "directory") return errnoNumber("ENOTDIR");
+            const path = readString(pathPtr, pathLength);
+            const target = this.os.fs.normalize(path, directory.path);
+            context.assertFileSystem(target, "write");
+            this.os.fs.createDirectory(target, "/", {}, context.principal);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || (String(error.message || "").includes("file exists") ? "EEXIST" : "EIO"));
+          }
+        },
         path_open: (dirfd, dirflags, pathPtr, pathLength, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) => {
           void dirflags;
           try {
@@ -347,7 +360,7 @@ function parseSyscallRequest(text) {
 }
 
 function errnoNumber(code) {
-  const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EBADF: 8, ENOTDIR: 54, EIO: 5 };
+  const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EBADF: 8, EEXIST: 20, ENOTDIR: 54, EIO: 5 };
   return values[code] || 1;
 }
 
