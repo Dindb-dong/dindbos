@@ -163,6 +163,7 @@ export class DindbOS {
       backend: "storage-value",
       encrypted: true,
       lastSuccessfulSnapshot: null,
+      lastAppliedSnapshot: null,
       lastError: "",
     };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
@@ -811,6 +812,9 @@ export class DindbOS {
       lastSuccessfulSnapshot: this.remoteSync.lastSuccessfulSnapshot
         ? { ...this.remoteSync.lastSuccessfulSnapshot }
         : null,
+      lastAppliedSnapshot: this.remoteSync.lastAppliedSnapshot
+        ? { ...this.remoteSync.lastAppliedSnapshot }
+        : null,
     };
   }
 
@@ -974,6 +978,152 @@ export class DindbOS {
         policy: "conflict-copy",
         reason: "Unknown sync roots preserve both sides until an explicit policy is defined.",
       };
+  }
+
+  async applyRemoteSyncSnapshot(options = {}) {
+    const passphrase = String(options.passphrase || "");
+    if (!passphrase) throw new Error("remote sync apply requires a passphrase");
+    const snapshot = this.normalizeRemoteSyncSnapshotInput(options.snapshot);
+    if (!snapshot?.ciphertext) throw new Error("remote sync apply requires an encrypted snapshot");
+    const appliedAt = new Date().toISOString();
+    const dryRun = Boolean(options.dryRun);
+    try {
+      const payload = await decryptRemoteSyncPayload(snapshot, passphrase);
+      const result = {
+        id: snapshot.id || payload.id || "",
+        createdAt: snapshot.createdAt || payload.createdAt || "",
+        appliedAt,
+        dryRun,
+        fileCount: Array.isArray(payload.files) ? payload.files.length : 0,
+        summary: {},
+        changes: [],
+      };
+      (payload.files || []).forEach((file) => {
+        const planned = this.planRemoteSyncApplyFile(file, options);
+        result.summary[planned.action] = Number(result.summary[planned.action] || 0) + 1;
+        if (!dryRun) this.executeRemoteSyncApplyPlan(planned);
+        result.changes.push(planned);
+      });
+      this.remoteSync.lastAppliedSnapshot = {
+        id: result.id,
+        createdAt: result.createdAt,
+        appliedAt,
+        dryRun,
+        fileCount: result.fileCount,
+        summary: { ...result.summary },
+        conflicts: Number(result.summary["conflict-copy"] || 0),
+        refused: Number(result.summary.refuse || 0),
+      };
+      this.remoteSync.lastError = "";
+      this.bus.emit("sync:apply", this.remoteSyncStatus());
+      return result;
+    } catch (error) {
+      this.remoteSync.lastError = error?.message || String(error);
+      throw error;
+    }
+  }
+
+  normalizeRemoteSyncSnapshotInput(snapshot = null) {
+    const value = snapshot || this.storage.readValueSync?.(REMOTE_SYNC_SNAPSHOT_KEY) || null;
+    if (!value) return null;
+    if (typeof value === "string") {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+    return value && typeof value === "object" ? value : null;
+  }
+
+  planRemoteSyncApplyFile(file = {}, options = {}) {
+    const path = this.fs.normalize(String(file.path || "/"), "/");
+    const mime = String(file.mime || "application/octet-stream");
+    const remoteBytes = base64ToBytes(file.content || "");
+    const localExists = this.fs.exists(path);
+    const localNode = localExists ? this.fs.stat(path) : null;
+    const localBytes = localExists && localNode?.type === "file" ? this.fs.readFileBytes(path) : new Uint8Array();
+    const rule = this.remoteSyncRuleForPath(path);
+    const baseFiles = options.baseFiles && typeof options.baseFiles === "object" ? options.baseFiles : {};
+    const baseValue = Object.prototype.hasOwnProperty.call(baseFiles, path) ? baseFiles[path] : undefined;
+    let planned;
+    if (rule.scope === "package-metadata" || rule.scope === "search-indexes" || rule.scope === "cache-metadata" || rule.scope === "settings") {
+      planned = this.planRemoteSyncMergeChange({
+        path,
+        mime,
+        base: baseValue,
+        local: localExists ? mergeValueFromBytes(path, mime, localBytes) : null,
+        remote: mergeValueFromBytes(path, mime, remoteBytes),
+        localModified: localNode?.modified || "",
+        remoteModified: file.modified || "",
+      });
+    } else if (!localExists) {
+      planned = {
+        path,
+        scope: rule.scope,
+        policy: rule.policy,
+        action: "use-remote",
+        winner: "remote",
+        conflictPath: "",
+        reason: "Local file is missing; restore the remote snapshot file.",
+      };
+    } else if (bytesEqual(localBytes, remoteBytes)) {
+      planned = {
+        path,
+        scope: rule.scope,
+        policy: rule.policy,
+        action: "noop",
+        winner: "both",
+        conflictPath: "",
+        reason: "Local file already matches the remote snapshot file.",
+      };
+    } else if (baseValue === undefined && (rule.scope === "user-documents" || rule.scope === "app-state")) {
+      planned = {
+        path,
+        scope: rule.scope,
+        policy: rule.policy,
+        action: "conflict-copy",
+        winner: "both",
+        conflictPath: syncConflictPath(path, file.modified),
+        reason: "No common base is available; preserve the remote version as a conflict copy.",
+      };
+    } else {
+      planned = this.planRemoteSyncMergeChange({
+        path,
+        mime,
+        base: baseValue,
+        local: mergeValueFromBytes(path, mime, localBytes),
+        remote: mergeValueFromBytes(path, mime, remoteBytes),
+        localModified: localNode?.modified || "",
+        remoteModified: file.modified || "",
+      });
+    }
+    return {
+      ...planned,
+      mime,
+      bytes: remoteBytes.byteLength,
+      remoteBytes,
+    };
+  }
+
+  executeRemoteSyncApplyPlan(plan) {
+    if (["use-remote"].includes(plan.action) || (plan.action === "last-writer-wins" && plan.winner === "remote")) {
+      this.writeRemoteSyncApplyFile(plan.path, plan.remoteBytes, plan.mime);
+      return;
+    }
+    if (plan.action === "three-way-merge") {
+      this.ensureDirectoryPath(this.fs.dirname(plan.path), { principal: this.permissions.systemPrincipal() });
+      this.fs.writeOrCreateFile(plan.path, plan.merged || "", "/", { mime: plan.mime || "text/plain" }, this.permissions.systemPrincipal());
+      return;
+    }
+    if (plan.action === "conflict-copy" && plan.conflictPath) {
+      this.writeRemoteSyncApplyFile(plan.conflictPath, plan.remoteBytes, plan.mime);
+    }
+  }
+
+  writeRemoteSyncApplyFile(path, bytes, mime) {
+    this.ensureDirectoryPath(this.fs.dirname(path), { principal: this.permissions.systemPrincipal() });
+    this.fs.writeOrCreateFileBytes(path, bytes, "/", { mime }, this.permissions.systemPrincipal());
   }
 
   async createRemoteSyncSnapshot(options = {}) {
@@ -2097,6 +2247,20 @@ function mergeTextValues(base, local, remote) {
   return { clean: false, value: "" };
 }
 
+function mergeValueFromBytes(path, mime, bytes) {
+  if (isTextMergeCandidate(path, mime, { type: "text", value: "" })) {
+    return new TextDecoder().decode(bytes || new Uint8Array());
+  }
+  return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+}
+
+function bytesEqual(left, right) {
+  const a = left instanceof Uint8Array ? left : new Uint8Array(left || []);
+  const b = right instanceof Uint8Array ? right : new Uint8Array(right || []);
+  if (a.byteLength !== b.byteLength) return false;
+  return a.every((byte, index) => byte === b[index]);
+}
+
 function newestSide(localModified, remoteModified) {
   const localTime = Date.parse(localModified || "");
   const remoteTime = Date.parse(remoteModified || "");
@@ -2143,6 +2307,26 @@ async function encryptRemoteSyncPayload(payload, passphrase) {
   };
 }
 
+async function decryptRemoteSyncPayload(snapshot, passphrase) {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error("remote sync decryption requires WebCrypto");
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  const salt = base64ToBytes(snapshot.salt || "");
+  const iv = base64ToBytes(snapshot.iv || "");
+  const ciphertext = base64ToBytes(snapshot.ciphertext || "");
+  const keyMaterial = await subtle.importKey("raw", encoder.encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+  const key = await subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"],
+  );
+  const plaintext = await subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  return JSON.parse(decoder.decode(plaintext));
+}
+
 function bytesToBase64(bytes) {
   const value = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
   let binary = "";
@@ -2151,6 +2335,17 @@ function bytesToBase64(bytes) {
   });
   if (typeof btoa === "function") return btoa(binary);
   return Buffer.from(value).toString("base64");
+}
+
+function base64ToBytes(value) {
+  const text = String(value || "");
+  if (typeof atob === "function") {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  }
+  return new Uint8Array(Buffer.from(text, "base64"));
 }
 
 export { AppRegistry, AppSandbox, DescriptorManager, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WasmRunner, WindowManager };

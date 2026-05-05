@@ -202,6 +202,14 @@ assert(reloadOs.sessionCoordinationStatus().recovery.pendingConflicts === 1, "se
 assert(JSON.parse(reloadOs.fs.readFile("/proc/sessions")).recovery.recovered === true, "/proc/sessions did not expose reload recovery");
 ensureDirectory(tabB, "/var/cache/dindbos");
 ensureDirectory(tabB, "/etc/dindbos");
+ensureDirectory(tabB, "/var/lib/dindbos/packages");
+tabB.fs.writeOrCreateFile(
+  "/var/lib/dindbos/packages/session-pkg.json",
+  JSON.stringify({ id: "session-pkg", version: "1.0.0", marker: "package metadata" }),
+  "/",
+  { mime: "application/json" },
+  tabB.permissions.systemPrincipal(),
+);
 tabB.fs.writeOrCreateFile(
   "/var/cache/dindbos/package-index.json",
   JSON.stringify({ packages: ["session-pkg"], marker: "cached package index" }),
@@ -271,8 +279,29 @@ assert(mergePlan.summary["conflict-copy"] === 1, "remote sync merge planner did 
 assert(mergePlan.summary.refuse === 1, "remote sync merge planner did not refuse package metadata conflicts");
 assert(mergePlan.summary.rebuild === 1, "remote sync merge planner did not rebuild search indexes");
 assert(mergePlan.summary["last-writer-wins"] === 1 && mergePlan.changes[4].winner === "remote", "remote sync merge planner did not apply settings last-writer-wins");
+const syncTarget = new DindbOS({ root: null, storage: createStorage(new Map()), instanceId: "sync-target" });
+await syncTarget.loadPersistentFileSystem();
+syncTarget.fs.writeOrCreateFile(
+  "/home/guest/Documents/cross-tab.txt",
+  "local draft",
+  "/",
+  { mime: "text/plain" },
+  syncTarget.permissions.systemPrincipal(),
+);
+const applyResult = await syncTarget.applyRemoteSyncSnapshot({
+  passphrase: "session-sync-secret",
+  snapshot: syncSnapshot,
+});
+assert(applyResult.summary["conflict-copy"] >= 1, "remote sync apply did not preserve document conflict copy");
+assert(applyResult.summary.refuse >= 1, "remote sync apply did not refuse package metadata");
+assert(syncTarget.fs.readFile("/home/guest/Documents/cross-tab.txt") === "local draft", "remote sync apply overwrote local document conflict");
+assert(syncTarget.fs.list("/home/guest/Documents/.sync-conflicts").some((entry) => entry.name.startsWith("cross-tab.txt.")), "remote sync apply did not write document conflict copy");
+assert(syncTarget.fs.exists("/var/cache/dindbos/package-index.json"), "remote sync apply did not restore cache metadata");
+assert(syncTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync apply did not restore settings metadata");
+assert(syncTarget.remoteSyncStatus().lastAppliedSnapshot.conflicts >= 1, "remote sync status did not record apply conflicts");
+assert(syncTarget.remoteSyncStatus().lastAppliedSnapshot.refused >= 1, "remote sync status did not record refused apply records");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply");
 
 function createStorage(values = new Map()) {
   return {

@@ -133,6 +133,12 @@ const os = {
         cacheRecords: 1,
         settingsRecords: 2,
       },
+      lastAppliedSnapshot: {
+        id: "sync-smoke",
+        appliedAt: "2026-05-05T00:03:00.000Z",
+        conflicts: 1,
+        refused: 2,
+      },
       lastError: "",
     };
   },
@@ -198,6 +204,7 @@ assert(markup.includes("<dt>Session Handoff</dt><dd>active · control · peer=pr
 assert(markup.includes("<dt>Session Recovery</dt><dd>recovered · conflicts=2</dd>"), "settings markup did not render session recovery diagnostics");
 assert(markup.includes("<dt>Sync</dt><dd>storage-value encrypted=true") && markup.includes("files=4 cache=1 settings=2</dd>"), "settings markup did not render sync summary");
 assert(markup.includes("<dt>Last Snapshot</dt><dd>") && markup.includes("· files=4 · cache=1 · settings=2</dd>"), "settings markup did not render remote sync panel");
+assert(markup.includes("<dt>Last Applied</dt><dd>") && markup.includes("· conflicts=1 · refused=2</dd>"), "settings markup did not render remote sync apply status");
 assert(markup.includes("<dt>Merge Rules</dt><dd>6</dd>"), "settings markup did not render remote sync merge rules");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
