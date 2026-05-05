@@ -9,6 +9,7 @@ import {
   restoreWindowPlacement,
   snapWindowRect,
   snapZoneForPoint,
+  windowPlacementsPath,
   writeWindowPlacements,
 } from "../src/dindbos/window-manager.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
@@ -72,7 +73,18 @@ writeWindowPlacements(os, {
 });
 const placements = readWindowPlacements(os);
 assert(placements.browser.width === 640, "window placement was not written to VFS");
-assert(os.fs.exists("/var/lib/dindbos/window-placements.json"), "window placement file was not created");
+assert(os.fs.exists("/var/lib/dindbos/window-placements/guest.json"), "per-user window placement file was not created");
+assert(windowPlacementsPath(os) === "/var/lib/dindbos/window-placements/guest.json", "window placement path did not use session user");
+const guestPlacements = JSON.stringify(readWindowPlacements(os));
+os.session = { user: "ada-lovelace", groups: ["users"], home: "/home/ada-lovelace" };
+assert(Object.keys(readWindowPlacements(os)).length === 0, "window placements leaked across users");
+writeWindowPlacements(os, {
+  terminal: { left: 32, top: 72, width: 500, height: 360, maximized: true },
+});
+assert(os.fs.exists("/var/lib/dindbos/window-placements/ada-lovelace.json"), "second user's window placement file was not created");
+assert(readWindowPlacements(os).terminal.maximized === true, "second user's window placement was not restored");
+os.session = { user: "guest", groups: ["users"], home: "/home/guest" };
+assert(JSON.stringify(readWindowPlacements(os)) === guestPlacements, "guest window placements changed after second user wrote layout");
 
 assert(nextFocusWindowId(["one", "two", "three"], "one", 1) === "two", "next focus mismatch");
 assert(nextFocusWindowId(["one", "two", "three"], "one", -1) === "three", "previous focus mismatch");
@@ -106,6 +118,7 @@ function bootOs() {
   const permissions = new PermissionPolicy();
   return {
     permissions,
+    session: { user: "guest", groups: ["users"], home: "/home/guest" },
     fs: new VirtualFileSystem(null, { home: "/home/guest", policy: permissions }),
     clipboard: createTestClipboard(),
   };

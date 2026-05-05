@@ -3,7 +3,7 @@ import { canUseCapability } from "./app-manifest.js?v=20260422-browserd";
 const MIN_WIDTH = 340;
 const MIN_HEIGHT = 240;
 const MINIMIZE_ANIMATION_MS = 160;
-const WINDOW_PLACEMENTS_PATH = "/var/lib/dindbos/window-placements.json";
+const WINDOW_PLACEMENTS_DIR = "/var/lib/dindbos/window-placements";
 
 export class WindowManager {
   constructor(os) {
@@ -858,8 +858,9 @@ export function restoreWindowPlacement(saved, fallback, viewport) {
 
 export function readWindowPlacements(os) {
   try {
-    if (!os?.fs?.exists?.(WINDOW_PLACEMENTS_PATH)) return {};
-    const parsed = JSON.parse(os.fs.readFile(WINDOW_PLACEMENTS_PATH, "/", os.permissions?.systemPrincipal?.()));
+    const path = windowPlacementsPath(os);
+    if (!os?.fs?.exists?.(path)) return {};
+    const parsed = JSON.parse(os.fs.readFile(path, "/", os.permissions?.systemPrincipal?.()));
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
@@ -872,13 +873,23 @@ export function writeWindowPlacements(os, placements) {
   ensureDirectory(os, "/var", system);
   ensureDirectory(os, "/var/lib", system);
   ensureDirectory(os, "/var/lib/dindbos", system);
+  ensureDirectory(os, WINDOW_PLACEMENTS_DIR, system);
   os.fs.writeOrCreateFile(
-    WINDOW_PLACEMENTS_PATH,
+    windowPlacementsPath(os),
     `${JSON.stringify(placements || {}, null, 2)}\n`,
     "/",
-    { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+    { mime: "application/json", owner: windowPlacementUser(os), group: "users", permissions: "-rw-------" },
     system,
   );
+}
+
+export function windowPlacementsPath(os) {
+  const user = encodeURIComponent(windowPlacementUser(os));
+  return `${WINDOW_PLACEMENTS_DIR}/${user && user !== "." && user !== ".." ? user : "guest"}.json`;
+}
+
+function windowPlacementUser(os) {
+  return String(os?.session?.user || "guest");
 }
 
 function createResizeHandles() {
