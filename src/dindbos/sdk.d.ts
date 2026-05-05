@@ -35,6 +35,7 @@ export interface DindbOSSDK {
     write(fd: number, data: string, args?: Record<string, unknown>): { fd: number; bytes: number; offset: number };
     seek(fd: number, offset: number, args?: Record<string, unknown>): { fd: number; offset: number };
     stat<T = unknown>(fd: number): T;
+    sync<T = unknown>(fd: number): Promise<T>;
     ioctl<T = unknown>(fd: number, request: string, args?: Record<string, unknown>): T;
     close(fd: number): { fd: number; closed: true };
   };

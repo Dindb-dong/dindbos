@@ -55,7 +55,7 @@ export function mount({ content, pkg, sdk }) {
 }
 ```
 
-`sdk.syscall.raw(name, args)` returns the structured syscall result unchanged. `sdk.syscall.call(name, args)` and the typed helpers return `value` on success and throw `DindbOSSDKError` with `code`, `syscall`, and `result` fields on failure. Async helpers such as `sdk.syscall.rawAsync(name, args)`, `sdk.syscall.callAsync(name, args)`, and `sdk.storage.sync()` wait for async runtime barriers before returning.
+`sdk.syscall.raw(name, args)` returns the structured syscall result unchanged. `sdk.syscall.call(name, args)` and the typed helpers return `value` on success and throw `DindbOSSDKError` with `code`, `syscall`, and `result` fields on failure. Async helpers such as `sdk.syscall.rawAsync(name, args)`, `sdk.syscall.callAsync(name, args)`, `sdk.storage.sync()`, and `sdk.fd.sync(fd)` wait for async runtime barriers before returning.
 
 Current helper groups cover `clock`, `entropy`, `fs`, `fd`, `env`, `apps`, `packages`, `storage`, `localMounts`, and `processes`. These helpers do not grant extra permission; package manifest capabilities and filesystem scopes are still enforced by the runtime.
 

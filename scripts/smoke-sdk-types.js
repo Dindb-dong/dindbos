@@ -32,6 +32,7 @@ const implementation = readFileSync("src/dindbos/sdk.js", "utf8");
   "fs.readText",
   "fs.writeText",
   "fd.open",
+  "fd.sync",
   "env.list",
   "app.launch",
   "package.info",
@@ -51,6 +52,8 @@ const asyncSdk = createDindbOSSDK({
 });
 const syncResult = await asyncSdk.storage.sync();
 assert(syncResult.name === "storage.sync" && syncResult.mode === "async", "SDK storage.sync did not use async syscall path");
+const fdSyncResult = await asyncSdk.fd.sync(3);
+assert(fdSyncResult.name === "fd.sync" && fdSyncResult.args.fd === 3 && fdSyncResult.mode === "async", "SDK fd.sync did not use async syscall path");
 const callAsyncResult = await asyncSdk.syscall.callAsync("clock.now");
 assert(callAsyncResult.name === "clock.now" && callAsyncResult.mode === "async", "SDK syscall.callAsync did not unwrap async results");
 const rawAsyncResult = await asyncSdk.syscall.rawAsync("storage.status");

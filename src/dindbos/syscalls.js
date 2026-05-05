@@ -65,6 +65,7 @@ export class SyscallDispatcher {
     if (name === "fd.write") return this.fdWrite(args, context);
     if (name === "fd.seek") return this.fdSeek(args, context);
     if (name === "fd.stat") return this.fdStat(args, context);
+    if (name === "fd.sync") throw syscallError("EAGAIN", "syscall: fd.sync requires async syscall dispatch");
     if (name === "fd.ioctl") return this.fdIoctl(args, context);
     if (name === "fd.close") return this.fdClose(args, context);
     if (name === "env.get") return this.envGet(args, context);
@@ -90,6 +91,7 @@ export class SyscallDispatcher {
   }
 
   async dispatchAsync(name, args, context) {
+    if (name === "fd.sync") return this.fdSync(args, context);
     if (name === "storage.sync") return this.storageSync(context);
     return this.dispatch(name, args, context);
   }
@@ -162,6 +164,10 @@ export class SyscallDispatcher {
 
   fdStat(args, context) {
     return this.os.descriptors.stat(this.requireProcess(context), args, context);
+  }
+
+  fdSync(args, context) {
+    return this.os.descriptors.sync(this.requireProcess(context), args, context);
   }
 
   fdIoctl(args, context) {
