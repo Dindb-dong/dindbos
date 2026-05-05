@@ -35,6 +35,11 @@ Packages are installed from `dindbos.app.json`.
   "compatibility": {
     "tier": "A"
   },
+  "api": {
+    "minVersion": 1,
+    "targetVersion": 1,
+    "maxVersion": 1
+  },
   "files": [
     {
       "path": "app.js",
@@ -91,6 +96,20 @@ Packages can declare a required compatibility tier with `compatibility.tier`, `c
 - Tier B / `browser-safe-npm`: browser-safe npm programs that fit the NodeCompat surface.
 
 Tier C WASI/WASM programs, Tier D worker-isolated long-running programs, and Tier E broader companion-assisted native-adjacent capabilities are roadmap targets. Package installs that require those unsupported tiers fail before package files, launchers, records, or app registrations are written. `doctor compat` prints the current tier support and unsupported native boundaries.
+
+Packages can also declare the DindbOS runtime API version they target:
+
+```json
+{
+  "api": {
+    "minVersion": 1,
+    "targetVersion": 2,
+    "maxVersion": 2
+  }
+}
+```
+
+The current runtime supports package API version `1`. If a package declares an exact unsupported version such as `"apiVersion": 2`, install fails before package files, launchers, records, or app registrations are written. If a package declares a compatible range, DindbOS negotiates the highest supported version in that range and stores the result on the installed package record and app manifest as `api.negotiatedVersion`. This lets older packages keep running when the runtime evolves and lets newer packages declare a v1 fallback explicitly.
 
 When `app.entry` is present, DindbOS reads that file from `/opt/<package>`. JavaScript entries are the default and can also declare `"runtime": "javascript"`. The module should export `mount()` or a default function:
 

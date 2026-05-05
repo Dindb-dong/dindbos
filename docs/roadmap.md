@@ -536,7 +536,7 @@ Implementation tasks:
 - Already present: `docs/wasm-toolchains.md` gives first-pass C/Rust/Zig/TinyGo examples for toolchains that produce compatible WASI modules.
 - Already present: installable GUI app, CLI app, WASM CLI, and background worker package templates are seeded under `/opt/dindbos/templates`.
 - Already present: `scripts/helpers/dindbos-test-runtime.js` creates reusable test runtimes with real VFS, AppRegistry, AppSandbox, PackageManager, ProcessManager, DescriptorManager, SyscallDispatcher, WasmRunner, EventBus, and in-memory window surfaces.
-- Add API version negotiation so old packages can run when the runtime evolves.
+- Already present: package manifests can declare exact API versions or `api.minVersion` / `api.targetVersion` / `api.maxVersion` ranges; PackageManager negotiates supported version 1 or fails before package mutation when no supported API version exists.
 - Add developer docs for permissions, filesystem scopes, process lifecycle, app state, package signing, and compatibility limits.
 
 Verification:
@@ -545,6 +545,7 @@ Verification:
 - Already present: `npm run smoke:packages` installs and launches the GUI, CLI, WASM CLI, and background worker package templates through the normal package manager path.
 - Already present: `npm run smoke:packages` verifies API Lab uses the package `sdk` fixture through AppRegistry launch and performs real SDK-backed VFS writes, package metadata reads, process reads/logging, syscall tracing, app state restore, and uninstall cleanup.
 - Already present: `npm run smoke:packages` boots package tests through the reusable DindbOS runtime test helper instead of local fake package/process/window internals.
+- Already present: `npm run smoke:packages` verifies API version range negotiation to runtime API v1 and unsupported exact future API refusal before package files, records, or app registration mutate.
 - Add smoke coverage that builds or loads broader SDK fixtures across app, CLI, worker, and WASM-adjacent callers.
 
 Completion criteria:
