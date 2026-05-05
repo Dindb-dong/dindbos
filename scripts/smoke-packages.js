@@ -673,6 +673,15 @@ assert(apiSource.includes("sdk.fs.writeText"), "API Lab sample does not use SDK-
 assert(apiSource.includes("atomicWriteOrCreateFile"), "API Lab sample does not use sandbox atomic VFS writes");
 const apiModule = await import(`data:text/javascript;base64,${Buffer.from(apiSource).toString("base64")}`);
 assert(typeof apiModule.mount === "function", "API Lab sample entry did not export mount");
+os.unregisterApp(apiLab.app.id);
+const packageAppFsck = packages.checkIntegrity({ repair: true, dryRun: true });
+assert(packageAppFsck.problems.some((entry) => entry.code === "package-app-missing" && entry.path.endsWith("/api-lab.json")), "package fsck did not detect missing package app registry entry");
+assert(packageAppFsck.repairs.some((entry) => entry.kind === "register-package-app" && entry.dryRun), "package fsck dry-run did not report app registry repair plan");
+const packageAppRepair = packages.checkIntegrity({ repair: true, dryRun: false });
+assert(packageAppRepair.repairs.some((entry) => entry.kind === "register-package-app"), "package fsck repair did not report app registry restoration");
+assert(os.apps.has(apiLab.app.id), "package fsck repair did not restore app registry entry");
+assert(os.fs.exists("/usr/share/dindbos/manifests/api-lab.json"), "package fsck repair did not restore app manifest file");
+assert(os.fs.exists("/usr/share/applications/API Lab.app"), "package fsck repair did not restore app launcher file");
 const apiWindow = os.apps.launch("api-lab");
 await apiWindow.rendered;
 await waitFor(() => apiWindow.content.innerHTML.includes("package=api-lab"), `API Lab sample did not render sandbox API report: ${apiWindow.content.innerHTML}`);
