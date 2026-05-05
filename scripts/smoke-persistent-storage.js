@@ -7,6 +7,7 @@ const binaryPath = "/home/guest/Documents/persist.bin";
 const binary = new Uint8Array([3, 9, 27, 81, 128, 255]);
 
 await verifySnapshotAdapterFallback();
+await verifyOpfsTransactionGroupJournal();
 await verifyOpfsFailureFallsBackToSnapshot();
 await verifyLifecyclePendingWriteFlushes();
 
@@ -73,6 +74,32 @@ async function verifyOpfsFailureFallsBackToSnapshot() {
   }).loadFileSystem();
   const reloaded = new VirtualFileSystem(reloadedRoot, { home: "/home/guest" });
   assertBytes(reloaded.readFileBytes(binaryPath), binary, "OPFS fallback bytes changed");
+}
+
+async function verifyOpfsTransactionGroupJournal() {
+  const opfsRoot = createOpfsRoot();
+  const storage = new PersistentStorage({
+    key: "smoke:opfs-transaction",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: async () => opfsRoot,
+  });
+  const fs = bootVfs();
+  fs.writeOrCreateFileBytes(binaryPath, binary, "/", { mime: "application/octet-stream" });
+  fs.writeOrCreateFile("/home/guest/Documents/readme.txt", "journal group", "/", { mime: "text/plain" });
+  storage.saveFileSystem(fs.snapshot());
+  await storage.flush();
+
+  const journal = storage.journal();
+  const queued = journal.find((entry) => entry.action === "write-queued" && entry.transactionKind === "filesystem-save");
+  const completed = journal.find((entry) => entry.action === "write-completed" && entry.transactionId === queued?.transactionId);
+  assert(queued, "OPFS transaction journal missing queued filesystem-save entry");
+  assert(completed, "OPFS transaction journal missing matching completion entry");
+  assert(queued.transactionId && queued.transactionId === completed.transactionId, "OPFS transaction journal did not preserve transaction id");
+  assert(queued.dirtyFiles >= 2, `OPFS transaction dirty file count too low: ${queued.dirtyFiles}`);
+  assert(queued.dirtyInodes >= 4, `OPFS transaction dirty inode count too low: ${queued.dirtyInodes}`);
+  assert(storage.status().lastStorageTransactionId === queued.transactionId, "storage status did not expose last transaction id");
+  assert(opfsRoot.files.size > 2, "OPFS transaction did not write multiple records");
 }
 
 async function verifyLifecyclePendingWriteFlushes() {
@@ -175,6 +202,42 @@ function createRuntimeStorage() {
       return { enabled: true, writePending: false };
     },
     resetFileSystem() {},
+  };
+}
+
+function createOpfsRoot() {
+  const files = new Map();
+  return {
+    files,
+    async getFileHandle(name, options = {}) {
+      if (!files.has(name)) {
+        if (!options.create) throw new Error(`file not found: ${name}`);
+        files.set(name, "");
+      }
+      return {
+        async getFile() {
+          const value = files.get(name) || "";
+          return { text: async () => value };
+        },
+        async createWritable() {
+          let pending = "";
+          return {
+            write: async (value) => {
+              pending = String(value ?? "");
+            },
+            close: async () => {
+              files.set(name, pending);
+            },
+          };
+        },
+      };
+    },
+    async removeEntry(name) {
+      files.delete(name);
+    },
+    async *entries() {
+      for (const name of files.keys()) yield [name, {}];
+    },
   };
 }
 
