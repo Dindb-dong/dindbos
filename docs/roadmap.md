@@ -310,7 +310,8 @@ Implementation tasks:
 - Add `ioctl`-style descriptor syscalls once terminal and device behavior needs structured control operations.
 - Back shell pipelines with real pipe descriptors instead of only command string plumbing.
 - Already present: `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom` can be opened through descriptor syscalls.
-- Add `/dev/tty` and `/dev/clipboard` where browser policy allows.
+- Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
+- Add `/dev/clipboard` where browser policy allows.
 - Add pseudo-terminal sessions for Terminal.app so interactive programs can read/write through a TTY-like device.
 - Broaden WASI descriptor coverage beyond the first scoped `path_open` subset, including richer rights/flags handling and directory operations.
 
@@ -319,7 +320,8 @@ Verification:
 - Already present: `npm run smoke:descriptors` verifies descriptor open/read/write/seek/close, `/dev/null`, `/dev/zero`, `/proc/<pid>/fd.json`, and descriptor cleanup after process kill or crash.
 - Already present: `npm run smoke:wasm` verifies WASI `fd_read` from stdin plus shell pipeline stdin delivery into executable `.wasm` files.
 - Already present: `npm run smoke:wasm` verifies WASI `path_open` read/write against scoped VFS files through opened descriptors.
-- Add smoke coverage for pipe chaining, entropy devices, TTY output, and richer WASI descriptor rights/flags.
+- Already present: `npm run smoke:descriptors` verifies `/dev/tty` output through the process stdout stream.
+- Add smoke coverage for pipe chaining, entropy device byte semantics, and richer WASI descriptor rights/flags.
 
 Completion criteria:
 
