@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { DindbOS } from "../src/dindbos/index.js";
 import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
 
 const os = createDindbOSTestRuntime();
@@ -67,7 +68,61 @@ assert(restarted.pid !== crashed.pid, "service restart reused crashed pid");
 os.services.disable("failing-sync");
 assert(os.services.get("failing-sync").state === "disabled", "service disable state mismatch");
 
-console.log("services smoke ok lifecycle schedule suspend permission crash restart");
+await verifyBrowserServiceLifecycleHooks();
+
+console.log("services smoke ok lifecycle schedule suspend permission crash restart browser-hooks");
+
+async function verifyBrowserServiceLifecycleHooks() {
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  const windowListeners = new Map();
+  const documentListeners = new Map();
+  globalThis.window = {
+    addEventListener: (type, listener) => windowListeners.set(type, listener),
+  };
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener: (type, listener) => documentListeners.set(type, listener),
+  };
+  try {
+    const browserOs = new DindbOS({ root: {}, storage: createNoopStorage(), persistDelayMs: 0 });
+    browserOs.installServiceLifecycleHooks();
+    assert(windowListeners.has("pagehide"), "service pagehide hook was not installed");
+    assert(windowListeners.has("pageshow"), "service pageshow hook was not installed");
+    assert(documentListeners.has("visibilitychange"), "service visibilitychange hook was not installed");
+
+    browserOs.services.register({ id: "lifecycle-sync", name: "Lifecycle Sync" });
+    await browserOs.services.start("lifecycle-sync");
+    windowListeners.get("pagehide")({});
+    assert(browserOs.services.get("lifecycle-sync").state === "suspended", "pagehide did not suspend service");
+    windowListeners.get("pageshow")({});
+    assert(browserOs.services.get("lifecycle-sync").state === "running", "pageshow did not resume service");
+
+    globalThis.document.visibilityState = "hidden";
+    documentListeners.get("visibilitychange")({});
+    assert(browserOs.services.get("lifecycle-sync").state === "suspended", "hidden visibility did not suspend service");
+    globalThis.document.visibilityState = "visible";
+    documentListeners.get("visibilitychange")({});
+    assert(browserOs.services.get("lifecycle-sync").state === "running", "visible visibility did not resume service");
+
+    const messages = browserOs.services.readLog("lifecycle-sync").map((entry) => entry.message).join("\n");
+    assert(messages.includes("suspended pagehide"), "service log missing pagehide suspend reason");
+    assert(messages.includes("resumed pageshow"), "service log missing pageshow resume reason");
+    assert(messages.includes("suspended visibility-hidden"), "service log missing visibility suspend reason");
+    assert(messages.includes("resumed visibility-visible"), "service log missing visibility resume reason");
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.document = originalDocument;
+  }
+}
+
+function createNoopStorage() {
+  return {
+    saveFileSystem() {},
+    async flush() {},
+    status: () => ({}),
+  };
+}
 
 function assertThrows(fn, expected) {
   try {
