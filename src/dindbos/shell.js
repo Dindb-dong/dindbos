@@ -674,6 +674,7 @@ export class ShellSession {
     return [
       "DindbOS doctor",
       `session user=${this.env.USER} groups=${groups.join(",")} home=${this.env.HOME} cwd=${this.cwd} locked=${sessionStatus?.locked || false}`,
+      `sessionCoord role=${sessionStatus?.coordination?.role || "unknown"} owner=${sessionStatus?.coordination?.lockOwner || "-"} readonly=${Boolean(sessionStatus?.coordination?.readonly)}`,
       `storage backend=${storage?.backend || "memory"} persisted=${storage?.persisted || false} bytes=${storage?.bytes || 0} dirtyInodes=${storage?.dirtyInodes || 0} dirtyFiles=${storage?.dirtyFiles || 0} pending=${storage?.persistPending || false}`,
       `localMounts supported=${localMountSupported} mounted=${mounted} persisted=${persistedMounts} errors=${mountErrors} helper=${helper?.status || "unavailable"} rename=${helper?.renameSupported || false}`,
       `packages installed=${Array.isArray(packages) ? packages.length : 0}`,

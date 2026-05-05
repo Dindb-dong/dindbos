@@ -33,6 +33,8 @@ Settings and `doctor` expose lifecycle/recovery diagnostics, including the last 
 
 `doctor compat` also reports Service Worker and Periodic Background Sync probes. DindbOS does not auto-register closed-page maintenance; it reports `unsupported-in-this-runtime` or `available-but-not-registered` until an explicit, permissioned maintenance service owns a limited task.
 
+Each runtime has an `instanceId` and participates in a storage-backed session lock. The first active instance becomes `primary`; later instances report `secondary` with readonly fallback diagnostics. Expired locks can be recovered by a new primary, and `/proc/sessions`, Settings, and `doctor` show the current lock owner and role.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed

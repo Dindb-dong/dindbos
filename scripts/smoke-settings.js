@@ -11,6 +11,7 @@ const calls = {
   services: 0,
   status: 0,
   lifecycle: 0,
+  coordination: 0,
 };
 
 const os = {
@@ -99,6 +100,16 @@ const os = {
       supportedWhileHidden: ["best-effort filesystem flush"],
     };
   },
+  sessionCoordinationStatus() {
+    calls.coordination += 1;
+    return {
+      instanceId: "settings-tab",
+      role: "secondary",
+      lockOwner: "primary-tab",
+      readonly: true,
+      staleRecovered: false,
+    };
+  },
   fs: {
     join(base, name) {
       return `${base}/${name}`;
@@ -117,6 +128,7 @@ assert(calls.estimate === 1, "settings snapshot did not read storage estimate");
 assert(calls.mounts === 1, "settings snapshot did not read local mount status");
 assert(calls.lifecycle === 1, "settings snapshot did not read lifecycle status");
 assert(calls.recovery === 1, "settings snapshot did not read recovery status");
+assert(calls.coordination === 1, "settings snapshot did not read session coordination status");
 
 assert(snapshot.user === "guest", "settings snapshot user mismatch");
 assert(snapshot.home === "/home/guest", "settings snapshot home mismatch");
@@ -129,6 +141,7 @@ assert(snapshot.storage.writePending === true, "settings snapshot storage pendin
 assert(snapshot.mounts[0].path === "/mnt/project", "settings snapshot mount path mismatch");
 assert(snapshot.lifecycle.state === "recovered", "settings snapshot lifecycle state mismatch");
 assert(snapshot.recovery.lastRecovery.recoveredAt, "settings snapshot recovery status missing");
+assert(snapshot.coordination.role === "secondary", "settings snapshot coordination role mismatch");
 
 const markup = settingsRuntimeMarkup(snapshot);
 
@@ -138,6 +151,8 @@ assert(markup.includes("<dt>Packages</dt><dd>1</dd>"), "settings markup did not 
 assert(markup.includes("<dt>Processes</dt><dd>3</dd>"), "settings markup did not render process count");
 assert(markup.includes("<dt>Services</dt><dd>1</dd>"), "settings markup did not render service count");
 assert(markup.includes("<dt>Lifecycle</dt><dd>recovered</dd>"), "settings markup did not render lifecycle state");
+assert(markup.includes("<dt>Session Role</dt><dd>secondary</dd>"), "settings markup did not render session role");
+assert(markup.includes("<dt>Lock Owner</dt><dd>primary-tab</dd>"), "settings markup did not render lock owner");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");
