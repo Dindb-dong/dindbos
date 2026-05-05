@@ -926,7 +926,7 @@ Implementation tasks:
 - Define a compositor service that owns app surfaces, focus, z-order, modal state, capture state, and input routing.
 - Add a surface API for DOM-backed, canvas-backed, and worker-rendered windows.
 - Add optional `OffscreenCanvas` worker rendering for graphics-heavy apps where browser support allows it.
-- Add input routing for pointer, keyboard, IME composition, drag/drop, clipboard, shortcuts, and pointer lock through one broker.
+- Already present: compositor input routing records pointer, keyboard, IME composition, drag/drop, paste/copy, target window, target pid, routed/denied counts, and last route through one brokered WindowManager API.
 - Add app-declared shortcut scopes so global OS shortcuts, focused-app shortcuts, and text-entry shortcuts do not conflict.
 - Add screenshot/capture APIs for app windows and full desktop surfaces with user-visible permission checks.
 - Add accessibility metadata per window and control, exposed through a runtime tree that apps can update without direct access to other apps.
@@ -934,8 +934,8 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, stable surface geometry, last-input recording, pointer capture cleanup during window close, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
-- Add smoke coverage for IME event delivery, drag/drop routing, and broader surface cleanup.
+- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, stable surface geometry, last-input recording, IME/drop routing, pointer capture cleanup during window close, input router state, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
+- Add smoke coverage for broader surface cleanup and deeper routed clipboard/shortcut/pointer-lock policy.
 - Add tests proving a crashed or suspended app cannot retain global input capture.
 - Add screenshot/capture tests for allowed own-window capture and denied cross-app capture.
 

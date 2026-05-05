@@ -14,9 +14,19 @@ export class WindowManager {
     this.activeWindowId = "";
     this.lastInputEvent = null;
     this.lastCapture = null;
+    this.inputRouter = {
+      routed: 0,
+      denied: 0,
+      lastRoute: null,
+    };
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
     this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
-    this.boundHandleGlobalPointerDown = (event) => this.recordInputEvent("pointerdown", event);
+    this.boundHandleGlobalPointerDown = (event) => this.routeInputEvent("pointerdown", event);
+    this.boundHandleCompositionStart = (event) => this.routeInputEvent("compositionstart", event);
+    this.boundHandleCompositionUpdate = (event) => this.routeInputEvent("compositionupdate", event);
+    this.boundHandleCompositionEnd = (event) => this.routeInputEvent("compositionend", event);
+    this.boundHandleDragStart = (event) => this.routeInputEvent("dragstart", event);
+    this.boundHandleDrop = (event) => this.routeInputEvent("drop", event);
   }
 
   mount(layer, taskStrip) {
@@ -25,6 +35,11 @@ export class WindowManager {
     globalThis.window?.addEventListener?.("resize", this.boundKeepWindowsInViewport);
     globalThis.window?.addEventListener?.("keydown", this.boundHandleGlobalKeyDown);
     globalThis.window?.addEventListener?.("pointerdown", this.boundHandleGlobalPointerDown);
+    globalThis.window?.addEventListener?.("compositionstart", this.boundHandleCompositionStart);
+    globalThis.window?.addEventListener?.("compositionupdate", this.boundHandleCompositionUpdate);
+    globalThis.window?.addEventListener?.("compositionend", this.boundHandleCompositionEnd);
+    globalThis.window?.addEventListener?.("dragstart", this.boundHandleDragStart);
+    globalThis.window?.addEventListener?.("drop", this.boundHandleDrop);
     this.writeCompositorProcfs("mount");
   }
 
@@ -98,7 +113,10 @@ export class WindowManager {
     titlebar.querySelector("[data-window-minimize]").addEventListener("click", () => this.minimize(config.id));
     titlebar.querySelector("[data-window-maximize]").addEventListener("click", () => this.maximize(config.id));
     titlebar.querySelector("[data-window-close]").addEventListener("click", () => this.close(config.id));
-    frame.addEventListener("pointerdown", () => this.focus(config.id));
+    frame.addEventListener("pointerdown", (event) => {
+      this.focus(config.id);
+      this.routeInputEvent("pointerdown", event, { targetWindowId: config.id });
+    });
     makeDraggable(frame, titlebar, () => this.saveWindowPlacement(config.id), {
       onCapture: (capture) => this.recordPointerCapture(config.id, task.pid, "drag", capture),
       onRelease: (capture) => this.releasePointerCapture(config.id, capture.pointerId, "drag-end"),
@@ -184,7 +202,7 @@ export class WindowManager {
   }
 
   handleGlobalKeyDown(event) {
-    this.recordInputEvent("keydown", event);
+    this.routeInputEvent("keydown", event);
     if (event.altKey && event.key === "Tab") {
       event.preventDefault();
       this.cycleFocus(event.shiftKey ? -1 : 1);
@@ -265,6 +283,28 @@ export class WindowManager {
     return { ...this.lastInputEvent };
   }
 
+  routeInputEvent(type, event = {}, options = {}) {
+    const targetWindowId = String(options.targetWindowId || this.activeWindowId || "");
+    const task = this.windows.get(targetWindowId);
+    const route = {
+      type: normalizeInputRouteType(type),
+      targetWindowId,
+      targetPid: task?.pid || 0,
+      targetAppId: task?.appId || "",
+      source: options.source || "browser-window",
+      handled: Boolean(task),
+      deniedReason: task ? "" : "no-focused-window",
+      at: new Date().toISOString(),
+    };
+    if (route.handled) this.inputRouter.routed += 1;
+    else this.inputRouter.denied += 1;
+    this.inputRouter.lastRoute = route;
+    this.recordInputEvent(route.type, event);
+    this.os.bus?.emit?.("compositor:input", { ...route, input: this.lastInputEvent ? { ...this.lastInputEvent } : null });
+    this.writeCompositorProcfs("input-route");
+    return { ...route };
+  }
+
   recordPointerCapture(windowId, pid, kind, capture = {}) {
     const pointerId = Number(capture.pointerId || 0);
     this.lastCapture = {
@@ -341,6 +381,11 @@ export class WindowManager {
         height: globalThis.window?.innerHeight || 0,
       },
       lastInputEvent: this.lastInputEvent ? { ...this.lastInputEvent } : null,
+      inputRouter: {
+        routed: this.inputRouter.routed,
+        denied: this.inputRouter.denied,
+        lastRoute: this.inputRouter.lastRoute ? { ...this.inputRouter.lastRoute } : null,
+      },
       surfaces,
       updatedAt: new Date().toISOString(),
     };
@@ -602,6 +647,14 @@ function clamp(value, min, max) {
 
 function newestWindowId(windows) {
   return [...windows.keys()].at(-1) || "";
+}
+
+function normalizeInputRouteType(type) {
+  const value = String(type || "input").toLowerCase();
+  if (["pointerdown", "pointermove", "pointerup", "keydown", "keyup", "compositionstart", "compositionupdate", "compositionend", "dragstart", "dragover", "drop", "paste", "copy"].includes(value)) {
+    return value;
+  }
+  return "input";
 }
 
 function cancelMinimizeAnimation(task) {

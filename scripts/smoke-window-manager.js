@@ -283,6 +283,12 @@ async function runLiveWindowStateSmoke() {
     assert(compositor.surfaceCount === 1 && compositor.surfaces[0].rect.width === 640, "compositor status did not expose surface geometry");
     const procCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
     assert(procCompositor.lastInputEvent.type === "pointerdown", "/proc/compositor did not expose last input event");
+    const imeRoute = liveManager.routeInputEvent("compositionupdate", { data: "한" });
+    assert(imeRoute.handled && imeRoute.targetPid === 42, "compositor input router did not route IME event to focused window");
+    const dropRoute = liveManager.routeInputEvent("drop", { clientX: 80, clientY: 90 });
+    assert(dropRoute.handled && dropRoute.targetWindowId === "browser", "compositor input router did not route drop event");
+    const routedCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
+    assert(routedCompositor.inputRouter.routed >= 2 && routedCompositor.inputRouter.lastRoute.type === "drop", "/proc/compositor did not expose input router state");
     task.titlebar.listeners.pointerdown({
       pointerId: 7,
       clientX: 10,
