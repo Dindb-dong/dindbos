@@ -6,7 +6,9 @@ const BUILTIN_MANUALS = {
   chmod: "chmod <mode> <path> - change mode bits, for example chmod 644 note.txt",
   clear: "clear - clear terminal output",
   cp: "cp [-r] <source> <destination> - copy files or directories",
+  curl: "curl <url> - fetch a URL through the DindbOS network broker",
   doctor: "doctor [compat] - print runtime diagnostics or compatibility tiers for troubleshooting",
+  dig: "dig <host> - probe DNS policy through the DindbOS network broker",
   df: "df - show mounted filesystem storage status",
   echo: "echo <text> [> file|>> file] - print or redirect text",
   env: "env - list shell environment",
@@ -23,8 +25,10 @@ const BUILTIN_MANUALS = {
   "mount-local": "mount-local [name|--list|--restore|--forget path|--helper] - manage local folder mounts",
   mv: "mv <source> <destination> - move or rename files",
   node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
+  netstat: "netstat - show DindbOS network broker diagnostics",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
+  ping: "ping <host> - probe network policy; raw ICMP is unsupported in browser-only mode",
   pkg: "pkg list|info|install|run|strict|cache|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
@@ -47,13 +51,17 @@ const BUILTIN_MANUALS = {
 const MAX_SCRIPT_DEPTH = 8;
 const STATUS_PREFIX_COMMANDS = new Set([
   "find",
+  "curl",
+  "dig",
   "keychain",
   "kill",
   "man",
   "manifest",
   "mount-local",
   "node",
+  "netstat",
   "npm",
+  "ping",
   "pkg",
   "stat",
   "su",
@@ -274,6 +282,10 @@ export class ShellSession {
     if (command === "ps") return this.os.processes.table();
     if (command === "kill") return this.kill(args);
     if (command === "keychain") return this.keychain(args);
+    if (command === "curl") return this.curl(args);
+    if (command === "netstat") return this.netstat();
+    if (command === "ping") return this.ping(args);
+    if (command === "dig") return this.dig(args);
     if (command === "storage") return this.storage(args);
     if (command === "sync") return this.sync(args);
     if (command === "syscall") return this.syscall(args);
@@ -750,6 +762,45 @@ export class ShellSession {
       return `keychain signing key ${record.name} publisher=${record.publisherId || "-"} publicKey=${record.publicKey} ref=${record.secretRef}`;
     }
     return "keychain: usage: keychain signing create|lookup";
+  }
+
+  async curl(args) {
+    const [url] = args;
+    if (!url) return "curl: usage: curl <url>";
+    const response = await this.os.network.fetch(url, {}, { appId: "shell", principal: this.principal });
+    return response.text;
+  }
+
+  netstat() {
+    const status = this.os.network.status();
+    return [
+      `active=${status.totals.active}`,
+      `requests=${status.totals.requests}`,
+      `denied=${status.totals.denied}`,
+      `bytesReceived=${status.totals.bytesReceived}`,
+      `websocket=${status.websocket.supported ? "supported" : status.websocket.reason}`,
+      ...status.history.slice(-5).map((entry) => `${entry.status} ${entry.host} ${entry.statusCode || "-"} ${entry.bytesReceived || 0}B`),
+      ...status.deniedHosts.slice(-5).map((entry) => `denied ${entry.host} ${entry.reason}`),
+    ].join("\n");
+  }
+
+  ping(args) {
+    const [host] = args;
+    if (!host) return "ping: usage: ping <host>";
+    const url = host.includes("://") ? host : `https://${host}`;
+    const probe = this.os.network.policyProbe(url, { appId: "shell", principal: this.principal });
+    return probe.allowed
+      ? `ping: ${probe.host}: policy allowed; raw ICMP unsupported in browser-only mode`
+      : `ping: ${probe.host}: ${probe.reason}`;
+  }
+
+  dig(args) {
+    const [host] = args;
+    if (!host) return "dig: usage: dig <host>";
+    const probe = this.os.network.dnsProbe(host, { appId: "shell", principal: this.principal });
+    return probe.allowed
+      ? `dig: ${probe.host}: ${probe.addresses.join(",")} rawDnsSupported=${probe.rawDnsSupported}`
+      : `dig: ${probe.host}: ${probe.reason}`;
   }
 
   pkgNpm(action, args) {
@@ -1428,6 +1479,8 @@ function shellStatus(command, output) {
   if ((command === "su" || command === "sudo") && text.startsWith(`${command}: unsupported`)) return 1;
   if (text.startsWith(`${command}: unsupported`)) return 2;
   if (text.startsWith(`${command}:`) && text.includes("no such")) return 1;
+  if (text.startsWith(`${command}:`) && text.includes("denied")) return 1;
+  if (text.startsWith(`${command}:`) && text.includes("unavailable")) return 1;
   if (text.startsWith(`${command}:`) && text.includes("package not installed")) return 1;
   if (text.startsWith(`${command}:`) && text.includes("registry not found")) return 1;
   if (text.startsWith(`${command}:`) && text.includes(": exit ")) return 1;
