@@ -636,11 +636,18 @@ function wasiFilestatWasm() {
   const openedFdOffset = 32;
   const pathStatOffset = 64;
   const fdStatOffset = 128;
-  const data = new Uint8Array(192);
+  const preopenFdstatOffset = 192;
+  const fileFdstatOffset = 224;
+  const data = new Uint8Array(256);
   data.set(path, 0);
   const typeAndSizeMatch = (offset) => [
     0x41, ...i32(offset + 16), 0x2d, 0x00, 0x00, 0x41, 0x04, 0x46,
     0x41, ...i32(offset + 32), 0x29, 0x03, 0x00, 0x42, 0x0c, 0x51,
+    0x71,
+  ];
+  const fdstatMatches = (offset, filetype) => [
+    0x41, ...i32(offset), 0x2d, 0x00, 0x00, 0x41, filetype, 0x46,
+    0x41, ...i32(offset + 8), 0x29, 0x03, 0x00, 0x42, 0x02, 0x83, 0x50, 0x45,
     0x71,
   ];
   return wasmModule({
@@ -654,14 +661,21 @@ function wasiFilestatWasm() {
       { module: "wasi_snapshot_preview1", name: "path_filestat_get", type: 0 },
       { module: "wasi_snapshot_preview1", name: "path_open", type: 1 },
       { module: "wasi_snapshot_preview1", name: "fd_filestat_get", type: 2 },
+      { module: "wasi_snapshot_preview1", name: "fd_fdstat_get", type: 2 },
     ],
     startType: 3,
     body: [
       0x41, 0x03, 0x41, 0x00, 0x41, 0x00, 0x41, ...i32(path.length), 0x41, ...i32(pathStatOffset), 0x10, 0x00, 0x1a,
       0x41, 0x03, 0x41, 0x00, 0x41, 0x00, 0x41, ...i32(path.length), 0x41, 0x00, 0x42, 0x02, 0x42, 0x00, 0x41, 0x00, 0x41, ...i32(openedFdOffset), 0x10, 0x01, 0x1a,
       0x41, ...i32(openedFdOffset), 0x28, 0x02, 0x00, 0x41, ...i32(fdStatOffset), 0x10, 0x02, 0x1a,
+      0x41, 0x03, 0x41, ...i32(preopenFdstatOffset), 0x10, 0x03, 0x1a,
+      0x41, ...i32(openedFdOffset), 0x28, 0x02, 0x00, 0x41, ...i32(fileFdstatOffset), 0x10, 0x03, 0x1a,
       ...typeAndSizeMatch(pathStatOffset),
       ...typeAndSizeMatch(fdStatOffset),
+      ...fdstatMatches(preopenFdstatOffset, 0x03),
+      0x71,
+      ...fdstatMatches(fileFdstatOffset, 0x04),
+      0x71,
       0x71,
       0x45,
       0x0b,
