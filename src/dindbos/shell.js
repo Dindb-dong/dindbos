@@ -652,7 +652,7 @@ export class ShellSession {
     const [name, ...jsonParts] = args;
     if (!name) return "syscall: usage: syscall <name> [json]";
     const payload = jsonParts.length ? parseJsonArgument(jsonParts.join(" "), "syscall") : {};
-    const result = this.os.syscall(name, payload, { principal: this.principal });
+    const result = this.os.syscall(name, payload, { principal: this.principal, env: this.env });
     return JSON.stringify(result, null, 2);
   }
 

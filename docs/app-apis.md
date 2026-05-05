@@ -37,7 +37,7 @@ const write = os.syscall("fs.writeText", { path: "/home/guest/Documents/report.t
 if (!write.ok) throw new Error(write.error.message);
 ```
 
-Sandboxed apps use the same filesystem scopes and capability checks through syscall calls as they do through the high-level facades below. Syscall traces are written under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`. See `docs/syscalls.md` for the current syscall table and errno-style failures.
+Sandboxed apps use the same filesystem scopes and capability checks through syscall calls as they do through the high-level facades below. The current ABI covers filesystem text operations, environment reads, app metadata, package metadata, storage diagnostics, local mount diagnostics, process inspection/logging, and app launch. Syscall traces are written under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`. See `docs/syscalls.md` for the current syscall table and errno-style failures.
 
 ## Filesystem
 

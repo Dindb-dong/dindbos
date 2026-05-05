@@ -138,6 +138,21 @@ assert(JSON.parse(result.output).value.path === "/home/guest/syscall-note.txt", 
 result = await shell.executeAsync("syscall fs.readText '{\"path\":\"syscall-note.txt\"}'");
 assert(result.status === 0, `syscall read status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).value === "via syscall", `syscall read output mismatch: ${result.output}`);
+result = await shell.executeAsync("syscall env.get '{\"key\":\"PWD\"}'");
+assert(result.status === 0, `syscall env.get status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value === "/home/guest", `syscall env.get output mismatch: ${result.output}`);
+result = await shell.executeAsync("syscall package.info '{\"packageId\":\"hello-notes\"}'");
+assert(result.status === 0, `syscall package.info status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value.id === "hello-notes", `syscall package.info output mismatch: ${result.output}`);
+result = await shell.executeAsync("syscall app.list '{}'");
+assert(result.status === 0, `syscall app.list status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value[0].id === "calculator", `syscall app.list output mismatch: ${result.output}`);
+result = await shell.executeAsync("syscall storage.status '{}'");
+assert(result.status === 0, `syscall storage.status status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value.backend === "memory", `syscall storage.status output mismatch: ${result.output}`);
+result = await shell.executeAsync("syscall localMount.status '{}'");
+assert(result.status === 0, `syscall localMount.status status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value.supported === false, `syscall localMount.status output mismatch: ${result.output}`);
 result = await shell.executeAsync("syscall future.native '{}'");
 assert(result.status === 1, `unsupported syscall status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).error.code === "ENOSYS", `unsupported syscall errno mismatch: ${result.output}`);
@@ -219,6 +234,8 @@ function bootOs() {
     localMounts: {
       isMountedPath: () => false,
       supported: () => false,
+      listMounts: () => [],
+      copyPolicy: () => ({ actions: [] }),
       status: async () => [],
       nativeHelperStatus: () => ({
         configured: false,
@@ -252,7 +269,8 @@ function bootOs() {
       getManifest: () => null,
     },
     packages: {
-      list: () => [{ id: "hello-notes", name: "Hello Notes" }],
+      list: () => [{ id: "hello-notes", name: "Hello Notes", version: "0.1.0", installPath: "/opt/hello-notes" }],
+      info: (packageId) => packageId === "hello-notes" ? { id: "hello-notes", name: "Hello Notes", version: "0.1.0", installPath: "/opt/hello-notes" } : null,
       trustedPublishers: () => [...trustedPublishers],
       addTrustedPublisher: (publisher) => {
         trustedPublishers.push(publisher);
