@@ -1911,6 +1911,7 @@ function fsckExplanation(code, repairable = false) {
     "package-root-missing": "A package DB record points at a missing package root; reinstall or restore is required.",
     "package-root-invalid": "A package install path exists but is not mounted as pkgfs.",
     "package-record-invalid": "A package DB JSON record cannot be parsed into a package id.",
+    "package-entry-missing": "A package root exists but its declared app entry file is missing; reinstall or restore is required.",
     "storage-journal-invalid": "A persisted storage transaction marker cannot be parsed; reload or manual recovery is required.",
     "storage-journal-partial": "A storage transaction marker is present without a replay manifest; the last complete manifest remains authoritative.",
     "storage-journal-pending-replay": "A storage replay manifest exists and should be promoted during the next storage load before normal boot continues.",

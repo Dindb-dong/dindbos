@@ -210,11 +210,12 @@ Implementation cuts:
 - Already present: `fsck --dry-run` includes first-pass package DB drift checks for package records whose `/opt/<package>` root is missing and `pkgfs` roots with no package DB record.
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
 - Already present: package `fsck` detects package DB/app registry disagreement when an installed package app is missing from the app registry or its manifest/launcher files are absent, and `fsck --repair` can re-register the package app from the package DB record.
+- Already present: package `fsck` detects broken package roots beyond DB/root drift by reporting missing declared package entry files inside an existing `pkgfs` root.
 - Already present: `fsck --explain` reports why each problem is repairable or non-repairable, every shell `fsck` run appends a summary to `/var/log/dindbos/fsck.log`, and repair/refusal audit JSONL records are written to `/var/log/dindbos/fsck-audit.log`.
 - Already present: OPFS inode-record loads validate manifest inode/file content hashes against actual records and report inode/content mismatches through storage status and the storage journal.
 - Already present: Shell `fsck --dry-run --explain` includes PersistentStorage partial journal diagnostics for active OPFS transaction markers with missing replay manifests and pending replay manifests.
 - Already present: LocalFolderMountManager exposes fsck diagnostics for stale persisted local mount metadata and can conservatively remove invalid persisted records without touching valid mounts.
-- Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts beyond DB/root drift, and conservative salvage export.
+- Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes and conservative salvage export.
 - Already present: large app writes and Files.app imports reserve storage bytes before VFS mutation so quota denial preserves existing files and prevents archive staging.
 - Already present: PersistentStorage supports first-pass storage-class quota arbitration for package roots, package state, cache, temp, snapshots, logs, backups, sync staging, recovery data, and user data using explicit reservation metadata or path/transaction inference.
 - Already present: VFS repair operations run through a protected-metadata guard so fsck repair never weakens ownership, group, permissions, security labels, quarantine state, or encrypted-volume locks while applying safe metadata repairs.
@@ -232,6 +233,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package fsck and shell `fsck --dry-run` report missing package roots and orphan `pkgfs` roots without mutating the tree.
 - Already present: `npm run smoke:packages` verifies package fsck repair removes orphan `pkgfs` roots and does not attempt unsafe repair of missing package roots.
 - Already present: `npm run smoke:packages` verifies package fsck detects a package DB/app registry disagreement and repairs a missing app registry manifest/launcher from the package DB record.
+- Already present: `npm run smoke:packages` verifies package fsck reports a missing declared app entry file inside an existing package root.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Already present: `npm run smoke:shell` verifies `fsck --explain` prints repair policy explanations, `/var/log/dindbos/fsck.log` records dry-run and repaired runs, and `/var/log/dindbos/fsck-audit.log` records planned and applied repair actions.
 - Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, `npm run smoke:descriptors`, `npm run smoke:services`, `npm run smoke:packages`, and `npm run smoke:wasm` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, descriptor-backed `fd.sync`, service/package-service lifecycle sync barriers, and WASM async syscall / WASI `fd_sync` barriers, while sandboxed callers without `storage.read` are denied.

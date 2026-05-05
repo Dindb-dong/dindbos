@@ -45,6 +45,7 @@ Current implementation:
 - Shell `fsck` merges local mount fsck diagnostics, including stale persisted local mount metadata whose invalid records can be removed without touching valid mounts.
 - VFS fsck repair uses a protected-metadata guard so safe repairs cannot weaken ownership, group, permissions, security labels, quarantine state, or encrypted-volume lock flags.
 - Package fsck detects package DB/app registry disagreement and can restore a missing package app manifest/launcher from the package DB record.
+- Package fsck reports broken package roots whose declared app entry file is missing even when the package DB record and `pkgfs` root still exist.
 - Viewer.app caches document and image preview bytes through the runtime Cache API store with memory fallback, using path, MIME type, size, and modified time in the cache key.
 - `os.diskPolicyAreas()`, `os.diskPolicyForPath(path)`, and `df` expose policy areas for `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache`.
 - `os.storageBucketPolicy()` reports whether `navigator.storageBuckets` exists and records the current decision. Today DindbOS keeps the proven OPFS/IndexedDB/Cache split, while `/tmp`, `/var/cache`, and durable areas are separated by disk policy and reported bucket intent.
