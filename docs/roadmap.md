@@ -1054,7 +1054,7 @@ Implementation tasks:
 - Add passkey/WebAuthn-backed unlock or reauthentication flows where supported, with password-derived fallback clearly marked as weaker.
 - Already present: package manifests can declare `secrets` references with alias, keychain name, kind, required flag, and purpose; package app manifests and runtime public records expose only references, and package apps can request declared credentials through the keychain facade.
 - Already present: first-pass signing key management creates auditable package-author signing key references and public key ids without exposing private key material through shell lookup.
-- Already present: `keychain` shell commands cover list, status, get, set, delete, lock, unlock, grant, revoke, audit, signing create, and signing lookup.
+- Already present: `keychain` shell commands cover list, status, get, set, delete, lock, unlock, grant, revoke, audit, explicit export, signing create, and signing lookup.
 - Already present: Settings runtime diagnostics render keychain vault state, active grants, denied requests, stale credentials, and export/recovery warnings without exposing raw secret values.
 
 Verification:
@@ -1063,7 +1063,7 @@ Verification:
 - Already present: `npm run smoke:keychain` verifies package manifest secret references are exposed as metadata, granted package apps can read declared credentials through `os.keychain.getDeclared()`, undeclared package secret requests are denied, and package DB records do not contain raw secret values.
 - Already present: `npm run smoke:keychain` verifies raw secret values are not exposed through ordinary keychain metadata VFS reads or keychain audit logs.
 - Already present: `npm run smoke:settings` verifies Settings reads keychain diagnostics and renders active grants, denied requests, stale credentials, export warnings, and recovery warnings.
-- Add tests proving secrets are never exposed through package export unless explicitly exported by the keychain service.
+- Already present: `npm run smoke:keychain` verifies ordinary package DB, keychain metadata, and audit-log exports do not expose raw secret values, non-exportable secrets cannot be exported, and explicitly exportable secrets only expose values through the keychain service export path.
 
 Completion criteria:
 
