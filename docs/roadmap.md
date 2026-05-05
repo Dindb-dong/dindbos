@@ -237,7 +237,7 @@ Implementation tasks:
 - Already present: package manifests support DindbOS ABI WASM entry points through `app.runtime: "wasm"` or `.wasm` entries, launched through AppRegistry and rendered into package windows.
 - Already present: a basic `wasi_snapshot_preview1` import subset covers args/env sizing and buffers, `fd_write` for stdout/stderr, `proc_exit`, `random_get`, and `clock_time_get`.
 - Expand WASI-style imports where possible, mapped to the DindbOS syscall ABI and future descriptor tables.
-- Mount process-local descriptors for files, pipes, and terminal streams.
+- Already present: a first-pass process descriptor table exists for stdin/stdout/stderr, text VFS files, and basic pseudo-devices; WASI file descriptor mapping remains future work.
 - Broaden process filesystem scopes beyond the first-pass executable-directory policy.
 - Already present: WASM trap paths flow through process crash handling and return crash report paths for `/var/log/dindbos/crash-<pid>.log` diagnostics.
 - Add memory and execution guards: max memory pages, cooperative timeout, and abort handling.
@@ -258,7 +258,7 @@ Completion criteria:
 
 ### Convergence 3: Real Process Isolation With Workers
 
-Status: Next.
+Status: In progress.
 
 Goal: move risky or heavy userland execution out of the main UI thread into Web Workers or dedicated worker pools.
 
@@ -302,16 +302,19 @@ Why it matters:
 
 Implementation tasks:
 
-- Add per-process descriptor tables for `stdin`, `stdout`, `stderr`, opened files, pipes, and device handles.
-- Implement `open`, `close`, `read`, `write`, `seek`, `stat`, and `ioctl`-style descriptor syscalls.
+- Already present: per-process descriptor tables initialize `stdin`, `stdout`, and `stderr`, expose opened file/device handles under `/proc/<pid>/fd.json`, and clean up when the process exits or crashes.
+- Already present: first-pass descriptor syscalls cover `fd.list`, `fd.open`, `fd.read`, `fd.write`, `fd.seek`, `fd.stat`, and `fd.close` for text VFS files.
+- Add `ioctl`-style descriptor syscalls once terminal and device behavior needs structured control operations.
 - Back shell pipelines with real pipe descriptors instead of only command string plumbing.
-- Add `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty`, and `/dev/clipboard` where browser policy allows.
+- Already present: `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom` can be opened through descriptor syscalls.
+- Add `/dev/tty` and `/dev/clipboard` where browser policy allows.
 - Add pseudo-terminal sessions for Terminal.app so interactive programs can read/write through a TTY-like device.
-- Add descriptor leak cleanup when a process exits or crashes.
+- Map WASI file-descriptor imports to the shared descriptor table instead of the first-pass direct stdout/stderr handler.
 
 Verification:
 
-- Add smoke coverage for descriptor open/read/write/close, pipe chaining, `/dev/null`, entropy devices, TTY output, and descriptor cleanup after process kill.
+- Already present: `npm run smoke:descriptors` verifies descriptor open/read/write/seek/close, `/dev/null`, `/dev/zero`, `/proc/<pid>/fd.json`, and descriptor cleanup after process kill.
+- Add smoke coverage for pipe chaining, entropy devices, TTY output, WASI descriptor mapping, and descriptor cleanup after crash.
 
 Completion criteria:
 
