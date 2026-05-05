@@ -46,6 +46,24 @@ await assertRejects(
 assert(!os.fs.exists("/opt/wasm-future"), "unsupported compatibility package mutated install directory");
 assert(!os.apps.apps.has("wasm-future"), "unsupported compatibility package registered app");
 
+const apiCompatible = packages.install(packageManifest("api-compatible", "0.1.0", [
+  { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+], { api: { minVersion: 1, targetVersion: 2, maxVersion: 2 } }));
+assert(apiCompatible.api.negotiatedVersion === 1, "compatible API range did not negotiate to runtime API v1");
+assert(apiCompatible.api.status === "downgraded", `compatible API range status mismatch: ${apiCompatible.api.status}`);
+assert(os.apps.getManifest("api-compatible").api.negotiatedVersion === 1, "negotiated API version was not exposed in app manifest");
+packages.remove("api-compatible");
+
+await assertRejects(
+  () => packages.install(packageManifest("api-future", "0.1.0", [
+    { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+  ], { apiVersion: 2 })),
+  "requires unsupported API version 2",
+);
+assert(!os.fs.exists("/opt/api-future"), "unsupported API package mutated install directory");
+assert(!os.fs.exists("/var/lib/dindbos/packages/api-future.json"), "unsupported API package wrote package record");
+assert(!os.apps.apps.has("api-future"), "unsupported API package registered app");
+
 await assertRejects(
   () => packages.install(packageManifest("rollback-demo", "0.2.0", [
     { path: "app.js", mime: "text/javascript", content: "export const version = '0.2.0';\n" },
@@ -311,6 +329,8 @@ function packageManifest(id, version, files, extra = {}) {
 function titleFor(id) {
   if (id === "rollback-demo") return "Rollback Demo.app";
   if (id === "flow-demo") return "Flow Demo.app";
+  if (id === "api-compatible") return "API Compatible.app";
+  if (id === "api-future") return "API Future.app";
   if (id === "remote-broken") return "Remote Broken.app";
   return "Broken Pkg.app";
 }
