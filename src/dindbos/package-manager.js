@@ -4,6 +4,7 @@ import { compatibilityRequirementForManifest } from "./compat.js?v=20260422-brow
 const APPLICATION_DIR = "/usr/share/applications";
 const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
 const PACKAGE_SOURCE_DIR = "/opt/dindbos/packages";
+const PACKAGE_TEMPLATE_DIR = "/opt/dindbos/templates";
 const PACKAGE_INSTALL_ROOT = "/opt";
 const REGISTRY_CONFIG_PATH = "/etc/dindbos/package-registries.json";
 const TRUSTED_PUBLISHERS_PATH = "/etc/dindbos/trusted-publishers.json";
@@ -185,6 +186,164 @@ const SAMPLE_PDF_VIEWER_PACKAGE = {
     },
   },
 };
+
+const TEMPLATE_GUI_PACKAGE = {
+  id: "template-gui-app",
+  name: "Template GUI App",
+  version: "0.1.0",
+  description: "Installable starter template for a DindbOS GUI package.",
+  app: {
+    id: "template-gui-app",
+    name: "Template GUI App",
+    title: "Template GUI App.app",
+    icon: "app",
+    width: 560,
+    height: 360,
+    entry: "app.js",
+  },
+  files: [
+    {
+      path: "app.js",
+      mime: "text/javascript",
+      content: [
+        "export function mount({ content, pkg }) {",
+        "  content.innerHTML = '<main class=\"package-app\" data-template-gui><p class=\"dos-kicker\">Template</p><h2>' + pkg.name + '</h2><p>Replace /opt/' + pkg.id + '/app.js with your app UI.</p></main>';",
+        "}",
+      ].join("\n"),
+    },
+  ],
+  permissions: {
+    capabilities: [],
+    fileSystem: {
+      read: ["/opt/template-gui-app"],
+      write: [],
+    },
+  },
+};
+
+const TEMPLATE_CLI_PACKAGE = {
+  id: "template-cli-app",
+  name: "Template CLI App",
+  version: "0.1.0",
+  description: "Starter template for a command-oriented DindbOS package.",
+  app: {
+    id: "template-cli-app",
+    name: "Template CLI App",
+    title: "Template CLI App.app",
+    icon: "terminal",
+    width: 560,
+    height: 320,
+    entry: "app.js",
+  },
+  files: [
+    {
+      path: "app.js",
+      mime: "text/javascript",
+      content: [
+        "export function mount({ content, pkg }) {",
+        "  content.innerHTML = '<main class=\"package-app\" data-template-cli><p class=\"dos-kicker\">Template</p><h2>' + pkg.name + '</h2><pre>bin/cli.js ready</pre></main>';",
+        "}",
+      ].join("\n"),
+    },
+    {
+      path: "bin/cli.js",
+      mime: "text/javascript",
+      content: [
+        "export function main(argv = []) {",
+        "  return `template cli ${argv.join(' ')}`.trim();",
+        "}",
+      ].join("\n"),
+    },
+  ],
+  permissions: {
+    capabilities: [],
+    fileSystem: {
+      read: ["/opt/template-cli-app"],
+      write: [],
+    },
+  },
+};
+
+const TEMPLATE_WASM_CLI_PACKAGE = {
+  id: "template-wasm-cli",
+  name: "Template WASM CLI",
+  version: "0.1.0",
+  description: "Starter template for a WASI-style WASM CLI package.",
+  app: {
+    id: "template-wasm-cli",
+    name: "Template WASM CLI",
+    title: "Template WASM CLI.app",
+    icon: "terminal",
+    width: 560,
+    height: 320,
+    runtime: "wasm",
+    entry: "bin/tool.wasm",
+  },
+  files: [
+    {
+      path: "bin/tool.wasm",
+      mime: "application/wasm",
+      base64: "AGFzbQEAAAABDAJgBH9/f38Bf2AAAAIjARZ3YXNpX3NuYXBzaG90X3ByZXZpZXcxCGZkX3dyaXRlAAADAgEBBQMBAAEHEwIGbWVtb3J5AgAGX3N0YXJ0AAEKDwENAEEBQRBBAUEgEAAaCwsuAQBBAAsodGVtcGxhdGUgd2FzbSBvawAAAAASAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    },
+  ],
+  permissions: {
+    capabilities: [],
+    fileSystem: {
+      read: ["/opt/template-wasm-cli"],
+      write: [],
+    },
+  },
+};
+
+const TEMPLATE_BACKGROUND_WORKER_PACKAGE = {
+  id: "template-background-worker",
+  name: "Template Background Worker",
+  version: "0.1.0",
+  description: "Starter template for a package with a worker-backed background task.",
+  app: {
+    id: "template-background-worker",
+    name: "Template Background Worker",
+    title: "Template Background Worker.app",
+    icon: "process",
+    width: 600,
+    height: 360,
+    entry: "app.js",
+  },
+  files: [
+    {
+      path: "app.js",
+      mime: "text/javascript",
+      content: [
+        "export function mount({ content, pkg }) {",
+        "  content.innerHTML = '<main class=\"package-app\" data-template-worker><p class=\"dos-kicker\">Template</p><h2>' + pkg.name + '</h2><p>worker.js is the background task entry point for this package template.</p></main>';",
+        "}",
+      ].join("\n"),
+    },
+    {
+      path: "worker.js",
+      mime: "text/javascript",
+      content: [
+        "export async function run({ os, pkg }) {",
+        "  return os.executor.runCpuTask({ appId: `${pkg.id}:worker`, name: `${pkg.name} Worker`, durationMs: 10 });",
+        "}",
+      ].join("\n"),
+    },
+  ],
+  permissions: {
+    capabilities: ["process.read"],
+    fileSystem: {
+      read: ["/opt/template-background-worker"],
+      write: [],
+    },
+  },
+};
+
+const TEMPLATE_PACKAGES = [
+  TEMPLATE_GUI_PACKAGE,
+  TEMPLATE_CLI_PACKAGE,
+  TEMPLATE_WASM_CLI_PACKAGE,
+  TEMPLATE_BACKGROUND_WORKER_PACKAGE,
+];
 
 export class PackageManager {
   constructor(os) {
@@ -536,6 +695,7 @@ export class PackageManager {
       PACKAGE_INSTALL_ROOT,
       "/opt/dindbos",
       PACKAGE_SOURCE_DIR,
+      PACKAGE_TEMPLATE_DIR,
       "/opt/dindbos/registry",
       "/usr",
       "/usr/share",
@@ -555,10 +715,25 @@ export class PackageManager {
     this.ensureSamplePackage(SAMPLE_API_PACKAGE, "# API Lab package\n\nInstall with `pkg install /opt/dindbos/packages/api-lab/dindbos.app.json`.\n");
     this.ensureSamplePackage(SAMPLE_PAINT_PACKAGE, "# Paint Sample package\n\nInstall with `pkg install /opt/dindbos/packages/paint-sample/dindbos.app.json`.\n");
     this.ensureSamplePackage(SAMPLE_PDF_VIEWER_PACKAGE, "# PDF Viewer Sample package\n\nInstall with `pkg install /opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json`.\n");
+    this.ensurePackageTemplates();
+  }
+
+  ensurePackageTemplates() {
+    TEMPLATE_PACKAGES.forEach((manifest) => {
+      this.ensurePackageSource(
+        manifest,
+        "# " + manifest.name + "\n\nInstall with `pkg install " + PACKAGE_TEMPLATE_DIR + "/" + manifest.id + "/dindbos.app.json`.\nCopy this directory to start a real package.\n",
+        PACKAGE_TEMPLATE_DIR,
+      );
+    });
   }
 
   ensureSamplePackage(manifest, readme) {
-    const directory = `${PACKAGE_SOURCE_DIR}/${manifest.id}`;
+    this.ensurePackageSource(manifest, readme, PACKAGE_SOURCE_DIR);
+  }
+
+  ensurePackageSource(manifest, readme, sourceRoot = PACKAGE_SOURCE_DIR) {
+    const directory = `${sourceRoot}/${manifest.id}`;
     if (!this.os.fs.exists(directory)) {
       this.os.fs.createDirectory(directory, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, this.system);
     }
@@ -566,7 +741,7 @@ export class PackageManager {
     const currentManifest = this.os.fs.exists(manifestPath)
       ? safeRead(() => this.os.fs.readFile(manifestPath, "/", this.system), "")
       : "";
-    if (!currentManifest.includes(`"id": "${manifest.id}"`) || !currentManifest.includes('"entry": "app.js"')) {
+    if (!currentManifest.includes(`"id": "${manifest.id}"`)) {
       this.os.fs.writeOrCreateFile(
         manifestPath,
         `${JSON.stringify(manifest, null, 2)}\n`,
