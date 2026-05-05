@@ -1062,15 +1062,15 @@ Implementation tasks:
 - Already present: service manifests support lifecycle policies for `foreground-only`, `visible-tab-only`, `resumable`, `scheduled-when-visible`, and `companion-required` work; pagehide/hidden-tab suspension degrades foreground/visible/companion-bound services instead of pretending they can keep running.
 - Already present: recovery records under `/var/run/dindbos/recovery` capture dirty shutdown state, pending persistence status, suspended services, worker-backed processes, and running processes.
 - Already present: service degradation records lifecycle policy reasons in `/var/run/dindbos/services.json`, `/var/log/dindbos/services.log`, and Activity Monitor's service permission review.
-- Add broader user-facing diagnostics explaining closed-page limits across apps, workers, and optional companions.
+- Already present: Settings and `doctor` expose lifecycle/recovery diagnostics, last shutdown/recovery records, and closed-page unsupported boundaries across timers, workers, services, and unflushed async storage.
 - Add optional service worker or periodic background sync integration only for browser-supported, permissioned, limited maintenance tasks.
 
 Verification:
 
 - Already present: smoke coverage verifies pending-write lifecycle flushes, boot-time lifecycle diagnostics, service visibility/pagehide suspend/resume wiring, OS lifecycle transitions for pagehide/pageshow/visibility/beforeunload, dirty shutdown recovery records after reload, and service degradation after pagehide.
 - Already present: `npm run smoke:processes` verifies per-process lifecycle callback invocation, `process:lifecycle` events, and `/proc` callback diagnostics.
+- Already present: `npm run smoke:settings` and `npm run smoke:shell` verify lifecycle/recovery diagnostics and closed-page unsupported reporting.
 - Add smoke coverage for richer recovery diagnostics after reload.
-- Add tests proving unsupported background persistence is reported as unsupported instead of silently promised.
 
 Completion criteria:
 

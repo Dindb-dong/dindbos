@@ -315,6 +315,36 @@ export class DindbOS {
     }
   }
 
+  readLastRecoveryRecord() {
+    if (!this.fs.exists(LAST_RECOVERY_PATH)) return null;
+    try {
+      return JSON.parse(this.fs.readFile(LAST_RECOVERY_PATH, "/", this.permissions.systemPrincipal()));
+    } catch {
+      return null;
+    }
+  }
+
+  recoveryStatus() {
+    const lastShutdown = this.readLastShutdownRecord();
+    const lastRecovery = this.readLastRecoveryRecord();
+    return {
+      lastShutdown,
+      lastRecovery,
+      closedPagePersistence: false,
+      unsupportedAfterClose: [
+        "javascript timers",
+        "worker execution",
+        "service processes without browser-supported background APIs",
+        "unflushed async storage work after the browser stops the page",
+      ],
+      supportedWhileHidden: [
+        "best-effort filesystem flush",
+        "service suspend/degrade records",
+        "recovery records for the next boot",
+      ],
+    };
+  }
+
   recoverPreviousShutdown() {
     const record = this.readLastShutdownRecord();
     if (!record?.dirtyShutdown || record.recoveredAt) return null;
