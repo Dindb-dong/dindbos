@@ -85,6 +85,7 @@ Already present:
 - `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache` are exposed as distinct disk/cache policy areas through runtime APIs and `df`.
 - `npm run smoke:boot` verifies disk policy root creation and path-to-policy resolution.
 - Runtime Cache API store exists with memory fallback for package and npm fetches.
+- Runtime Cache API keys are scoped by active session user by default so preview/package/npm cache entries do not leak across `loginctl switch`.
 - npm metadata/tarballs and remote package manifests/files use the runtime cache; `npm run smoke:npm-node` and `npm run smoke:packages` verify repeated installs avoid repeated fetches.
 - Flush/recovery status is exposed through runtime persistence status, Terminal/Settings storage surfaces, and pending-write unload prompts.
 - `npm run smoke:persistent-storage` verifies pending-write `beforeunload` prompting and fallback recovery paths.
@@ -428,7 +429,7 @@ Implementation tasks:
 - Already present: shell command history is persisted per user under `/var/lib/dindbos/shell-history/<user>.json`, reloads into new shell sessions, and switches with `loginctl switch`.
 - Already present: package preferences are persisted per user under `/var/lib/dindbos/package-preferences/<user>.json` and are exposed through shell `pkg prefs`.
 - Already present: window placement layout is persisted per user under `/var/lib/dindbos/window-placements/<user>.json`, restored by Window Manager, and isolated across session users.
-- Add per-user cache.
+- Already present: runtime Cache API entries are scoped by active session user and switch with `loginctl switch`, preventing cross-user cache hits for the same logical cache key.
 - Already present: package trust changes through `pkg trust add/remove` require an administrator principal.
 - Already present: package trust allow/deny decisions are recorded in `/var/log/dindbos/security-audit.log`.
 - Already present: system settings storage-management operations through sandboxed `storage.manage` and shell `storage flush` / `storage persist` / `resetfs` require an administrator principal.
@@ -442,6 +443,7 @@ Verification:
 - Already present: `npm run smoke:sessions` verifies normalized session users/groups, per-user home creation, persistent user/group records, numeric uid/gid assignment, shell `id` output, session switching through `loginctl`, cross-user private file denial, session lock/unlock denial, process credential `/proc` reporting, and sandbox filesystem access through process supplementary groups.
 - Already present: `npm run smoke:sessions` verifies per-user shell history persistence, reload into a new shell, and no shell history leakage across `loginctl switch`.
 - Already present: `npm run smoke:sessions` verifies per-user package preference persistence and no package preference leakage across `loginctl switch`.
+- Already present: `npm run smoke:sessions` verifies Runtime Cache API entries do not leak across `loginctl switch` and restore with the original user.
 - Already present: `npm run smoke:permissions` verifies app state does not leak across users for the same app id, and `npm run smoke:packages` verifies package uninstall cleans the app's per-user state record.
 - Already present: `npm run smoke:sessions` and `npm run smoke:shell` verify non-admin package trust mutation denial, admin package trust mutation allowance, and security audit logging for both decisions.
 - Already present: `npm run smoke:window-manager` verifies per-user window placement persistence and no layout leakage across session users.
