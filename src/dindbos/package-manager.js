@@ -399,6 +399,10 @@ export class PackageManager {
       if (root?.mountType !== "pkgfs") {
         problems.push(packageFsckProblem("package-root-invalid", installPath, `mountType=${root?.mountType || root?.type || "unknown"} record=${recordPath}`));
       }
+      const entryPath = record.app?.entryPath ? this.os.fs.normalize(record.app.entryPath) : "";
+      if (entryPath && !this.os.fs.exists(entryPath)) {
+        problems.push(packageFsckProblem("package-entry-missing", entryPath, `package=${record.id} record=${recordPath}`));
+      }
       const appProblems = this.checkPackageAppRegistry(record, { repair, dryRun });
       problems.push(...appProblems.problems);
       repairs.push(...appProblems.repairs);

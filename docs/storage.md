@@ -41,8 +41,12 @@ Current implementation:
 - Local mount directory copy conflicts are explicit: low-level runtime calls default to `error`, while callers can choose `replace`, `merge`, `skip`, `rename`, or `prompt` with a conflict resolver. `merge` is non-destructive and preserves existing conflicting children; `replace` removes the target tree first.
 - Files.app copy, move, import, and export traversals use cooperative scheduling with progress and cancellation checks so large trees are chunked instead of running as one uninterrupted browser task.
 - Shell `fsck` writes summary records to `/var/log/dindbos/fsck.log` and structured repair/refusal audit records to `/var/log/dindbos/fsck-audit.log`.
+- Shell `fsck` merges PersistentStorage partial journal diagnostics, including active OPFS transaction markers whose replay manifests are missing or pending promotion.
+- Shell `fsck` merges local mount fsck diagnostics, including stale persisted local mount metadata whose invalid records can be removed without touching valid mounts.
 - VFS fsck repair uses a protected-metadata guard so safe repairs cannot weaken ownership, group, permissions, security labels, quarantine state, or encrypted-volume lock flags.
+- VFS fsck detects interrupted atomic-write staging nodes and can remove only the orphaned staged temp file while preserving the committed target.
 - Package fsck detects package DB/app registry disagreement and can restore a missing package app manifest/launcher from the package DB record.
+- Package fsck reports broken package roots whose declared app entry file is missing even when the package DB record and `pkgfs` root still exist.
 - Viewer.app caches document and image preview bytes through the runtime Cache API store with memory fallback, using path, MIME type, size, and modified time in the cache key.
 - `os.diskPolicyAreas()`, `os.diskPolicyForPath(path)`, and `df` expose policy areas for `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache`.
 - `os.storageBucketPolicy()` reports whether `navigator.storageBuckets` exists and records the current decision. Today DindbOS keeps the proven OPFS/IndexedDB/Cache split, while `/tmp`, `/var/cache`, and durable areas are separated by disk policy and reported bucket intent.

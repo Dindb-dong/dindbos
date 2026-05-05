@@ -132,6 +132,37 @@ export class LocalFolderMountManager {
     return [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
   }
 
+  async checkIntegrity(options = {}) {
+    const repair = Boolean(options.repair);
+    const dryRun = Boolean(options.dryRun);
+    const problems = [];
+    const repairs = [];
+    const payload = await this.os.storage?.readValue?.(this.storageKey);
+    if (!payload) return localMountFsckResult({ dryRun, checkedLocalMounts: 0, problems, repairs });
+    if (payload.version !== 1 || !Array.isArray(payload.mounts)) {
+      problems.push(localMountFsckProblem("local-mount-metadata-invalid", this.storageKey, "persisted local mount payload is not version 1", false));
+      return localMountFsckResult({ dryRun, checkedLocalMounts: 1, problems, repairs });
+    }
+    const records = payload.mounts;
+    const validRecords = [];
+    records.forEach((record, index) => {
+      const path = this.os.fs.normalize(record?.path || `/mnt/<missing-${index}>`);
+      if (record?.path && record?.handle?.kind === "directory") {
+        validRecords.push(record);
+        return;
+      }
+      problems.push(localMountFsckProblem(
+        "local-mount-stale-metadata",
+        path,
+        "persisted local mount record is missing a directory handle or mount path",
+        true,
+      ));
+      if (repair) repairs.push(localMountFsckRepair("remove-stale-local-mount", path, "persisted", "removed", dryRun));
+    });
+    if (repair && !dryRun && repairs.length) await this.savePersistedRecords(validRecords);
+    return localMountFsckResult({ dryRun, checkedLocalMounts: records.length, problems, repairs });
+  }
+
   async requestAccess(path, options = {}) {
     const normalized = this.os.fs.normalize(path);
     const mounted = this.mountFor(normalized);
@@ -928,6 +959,38 @@ function nodeChangedSinceSnapshot(node, snapshot) {
   return current.type !== snapshot.type
     || current.size !== snapshot.size
     || current.modified !== snapshot.modified;
+}
+
+function localMountFsckProblem(code, path, message, repairable = false) {
+  return {
+    code,
+    path,
+    message,
+    repairable: Boolean(repairable),
+  };
+}
+
+function localMountFsckRepair(kind, path, from, to, dryRun) {
+  return {
+    kind,
+    path,
+    from,
+    to,
+    dryRun: Boolean(dryRun),
+  };
+}
+
+function localMountFsckResult({ dryRun, checkedLocalMounts, problems, repairs }) {
+  return {
+    ok: problems.length === 0,
+    dryRun,
+    checkedLocalMounts,
+    repaired: repairs.some((entry) => !entry.dryRun),
+    problemCount: problems.length,
+    repairCount: repairs.length,
+    problems,
+    repairs,
+  };
 }
 
 function localMountMetadata(kind, values = {}) {

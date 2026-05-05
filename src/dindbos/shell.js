@@ -1085,14 +1085,14 @@ export class ShellSession {
     return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
   }
 
-  fsck(args = []) {
+  async fsck(args = []) {
     const repair = args.includes("--repair") || args.includes("--dry-run");
     const dryRun = args.includes("--dry-run") || !args.includes("--repair");
     const explain = args.includes("--explain") || args[0] === "explain";
-    const result = mergeFsckResults(
-      this.os.fs.checkIntegrity({ repair, dryRun }),
-      safeRead(() => this.os.packages?.checkIntegrity?.({ repair, dryRun }), null),
-    );
+    let result = this.os.fs.checkIntegrity({ repair, dryRun });
+    result = mergeFsckResults(result, safeRead(() => this.os.packages?.checkIntegrity?.({ repair, dryRun }), null));
+    result = mergeFsckResults(result, await safeAsync(() => this.os.storage?.checkIntegrity?.({ repair, dryRun }), null));
+    result = mergeFsckResults(result, await safeAsync(() => this.os.localMounts?.checkIntegrity?.({ repair, dryRun }), null));
     this.recordFsckLog(result);
     return formatFsck(result, { explain });
   }
@@ -1112,6 +1112,8 @@ export class ShellSession {
       `repaired=${Boolean(result.repaired)}`,
       `checked=${Number(result.checkedNodes || 0)}`,
       `packages=${Number(result.checkedPackages || 0)}`,
+      `storage=${Number(result.checkedStorage || 0)}`,
+      `localMounts=${Number(result.checkedLocalMounts || 0)}`,
       `problems=${Number(result.problemCount || 0)}`,
       `repairs=${Number(result.repairCount || 0)}`,
       `auditRecords=${auditRecords.length}`,
@@ -1885,7 +1887,7 @@ function formatStorage(status) {
 
 function formatFsck(result = {}, options = {}) {
   const lines = [
-    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} packages=${Number(result.checkedPackages || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
+    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} packages=${Number(result.checkedPackages || 0)} storage=${Number(result.checkedStorage || 0)} localMounts=${Number(result.checkedLocalMounts || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
   ];
   (result.problems || []).slice(0, 20).forEach((entry) => {
     lines.push(`${entry.code} ${entry.path} repairable=${Boolean(entry.repairable)} ${entry.message}`);
@@ -1905,10 +1907,17 @@ function fsckExplanation(code, repairable = false) {
   const explanations = {
     "size-mismatch": "File size metadata differs from content bytes; safe repair recalculates size only.",
     "invalid-children": "Directory children metadata is malformed; safe repair replaces only invalid child lists.",
+    "orphaned-atomic-staging": "An interrupted atomic write left a staged temporary file; safe repair removes only the staged file.",
     "package-record-missing": "A pkgfs root exists without a package DB record; safe repair can remove the orphan root.",
     "package-root-missing": "A package DB record points at a missing package root; reinstall or restore is required.",
     "package-root-invalid": "A package install path exists but is not mounted as pkgfs.",
     "package-record-invalid": "A package DB JSON record cannot be parsed into a package id.",
+    "package-entry-missing": "A package root exists but its declared app entry file is missing; reinstall or restore is required.",
+    "storage-journal-invalid": "A persisted storage transaction marker cannot be parsed; reload or manual recovery is required.",
+    "storage-journal-partial": "A storage transaction marker is present without a replay manifest; the last complete manifest remains authoritative.",
+    "storage-journal-pending-replay": "A storage replay manifest exists and should be promoted during the next storage load before normal boot continues.",
+    "local-mount-metadata-invalid": "Persisted local mount metadata is malformed; inspect or forget the local mount record.",
+    "local-mount-stale-metadata": "A persisted local mount record no longer contains a usable directory handle or mount path; safe repair removes only that stale record.",
   };
   return `${explanations[code] || "DindbOS detected an integrity invariant violation."} ${suffix}`;
 }
@@ -1922,6 +1931,8 @@ function mergeFsckResults(base = {}, extra = null) {
     ok: Boolean(base.ok) && Boolean(extra.ok),
     repaired: Boolean(base.repaired || extra.repaired),
     checkedPackages: Number(base.checkedPackages || 0) + Number(extra.checkedPackages || 0),
+    checkedStorage: Number(base.checkedStorage || 0) + Number(extra.checkedStorage || 0),
+    checkedLocalMounts: Number(base.checkedLocalMounts || 0) + Number(extra.checkedLocalMounts || 0),
     problemCount: problems.length,
     repairCount: repairs.length,
     problems,

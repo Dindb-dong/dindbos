@@ -158,6 +158,48 @@ export class PersistentStorage {
     return this.writeJournal.map((entry) => ({ ...entry }));
   }
 
+  async checkIntegrity(options = {}) {
+    const dryRun = Boolean(options.dryRun);
+    const problems = [];
+    const repairs = [];
+    let checkedStorage = 1;
+    if (!this.opfsProvider) {
+      return storageFsckResult({ dryRun, checkedStorage, problems, repairs });
+    }
+    const activeKey = this.activeStorageTransactionKey();
+    const activeRaw = await this.safeOpfsGet(activeKey);
+    if (!activeRaw) return storageFsckResult({ dryRun, checkedStorage, problems, repairs });
+    let transaction = null;
+    try {
+      const parsed = JSON.parse(activeRaw);
+      if (!parsed || typeof parsed !== "object") throw new Error("active transaction is not an object");
+      transaction = parsed;
+    } catch (error) {
+      problems.push(storageFsckProblem("storage-journal-invalid", activeKey, error?.message || "active transaction cannot be parsed", false));
+      return storageFsckResult({ dryRun, checkedStorage, problems, repairs });
+    }
+    const transactionId = String(transaction.transactionId || "");
+    const replayKey = String(transaction.replayManifestKey || "");
+    checkedStorage += replayKey ? 1 : 0;
+    const replayRaw = replayKey ? await this.safeOpfsGet(replayKey) : "";
+    if (replayKey && replayRaw) {
+      problems.push(storageFsckProblem(
+        "storage-journal-pending-replay",
+        replayKey,
+        `transaction=${transactionId || "unknown"} active=${activeKey}`,
+        false,
+      ));
+    } else {
+      problems.push(storageFsckProblem(
+        "storage-journal-partial",
+        activeKey,
+        `transaction=${transactionId || "unknown"} replay=${replayKey || "missing"}`,
+        false,
+      ));
+    }
+    return storageFsckResult({ dryRun, checkedStorage, problems, repairs });
+  }
+
   async estimate() {
     const estimate = await globalThis.navigator?.storage?.estimate?.();
     const persisted = await globalThis.navigator?.storage?.persisted?.();
@@ -800,6 +842,14 @@ export class PersistentStorage {
     }
   }
 
+  async safeOpfsGet(key) {
+    try {
+      return await this.opfsGet(key);
+    } catch {
+      return "";
+    }
+  }
+
   recordStorageRecoveryDecision(transaction = {}, raw = "") {
     const decision = transaction.decision || (raw ? "load-last-complete-manifest" : "no-complete-manifest");
     const entry = this.recordStorageJournal("write-recovery", {
@@ -1094,6 +1144,27 @@ function normalizeStorageClassQuotas(value = {}) {
   return Object.fromEntries(Object.entries(value)
     .map(([key, quota]) => [String(key || "").trim(), Math.max(0, Number(quota || 0))])
     .filter(([key, quota]) => key && quota > 0));
+}
+
+function storageFsckProblem(code, path, message, repairable = false) {
+  return {
+    code,
+    path,
+    message,
+    repairable: Boolean(repairable),
+  };
+}
+
+function storageFsckResult({ dryRun, checkedStorage, problems, repairs }) {
+  return {
+    ok: problems.length === 0,
+    dryRun,
+    checkedStorage,
+    problemCount: problems.length,
+    repairCount: repairs.length,
+    problems,
+    repairs,
+  };
 }
 
 function storageClassForReservation(details = {}) {

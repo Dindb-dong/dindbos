@@ -693,6 +693,10 @@ assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("fs.writeText 
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("package.info OK"), "API Lab sample did not read package info through syscall");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("process.log OK"), "API Lab sample did not write global syscall log");
 assert(os.fs.readFile("/var/lib/dindbos/app-state/guest/api-lab.json").includes('"launches": 1'), "API Lab sample did not persist app state under per-user app-state");
+os.fs.remove(apiLab.app.entryPath, "/", {}, os.permissions.systemPrincipal());
+const packageBrokenMountFsck = packages.checkIntegrity({ dryRun: true });
+assert(packageBrokenMountFsck.problems.some((entry) => entry.code === "package-entry-missing" && entry.path === apiLab.app.entryPath), "package fsck did not report missing package entry file");
+os.fs.writeOrCreateFile(apiLab.app.entryPath, apiSource, "/", { mime: "application/javascript" }, os.permissions.systemPrincipal());
 const beforePackageFsck = os.fs.snapshot();
 os.fs.remove(apiLab.installPath, "/", { recursive: true }, os.permissions.systemPrincipal());
 os.fs.createMount("/opt/orphan-pkg", {
