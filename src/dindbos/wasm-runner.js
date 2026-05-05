@@ -257,6 +257,17 @@ export class WasmRunner {
             return errnoNumber(error.code || errnoCodeFromMessage(error.message) || "EIO");
           }
         },
+        path_link: (oldDirfd, oldFlags, oldPathPtr, oldPathLength, newDirfd, newPathPtr, newPathLength) => {
+          void oldFlags;
+          try {
+            const source = this.scopedDirectoryTarget(process, context, Number(oldDirfd), readString(oldPathPtr, oldPathLength), "read");
+            const destination = this.scopedDirectoryTarget(process, context, Number(newDirfd), readString(newPathPtr, newPathLength));
+            this.os.fs.createHardLink(source, destination, "/", context.principal);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || errnoCodeFromMessage(error.message) || "EIO");
+          }
+        },
         path_open: (dirfd, dirflags, pathPtr, pathLength, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) => {
           void dirflags;
           try {
@@ -437,6 +448,7 @@ function errnoCodeFromMessage(message = "") {
   if (text.includes("file exists")) return "EEXIST";
   if (text.includes("is a directory")) return "EISDIR";
   if (text.includes("not a directory")) return "ENOTDIR";
+  if (text.includes("not a regular file")) return "EINVAL";
   if (text.includes("Too many symbolic links")) return "ELOOP";
   if (text.includes("symbolic link")) return "EINVAL";
   return "";
