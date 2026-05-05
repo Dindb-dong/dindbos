@@ -12,12 +12,16 @@ export class DindbOSSDKError extends Error {
 export function createDindbOSSDK(target, options = {}) {
   const raw = syscallFunction(target);
   const invoke = (name, args = {}) => unwrap(raw(name, args), name);
+  const rawAsync = syscallAsyncFunction(target, raw);
+  const invokeAsync = async (name, args = {}) => unwrap(await rawAsync(name, args), name);
   const currentPid = () => Number(options.currentPid || target?.process?.pid || 0);
 
   return deepFreeze({
     syscall: {
       raw,
       call: invoke,
+      rawAsync,
+      callAsync: invokeAsync,
     },
     clock: {
       now: () => invoke("clock.now"),
@@ -56,6 +60,7 @@ export function createDindbOSSDK(target, options = {}) {
     },
     storage: {
       status: () => invoke("storage.status"),
+      sync: () => invokeAsync("storage.sync"),
     },
     localMounts: {
       status: () => invoke("localMount.status"),
@@ -77,6 +82,11 @@ function syscallFunction(target) {
   if (typeof target === "function") return target;
   if (typeof target?.syscall === "function") return (name, args = {}) => target.syscall(name, args);
   throw new Error("sdk: syscall function is required");
+}
+
+function syscallAsyncFunction(target, raw) {
+  if (typeof target?.syscallAsync === "function") return (name, args = {}) => target.syscallAsync(name, args);
+  return (name, args = {}) => Promise.resolve(raw(name, args));
 }
 
 function unwrap(result, syscall) {

@@ -23,12 +23,17 @@ export class AppSandbox {
     this.storage = this.createStorageFacade();
     this.state = this.createStateFacade();
     this.localMounts = this.createLocalMountFacade();
-    this.syscall = (name, args = {}) => this.os.syscall(name, args, {
+    const syscallContext = () => ({
       process: this.process,
       principal: this.principal,
       assertCapability: (capability) => this.assertCapability(capability),
       assertFileSystem: (path, access) => this.assertFileSystem(path, access),
     });
+    this.syscall = (name, args = {}) => this.os.syscall(name, args, syscallContext());
+    this.syscallAsync = (name, args = {}) => {
+      if (typeof this.os.syscallAsync === "function") return this.os.syscallAsync(name, args, syscallContext());
+      return Promise.resolve(this.syscall(name, args));
+    };
     this.session = Object.freeze({ ...os.session });
   }
 
@@ -493,6 +498,12 @@ export class AppSandbox {
       estimate: async () => {
         this.assertCapability("storage.read");
         return { ...await this.os.storage.estimate(), ...this.os.persistenceStatus?.() };
+      },
+      sync: async () => {
+        this.assertCapability("storage.read");
+        const result = await this.syscallAsync("storage.sync", {});
+        if (result?.ok) return result.value;
+        throw new Error(result?.error?.message || "storage.sync failed");
       },
       flush: async () => {
         this.assertCapability("storage.manage");

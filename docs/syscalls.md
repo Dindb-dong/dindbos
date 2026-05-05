@@ -1,6 +1,6 @@
 # DindbOS Syscall ABI
 
-DindbOS exposes a browser-native syscall ABI through `os.syscall(name, args)`.
+DindbOS exposes a browser-native syscall ABI through `os.syscall(name, args)` and `os.syscallAsync(name, args)` for async runtime barriers.
 
 This is not a Linux syscall table. It is the stable low-level boundary for DindbOS programs that need to target runtime services without importing private kernel objects. Higher-level JavaScript app APIs can continue to exist, but new low-level runtimes such as WASM, workers, and package CLIs should be able to use the same syscall boundary.
 
@@ -66,6 +66,7 @@ app.manifest
 package.list
 package.info
 storage.status
+storage.sync
 localMount.status
 mount.list
 mount.mount
@@ -77,6 +78,8 @@ app.launch
 ```
 
 Filesystem and descriptor syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process, package, storage, local mount, mount, and app launch syscalls run through the same capability checks used by the existing high-level app facade.
+
+`storage.sync` is the first durability-barrier syscall. It requires `storage.read`, waits for the runtime persistence flush path, and returns storage plus persistence status. It is intentionally not the same as the administrative `storage flush` settings operation: ordinary programs may request a best-effort durability barrier for their own completed writes, while destructive storage management still requires `storage.manage` and administrator approval.
 
 `mount.list` returns the shared DindbOS mount table. `mount.mount` and `mount.unmount` currently manage runtime `memfs` mounts, readonly `overlayfs` snapshot mounts, and readonly `zipfs` mounts for stored-method ZIP archives. Overlay mounts require `lower` and `upper` paths and use upper-over-lower precedence; ZIP mounts require an `archive` path. Unsupported drivers or ZIP compression methods fail with `ENOTSUP` instead of pretending the browser can mount arbitrary host filesystems. Sandboxed apps need `mount.read` or `mount.manage` capabilities for these calls.
 
@@ -101,6 +104,7 @@ syscall fs.writeText '{"path":"note.txt","content":"hello"}'
 syscall fs.readText '{"path":"note.txt"}'
 syscall package.info '{"packageId":"hello-notes"}'
 syscall storage.status
+syscall storage.sync
 syscall process.list
 ```
 

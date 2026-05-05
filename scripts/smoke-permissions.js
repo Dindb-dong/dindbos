@@ -65,6 +65,8 @@ syscallResult = sandbox.syscall("package.list", {});
 assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied package mismatch: ${JSON.stringify(syscallResult)}`);
 syscallResult = sandbox.syscall("storage.status", {});
 assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied storage mismatch: ${JSON.stringify(syscallResult)}`);
+syscallResult = await sandbox.syscallAsync("storage.sync", {});
+assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied storage sync mismatch: ${JSON.stringify(syscallResult)}`);
 syscallResult = sandbox.syscall("mount.mount", { path: "/mnt/sandbox", driver: "memfs" });
 assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied mount mismatch: ${JSON.stringify(syscallResult)}`);
 const appStateAtomicEvents = [];
@@ -99,6 +101,16 @@ await assertRejects(() => sandbox.fs.writeOrCreateFile("/root/new.txt", "nope"),
 await assertRejects(() => sandbox.processes.list(), "capability denied: process.read");
 await assertRejects(() => sandbox.packages.installFromRegistry("hello-notes"), "capability denied: package.manage");
 await assertRejects(() => sandbox.localMounts.mountLocal("disk"), "capability denied: localMount.manage");
+const storageReaderSandbox = new AppSandbox(os, {
+  ...process,
+  pid: 107,
+  appId: "storage-reader",
+  manifest: { capabilities: ["storage.read"], fileSystem: { read: [], write: [] } },
+});
+const beforeStorageReaderFlushes = os.storageFlushes;
+const storageSync = await storageReaderSandbox.storage.sync();
+assert(storageSync.synced === true, `storage reader sync result mismatch: ${JSON.stringify(storageSync)}`);
+assert(os.storageFlushes === beforeStorageReaderFlushes + 1, "storage.read sync did not reach runtime flush");
 const storageManagerSandbox = new AppSandbox(os, {
   ...process,
   pid: 105,
@@ -117,9 +129,10 @@ const adminStorageSandbox = new AppSandbox(os, {
   groups: ["users", "admins"],
   manifest: { capabilities: ["storage.manage"], fileSystem: { read: [], write: [] } },
 });
+const beforeAdminStorageFlushes = os.storageFlushes;
 await adminStorageSandbox.storage.flush();
 adminStorageSandbox.storage.resetFileSystem();
-assert(os.storageFlushes === 1, "admin storage flush did not reach runtime");
+assert(os.storageFlushes === beforeAdminStorageFlushes + 1, "admin storage flush did not reach runtime");
 assert(os.storageResets === 1, "admin resetfs did not reach runtime");
 assert(os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:storage-flush decision=allowed"), "security audit missing allowed storage flush");
 assert(os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:resetfs decision=allowed"), "security audit missing allowed resetfs");
@@ -228,6 +241,7 @@ function bootOs() {
   };
   os.syscalls = new SyscallDispatcher(os);
   os.syscall = (name, args = {}, context = {}) => os.syscalls.call(name, args, context);
+  os.syscallAsync = (name, args = {}, context = {}) => os.syscalls.callAsync(name, args, context);
   return os;
 }
 

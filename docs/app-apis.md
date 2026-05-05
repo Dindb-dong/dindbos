@@ -30,7 +30,7 @@ Denied operations throw explicit errors such as `capability denied` or `sandbox 
 
 ## Syscall ABI
 
-Available as `os.syscall(name, args)`.
+Available as `os.syscall(name, args)` and, for async barriers such as storage durability, `os.syscallAsync(name, args)`.
 
 The syscall ABI is the low-level runtime boundary shared by shell diagnostics, package apps, and future WASM/worker user processes. It returns structured results instead of throwing raw stack traces:
 
@@ -39,7 +39,7 @@ const write = os.syscall("fs.writeText", { path: "/home/guest/Documents/report.t
 if (!write.ok) throw new Error(write.error.message);
 ```
 
-Sandboxed apps use the same filesystem scopes and capability checks through syscall calls as they do through the high-level facades below. The current ABI covers filesystem text operations, environment reads, app metadata, package metadata, storage diagnostics, local mount diagnostics, mount table and runtime `memfs` mount management, process inspection/logging, and app launch. Syscall traces are written under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`. See `docs/syscalls.md` for the current syscall table and errno-style failures.
+Sandboxed apps use the same filesystem scopes and capability checks through syscall calls as they do through the high-level facades below. The current ABI covers filesystem text operations, environment reads, app metadata, package metadata, storage diagnostics and first-pass durability sync, local mount diagnostics, mount table and runtime `memfs` mount management, process inspection/logging, and app launch. Syscall traces are written under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`. See `docs/syscalls.md` for the current syscall table and errno-style failures.
 
 ## JavaScript SDK
 
@@ -55,7 +55,7 @@ export function mount({ content, pkg, sdk }) {
 }
 ```
 
-`sdk.syscall.raw(name, args)` returns the structured syscall result unchanged. `sdk.syscall.call(name, args)` and the typed helpers return `value` on success and throw `DindbOSSDKError` with `code`, `syscall`, and `result` fields on failure.
+`sdk.syscall.raw(name, args)` returns the structured syscall result unchanged. `sdk.syscall.call(name, args)` and the typed helpers return `value` on success and throw `DindbOSSDKError` with `code`, `syscall`, and `result` fields on failure. Async helpers such as `sdk.syscall.rawAsync(name, args)`, `sdk.syscall.callAsync(name, args)`, and `sdk.storage.sync()` wait for async runtime barriers before returning.
 
 Current helper groups cover `clock`, `entropy`, `fs`, `fd`, `env`, `apps`, `packages`, `storage`, `localMounts`, and `processes`. These helpers do not grant extra permission; package manifest capabilities and filesystem scopes are still enforced by the runtime.
 
@@ -181,10 +181,11 @@ Available as `os.storage`.
 
 - `status()` requires `storage.read`
 - `estimate()` requires `storage.read`
+- `sync()` requires `storage.read`
 - `flush()` requires `storage.manage`
 - `resetFileSystem()` requires `storage.manage`
 
-Storage APIs report persistence backend state. They do not expose unrestricted browser storage primitives to apps.
+Storage APIs report persistence backend state. `sync()` is the app-facing durability barrier: it waits for the runtime persistence flush path so a program can report a save only after DindbOS has attempted to commit pending VFS state. It does not grant unrestricted browser storage primitives to apps, and administrative flush/reset operations still require `storage.manage`.
 
 ## App State
 

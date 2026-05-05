@@ -13,6 +13,8 @@ export interface DindbOSSDK {
   syscall: {
     raw<T = unknown>(name: string, args?: Record<string, unknown>): DindbOSSDKResult<T>;
     call<T = unknown>(name: string, args?: Record<string, unknown>): T;
+    rawAsync<T = unknown>(name: string, args?: Record<string, unknown>): Promise<DindbOSSDKResult<T>>;
+    callAsync<T = unknown>(name: string, args?: Record<string, unknown>): Promise<T>;
   };
   clock: {
     now(): { iso: string; ms: number };
@@ -51,6 +53,7 @@ export interface DindbOSSDK {
   };
   storage: {
     status<T = unknown>(): T;
+    sync<T = unknown>(): Promise<T>;
   };
   localMounts: {
     status<T = unknown>(): T;
@@ -64,6 +67,10 @@ export interface DindbOSSDK {
 }
 
 export function createDindbOSSDK(
-  target: ((name: string, args?: Record<string, unknown>) => DindbOSSDKResult) | { syscall(name: string, args?: Record<string, unknown>): DindbOSSDKResult; process?: { pid?: number } },
+  target: ((name: string, args?: Record<string, unknown>) => DindbOSSDKResult) | {
+    syscall(name: string, args?: Record<string, unknown>): DindbOSSDKResult;
+    syscallAsync?(name: string, args?: Record<string, unknown>): Promise<DindbOSSDKResult>;
+    process?: { pid?: number };
+  },
   options?: { currentPid?: number },
 ): DindbOSSDK;
