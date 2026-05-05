@@ -28,6 +28,8 @@ os.services.register({
 
 Each service record is persisted to `/var/run/dindbos/services.json`. Service logs append to `/var/log/dindbos/services.log`.
 
+`os.services.sync(context, reason)` is the explicit durability barrier for service state. It waits for the DindbOS persistence flush path and returns `{ synced, reason, flush }`, so service managers and package-provided services can avoid reporting lifecycle completion before the browser-backed disk layer has accepted the latest state/log writes. Service `start()` and `runScheduled()` already await this barrier after writing final state. Service callbacks also receive `sync(reason)` in their service context for package services that need to flush their own state transition before returning success.
+
 ## States
 
 Current service states:

@@ -7,8 +7,13 @@ const os = createDindbOSTestRuntime();
 const packages = os.packages;
 const lifecycleEvents = [];
 const activationEvents = [];
+let packageServiceFlushes = 0;
 let signedRemoteManifest = null;
 let trustedPublisher = null;
+os.flushPersistentFileSystem = async () => {
+  packageServiceFlushes += 1;
+  return { flushed: true, packageServiceFlushes };
+};
 ["install", "update", "first-run", "uninstall-cleanup", "uninstall"].forEach((type) => {
   os.bus.on(`app:${type}`, (event) => lifecycleEvents.push(`${type}:${event.packageId}:${event.appId}`));
 });
@@ -625,13 +630,19 @@ assert(serviceNamespace.services[0].id === "package:service-namespace:sync", "pa
 const serviceId = "package:service-namespace:sync";
 assert(os.services.get(serviceId)?.packageId === "service-namespace", "package service was not registered with package id");
 assert(os.services.manifest(serviceId).namespace.processGroup === "package:service-namespace", "package service manifest missing namespace");
+const beforePackageServiceStartFlushes = packageServiceFlushes;
 const packageService = await os.services.start(serviceId);
+assert(packageServiceFlushes === beforePackageServiceStartFlushes + 1, "package service start did not wait for durability sync");
 const packageServiceProcess = os.processes.get(packageService.pid);
 assert(packageServiceProcess?.manifest?.namespace?.processGroup === "package:service-namespace", `package service process missing namespace: ${JSON.stringify(packageServiceProcess)}`);
 assert(packageServiceProcess.executorKind === "service", "package service process missing service executor kind");
 const serviceContext = os.services.serviceContext(os.services.definitions.get(serviceId), os.services.records.get(serviceId));
 assert(serviceContext.dependencyView.allowedPackages.includes("service-lib"), "package service dependency view missing declared dependency");
 assert(serviceContext.fs.readFile("/opt/service-namespace/node_modules/service-lib/index.js").includes("service"), "package service dependency view blocked declared dependency");
+const beforePackageServiceContextFlushes = packageServiceFlushes;
+const packageServiceSync = await serviceContext.sync("namespace-smoke");
+assert(packageServiceSync.reason === `service:${serviceId}:namespace-smoke`, "package service context sync reason mismatch");
+assert(packageServiceFlushes === beforePackageServiceContextFlushes + 1, "package service context sync did not reach durability barrier");
 await assertRejects(
   () => serviceContext.fs.readFile("/opt/service-namespace/node_modules/secret-lib/index.js"),
   "dependency view denied",

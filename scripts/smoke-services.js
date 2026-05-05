@@ -5,7 +5,12 @@ import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
 const os = createDindbOSTestRuntime();
 const events = [];
 const fsEvents = [];
+let serviceFlushes = 0;
 os.fs.onChange = (event) => fsEvents.push(event);
+os.flushPersistentFileSystem = async () => {
+  serviceFlushes += 1;
+  return { flushed: true, serviceFlushes };
+};
 ["start", "stop", "crash", "scheduled-run", "degraded", "suspend", "resume"].forEach((type) => {
   os.bus.on(`service:${type}`, (event) => events.push(`${type}:${event.service.id}:${event.service.state}`));
 });
@@ -28,6 +33,7 @@ os.services.register({
 const started = await os.services.start("search-indexer");
 assert(started.state === "running", "service did not enter running state");
 assert(started.pid > 0 && os.processes.get(started.pid), "service did not create a runtime process");
+assert(serviceFlushes === 1, "service start did not wait for durability sync");
 assert(os.fs.readFile("/var/run/dindbos/services.json").includes("search-indexer"), "service state file missing registered service");
 assert(fsEvents.some((event) => event.action === "atomic-create" && event.path === "/var/run/dindbos/services.json"), "service state was not atomically created");
 assert(os.fs.readFile("/var/log/dindbos/services.log").includes("indexer boot"), "service log missing start entry");
@@ -35,6 +41,7 @@ assert(events.includes("start:search-indexer:running"), "service start event mis
 
 const scheduled = await os.services.runScheduled("search-indexer");
 assert(scheduled.runCount === 1, "scheduled service run count mismatch");
+assert(serviceFlushes === 2, "scheduled service run did not wait for durability sync");
 assert(os.fs.readFile("/var/lib/dindbos/search/last-run.txt") === "indexed\n", "scheduled service did not write runtime state");
 assert(events.includes("scheduled-run:search-indexer:running"), "scheduled-run event missing");
 const manifest = os.services.manifest("search-indexer");
@@ -44,6 +51,9 @@ assert(manifest.fileSystem.read.includes("/home/guest"), "service manifest read 
 assert(manifest.fileSystem.write.includes("/var/lib/dindbos/search"), "service manifest write scope missing");
 manifest.fileSystem.read.push("/mutated");
 assert(!os.services.manifest("search-indexer").fileSystem.read.includes("/mutated"), "service manifest leaked mutable read scope");
+const serviceContextSync = await os.services.serviceContext(os.services.definitions.get("search-indexer"), os.services.records.get("search-indexer")).sync("manual-smoke");
+assert(serviceContextSync.synced === true && serviceContextSync.reason === "service:search-indexer:manual-smoke", "service context sync returned wrong result");
+assert(serviceFlushes === 3, "service context sync did not reach durability barrier");
 
 os.services.suspend("visibility-hidden");
 assert(os.services.get("search-indexer").state === "suspended", "service did not suspend");

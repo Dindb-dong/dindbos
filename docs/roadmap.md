@@ -203,8 +203,8 @@ Implementation cuts:
 - Already present: AppRegistry register/unregister mutations group the in-memory app map, manifest file, and launcher file under one VFS snapshot rollback boundary.
 - Already present: ServiceManager register/unregister mutations group definitions, records, logs, and persisted service state under one VFS snapshot rollback boundary.
 - Extend staged activation to broader service lifecycle transaction groups.
-- Already present: first-pass `storage.sync` / `fsync`-style durability barrier is exposed through async syscalls, Shell raw syscall usage, SDK `storage.sync()`, AppSandbox `os.storage.sync()`, NodeCompat async `fsync`/`fdatasync` APIs, and descriptor-backed `fd.sync` for file descriptors so programs can wait for the runtime persistence flush path before reporting success.
-- Extend durability barriers into WASM, package services, and future mapped-file writes.
+- Already present: first-pass `storage.sync` / `fsync`-style durability barrier is exposed through async syscalls, Shell raw syscall usage, SDK `storage.sync()`, AppSandbox `os.storage.sync()`, NodeCompat async `fsync`/`fdatasync` APIs, descriptor-backed `fd.sync` for file descriptors, and `os.services.sync()` / service-context `sync()` for service and package-service lifecycle writes so programs can wait for the runtime persistence flush path before reporting success.
+- Extend durability barriers into WASM and future mapped-file writes.
 - Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
 - Already present: `fsck --dry-run` includes first-pass package DB drift checks for package records whose `/opt/<package>` root is missing and `pkgfs` roots with no package DB record.
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
@@ -227,7 +227,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package fsck repair removes orphan `pkgfs` roots and does not attempt unsafe repair of missing package roots.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Already present: `npm run smoke:shell` verifies `fsck --explain` prints repair policy explanations and `/var/log/dindbos/fsck.log` records dry-run and repaired runs.
-- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, and `npm run smoke:descriptors` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, and descriptor-backed `fd.sync`, while sandboxed callers without `storage.read` are denied.
+- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, `npm run smoke:descriptors`, `npm run smoke:services`, and `npm run smoke:packages` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, descriptor-backed `fd.sync`, and service/package-service lifecycle sync barriers, while sandboxed callers without `storage.read` are denied.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
