@@ -437,11 +437,33 @@ const wasmCliTemplateWindow = os.apps.launch("template-wasm-cli");
 await wasmCliTemplateWindow.rendered;
 await waitFor(() => wasmCliTemplateWindow.content.innerHTML.includes("template wasm ok"), `WASM CLI template did not render stdout: ${wasmCliTemplateWindow.content.innerHTML}`);
 const workerTemplate = packages.installFromManifestPath("/opt/dindbos/templates/template-background-worker/dindbos.app.json");
+assert(workerTemplate.app.capabilities.includes("process.execute"), "Background worker template did not declare process.execute");
 assert(workerTemplate.app.capabilities.includes("process.read"), "Background worker template did not declare process.read");
 assert(os.fs.exists("/opt/template-background-worker/worker.js"), "Background worker template did not install worker.js");
 const workerTemplateWindow = os.apps.launch("template-background-worker");
 await workerTemplateWindow.rendered;
 await waitFor(() => workerTemplateWindow.content.innerHTML.includes("data-template-worker"), "Background worker template did not render");
+const workerNamespace = packages.install(packageManifest("worker-namespace", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export async function mount({ content, os }) {",
+      "  const result = await os.executor.runCpuTask({ appId: 'worker-namespace:cpu', name: 'Worker Namespace CPU', durationMs: 5 });",
+      "  content.innerHTML = `<main data-worker-namespace data-worker-pid=\"${result.pid}\">${result.backend}:${result.status}</main>`;",
+      "}",
+    ].join("\n"),
+  },
+], { permissions: { capabilities: ["process.execute", "process.read"] } }));
+assert(workerNamespace.namespace.processGroup === "package:worker-namespace", "worker namespace package metadata mismatch");
+const workerNamespaceWindow = os.apps.launch("worker-namespace");
+await workerNamespaceWindow.rendered;
+await waitFor(() => workerNamespaceWindow.content.innerHTML.includes("data-worker-namespace"), `worker namespace package did not render: ${workerNamespaceWindow.content.innerHTML}`);
+const workerNamespaceHistory = os.processes.history.filter((process) => process.appId === "worker-namespace:cpu").pop();
+assert(workerNamespaceHistory?.parentPid === workerNamespaceWindow.pid, `worker executor parent pid mismatch: ${JSON.stringify(workerNamespaceHistory)}`);
+assert(workerNamespaceHistory?.manifest?.namespace?.processGroup === "package:worker-namespace", `worker executor did not inherit package namespace: ${JSON.stringify(workerNamespaceHistory)}`);
+assert(workerNamespaceHistory.executorKind === "cpu-task", "worker executor history missing cpu-task kind");
+packages.remove("worker-namespace");
 const paintSample = packages.installFromManifestPath("/opt/dindbos/packages/paint-sample/dindbos.app.json");
 assert(paintSample.app.entryPath === "/opt/paint-sample/app.js", "Paint sample entry path mismatch");
 const paintWindow = os.apps.launch("paint-sample");

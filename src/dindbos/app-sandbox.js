@@ -12,6 +12,7 @@ export class AppSandbox {
     this.fs = this.createFileSystemFacade();
     this.apps = this.createAppFacade();
     this.processes = this.createProcessFacade();
+    this.executor = this.createExecutorFacade();
     this.packages = this.createPackageFacade();
     this.services = this.createServiceFacade();
     this.npm = this.createNpmFacade();
@@ -216,6 +217,19 @@ export class AppSandbox {
       table: () => {
         this.assertCapability("process.read");
         return this.os.processes.formatTable();
+      },
+    };
+  }
+
+  createExecutorFacade() {
+    return {
+      runCpuTask: (options = {}) => {
+        this.assertCapability("process.execute");
+        return this.os.executor.runCpuTask({
+          ...cloneJson(options || {}),
+          parentPid: this.process.pid,
+          cwd: options.cwd ? this.os.fs.normalize(options.cwd, this.process.cwd) : this.process.cwd,
+        });
       },
     };
   }

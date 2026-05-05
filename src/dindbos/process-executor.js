@@ -259,14 +259,17 @@ export class ProcessExecutor {
         version: "0.1.0",
         entry: "process-executor",
         capabilities: ["process.read"],
+        namespace: cloneJson(options.namespace || null),
       },
     };
     const process = this.os.processes.spawn(app, {
       cwd: options.cwd || this.os.session?.home || "/",
+      parentPid: options.parentPid || 0,
       runtime: "process-executor",
       executionBackend: backend,
       executorState: "starting",
       executorKind: "cpu-task",
+      namespace: cloneJson(options.namespace || null),
     });
     if (backend === "worker") return this.runWorkerCpuTask(process, options);
     return this.runMainThreadCpuTask(process, options);
@@ -283,6 +286,7 @@ export class ProcessExecutor {
         read: [...(options.fileSystem?.read || [cwd])],
         write: [...(options.fileSystem?.write || [cwd])],
       },
+      namespace: cloneJson(options.namespace || null),
     };
     const app = {
       id: options.appId || "worker:syscall-task",
@@ -291,10 +295,12 @@ export class ProcessExecutor {
     };
     const process = this.os.processes.spawn(app, {
       cwd,
+      parentPid: options.parentPid || 0,
       runtime: "process-executor",
       executionBackend: backend,
       executorState: "starting",
       executorKind: "syscall-bridge",
+      namespace: cloneJson(options.namespace || null),
     });
     if (backend !== "worker") return this.runMainThreadSyscallTask(process, options);
     return this.runWorkerSyscallTask(process, options);
@@ -315,6 +321,7 @@ export class ProcessExecutor {
           read: [...(options.fileSystem?.read || [cwd, options.path || ""])],
           write: [...(options.fileSystem?.write || [cwd])],
         },
+        namespace: cloneJson(options.namespace || options.manifest?.namespace || null),
       },
     };
     const process = this.os.processes.spawn(app, {
@@ -326,6 +333,7 @@ export class ProcessExecutor {
       executionBackend: backend,
       executorState: "starting",
       executorKind: "wasm-output",
+      namespace: cloneJson(options.namespace || options.manifest?.namespace || null),
     });
     return this.runWorkerWasmTask(process, options);
   }
@@ -758,4 +766,9 @@ function executorError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
+}
+
+function cloneJson(value) {
+  if (value === undefined || value === null) return null;
+  return JSON.parse(JSON.stringify(value));
 }

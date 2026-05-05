@@ -332,7 +332,7 @@ const TEMPLATE_BACKGROUND_WORKER_PACKAGE = {
     },
   ],
   permissions: {
-    capabilities: ["process.read"],
+    capabilities: ["process.execute", "process.read"],
     fileSystem: {
       read: ["/opt/template-background-worker"],
       write: [],
