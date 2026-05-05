@@ -571,7 +571,8 @@ Implementation tasks:
 - Already present: service states cover `disabled`, `stopped`, `starting`, `running`, `suspended`, `degraded`, and `crashed`, with records persisted under `/var/run/dindbos/services.json`.
 - Already present: scheduled service runs are represented by `runScheduled()`, run counters, last-run timestamps, service logs under `/var/log/dindbos/services.log`, and `service:scheduled-run` / `service:degraded` events.
 - Already present: Settings reads `os.services.list()` and renders service status plus restart/disable controls through the sandboxed `service.read` / `service.manage` facade.
-- Add Activity Monitor service-specific surfaces for service logs, restart, disable, and permission review beyond the existing `service:<id>` process rows.
+- Already present: Activity Monitor detects selected `service:<id>` processes and renders service metadata, service logs, restart controls, and disable controls through the sandboxed `service.read` / `service.manage` facade.
+- Add Activity Monitor permission review for service manifests beyond the existing service process/detail surfaces.
 - Already present: first-pass service `suspend(reason)` and `resume(reason)` hooks emit lifecycle events; browser visibility, page lifecycle, and storage-flush wiring remains future work.
 - Already present: `docs/services.md` documents service manifests, state transitions, process boundary, permission boundary, and closed-page browser lifecycle limits.
 
@@ -579,7 +580,8 @@ Verification:
 
 - Already present: `npm run smoke:services` verifies service start/stop/restart, crash reporting, scheduled job execution, suspend/resume hooks, and permission denial.
 - Already present: `npm run smoke:settings` verifies Settings snapshot/markup coverage for service counts, status, restart, and disable controls.
-- Add smoke coverage for Settings/Activity Monitor service surfaces and browser visibility/page lifecycle wiring once implemented.
+- Already present: `npm run smoke:processes` verifies Activity Monitor service detail markup for service metadata, logs, restart controls, and disable controls.
+- Add smoke coverage for Activity Monitor service permission review and browser visibility/page lifecycle wiring once implemented.
 
 Completion criteria:
 
