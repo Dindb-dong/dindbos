@@ -119,6 +119,13 @@ assert(result.output.includes("packages installed=1"), `doctor package output mi
 assert(result.output.includes("processes running=0"), `doctor process output missing: ${result.output}`);
 assert(result.output.includes("docs/support.md"), `doctor troubleshooting output missing: ${result.output}`);
 
+result = await shell.executeAsync("doctor compat");
+assert(result.status === 0, `doctor compat status mismatch: ${result.status}`);
+assert(result.output.includes("DindbOS compatibility"), `doctor compat heading missing: ${result.output}`);
+assert(result.output.includes("tier A supported dindbos-js"), `doctor compat tier A missing: ${result.output}`);
+assert(result.output.includes("tier C planned wasi-wasm"), `doctor compat tier C missing: ${result.output}`);
+assert(result.output.includes("unsupported native=kernel-mode execution"), `doctor compat unsupported native boundary missing: ${result.output}`);
+
 result = await shell.executeAsync("mount-local --helper");
 assert(result.status === 0, `mount helper status mismatch: ${result.status}`);
 assert(result.output.includes("protocol=dindbos-file-helper-v1"), `mount helper protocol missing: ${result.output}`);
@@ -215,6 +222,19 @@ function bootOs() {
       estimate: async () => ({ backend: "memory", bytes: 0 }),
     },
     sessionStatus: () => ({ locked: false }),
+    compatibilitySnapshot: () => ({
+      runtime: "DindbOS.js",
+      version: "0.2.0",
+      mode: "browser-native",
+      tiers: [
+        { id: "A", key: "dindbos-js", name: "DindbOS JavaScript GUI/CLI apps", status: "supported" },
+        { id: "C", key: "wasi-wasm", name: "WASI-style WASM CLI programs", status: "planned" },
+      ],
+      browser: { workers: false, webAssembly: true, opfs: false, indexedDB: false, cacheApi: false, fileSystemAccess: false },
+      storage: { backend: "memory", structuredBackend: "memory", persisted: false, buckets: "fallback" },
+      companions: { browserProviderUrl: "ws://127.0.0.1:8787/browser", localMounts: 0 },
+      unsupportedNative: ["kernel-mode execution"],
+    }),
     apps: {
       list: () => [{ id: "calculator", name: "Calculator" }],
       manifests: () => [],

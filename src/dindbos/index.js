@@ -1,5 +1,6 @@
 import { AppRegistry } from "./app-registry.js?v=20260422-browserd";
 import { AppSandbox } from "./app-sandbox.js?v=20260422-browserd";
+import { compatibilitySnapshot } from "./compat.js?v=20260422-browserd";
 import { RuntimeCacheStore } from "./cache-store.js?v=20260422-browserd";
 import { DesktopShell } from "./desktop-shell.js?v=20260422-browserd";
 import { EventBus } from "./event-bus.js?v=20260422-browserd";
@@ -507,6 +508,10 @@ export class DindbOS {
     if (area.root === "/var/cache") return "cache";
     if (area.root === "/home" || area.root === "/var" || area.root === "/opt") return "durable";
     return "external-or-virtual";
+  }
+
+  compatibilitySnapshot() {
+    return compatibilitySnapshot(this);
   }
 
   diskPolicyForPath(path) {

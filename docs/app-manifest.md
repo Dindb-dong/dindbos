@@ -31,6 +31,9 @@ Packages are installed from `dindbos.app.json`.
       "write": []
     }
   },
+  "compatibility": {
+    "tier": "A"
+  },
   "files": [
     {
       "path": "app.js",
@@ -73,6 +76,13 @@ The runtime includes local sample packages:
 Remote installs fetch `dindbos.app.json` over `http` or `https`. A remote manifest can declare small package files with inline `content`, UTF-8 `base64`, or a relative/absolute file `url`. Relative file URLs resolve from the manifest URL.
 
 Remote manifests must pass package signature verification before files, launchers, records, or app registrations are written. `pkg info <package>` shows `trust.source`, `trust.trusted`, `trust.signature`, `trust.publisher`, and `trust.warnings` so users can see whether an app came from local VFS content or a trusted remote publisher.
+
+Packages can declare a required compatibility tier with `compatibility.tier`, `compatibility.requiredTier`, `compatibilityTier`, or `requiredCompatibilityTier`. The current installable tiers are:
+
+- Tier A / `dindbos-js`: DindbOS JavaScript GUI/CLI apps.
+- Tier B / `browser-safe-npm`: browser-safe npm programs that fit the NodeCompat surface.
+
+Tier C WASI/WASM programs, Tier D worker-isolated long-running programs, and Tier E broader companion-assisted native-adjacent capabilities are roadmap targets. Package installs that require those unsupported tiers fail before package files, launchers, records, or app registrations are written. `doctor compat` prints the current tier support and unsupported native boundaries.
 
 When `app.entry` is present, DindbOS reads that file from `/opt/<package>` and imports it as an ES module. The module should export `mount()` or a default function:
 
