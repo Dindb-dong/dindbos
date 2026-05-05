@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { DindbOS } from "../src/dindbos/index.js";
 import { ShellSession } from "../src/dindbos/shell.js";
 
@@ -168,7 +169,35 @@ os.fs.writeOrCreateFile("/home/guest/bin/wasi-hardlink-source.txt", "linked data
 }, system);
 
 const shell = new ShellSession(os);
-let result = await shell.executeAsync("export PATH=$PATH:/home/guest/bin && hello.wasm max");
+let result;
+os.ensureDirectoryPath("/mnt", { leafOwner: "root", leafGroup: "root", principal: system });
+const mounted = os.syscall("mount.mount", { path: "/mnt/cross-runtime", driver: "memfs" });
+assert(mounted.ok && mounted.value.root === "/mnt/cross-runtime", `cross-runtime memfs mount failed: ${JSON.stringify(mounted)}`);
+os.fs.writeOrCreateFile("/mnt/cross-runtime/wasi-file.txt", "opened read\n", "/", { owner: "guest", group: "users", permissions: "-rw-r--r--" }, system);
+result = await shell.executeAsync("cat /mnt/cross-runtime/wasi-file.txt");
+assert(result.status === 0 && result.output === "opened read\n", `shell mounted path read mismatch: ${result.status} ${JSON.stringify(result.output)}`);
+const mountedSandbox = new AppSandbox(os, {
+  pid: 901,
+  appId: "mounted-reader",
+  user: "guest",
+  cwd: "/home/guest",
+  manifest: {
+    capabilities: [],
+    fileSystem: {
+      read: ["/mnt/cross-runtime"],
+      write: [],
+    },
+  },
+});
+assert(mountedSandbox.fs.readFile("/mnt/cross-runtime/wasi-file.txt") === "opened read\n", "app sandbox mounted path read mismatch");
+const mountedNode = os.node.evaluate("const fs = require('fs'); console.log(fs.readFileSync('/mnt/cross-runtime/wasi-file.txt', 'utf8'));", "/home/guest");
+assert(mountedNode.status === 0 && mountedNode.output.trim() === "opened read", `NodeCompat mounted path read mismatch: ${mountedNode.status} ${JSON.stringify(mountedNode.output)}`);
+const mountedWasi = await os.wasm.runFile("/home/guest/bin/wasi-open-read.wasm", "/mnt/cross-runtime", {
+  argv: ["wasi-open-read.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(mountedWasi.status === 0 && mountedWasi.stdout === "opened read\n", `WASI mounted path read mismatch: ${mountedWasi.status} ${JSON.stringify(mountedWasi.stdout)} ${mountedWasi.stderr}`);
+result = await shell.executeAsync("export PATH=$PATH:/home/guest/bin && hello.wasm max");
 assert(result.status === 0, `shell wasm status mismatch: ${result.status} ${result.output}`);
 assert(result.output === "hello max\nuser=guest\n", `shell wasm output mismatch: ${JSON.stringify(result.output)}`);
 assert(os.processes.history.some((process) => process.appId === "wasm:hello.wasm"), "wasm shell run was not tracked as a process");
