@@ -44,6 +44,7 @@ Current implementation:
 - Shell `fsck` merges PersistentStorage partial journal diagnostics, including active OPFS transaction markers whose replay manifests are missing or pending promotion.
 - Shell `fsck` merges local mount fsck diagnostics, including stale persisted local mount metadata whose invalid records can be removed without touching valid mounts.
 - VFS fsck repair uses a protected-metadata guard so safe repairs cannot weaken ownership, group, permissions, security labels, quarantine state, or encrypted-volume lock flags.
+- VFS fsck detects interrupted atomic-write staging nodes and can remove only the orphaned staged temp file while preserving the committed target.
 - Package fsck detects package DB/app registry disagreement and can restore a missing package app manifest/launcher from the package DB record.
 - Package fsck reports broken package roots whose declared app entry file is missing even when the package DB record and `pkgfs` root still exist.
 - Viewer.app caches document and image preview bytes through the runtime Cache API store with memory fallback, using path, MIME type, size, and modified time in the cache key.

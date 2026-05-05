@@ -78,6 +78,23 @@ assert(fsckRepairedStat.permissions === "-rw-------", "fsck repair weakened perm
 assert(corruptNode.securityLabel === "user-private", "fsck repair changed security label");
 assert(corruptNode.quarantine?.state === "held", "fsck repair changed quarantine state");
 assert(corruptNode.encryptedVolumeLocked === true, "fsck repair changed encrypted volume lock state");
+const documents = reloaded.resolve("/home/guest/Documents");
+documents.children.push({
+  name: ".atomic-created.txt.dindbos-tmp",
+  type: "file",
+  mime: "text/plain",
+  content: "stale staged data",
+  size: "stale staged data".length,
+  atomicStagedFor: atomicCreatePath,
+  transient: true,
+});
+const stagedFsckDryRun = reloaded.checkIntegrity({ repair: true, dryRun: true });
+assert(stagedFsckDryRun.problems.some((entry) => entry.code === "orphaned-atomic-staging"), "fsck did not detect orphaned atomic staging node");
+assert(stagedFsckDryRun.repairs.some((entry) => entry.kind === "remove-orphaned-atomic-staging" && entry.dryRun), "fsck dry-run did not plan orphaned staging removal");
+assert(reloaded.exists("/home/guest/Documents/.atomic-created.txt.dindbos-tmp"), "fsck dry-run removed orphaned staging node");
+const stagedFsckRepair = reloaded.checkIntegrity({ repair: true, dryRun: false });
+assert(stagedFsckRepair.repairs.some((entry) => entry.kind === "remove-orphaned-atomic-staging" && !entry.dryRun), "fsck repair did not report orphaned staging removal");
+assert(!reloaded.exists("/home/guest/Documents/.atomic-created.txt.dindbos-tmp"), "fsck repair did not remove orphaned staging node");
 
 console.log(`storage smoke ok textBytes=${text.length} binaryBytes=${bytes.byteLength}`);
 

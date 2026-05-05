@@ -641,12 +641,23 @@ export class VirtualFileSystem {
         return;
       }
       const names = new Map();
-      node.children.forEach((child) => {
+      node.children.slice().forEach((child) => {
         const childName = child?.name || "";
         const childPath = this.join(path, childName || "<unnamed>");
         if (!childName) problems.push(problem("missing-name", childPath, "child has no name", false));
         if (names.has(childName)) problems.push(problem("duplicate-name", childPath, `duplicates ${this.join(path, childName)}`, false));
         else names.set(childName, child);
+        if (child?.atomicStagedFor || isAtomicStagingName(childName)) {
+          problems.push(problem("orphaned-atomic-staging", childPath, `target=${child.atomicStagedFor || "unknown"}`, true));
+          if (repair) {
+            repairs.push(repairRecord("remove-orphaned-atomic-staging", childPath, "present", "removed", dryRun));
+            if (!dryRun) {
+              const childIndex = node.children.indexOf(child);
+              if (childIndex >= 0) node.children.splice(childIndex, 1);
+              return;
+            }
+          }
+        }
         visit(child, childPath);
       });
     };
@@ -865,6 +876,10 @@ function problem(code, path, message, repairable) {
     message,
     repairable: Boolean(repairable),
   };
+}
+
+function isAtomicStagingName(name) {
+  return /^\..+\.dindbos-tmp(?:-\d+)?$/.test(String(name || ""));
 }
 
 function repairRecord(kind, path, from, to, dryRun) {

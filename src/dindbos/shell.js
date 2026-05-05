@@ -1907,6 +1907,7 @@ function fsckExplanation(code, repairable = false) {
   const explanations = {
     "size-mismatch": "File size metadata differs from content bytes; safe repair recalculates size only.",
     "invalid-children": "Directory children metadata is malformed; safe repair replaces only invalid child lists.",
+    "orphaned-atomic-staging": "An interrupted atomic write left a staged temporary file; safe repair removes only the staged file.",
     "package-record-missing": "A pkgfs root exists without a package DB record; safe repair can remove the orphan root.",
     "package-root-missing": "A package DB record points at a missing package root; reinstall or restore is required.",
     "package-root-invalid": "A package install path exists but is not mounted as pkgfs.",
