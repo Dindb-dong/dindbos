@@ -427,7 +427,7 @@ Implementation tasks:
 - Already present: session lock/unlock state is exposed through `sessionStatus()`, `/var/run/dindbos/session.json`, `/proc/sessions`, shell/app launch denial, and session lock/unlock events.
 - Already present: process credentials snapshot uid, gid, effective uid/gid, supplementary groups, and session id at spawn time, then expose the same credential record through `/proc/<pid>/status` and `/proc/processes.json`.
 - Already present: VFS metadata supports `chmod`, administrator-only `chown`, and owner/admin `chgrp`, exposed through Shell and AppSandbox file APIs; mount roots use the same VFS metadata model where browser-backed ownership changes are possible.
-- Expand host-local mount child metadata behavior only where browser File System Access APIs can safely represent it.
+- Already present: host-local mount child metadata distinguishes browser-represented file fields such as MIME, size, and modified time from DindbOS session-local ownership/mode fields, while directory child metadata explicitly reports the browser File System Access limits.
 - Already present: app sandbox state is separated by user and app id under `/var/lib/dindbos/app-state/<user>/<app>.json`, and package uninstall removes per-user app state records for the removed app.
 - Already present: shell command history is persisted per user under `/var/lib/dindbos/shell-history/<user>.json`, reloads into new shell sessions, and switches with `loginctl switch`.
 - Already present: package preferences are persisted per user under `/var/lib/dindbos/package-preferences/<user>.json` and are exposed through shell `pkg prefs`.
@@ -452,6 +452,7 @@ Verification:
 - Already present: `npm run smoke:permissions` verifies app state does not leak across users for the same app id, and `npm run smoke:packages` verifies package uninstall cleans the app's per-user state record.
 - Already present: `npm run smoke:sessions` and `npm run smoke:shell` verify non-admin package trust mutation denial, admin package trust mutation allowance, and security audit logging for both decisions.
 - Already present: `npm run smoke:window-manager` verifies per-user window placement persistence and no layout leakage across session users.
+- Already present: `npm run smoke:local-mounts` verifies local mount file metadata from browser file handles and explicit directory metadata limitations for unsupported host ownership, permission, size, and modified fields.
 - Already present: `npm run smoke:permissions` and `npm run smoke:shell` verify non-admin system storage-management denial, admin storage-management allowance, and security audit logging for both decisions.
 - Already present: `npm run smoke:sessions` verifies non-admin companion grant denial, admin companion grant/revoke allowance, persistence under `/etc/dindbos/companions.json`, and security audit logging for both decisions.
 - Already present: `npm run smoke:network` verifies raw socket companions are denied after revoked or capability-narrowed companion permission records.
