@@ -3389,6 +3389,343 @@ Completion criteria:
 - Native-like claims map to named, tested certification levels.
 - Users, package authors, and contributors can see exactly which OS guarantees are implemented in the current build.
 
+## Beyond-Horizon Technically Feasible Native-OS Work
+
+The following tasks push DindbOS even closer to native operating-system behavior. They are not short-term polish. They are technically feasible only if the lower layers keep maturing: syscall policy, process images, handle tables, origin-isolated containers, trusted UI, durable storage, WebCrypto/WebAuthn, cross-origin isolation, and companion protocols.
+
+The acceptance bar stays strict: every task must become an OS-owned primitive with runtime APIs, shell diagnostics, package policy, audit records, and focused smoke coverage. If the feature only looks native in one UI panel, it does not count.
+
+### Native-Like 85: Directory Service, Federated Identity, And Account Recovery
+
+Status: Later.
+
+Goal: move from local user records toward a real identity layer with local accounts, managed accounts, passkeys, recovery flows, and optional federation.
+
+Why it matters:
+
+- Native OSes do not treat users as a single mutable string; they have account records, identity providers, login policies, recovery keys, directory sync, and group membership.
+- DindbOS already has users, groups, sessions, and per-user state, but native-like deployments need stronger identity boundaries.
+- Browser-native identity is technically possible through WebAuthn/passkeys, Credential Management, OIDC/OAuth handoff, signed policy profiles, and encrypted per-user vaults.
+
+Implementation tasks:
+
+- Define account authority types: local, guest, managed profile, passkey-backed, federated OIDC, recovery-only, and disabled.
+- Add durable identity records under `/etc/dindbos/identity`, with uid/gid mapping, display name, authority, login policy, recovery status, group sync source, and last-auth diagnostics.
+- Add `loginctl login`, `loginctl logout`, `loginctl whoami`, `loginctl recover`, `idpctl`, and Settings account diagnostics.
+- Add passkey-first login and reauthentication flow that unlocks session, keychain, encrypted volumes, companion grants, and admin prompts through one trusted identity broker.
+- Add optional OIDC/OAuth browser handoff for managed accounts, storing refresh credentials only through the keychain service.
+- Add account recovery keys, escrow-disabled local recovery, admin reset policy, guest reset policy, and disabled-account behavior.
+- Add group sync and policy inheritance from managed identity records into process credentials, package policy, keychain access, and remote session control.
+- Add audit records for login, logout, failed auth, recovery, group sync, disabled-account access, and identity-provider errors.
+
+Verification:
+
+- Add smoke coverage for local login, passkey login, failed login, account recovery, disabled account refusal, group sync application, and per-user state isolation after identity switch.
+- Add tests proving federated tokens never appear in ordinary VFS files, package DB records, sync snapshots, event logs, or crash bundles.
+- Add mock identity-provider tests for expired tokens, revoked accounts, group membership changes, and offline fallback.
+
+Completion criteria:
+
+- Multiple account types can use one session boundary without weakening per-user filesystem, keychain, package, and process isolation.
+- Identity failures are explicit, auditable, and recoverable through OS-owned flows.
+
+### Native-Like 86: ACLs, Extended Attributes, And Capability Labels
+
+Status: Later.
+
+Goal: extend Unix-style owner/group/mode permissions with ACLs, xattrs, labels, and inherited capability policy.
+
+Why it matters:
+
+- Native OSes often need richer permissions than mode bits: ACLs, labels, quarantine flags, provenance, indexing hints, backup metadata, and security profiles.
+- DindbOS already has ownership and chmod-style checks, but package sandboxes, managed policy, document brokers, sync, and malware quarantine need richer metadata.
+- Browser storage can persist this metadata if it is modeled as filesystem state and enforced by VFS, descriptors, syscalls, and package policy.
+
+Implementation tasks:
+
+- Add metadata fields for ACL entries, inherited ACL flags, security label, quarantine label, provenance id, backup policy, sync policy, content hash, and xattr map.
+- Add `getfacl`, `setfacl`, `xattr`, `labelctl`, and `security label` shell commands.
+- Route ACL and label checks through VFS path traversal, descriptor opens, AppSandbox filesystem access, NodeCompat, WASI, local mounts, document broker grants, and package namespaces.
+- Add package manifest rules for requested labels, writable label domains, document-handler grants, and inherited child-process labels.
+- Add label transitions for downloaded files, imported archives, package installs, companion-provided files, synced files, and generated documents.
+- Add Settings and Files.app inspectors for ACLs, labels, quarantine state, provenance, and effective access explanation.
+- Add migration logic from current mode-only metadata to label-aware metadata without changing existing file ownership unexpectedly.
+
+Verification:
+
+- Add smoke coverage for ACL allow/deny, inherited ACL behavior, xattr read/write, label transition on import, quarantine denial, and effective permission explanation.
+- Add cross-runtime tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASI see the same ACL and label decisions.
+- Add regression tests proving a package cannot remove quarantine or security labels unless policy grants that label transition.
+
+Completion criteria:
+
+- Access control can express real document sharing, quarantine, managed policy, and package sandboxing without broad filesystem grants.
+- Users and developers can inspect why a file was allowed, denied, quarantined, or label-restricted.
+
+### Native-Like 87: Kernel Debugger, Profiler, And Live Tracing Console
+
+Status: Later.
+
+Goal: provide OS-level debugging tools for kernel services, processes, syscalls, workers, WASM, packages, storage, and companions.
+
+Why it matters:
+
+- Native OSes have kernel debuggers, profilers, tracepoints, diagnostic consoles, panic reports, and performance counters.
+- DindbOS already has logs and smoke tests, but a complex browser OS needs live introspection that does not require editing private runtime code.
+- Browser APIs, worker instrumentation, event logs, performance marks, and structured tracepoints make this feasible.
+
+Implementation tasks:
+
+- Add kernel tracepoint registration for boot, syscall, process, descriptor, VFS, mount, network, keychain, package, service, compositor, worker, WASM, policy, and companion events.
+- Add a trace session manager with start/stop, filters, sampling, redaction, ring buffers, export bundles, and per-process trace tails.
+- Add `ktrace`, `kdebug`, `profile`, `perf`, `tracectl`, and Settings/Activity Monitor tracing panels.
+- Add CPU-time and wall-time profiling around worker jobs, WASM runs, NodeCompat execution, package install phases, large file operations, and compositor input dispatch.
+- Add source-map and package manifest correlation where available, while preserving redaction for private file contents, keychain values, and auth tokens.
+- Add panic breakpoints that capture live kernel object tables, handle tables, process images, descriptor state, policy state, and last trace events.
+- Add trace permission policy so ordinary apps can trace only themselves, admins can trace system services, and managed policy can disable sensitive tracing.
+
+Verification:
+
+- Add smoke coverage for trace start/stop, syscall filtering, redacted export, package install trace, worker profile sample, denied cross-process trace, and panic bundle inclusion.
+- Add tests proving trace logs do not expose keychain raw values, clipboard contents, network token query values, or private file bytes by default.
+- Add performance regression tests for tracing overhead in disabled, sampled, and full-trace modes.
+
+Completion criteria:
+
+- A developer can diagnose a slow or failing DindbOS workload from OS-owned diagnostics instead of private runtime references.
+- Trace data is useful, permissioned, redacted, and exportable for reproducible bug reports.
+
+### Native-Like 88: Hibernation, Session Images, And Process Restore
+
+Status: Later.
+
+Goal: let DindbOS suspend and restore user sessions, selected processes, windows, descriptors, and runtime state as explicit session images.
+
+Why it matters:
+
+- Native OSes can sleep, hibernate, restore windows, recover crashed sessions, and resume some app state after reboot.
+- Browsers can unload tabs at any time, but DindbOS can snapshot enough process, package, window, service, and filesystem state to recover honestly.
+- This is different from pretending background execution survives tab close; it is a controlled checkpoint and restore policy.
+
+Implementation tasks:
+
+- Define session image records containing user id, boot id, runtime version, open windows, process images, package namespaces, service states, descriptors that can be restored, pending operations, and recovery warnings.
+- Add hibernation eligibility rules for app types: pure stateful apps, shell sessions, WASM programs with checkpoint support, worker jobs with resumable state, services with lifecycle hooks, and non-restorable companion sessions.
+- Add `hibernate`, `resume`, `sessionctl image`, `sessionctl restore`, and Settings recovery controls.
+- Add per-process `prepare-hibernate`, `snapshot`, `restore`, and `discard-snapshot` lifecycle hooks.
+- Add window restore policy that reopens apps through AppRegistry/package manifests and reconnects only handles that are safe to restore.
+- Add explicit unsupported markers for remote browser companion pages, raw sockets, device streams, live media, active keychain prompts, and non-checkpointable WASM memory.
+- Store session images under `/var/lib/dindbos/session-images` with integrity hashes, user ownership, quota policy, and optional encryption.
+
+Verification:
+
+- Add smoke coverage for session image creation, window restore, shell history restore, service degraded restore, non-restorable companion marker, corrupt image refusal, and per-user image isolation.
+- Add WASM fixture tests for checkpoint-compatible and checkpoint-incompatible modules.
+- Add tests proving keychain secrets, browser credentials, and companion tokens are not serialized into ordinary session images.
+
+Completion criteria:
+
+- DindbOS can restore a useful user workspace after reload or shutdown without claiming impossible native persistence.
+- Every restored and non-restored process has an inspectable reason.
+
+### Native-Like 89: Virtual Private Network Interface, Packet Broker, And Firewall Lab
+
+Status: Later.
+
+Goal: add a virtual network interface model for loopback services, WebRTC tunnels, fetch/WebSocket adapters, packet inspection, and companion-backed raw networking.
+
+Why it matters:
+
+- Native OSes expose network interfaces, routing tables, firewalls, DNS, packet captures, VPNs, and per-process network policy.
+- Browsers cannot create host TUN/TAP interfaces directly, but DindbOS can model virtual interfaces inside the runtime and use WebRTC, WebSocket, fetch streams, or a narrow companion for real host-adjacent transport.
+- This gives networked packages a more native-shaped target without bypassing browser security.
+
+Implementation tasks:
+
+- Define virtual interfaces such as `lo0`, `fetch0`, `ws0`, `rtc0`, `companion0`, and package namespace interfaces.
+- Add route tables, DNS policy tables, per-interface firewall rules, bandwidth counters, connection state, and packet/stream metadata.
+- Add descriptor-backed packet streams for loopback services and WebRTC data channels where packet boundaries matter.
+- Add `ifconfig`/`ip`, `route`, `firewall`, `tcpdump`-style redacted packet capture, and `/proc/net/interfaces`.
+- Add package manifest network policy for virtual interface access, loopback binding, remote host allowlists, tunnel use, and companion-required raw socket use.
+- Add VPN-like tunnel profiles that can forward DindbOS service traffic over WebRTC or a user-approved network companion, without granting arbitrary host networking.
+- Add traffic redaction rules for URLs, headers, tokens, keychain-injected credentials, and private payload previews.
+
+Verification:
+
+- Add smoke coverage for virtual interface listing, loopback route, denied route, firewall block, WebRTC tunnel mock, packet capture redaction, and companion-required raw networking refusal.
+- Add tests proving package network namespaces cannot bind another package's loopback service or bypass host allowlists through a tunnel.
+- Add regression tests for cancellation, close cleanup, bandwidth accounting, and denied DNS policy.
+
+Completion criteria:
+
+- Networked programs can reason about interfaces, routes, firewall decisions, and tunnels through DindbOS-owned diagnostics.
+- VPN-like behavior is possible only through explicit runtime policy and user-approved transport.
+
+### Native-Like 90: Quarantine, Malware Scanning, And Runtime Reputation
+
+Status: Later.
+
+Goal: add OS-level quarantine and reputation checks for downloaded files, imported archives, packages, companions, system images, and executable content.
+
+Why it matters:
+
+- Native OSes mark untrusted downloads, scan packages, warn on unsigned executables, and quarantine suspicious content.
+- DindbOS will install packages, import archives, open documents, pair companions, and sync remote files; those flows need a shared trust state.
+- Browser-native scanning can combine signatures, hashes, manifest policy, static analysis, sandboxed dry runs, and optional remote reputation providers.
+
+Implementation tasks:
+
+- Add quarantine metadata and provenance labels for Browser.app downloads, local mount imports, archive imports, remote sync files, package installs, companion manifests, and system images.
+- Add a scanning service with pluggable scanners: manifest lint, forbidden API scan, package signature check, dependency risk check, archive bomb check, suspicious path check, executable policy check, and optional reputation lookup.
+- Add `quarantine list|inspect|release|delete`, `scan`, `pkg verify`, Settings security panels, and Files.app quarantine badges.
+- Require trusted UI confirmation or admin policy to release executable packages, companion manifests, kernel modules, system images, and scripts from quarantine.
+- Add package reputation metadata for publisher trust, signature chain, install count where available, advisory status, compatibility tier, requested capabilities, and previous scan result.
+- Add offline behavior that uses local trust roots and cached reputation data while marking unresolved remote checks as degraded.
+- Add audit logs for scan results, quarantine release, denied execution, policy override, and reputation-provider errors.
+
+Verification:
+
+- Add smoke coverage for quarantined script denial, package scan failure before install mutation, archive bomb refusal, trusted release, unsigned companion refusal, and audit log creation.
+- Add tests proving quarantined content cannot be executed through Shell, AppRegistry, NodeCompat, WASM, package services, or document handlers until release policy allows it.
+- Add regression tests proving scanner failures fail closed for executable content and degrade explicitly for read-only documents where policy allows.
+
+Completion criteria:
+
+- Untrusted content carries visible provenance and cannot silently become executable OS state.
+- Package, companion, document, and image trust decisions share one quarantine/reputation boundary.
+
+### Native-Like 91: Live Runtime Update, Hot Patch, And Rollback Controller
+
+Status: Later.
+
+Goal: support controlled runtime and service updates without corrupting active sessions, with restartless patches where safe and rollback where not.
+
+Why it matters:
+
+- Native OSes update kernels, services, drivers, and packages through staged activation, dependency checks, maintenance windows, and rollback.
+- DindbOS can update modules, services, package metadata, policy, docs, and some app code inside the browser, but it needs a safe controller.
+- Live updates are technically possible when boundaries are explicit: module ABI, process images, service supervisor, secure boot measurements, and session images.
+
+Implementation tasks:
+
+- Add update plans that classify changes as hot-patchable service update, restart-required runtime update, safe-mode-only repair, package-only update, policy update, or refused incompatible migration.
+- Add dependency checks against running processes, open descriptors, service state, package namespaces, kernel modules, storage schema, and browser deployment profile.
+- Add `updatectl plan|stage|apply|rollback|status`, maintenance window settings, and Activity Monitor update blockers.
+- Add live patch hooks for services, modules, app containers, package repository metadata, policy profiles, and diagnostics providers.
+- Add runtime bundle staging with signature/hash verification, schema migration dry-run, session image capture, and last-known-good rollback.
+- Add user prompts through trusted UI for disruptive updates, admin-only updates, managed-policy forced updates, and companion protocol migrations.
+- Add update audit logs and crash correlation so failed updates link to the exact plan, bundle, migration, service, or module.
+
+Verification:
+
+- Add smoke coverage for update plan generation, incompatible blocker, staged hash verification, hot-patch service update, restart-required marker, rollback after failed migration, and audit logging.
+- Add tests proving failed update activation cannot leave package DB, service registry, boot measurements, and runtime module records half-mutated.
+- Add regression tests for updating while package install, remote sync apply, or storage journal replay owns an operation lock.
+
+Completion criteria:
+
+- DindbOS can explain what will update, what must restart, what can hot-patch, and how rollback will happen before mutation.
+- Failed updates return to a known good runtime state.
+
+### Native-Like 92: Hardware Capability Database And Declarative Device Tree
+
+Status: Later.
+
+Goal: give DindbOS a declarative hardware and browser capability model similar to a small device tree.
+
+Why it matters:
+
+- Native OSes enumerate hardware, drivers, buses, power states, quirks, and capabilities before exposing devices to userland.
+- In the browser, the "hardware" is a mix of Web APIs, permissions, deployment headers, PWA install state, browser version, OS integration, and companions.
+- A device tree lets packages target capabilities without directly probing private browser APIs or guessing which browser mode is active.
+
+Implementation tasks:
+
+- Define device tree nodes for browser, storage, graphics, audio, input, media, network, PWA host features, permissions, deployment profile, workers, WASM, companions, and remote providers.
+- Add node fields for provider, trust label, support state, permission state, quota, limits, power/lifecycle policy, quirks, fallback, and owner service.
+- Add `/proc/device-tree`, `/proc/browser-capabilities`, `devtree`, `doctor hardware`, and Settings capability diagnostics.
+- Add package manifest constraints for required device nodes, minimum limits, fallback modes, companion requirements, and unsupported browser behavior.
+- Add runtime probes that are cached, invalidated on permission changes, and redacted where browser APIs require user prompts.
+- Add policy that prevents apps from receiving direct device objects; they receive handles or broker APIs derived from declared device tree nodes.
+- Add companion device nodes with explicit pairing state, protocol version, signed manifest, health, and revocation status.
+
+Verification:
+
+- Add smoke coverage with capability mocks for device tree generation, unsupported browser feature, permission-denied feature, companion health change, package constraint refusal, and Settings rendering.
+- Add tests proving package installs fail before mutation when required device nodes are unavailable and no declared fallback exists.
+- Add browser integration checks for stable, non-invasive probes such as storage persistence, worker support, WebAssembly support, and notification permission classification.
+
+Completion criteria:
+
+- DindbOS can describe its effective hardware/browser capability profile as OS state.
+- Packages and services depend on declarative device nodes instead of private ad hoc probes.
+
+### Native-Like 93: Remote Desktop Protocol And Low-Latency Display Server
+
+Status: Later.
+
+Goal: evolve session handoff into a real DindbOS remote display and control protocol with permission, policy, diagnostics, and fallback transports.
+
+Why it matters:
+
+- Native OSes support screen sharing, remote desktop, remote assistance, headless sessions, and controlled input forwarding.
+- DindbOS already has session handoff primitives, but native-like remote work needs a protocol that can carry surfaces, input, clipboard, files, audio where allowed, and session policy.
+- Browser-native transports such as WebRTC, WebSocket, BroadcastChannel, canvas capture, and companion relays make this feasible with honest limitations.
+
+Implementation tasks:
+
+- Define a remote display protocol for surface metadata, frame deltas, input events, clipboard grants, file transfer grants, audio-session metadata, cursor state, and resize events.
+- Add transport backends for same-browser BroadcastChannel, WebRTC peer connection, WebSocket relay, and companion-assisted relay.
+- Add host/viewer roles, view-only/control modes, temporary grants, admin policy, consent prompts, session recording policy, and remote disconnect behavior.
+- Add compositor integration so frames are produced from OS surfaces, not direct app DOM access, and input is routed through the compositor input router.
+- Add `/proc/remote-sessions`, `remotectl`, Settings sharing controls, Activity Monitor remote indicators, and trusted UI consent surfaces.
+- Add clipboard/file-transfer brokers so remote sessions cannot silently read local files, keychain values, or app-private state.
+- Add bandwidth, latency, dropped-frame, input-lag, transport-degraded, and unsupported-feature diagnostics.
+
+Verification:
+
+- Add smoke coverage for offer/accept, view-only denial of control input, control-mode routed input, clipboard grant refusal, disconnect cleanup, transport fallback, and `/proc/remote-sessions`.
+- Add tests proving remote viewers cannot bypass app sandbox scopes, keychain policy, trusted UI prompts, or compositor capture policy.
+- Add browser integration tests for WebRTC transport where CI supports it, with mock relay fallback for deterministic coverage.
+
+Completion criteria:
+
+- Remote access is an OS service with consent, audit, transport diagnostics, and compositor routing.
+- DindbOS can support remote assistance or headless workflows without giving remote peers raw runtime access.
+
+### Native-Like 94: Browser-Native TPM, Attestation, And Sealed Storage
+
+Status: Later.
+
+Goal: approximate TPM-like trust primitives using WebCrypto, WebAuthn/passkeys, secure boot measurements, deployment profile checks, and keychain sealed records.
+
+Why it matters:
+
+- Native OSes use hardware-backed or platform-backed trust to seal keys, attest boot state, protect credentials, and gate sensitive operations.
+- Browsers do not expose a real TPM to JavaScript, but DindbOS can build a constrained trust service around WebAuthn credentials, WebCrypto keys, signed manifests, and measured runtime state.
+- This becomes important for encrypted volumes, package signing, companion pairing, managed policy, remote admin, and sync trust.
+
+Implementation tasks:
+
+- Define trust anchors for runtime signing keys, package repository keys, companion keys, policy issuer keys, passkey credentials, and local recovery keys.
+- Add sealed storage records that can be opened only when required conditions match: user authenticated, keychain unlocked, boot measurement trusted, policy profile valid, deployment profile acceptable, and package trust tier sufficient.
+- Add attestation reports for boot measurement, package trust state, companion pairing state, deployment profile, keychain lock state, and relevant browser capability probes.
+- Add `trustctl status|seal|unseal|attest|verify`, Settings trust diagnostics, and package/companion attestation APIs.
+- Add remote attestation handoff for managed deployments or remote sync providers that need proof of policy, version, and trust state before accepting secrets.
+- Add degraded-mode behavior when WebAuthn, secure context, cross-origin isolation, or required browser APIs are unavailable.
+- Ensure raw key material never enters ordinary VFS, sync snapshots, crash bundles, trace logs, or package DB records.
+
+Verification:
+
+- Add smoke coverage for seal/unseal success, wrong user denial, untrusted boot denial, invalid policy denial, attestation report generation, and degraded browser capability reporting.
+- Add tests proving sealed records cannot be copied to another user/session/profile and opened without the required trust conditions.
+- Add regression tests proving attestation reports contain public measurements and redacted identifiers, not raw private keys or secret values.
+
+Completion criteria:
+
+- Sensitive DindbOS secrets can be bound to user identity and measured runtime state within browser constraints.
+- Trust reports make clear what is actually verified, what is browser-limited, and what requires a companion or managed deployment.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
@@ -3409,7 +3746,7 @@ The next practical sequence:
 3. Add WASM user processes on top of the syscall ABI with VFS, argv/env, stdio, permissions, and `/proc` visibility.
 4. Move heavy NodeCompat/WASM execution into worker-backed process executors with kill, timeout, crash, and descriptor cleanup behavior.
 5. Expand descriptor-backed IO from transient shell pipe descriptors into per-command process groups, pseudo-terminals, richer device nodes, and WASI rights/flags.
-6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, native-adjacent companions, and the hard native-like backlog: compositor/input server, mountable filesystem drivers, package namespaces, keychain, lifecycle policy, session coordination, portable system images, explicit emulation tiers, secure boot, kernel modules, multi-core worker scheduling, origin-isolated app containers, user-mode filesystem servers, accessibility automation, remote administration, transactional registry state, OS-level automation services, OPFS block-device semantics, handle-based kernel objects, process images, browser API brokers, syscall policy compilation, event-sourced replay, cross-origin isolation profiles, service mesh networking, trusted system UI, and native-like conformance certification.
+6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, native-adjacent companions, and the hard native-like backlog: compositor/input server, mountable filesystem drivers, package namespaces, keychain, lifecycle policy, session coordination, portable system images, explicit emulation tiers, secure boot, kernel modules, multi-core worker scheduling, origin-isolated app containers, user-mode filesystem servers, accessibility automation, remote administration, transactional registry state, OS-level automation services, OPFS block-device semantics, handle-based kernel objects, process images, browser API brokers, syscall policy compilation, event-sourced replay, cross-origin isolation profiles, service mesh networking, trusted system UI, native-like conformance certification, directory/federated identity, ACL/xattr labels, kernel tracing, hibernation images, virtual VPN/firewall interfaces, quarantine scanning, live runtime update, device-tree capability modeling, remote desktop protocol, and browser-native attestation.
 7. Continue Browser.app, document viewer, package, and UX work only when real workloads expose gaps in the already completed first-pass surfaces.
 
 ## 0. Immediate Carry-Over Work
