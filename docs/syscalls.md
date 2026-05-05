@@ -85,6 +85,8 @@ Entropy and zero devices report `fd.read.bytes` as the actual device byte count 
 
 Terminal.app creates a DindbOS pseudo-terminal session. Processes launched with that PTY session receive TTY metadata on standard streams and `/dev/tty`; reads can consume the PTY input buffer, writes append to the PTY output buffer, and `tty.getWindowSize`/`tty.setWindowSize` operate on the shared session size.
 
+Pipe descriptors are backed by runtime pipe objects that can be attached to more than one process descriptor table. This lets a writer process, intermediate process, and reader process exchange bytes through the same descriptor-backed pipe primitive instead of shell-only string plumbing.
+
 ## Shell Usage
 
 Terminal can call the ABI directly:
