@@ -308,6 +308,7 @@ function packageSummary(record, detailed = false) {
       title: record.app.title,
       entry: record.app.entry,
       entryPath: record.app.entryPath,
+      runtime: record.app.runtime || "javascript",
       capabilities: [...(record.app.capabilities || [])],
       fileSystem: {
         read: [...(record.app.fileSystem?.read || [])],

@@ -234,19 +234,19 @@ Implementation tasks:
 - Already present: WASM runs spawn DindbOS processes with argv, cwd, environment, exit status, stdout, stderr, and process history.
 - Already present: the `dindbos` WASM import namespace exposes stdout/stderr helpers, argv/env helpers, `syscall(ptr,len)`, and `exit(code)`.
 - Already present: first-pass WASM syscalls map to the DindbOS syscall ABI and are covered by global syscall tracing.
+- Already present: package manifests support DindbOS ABI WASM entry points through `app.runtime: "wasm"` or `.wasm` entries, launched through AppRegistry and rendered into package windows.
 - Support fuller WASI-style imports where possible, mapped to the DindbOS syscall ABI.
 - Mount process-local descriptors for files, pipes, and terminal streams.
 - Broaden process filesystem scopes beyond the first-pass executable-directory policy.
 - Already present: WASM trap paths flow through process crash handling and return crash report paths for `/var/log/dindbos/crash-<pid>.log` diagnostics.
 - Add memory and execution guards: max memory pages, cooperative timeout, and abort handling.
-- Add package manifest support for WASM entry points.
 - Add developer docs for compiling small C/Rust/Zig examples to the supported WASM/WASI target.
 
 Verification:
 
 - Already present: `npm run smoke:wasm` verifies shell execution, argv/env stdout, syscall-backed file write, syscall tracing, nonzero exit status, and process tracking.
 - Already present: `npm run smoke:wasm` verifies permission-denied syscall behavior, EACCES syscall tracing, trap crash report files, and crash index entries.
-- Add package install smoke coverage for a WASM-backed app launched through AppRegistry.
+- Already present: `npm run smoke:packages` verifies a WASM-backed package install, AppRegistry launch, stdout rendering, package-scoped syscall write, and package removal.
 
 Completion criteria:
 
