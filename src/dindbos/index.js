@@ -112,6 +112,20 @@ export class DindbOS {
       lastPeerAction: "",
       lastPeerAt: "",
     };
+    this.sessionPackageOperations = new Map();
+    this.sessionPackageOperationStatus = {
+      localOperations: 0,
+      peerOperations: 0,
+      lastLocalPackageId: "",
+      lastLocalOperation: "",
+      lastLocalPhase: "",
+      lastLocalAt: "",
+      lastPeerSource: "",
+      lastPeerPackageId: "",
+      lastPeerOperation: "",
+      lastPeerPhase: "",
+      lastPeerAt: "",
+    };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
@@ -230,7 +244,49 @@ export class DindbOS {
     }
     if (message.type === "storage-flush") this.recordSessionStorageFlush(message.source, message.payload, message.at);
     if (message.type === "app-state") this.recordSessionAppStateChange(message.source, message.payload, message.at);
+    if (message.type === "package-operation") this.recordSessionPackageOperation(message.source, message.payload, message.at);
     return message;
+  }
+
+  publishSessionPackageOperation(operation, details = {}) {
+    const at = new Date().toISOString();
+    const payload = {
+      operation: String(operation || "package"),
+      phase: String(details.phase || "complete"),
+      packageId: String(details.packageId || ""),
+      appId: String(details.appId || ""),
+      version: String(details.version || ""),
+      error: String(details.error || ""),
+    };
+    this.sessionPackageOperationStatus.localOperations += 1;
+    this.sessionPackageOperationStatus.lastLocalPackageId = payload.packageId;
+    this.sessionPackageOperationStatus.lastLocalOperation = payload.operation;
+    this.sessionPackageOperationStatus.lastLocalPhase = payload.phase;
+    this.sessionPackageOperationStatus.lastLocalAt = at;
+    return this.publishSessionEvent("package-operation", payload);
+  }
+
+  recordSessionPackageOperation(source, payload = {}, at = "") {
+    const entry = {
+      source: String(source || "unknown"),
+      operation: String(payload.operation || "package"),
+      phase: String(payload.phase || "unknown"),
+      packageId: String(payload.packageId || ""),
+      appId: String(payload.appId || ""),
+      version: String(payload.version || ""),
+      error: String(payload.error || ""),
+      at: at || new Date().toISOString(),
+    };
+    if (!entry.packageId) return null;
+    this.sessionPackageOperations.set(`${entry.source}:${entry.packageId}:${entry.operation}`, entry);
+    this.sessionPackageOperationStatus.peerOperations += 1;
+    this.sessionPackageOperationStatus.lastPeerSource = entry.source;
+    this.sessionPackageOperationStatus.lastPeerPackageId = entry.packageId;
+    this.sessionPackageOperationStatus.lastPeerOperation = entry.operation;
+    this.sessionPackageOperationStatus.lastPeerPhase = entry.phase;
+    this.sessionPackageOperationStatus.lastPeerAt = entry.at;
+    this.bus.emit("session:package-operation", { ...entry });
+    return entry;
   }
 
   publishSessionAppStateChange(action, details = {}) {
@@ -897,6 +953,10 @@ export class DindbOS {
       appState: {
         ...this.sessionAppStateStatus,
         peers: [...this.sessionAppStateChanges.values()].map((entry) => ({ ...entry })),
+      },
+      packageOperation: {
+        ...this.sessionPackageOperationStatus,
+        peers: [...this.sessionPackageOperations.values()].map((entry) => ({ ...entry })),
       },
     };
   }
