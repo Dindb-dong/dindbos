@@ -24,6 +24,7 @@ const BUILTIN_MANUALS = {
   find: "find [path] [name] - search files by name",
   fsck: "fsck [--dry-run|--repair|--salvage] - check VFS integrity, repair safe metadata, or export readable recovery data",
   grep: "grep <text> <file> - search lines in a text file",
+  handlectl: "handlectl list [pid] [--all]|stat <handle>|revoke <handle> [reason] - inspect or revoke kernel handles",
   kill: "kill <pid> - terminate a process",
   keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing - manage DindbOS secrets",
   loginctl: "loginctl status|users|login|logout|switch|lock|unlock|policy|reset-guest - inspect or change DindbOS session state",
@@ -81,6 +82,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "sync",
   "syscall",
   "fsck",
+  "handlectl",
   "tree",
   "umount",
   "wasm",
@@ -290,6 +292,7 @@ export class ShellSession {
     if (command === "readlink") return this.os.fs.lstat(args[0] || this.cwd, this.cwd, this.principal)?.target || "";
     if (command === "find") return this.find(args);
     if (command === "fsck") return this.fsck(args);
+    if (command === "handlectl") return this.handlectl(args);
     if (command === "open") {
       this.os.openPath(this.os.fs.normalize(args[0] || this.cwd, this.cwd));
       return "";
@@ -1419,6 +1422,35 @@ export class ShellSession {
     return `killed ${killed.pid} ${killed.appId}`;
   }
 
+  handlectl(args = []) {
+    const action = args[0] || "list";
+    if (!this.os.objects) return "handlectl: unavailable: kernel object registry is not installed";
+    if (action === "list") {
+      const includeAll = args.includes("--all");
+      const pidArg = args.find((arg, index) => index > 0 && !arg.startsWith("-"));
+      const filters = {};
+      if (!includeAll) filters.status = "active";
+      if (pidArg !== undefined) filters.ownerPid = numericShellArg(pidArg, "pid", "handlectl");
+      return formatHandleRows(this.os.objects.listHandles(filters));
+    }
+    if (action === "stat") {
+      const handleId = args[1];
+      if (!handleId) return "handlectl: usage: handlectl stat <handle>";
+      const handle = this.os.objects.getHandle(handleId);
+      if (!handle) return `handlectl: no such handle: ${handleId}`;
+      return formatHandleDetail(handle, this.os.objects.get(handle.objectId));
+    }
+    if (action === "revoke" || action === "close") {
+      const handleId = args[1];
+      if (!handleId) return `handlectl: usage: handlectl ${action} <handle> [reason]`;
+      this.os.assertAdminOperation?.("handlectl:revoke", { principal: this.principal, target: handleId });
+      const handle = this.os.objects.revokeHandle(handleId, args.slice(2).join(" ") || "handlectl-revoke");
+      if (!handle) return `handlectl: no such handle: ${handleId}`;
+      return `revoked ${handle.id} reason=${handle.revocationReason}`;
+    }
+    return "handlectl: usage: handlectl list [pid] [--all] | stat <handle> | revoke <handle> [reason]";
+  }
+
   resetFileSystem() {
     this.os.assertAdminOperation?.("system-settings:resetfs", { principal: this.principal, target: "storage.resetFileSystem" });
     if (typeof this.os.resetPersistentFileSystem === "function") this.os.resetPersistentFileSystem();
@@ -1875,6 +1907,45 @@ function parseJsonArgument(text, command) {
   } catch (error) {
     throw new Error(`${command}: invalid JSON argument: ${error.message}`);
   }
+}
+
+function numericShellArg(value, name, command) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) throw new Error(`${command}: invalid ${name}: ${value}`);
+  return number;
+}
+
+function formatHandleRows(handles = []) {
+  if (!handles.length) return "HANDLE OBJECT TYPE PID STATUS RIGHTS";
+  return [
+    "HANDLE OBJECT TYPE PID STATUS RIGHTS",
+    ...handles.map((handle) => [
+      String(handle.id).padEnd(18),
+      String(handle.objectId).padEnd(20),
+      String(handle.objectType).padEnd(12),
+      String(handle.ownerPid || 0).padEnd(5),
+      String(handle.status).padEnd(8),
+      (handle.rights || []).join(",") || "-",
+    ].join(" ")),
+  ].join("\n");
+}
+
+function formatHandleDetail(handle, object = null) {
+  return [
+    `Handle:\t${handle.id}`,
+    `Object:\t${handle.objectId}`,
+    `Type:\t${handle.objectType}`,
+    `OwnerPid:\t${handle.ownerPid || 0}`,
+    `User:\t${handle.user || "-"}`,
+    `Status:\t${handle.status}`,
+    `Rights:\t${(handle.rights || []).join(",") || "-"}`,
+    `CloseOnExec:\t${Boolean(handle.closeOnExec)}`,
+    `TransferPolicy:\t${handle.transferPolicy || "-"}`,
+    `Expires:\t${handle.expiresAt || "-"}`,
+    `RevocationReason:\t${handle.revocationReason || "-"}`,
+    `ObjectStatus:\t${object?.status || "missing"}`,
+    `ObjectRef:\t${object?.ref || "-"}`,
+  ].join("\n");
 }
 
 function formatStat(stat) {
