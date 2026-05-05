@@ -104,6 +104,7 @@ const SAMPLE_API_PACKAGE = {
         "  const info = sdk.packages.info(pkg.id);",
         "  const report = 'package=' + pkg.id + '\\nprocess=' + process.pid + '\\nversion=' + info.version + '\\nlaunches=' + launches + '\\n';",
         "  sdk.fs.writeText(reportPath, report);",
+        "  os.fs.atomicWriteOrCreateFile(os.fs.join(workspace, 'atomic.txt'), 'atomic=' + launches + '\\n');",
         "  sdk.processes.log(`api-lab wrote ${reportPath}`);",
         "  const read = sdk.fs.readText(reportPath);",
         "  content.innerHTML = '<main data-api-lab><h2>' + pkg.name + '</h2><p>' + read + '</p></main>';",

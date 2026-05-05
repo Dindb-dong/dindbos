@@ -625,12 +625,14 @@ assert(apiLab.app.capabilities.includes("package.read"), "API Lab sample did not
 const apiSource = os.fs.readFile("/opt/api-lab/app.js");
 assert(apiSource.includes("sdk.packages.info"), "API Lab sample does not use the DindbOS syscall SDK fixture");
 assert(apiSource.includes("sdk.fs.writeText"), "API Lab sample does not use SDK-backed VFS writes");
+assert(apiSource.includes("atomicWriteOrCreateFile"), "API Lab sample does not use sandbox atomic VFS writes");
 const apiModule = await import(`data:text/javascript;base64,${Buffer.from(apiSource).toString("base64")}`);
 assert(typeof apiModule.mount === "function", "API Lab sample entry did not export mount");
 const apiWindow = os.apps.launch("api-lab");
 await apiWindow.rendered;
 await waitFor(() => apiWindow.content.innerHTML.includes("package=api-lab"), `API Lab sample did not render sandbox API report: ${apiWindow.content.innerHTML}`);
 assert(os.fs.readFile("/home/guest/DindbOS API Lab/report.txt").includes("launches=1"), "API Lab sample did not write first app-state value through sandbox fs");
+assert(os.fs.readFile("/home/guest/DindbOS API Lab/atomic.txt").includes("atomic=1"), "API Lab sample did not write through sandbox atomic VFS API");
 assert(os.processes.readLog(apiWindow.pid).includes("api-lab wrote"), "API Lab sample did not log through process facade");
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("fs.writeText OK"), "API Lab sample did not write syscall trace under /proc");
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("package.info OK"), "API Lab sample did not read package info through syscall");

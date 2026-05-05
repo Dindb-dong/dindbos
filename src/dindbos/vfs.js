@@ -93,6 +93,21 @@ export class VirtualFileSystem {
     return this.writeFile(path, await normalizeFileContentAsync(blob, options), cwd, principal);
   }
 
+  atomicWriteFile(path, content, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    const normalized = this.normalize(path, cwd);
+    const existing = this.resolve(normalized);
+    if (!existing || existing.type !== "file") throw new Error(`File not found: ${path}`);
+    return this.atomicWriteOrCreateFile(existing.path || normalized, content, "/", options, principal);
+  }
+
+  atomicWriteFileBytes(path, bytes, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.atomicWriteFile(path, normalizeFileContent(bytes, options), cwd, options, principal);
+  }
+
+  async atomicWriteFileBlob(path, blob, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.atomicWriteFile(path, await normalizeFileContentAsync(blob, options), cwd, options, principal);
+  }
+
   appendFile(path, content, cwd = "/", principal = this.systemPrincipal) {
     const current = this.exists(path, cwd) ? this.readFile(path, cwd, principal) : "";
     return this.writeOrCreateFile(path, `${current}${content}`, cwd, {}, principal);
@@ -128,6 +143,64 @@ export class VirtualFileSystem {
 
   async writeOrCreateFileBlob(path, blob, cwd = "/", options = {}, principal = this.systemPrincipal) {
     return this.writeOrCreateFile(path, await normalizeFileContentAsync(blob, options), cwd, options, principal);
+  }
+
+  atomicWriteOrCreateFile(path, content, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    const normalized = this.normalize(path, cwd);
+    const { parent, node: existing, index: existingIndex } = this.lookupChild(normalized);
+    if (existing && existing.type !== "file") throw new Error(`atomic write: ${normalized}: not a regular file`);
+    this.assertTraversalAccess(parent.path, "/", principal);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
+    if (existing) {
+      this.assertTraversalAccess(existing.path || normalized, "/", principal);
+      this.assertAccess(existing, "write", principal, existing.path || normalized);
+    }
+    const name = this.basename(normalized);
+    const mime = options.mime || existing?.mime || mimeFromName(name);
+    const stagedName = this.nextAtomicStagedName(parent, name);
+    const staged = this.createNode({
+      name: stagedName,
+      type: "file",
+      mime,
+      content: normalizeFileContent(content, { mime }),
+      icon: options.icon || existing?.icon || iconFromMime(mime),
+      permissions: options.permissions || existing?.permissions || "-rw-r--r--",
+      owner: options.owner || existing?.owner || ownerFromPrincipal(principal),
+      group: options.group || existing?.group || groupFromPrincipal(principal),
+      atomicStagedFor: normalized,
+      transient: true,
+    });
+    if (existing?.created) staged.created = existing.created;
+    parent.children.push(staged);
+    try {
+      if (typeof options.beforeCommit === "function") options.beforeCommit(this.withPath(staged, this.join(parent.path, stagedName)), existing ? this.withPath(existing, normalized) : null);
+      const stagedIndex = parent.children.indexOf(staged);
+      if (stagedIndex < 0) throw new Error(`atomic write: staged file missing for ${normalized}`);
+      parent.children.splice(stagedIndex, 1);
+      staged.name = name;
+      delete staged.atomicStagedFor;
+      delete staged.transient;
+      staged.created = existing?.created || staged.created;
+      staged.modified = new Date().toISOString();
+      if (existing) parent.children.splice(existingIndex, 1, staged);
+      else parent.children.push(staged);
+      this.emitChange(existing ? "atomic-replace" : "atomic-create", normalized);
+      return this.withPath(staged, normalized);
+    } catch (error) {
+      const stagedIndex = parent.children.indexOf(staged);
+      if (stagedIndex >= 0) parent.children.splice(stagedIndex, 1);
+      this.emitChange("atomic-abort", normalized);
+      throw error;
+    }
+  }
+
+  atomicWriteOrCreateFileBytes(path, bytes, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.atomicWriteOrCreateFile(path, normalizeFileContent(bytes, options), cwd, options, principal);
+  }
+
+  async atomicWriteOrCreateFileBlob(path, blob, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    return this.atomicWriteOrCreateFile(path, await normalizeFileContentAsync(blob, options), cwd, options, principal);
   }
 
   createDirectory(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
@@ -499,6 +572,17 @@ export class VirtualFileSystem {
     while (existing.has(candidate)) {
       index += 1;
       candidate = `link:${normalized}:${Date.now().toString(36)}:${index}`;
+    }
+    return candidate;
+  }
+
+  nextAtomicStagedName(parent, name) {
+    const existing = new Set((parent.children || []).map((child) => child.name));
+    let index = 0;
+    let candidate = `.${name}.dindbos-tmp`;
+    while (existing.has(candidate)) {
+      index += 1;
+      candidate = `.${name}.dindbos-tmp-${index}`;
     }
     return candidate;
   }

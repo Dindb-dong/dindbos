@@ -105,6 +105,21 @@ export class AppSandbox {
         this.assertFileSystem(normalized, "write");
         return this.os.fs.writeFileBlob(normalized, blob, "/", options, this.principal);
       },
+      atomicWriteFile: (path, content, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.atomicWriteFile(normalized, content, "/", options, this.principal);
+      },
+      atomicWriteFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.atomicWriteFileBytes(normalized, bytes, "/", options, this.principal);
+      },
+      atomicWriteFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.atomicWriteFileBlob(normalized, blob, "/", options, this.principal);
+      },
       appendFile: (path, content, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
@@ -124,6 +139,21 @@ export class AppSandbox {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
         return this.os.fs.writeOrCreateFileBlob(normalized, blob, "/", options, this.principal);
+      },
+      atomicWriteOrCreateFile: (path, content, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.atomicWriteOrCreateFile(normalized, content, "/", options, this.principal);
+      },
+      atomicWriteOrCreateFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.atomicWriteOrCreateFileBytes(normalized, bytes, "/", options, this.principal);
+      },
+      atomicWriteOrCreateFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.atomicWriteOrCreateFileBlob(normalized, blob, "/", options, this.principal);
       },
       createFile: (path, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
