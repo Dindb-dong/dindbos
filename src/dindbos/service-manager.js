@@ -28,6 +28,8 @@ export class ServiceManager {
         pid: 0,
         schedule: service.schedule,
         lifecyclePolicy: service.lifecyclePolicy,
+        packageId: service.packageId,
+        namespace: cloneJson(service.namespace || null),
         startedAt: "",
         stoppedAt: "",
         lastRunAt: "",
@@ -40,6 +42,8 @@ export class ServiceManager {
       record.enabled = service.enabled;
       record.schedule = service.schedule;
       record.lifecyclePolicy = service.lifecyclePolicy;
+      record.packageId = service.packageId;
+      record.namespace = cloneJson(service.namespace || null);
     }
     this.writeState();
     return this.get(service.id);
@@ -66,6 +70,8 @@ export class ServiceManager {
       enabled: service.enabled,
       schedule: cloneSchedule(service.schedule),
       lifecyclePolicy: service.lifecyclePolicy,
+      packageId: service.packageId,
+      namespace: cloneJson(service.namespace || null),
       capabilities: [...service.capabilities],
       fileSystem: {
         read: [...service.fileSystem.read],
@@ -95,6 +101,18 @@ export class ServiceManager {
     return this.get(serviceId);
   }
 
+  unregister(serviceId, context = {}) {
+    this.assertManage(context);
+    const record = this.requireRecord(serviceId);
+    if (record.pid) this.stop(serviceId, context);
+    this.definitions.delete(serviceId);
+    this.records.delete(serviceId);
+    this.logs.delete(serviceId);
+    this.log(serviceId, "unregistered");
+    this.writeState();
+    return { ...record, state: "unregistered", pid: 0 };
+  }
+
   async start(serviceId, context = {}) {
     this.assertManage(context);
     const service = this.requireDefinition(serviceId);
@@ -108,8 +126,18 @@ export class ServiceManager {
     const process = this.os.processes.spawn({
       id: `service:${service.id}`,
       name: service.name,
-      manifest: { capabilities: service.capabilities, fileSystem: service.fileSystem, runtime: "service" },
-    }, { runtime: "service", source: "service-manager", executorKind: "service" });
+      manifest: {
+        capabilities: service.capabilities,
+        fileSystem: service.fileSystem,
+        runtime: "service",
+        namespace: cloneJson(service.namespace || null),
+      },
+    }, {
+      runtime: "service",
+      source: "service-manager",
+      executorKind: "service",
+      namespace: cloneJson(service.namespace || null),
+    });
     record.pid = process.pid;
     try {
       if (typeof service.start === "function") await service.start(this.serviceContext(service, record));
@@ -293,6 +321,8 @@ function normalizeService(definition = {}) {
     id,
     name: String(definition.name || id),
     enabled: definition.enabled !== false,
+    packageId: String(definition.packageId || ""),
+    namespace: cloneJson(definition.namespace || null),
     schedule: definition.schedule || null,
     lifecyclePolicy: normalizeLifecyclePolicy(definition.lifecyclePolicy || definition.policy),
     capabilities: [...(definition.capabilities || [])],
@@ -319,6 +349,11 @@ function shouldDegradeOnSuspend(policy, reason) {
 
 function cloneSchedule(schedule) {
   return schedule && typeof schedule === "object" ? { ...schedule } : schedule || null;
+}
+
+function cloneJson(value) {
+  if (value === undefined || value === null) return null;
+  return JSON.parse(JSON.stringify(value));
 }
 
 function ensureDirectory(os, path, principal) {

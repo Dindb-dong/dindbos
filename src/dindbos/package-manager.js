@@ -411,6 +411,7 @@ export class PackageManager {
       this.writePackageRecord(record);
       this.installLauncher(record);
       this.registerPackageApp(record);
+      this.registerPackageServices(record, previous);
       this.emitPackageLifecycle(previous ? "update" : "install", record, { previousVersion: previous?.version || "" });
       return record;
     });
@@ -427,6 +428,7 @@ export class PackageManager {
       this.writePackageRecord(record);
       this.installLauncher(record);
       this.registerPackageApp(record);
+      this.registerPackageServices(record, previous);
       this.emitPackageLifecycle(previous ? "update" : "install", record, { previousVersion: previous?.version || "" });
       return record;
     });
@@ -619,6 +621,7 @@ export class PackageManager {
       };
       try {
         this.cleanupNamespaceRuntime(record);
+        this.unregisterPackageServices(record);
         const launcher = this.launcherPath(record);
         if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
         if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
@@ -664,7 +667,10 @@ export class PackageManager {
   }
 
   registerInstalledPackages() {
-    this.list().forEach((record) => this.registerPackageApp(record));
+    this.list().forEach((record) => {
+      this.registerPackageApp(record);
+      this.registerPackageServices(record);
+    });
   }
 
   runPackageTransaction(record, operation, install) {
@@ -774,6 +780,7 @@ export class PackageManager {
     const dependencies = normalizeDependencies(manifest.dependencies || app.dependencies || {});
     const sandbox = normalizePackageSandbox(manifest.sandbox || manifest.namespace || {});
     const cli = normalizePackageCli(manifest.cli || app.cli || manifest.bin || app.bin || {});
+    const services = normalizePackageServices(manifest.services || app.services || [], id, installPath, fileSystem);
     return {
       id,
       name,
@@ -790,6 +797,7 @@ export class PackageManager {
       dependencies,
       sandbox,
       cli,
+      services,
       namespace: packageNamespace(id, appId, installPath, sandbox, dependencies),
       app: {
         id: appId,
@@ -1184,6 +1192,28 @@ export class PackageManager {
     });
   }
 
+  registerPackageServices(record, previous = null) {
+    if (previous) this.unregisterPackageServices(previous);
+    (record.services || []).forEach((service) => {
+      this.os.services?.register?.({
+        ...service,
+        packageId: record.id,
+        namespace: cloneJson(record.namespace || {}),
+        capabilities: unique([...(service.capabilities || [])]),
+        fileSystem: cloneJson(service.fileSystem || record.app.fileSystem),
+        start: ({ log }) => log(`package ${record.id} service ${service.name || service.id} started`),
+        stop: ({ log }) => log(`package ${record.id} service ${service.name || service.id} stopped`),
+      });
+    });
+  }
+
+  unregisterPackageServices(record) {
+    (record.services || []).forEach((service) => {
+      if (!this.os.services?.get?.(service.id)) return;
+      this.os.services.unregister(service.id, { principal: this.system });
+    });
+  }
+
   writePackageRecord(record) {
     this.os.fs.writeOrCreateFile(
       this.packageRecordPath(record.id),
@@ -1420,6 +1450,7 @@ function packagePublicRecord(record) {
     trust: cloneJson(record.trust || {}),
     sandbox: cloneJson(record.sandbox || {}),
     cli: cloneJson(record.cli || {}),
+    services: cloneJson(record.services || []),
     namespace: cloneJson(record.namespace || {}),
   });
 }
@@ -1443,6 +1474,28 @@ function normalizePackageCli(cli = {}) {
   const entry = cli.entry || cli.path || cli.dindbos || Object.values(cli)[0] || "";
   const inputType = cli.inputType === "commonjs" ? "commonjs" : "module";
   return { entry: normalizeOptionalRelativePath(entry), inputType };
+}
+
+function normalizePackageServices(services = [], packageId, installPath, packageFileSystem = {}) {
+  if (!Array.isArray(services)) return [];
+  return services.map((service) => {
+    const localId = String(service.id || service.name || "").trim();
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(localId)) throw new Error(`pkg: invalid service id: ${service.id || ""}`);
+    const fileSystem = service.fileSystem || packageFileSystem || {};
+    return {
+      id: `package:${packageId}:${localId}`,
+      packageServiceId: localId,
+      name: String(service.name || `${packageId} ${localId}`),
+      enabled: service.enabled !== false,
+      schedule: service.schedule || null,
+      lifecyclePolicy: service.lifecyclePolicy || service.policy || "resumable",
+      capabilities: [...(service.capabilities || [])].map(String),
+      fileSystem: {
+        read: unique(fileSystem.read || [installPath]),
+        write: unique(fileSystem.write || []),
+      },
+    };
+  });
 }
 
 function packageNamespace(packageId, appId, installPath, sandbox = {}, dependencies = {}) {

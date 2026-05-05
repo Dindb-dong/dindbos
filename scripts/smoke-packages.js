@@ -464,6 +464,30 @@ assert(workerNamespaceHistory?.parentPid === workerNamespaceWindow.pid, `worker 
 assert(workerNamespaceHistory?.manifest?.namespace?.processGroup === "package:worker-namespace", `worker executor did not inherit package namespace: ${JSON.stringify(workerNamespaceHistory)}`);
 assert(workerNamespaceHistory.executorKind === "cpu-task", "worker executor history missing cpu-task kind");
 packages.remove("worker-namespace");
+const serviceNamespace = packages.install({
+  ...packageManifest("service-namespace", "0.1.0", [
+    { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+  ]),
+  services: [
+    {
+      id: "sync",
+      name: "Service Namespace Sync",
+      fileSystem: { read: ["/opt/service-namespace"], write: [] },
+      capabilities: ["process.read"],
+    },
+  ],
+});
+assert(serviceNamespace.services[0].id === "package:service-namespace:sync", "package service id was not namespaced");
+const serviceId = "package:service-namespace:sync";
+assert(os.services.get(serviceId)?.packageId === "service-namespace", "package service was not registered with package id");
+assert(os.services.manifest(serviceId).namespace.processGroup === "package:service-namespace", "package service manifest missing namespace");
+const packageService = await os.services.start(serviceId);
+const packageServiceProcess = os.processes.get(packageService.pid);
+assert(packageServiceProcess?.manifest?.namespace?.processGroup === "package:service-namespace", `package service process missing namespace: ${JSON.stringify(packageServiceProcess)}`);
+assert(packageServiceProcess.executorKind === "service", "package service process missing service executor kind");
+packages.remove("service-namespace");
+assert(!os.services.get(serviceId), "package uninstall left package service registered");
+assert(!os.processes.get(packageService.pid), "package uninstall left package service process running");
 const paintSample = packages.installFromManifestPath("/opt/dindbos/packages/paint-sample/dindbos.app.json");
 assert(paintSample.app.entryPath === "/opt/paint-sample/app.js", "Paint sample entry path mismatch");
 const paintWindow = os.apps.launch("paint-sample");
