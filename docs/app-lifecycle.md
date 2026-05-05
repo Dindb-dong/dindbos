@@ -43,6 +43,8 @@ Remote sync starts as an optional storage-backed snapshot backend. `os.createRem
 
 Offline sync merge rules are exposed before full snapshot apply. `os.remoteSyncMergePolicy()` reports the first-pass roots and policies, and `os.planRemoteSyncMerge(changes)` classifies proposed changes as `use-local`, `use-remote`, `three-way-merge`, `last-writer-wins`, `conflict-copy`, `refuse`, or `rebuild`. User text documents can merge when both sides appended safely, binary or overlapping document edits preserve conflict copies, app-state conflicts preserve both sides until app merge hooks exist, package metadata conflicts are refused until package transactions validate them, search indexes rebuild as derived state, and safe settings use timestamp order.
 
+`os.applyRemoteSyncSnapshot({ passphrase, snapshot, dryRun })` decrypts an encrypted snapshot, runs the merge planner for each file, writes safe remote or merged files, writes unsafe remote document/app-state versions under `.sync-conflicts`, refuses package metadata mutation, and records apply conflicts/refusals in `os.remoteSyncStatus().lastAppliedSnapshot`. A dry run returns the same action plan without mutating the VFS.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed

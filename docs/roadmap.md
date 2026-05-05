@@ -1108,7 +1108,8 @@ Implementation tasks:
 - Already present: `/proc/sessions`, Settings, and `doctor` expose the local runtime instance id, primary/secondary role, lock owner, readonly fallback, and stale-lock recovery state.
 - Already present: Settings exposes session channel connection state, received message count, pending conflict count, latest peer storage flush phase, latest peer app-state change, latest peer package operation, handoff state, sync status, last successful snapshot, and package cache/settings sync coverage counts.
 - Already present: offline-first merge policy and planning APIs classify user documents, app state, package metadata, search indexes, settings, and cache metadata before remote sync apply mutates runtime state.
-- Add full remote sync apply/repair flow that executes the planned merge actions against encrypted snapshots.
+- Already present: encrypted remote sync snapshots can be applied through the merge planner; safe files are restored, text merges are written, unsafe conflicts are preserved under `.sync-conflicts`, package metadata mutations are refused, and apply conflicts/refusals are recorded in sync status.
+- Add conflict repair UI and commands for resolving `.sync-conflicts`, retrying refused records after package validation, and resuming interrupted remote sync apply runs.
 
 Verification:
 
@@ -1124,6 +1125,7 @@ Verification:
 - Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify package cache/settings sync coverage counts in remote snapshot status, Settings, and `doctor`.
 - Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify session handoff offer/accept/cancel propagation plus `/proc/sessions`, Settings, and `doctor` diagnostics.
 - Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify offline-first merge policy/planning for text documents, app-state conflicts, package metadata refusal, search index rebuild, settings last-writer-wins, Settings, and `doctor`.
+- Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify encrypted remote sync apply, conflict-copy preservation, package metadata refusal, cache/settings restore, last-applied status, Settings, and `doctor`.
 
 Completion criteria:
 
