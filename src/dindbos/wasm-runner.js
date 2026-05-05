@@ -28,6 +28,7 @@ export class WasmRunner {
       cwd: options.cwd || this.os.session.home || "/",
       executable: options.path || "",
       parentPid: options.parentPid || 0,
+      stdin: options.stdin || "",
       runtime: "wasm",
     });
     const stdout = [];
@@ -133,6 +134,27 @@ export class WasmRunner {
             return errnoNumber(error.code || "EIO");
           }
           writeU32(nwrittenPtr, written);
+          return 0;
+        },
+        fd_read: (fd, iovsPtr, iovsLength, nreadPtr) => {
+          const descriptor = Number(fd);
+          const view = memoryView();
+          let read = 0;
+          try {
+            for (let index = 0; index < Number(iovsLength || 0); index += 1) {
+              const base = Number(iovsPtr || 0) + index * 8;
+              const ptr = view.getUint32(base, true);
+              const length = view.getUint32(base + 4, true);
+              const result = this.os.descriptors.read(process, { fd: descriptor, length }, context);
+              const bytes = new TextEncoder().encode(String(result.data || ""));
+              writeMemory(ptr, bytes);
+              read += bytes.length;
+              if (bytes.length < length) break;
+            }
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+          writeU32(nreadPtr, read);
           return 0;
         },
         proc_exit: (code) => {
