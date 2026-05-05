@@ -55,14 +55,19 @@ export class NetworkBroker {
       bytesSent: 0,
       bytesReceived: 0,
       companion: companionStatus.identity,
+      objectId: "",
+      handleId: "",
     };
     this.rawSocketSessions.set(id, { record, companion });
+    this.registerSocketKernelObject(record, "raw", context);
     this.writeProcfs();
     return {
       id,
       protocol: normalizedProtocol,
       host: normalizedHost,
       port: normalizedPort,
+      objectId: record.objectId,
+      handleId: record.handleId,
       state: record.state,
       close: (reason = "closed") => this.closeRawSocket(id, reason),
     };
@@ -71,6 +76,7 @@ export class NetworkBroker {
   closeRawSocket(id, reason = "closed") {
     const session = this.rawSocketSessions.get(id);
     if (!session) throw new Error(`net: raw socket ${id}: no such session`);
+    this.assertSocketHandle(session.record, ["close"]);
     session.companion.closeRaw?.(session.record.companionSessionId, reason);
     this.finishRawSocket(id, reason);
     return cloneRecord(session.record);
@@ -82,6 +88,7 @@ export class NetworkBroker {
     session.record.state = "closed";
     session.record.closedAt = new Date().toISOString();
     session.record.closeReason = String(reason || "");
+    this.revokeSocketKernelObject(session.record, "raw-socket-closed");
     this.rawSocketSessions.delete(id);
     this.rawSocketHistory.push(cloneRecord(session.record));
     this.rawSocketHistory = this.rawSocketHistory.slice(-200);
@@ -141,14 +148,19 @@ export class NetworkBroker {
       bytesSent: 0,
       bytesReceived: 0,
       signaling: "external-required",
+      objectId: "",
+      handleId: "",
     };
     this.dataChannelSessions.set(id, { record, peerConnection, channel });
+    this.registerSocketKernelObject(record, "webrtc", context);
     this.attachDataChannelEvents(id, channel);
     this.writeProcfs();
     return {
       id,
       peer: record.peer,
       label,
+      objectId: record.objectId,
+      handleId: record.handleId,
       state: record.state,
       send: (data) => this.sendDataChannel(id, data),
       close: (reason = "closed") => this.closeDataChannel(id, reason),
@@ -158,11 +170,13 @@ export class NetworkBroker {
   sendDataChannel(id, data = "") {
     const session = this.dataChannelSessions.get(id);
     if (!session) throw new Error(`net: datachannel ${id}: no such session`);
+    this.assertSocketHandle(session.record, ["send"]);
     const text = typeof data === "string" ? data : JSON.stringify(data);
     session.channel.send?.(text);
     session.record.messagesSent += 1;
     session.record.bytesSent += byteLength(text);
     this.bytesSent += byteLength(text);
+    this.syncSocketKernelObject(session.record, "webrtc");
     this.writeProcfs();
     return { id, bytes: byteLength(text), messagesSent: session.record.messagesSent };
   }
@@ -170,6 +184,7 @@ export class NetworkBroker {
   closeDataChannel(id, reason = "closed") {
     const session = this.dataChannelSessions.get(id);
     if (!session) throw new Error(`net: datachannel ${id}: no such session`);
+    this.assertSocketHandle(session.record, ["close"]);
     session.channel.close?.();
     session.peerConnection.close?.();
     if (session.record.state !== "closed") this.finishDataChannel(id, reason);
@@ -181,6 +196,7 @@ export class NetworkBroker {
       const session = this.dataChannelSessions.get(id);
       if (!session) return;
       session.record.state = "open";
+      this.syncSocketKernelObject(session.record, "webrtc");
       this.writeProcfs();
     };
     const onMessage = (event = {}) => {
@@ -190,6 +206,7 @@ export class NetworkBroker {
       session.record.messagesReceived += 1;
       session.record.bytesReceived += size;
       this.bytesReceived += size;
+      this.syncSocketKernelObject(session.record, "webrtc");
       this.writeProcfs();
     };
     const onClose = () => this.finishDataChannel(id, "closed");
@@ -198,6 +215,7 @@ export class NetworkBroker {
       if (!session) return;
       session.record.state = "error";
       session.record.closeReason = String(event.message || "error");
+      this.syncSocketKernelObject(session.record, "webrtc");
       this.writeProcfs();
     };
     if (typeof channel.addEventListener === "function") {
@@ -219,6 +237,7 @@ export class NetworkBroker {
     session.record.state = "closed";
     session.record.closedAt = new Date().toISOString();
     session.record.closeReason = String(reason || "");
+    this.revokeSocketKernelObject(session.record, "webrtc-datachannel-closed");
     this.dataChannelSessions.delete(id);
     this.dataChannelHistory.push(cloneRecord(session.record));
     this.dataChannelHistory = this.dataChannelHistory.slice(-200);
@@ -255,15 +274,20 @@ export class NetworkBroker {
       messagesReceived: 0,
       bytesSent: 0,
       bytesReceived: 0,
+      objectId: "",
+      handleId: "",
     };
     const socket = new Socket(target.toString(), options.protocols);
     this.webSocketSessions.set(id, { record, socket });
+    this.registerSocketKernelObject(record, "websocket", context);
     this.attachWebSocketEvents(id, socket);
     this.writeProcfs();
     return {
       id,
       url: record.url,
       host: record.host,
+      objectId: record.objectId,
+      handleId: record.handleId,
       state: record.state,
       send: (data) => this.sendWebSocket(id, data),
       close: (code = 1000, reason = "closed") => this.closeWebSocket(id, code, reason),
@@ -273,11 +297,13 @@ export class NetworkBroker {
   sendWebSocket(id, data = "") {
     const session = this.webSocketSessions.get(id);
     if (!session) throw new Error(`net: websocket ${id}: no such session`);
+    this.assertSocketHandle(session.record, ["send"]);
     const text = typeof data === "string" ? data : JSON.stringify(data);
     session.socket.send?.(text);
     session.record.messagesSent += 1;
     session.record.bytesSent += byteLength(text);
     this.bytesSent += byteLength(text);
+    this.syncSocketKernelObject(session.record, "websocket");
     this.writeProcfs();
     return { id, bytes: byteLength(text), messagesSent: session.record.messagesSent };
   }
@@ -285,6 +311,7 @@ export class NetworkBroker {
   closeWebSocket(id, code = 1000, reason = "closed") {
     const session = this.webSocketSessions.get(id);
     if (!session) throw new Error(`net: websocket ${id}: no such session`);
+    this.assertSocketHandle(session.record, ["close"]);
     session.socket.close?.(code, reason);
     if (session.record.state !== "closed") this.finishWebSocket(id, code, reason);
     return cloneRecord(session.record);
@@ -295,6 +322,7 @@ export class NetworkBroker {
       const session = this.webSocketSessions.get(id);
       if (!session) return;
       session.record.state = "open";
+      this.syncSocketKernelObject(session.record, "websocket");
       this.writeProcfs();
     };
     const onMessage = (event = {}) => {
@@ -304,6 +332,7 @@ export class NetworkBroker {
       session.record.messagesReceived += 1;
       session.record.bytesReceived += size;
       this.bytesReceived += size;
+      this.syncSocketKernelObject(session.record, "websocket");
       this.writeProcfs();
     };
     const onClose = (event = {}) => this.finishWebSocket(id, Number(event.code || 1000), String(event.reason || "closed"));
@@ -312,6 +341,7 @@ export class NetworkBroker {
       if (!session) return;
       session.record.state = "error";
       session.record.closeReason = String(event.message || "error");
+      this.syncSocketKernelObject(session.record, "websocket");
       this.writeProcfs();
     };
     if (typeof socket.addEventListener === "function") {
@@ -334,6 +364,7 @@ export class NetworkBroker {
     session.record.closedAt = new Date().toISOString();
     session.record.closeCode = Number(code || 0);
     session.record.closeReason = String(reason || "");
+    this.revokeSocketKernelObject(session.record, "websocket-closed");
     this.webSocketSessions.delete(id);
     this.webSocketHistory.push(cloneRecord(session.record));
     this.webSocketHistory = this.webSocketHistory.slice(-200);
@@ -495,6 +526,69 @@ export class NetworkBroker {
     throw new Error(`net: ${host}: host denied by network policy`);
   }
 
+  registerSocketKernelObject(record, kind, context = {}) {
+    if (!record || !this.os.objects) return null;
+    const rights = socketRights(record, kind);
+    const object = this.os.objects.register("socket", {
+      ref: socketRef(record, kind),
+      name: `${kind}:${record.id}`,
+      ownerPid: context.process?.pid || 0,
+      namespace: context.process?.manifest?.namespace || null,
+      user: context.process?.user || this.os.session?.user || "guest",
+      rights,
+      metadata: socketKernelMetadata(record, kind),
+    });
+    record.objectId = object?.id || "";
+    const handle = record.objectId ? this.os.objects.createHandle(record.objectId, {
+      ownerPid: context.process?.pid || 0,
+      user: context.process?.user || this.os.session?.user || "guest",
+      uid: context.process?.uid || 0,
+      gid: context.process?.gid || 0,
+      groups: context.process?.groups || [],
+      namespace: context.process?.manifest?.namespace || null,
+      rights,
+      closeOnExec: true,
+      transferPolicy: "none",
+      metadata: socketHandleMetadata(record, kind),
+    }) : null;
+    record.handleId = handle?.id || "";
+    return object;
+  }
+
+  syncSocketKernelObject(record, kind) {
+    if (!record?.objectId || !this.os.objects) return null;
+    const rights = socketRights(record, kind);
+    const object = this.os.objects.update(record.objectId, {
+      rights,
+      metadata: socketKernelMetadata(record, kind),
+    });
+    if (record.handleId) {
+      this.os.objects.updateHandle(record.handleId, {
+        rights,
+        metadata: socketHandleMetadata(record, kind),
+      });
+    }
+    return object;
+  }
+
+  revokeSocketKernelObject(record, reason = "socket-closed") {
+    if (!record?.objectId || !this.os.objects) return null;
+    return this.os.objects.revoke(record.objectId, reason);
+  }
+
+  assertSocketHandle(record, rights = []) {
+    if (!record?.handleId || !this.os.objects) return null;
+    try {
+      return this.os.objects.assertHandle(record.handleId, {
+        ownerPid: this.os.objects.getHandle(record.handleId)?.ownerPid,
+        objectType: "socket",
+        rights,
+      });
+    } catch (error) {
+      throw new Error(`net socket handle: ${error.message}`);
+    }
+  }
+
   completeRequest(id, record) {
     this.requests.delete(id);
     this.history.push(cloneRecord(record));
@@ -644,6 +738,48 @@ function requesterId(context = {}) {
 
 function cloneRecord(record) {
   return { ...record };
+}
+
+function socketRights(record = {}, kind = "") {
+  const rights = ["inspect", "close"];
+  if (kind !== "raw") rights.push("send", "receive");
+  if (record.state === "closed") return ["inspect"];
+  return rights;
+}
+
+function socketRef(record = {}, kind = "") {
+  if (kind === "websocket") return `${record.url || "websocket"}#${record.id}`;
+  if (kind === "webrtc") return `webrtc://${record.peer || "-"}/${record.label || "dindbos"}#${record.id}`;
+  return `${record.protocol || "raw"}://${record.host || "-"}:${record.port || 0}#${record.id}`;
+}
+
+function socketKernelMetadata(record = {}, kind = "") {
+  return {
+    socketId: record.id || "",
+    kind,
+    requester: record.requester || "",
+    state: record.state || "",
+    host: record.host || record.peer || "",
+    port: Number(record.port || 0),
+    protocol: record.protocol || (kind === "websocket" ? "websocket" : kind),
+    label: record.label || "",
+    messagesSent: Number(record.messagesSent || 0),
+    messagesReceived: Number(record.messagesReceived || 0),
+    bytesSent: Number(record.bytesSent || 0),
+    bytesReceived: Number(record.bytesReceived || 0),
+    companion: record.companion || "",
+  };
+}
+
+function socketHandleMetadata(record = {}, kind = "") {
+  return {
+    socketId: record.id || "",
+    kind,
+    requester: record.requester || "",
+    host: record.host || record.peer || "",
+    port: Number(record.port || 0),
+    state: record.state || "",
+  };
 }
 
 function byteLength(value) {

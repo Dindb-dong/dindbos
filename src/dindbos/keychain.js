@@ -213,6 +213,7 @@ export class KeychainManager {
     this.assertUnlocked(vault, "delete", context, id);
     const record = this.requireRecord(vault, id, context, "delete");
     this.assertOwnerOrAdmin(vault, record, context, "delete");
+    record.grants.forEach((grant) => this.revokeGrantKernelObject(grant, "keychain-secret-delete"));
     vault.records.delete(id);
     vault.values.delete(id);
     this.audit(vault, "delete", id, requesterId(context), "allowed");
@@ -229,8 +230,20 @@ export class KeychainManager {
     this.assertOwnerOrAdmin(vault, record, context, "grant");
     const ttlMs = Number(options.ttlMs || DEFAULT_GRANT_TTL_MS);
     const expiresAt = options.expiresAt || new Date(Date.now() + ttlMs).toISOString();
-    record.grants = record.grants.filter((grant) => grant.appId !== target);
-    record.grants.push({ appId: target, grantedAt: new Date().toISOString(), expiresAt });
+    record.grants = record.grants.filter((grant) => {
+      if (grant.appId !== target) return true;
+      this.revokeGrantKernelObject(grant, "keychain-grant-replaced");
+      return false;
+    });
+    const grant = {
+      appId: target,
+      grantedAt: new Date().toISOString(),
+      expiresAt,
+      objectId: "",
+      handles: [],
+    };
+    record.grants.push(grant);
+    this.registerGrantKernelObject(vault, record, grant, context);
     record.updatedAt = new Date().toISOString();
     this.audit(vault, "grant", id, requesterId(context), "allowed", `target=${target}`);
     this.writeMetadata(vault);
@@ -244,7 +257,11 @@ export class KeychainManager {
     this.assertUnlocked(vault, "revoke", context, id);
     const record = this.requireRecord(vault, id, context, "revoke");
     this.assertOwnerOrAdmin(vault, record, context, "revoke");
-    record.grants = record.grants.filter((grant) => grant.appId !== target);
+    record.grants = record.grants.filter((grant) => {
+      if (grant.appId !== target) return true;
+      this.revokeGrantKernelObject(grant, "keychain-grant-revoked");
+      return false;
+    });
     record.updatedAt = new Date().toISOString();
     this.audit(vault, "revoke", id, requesterId(context), "allowed", `target=${target}`);
     this.writeMetadata(vault);
@@ -278,14 +295,16 @@ export class KeychainManager {
     const now = Date.now();
     const staleBefore = now - (90 * 24 * 60 * 60 * 1000);
     const records = [...vault.records.values()];
+    records.forEach((record) => this.pruneExpiredGrants(vault, record, now));
     const activeGrants = records.flatMap((record) => record.grants
-      .filter((grant) => !grant.expiresAt || Date.parse(grant.expiresAt) > now)
       .map((grant) => ({
         name: record.name,
         kind: record.kind,
         appId: grant.appId,
         grantedAt: grant.grantedAt,
         expiresAt: grant.expiresAt || "",
+        objectId: grant.objectId || "",
+        handles: (grant.handles || []).map((handle) => ({ ...handle })),
       })));
     const staleCredentials = records
       .filter((record) => Date.parse(record.updatedAt || record.createdAt || "") < staleBefore)
@@ -360,9 +379,108 @@ export class KeychainManager {
   canReadRecord(vault, record, context) {
     const requester = requesterId(context);
     if (isAdminContext(context) || requester === record.ownerAppId) return true;
-    const now = Date.now();
-    record.grants = record.grants.filter((grant) => !grant.expiresAt || Date.parse(grant.expiresAt) > now);
-    return record.grants.some((grant) => grant.appId === requester);
+    this.pruneExpiredGrants(vault, record);
+    const grant = record.grants.find((entry) => entry.appId === requester);
+    if (!grant) return false;
+    return Boolean(this.assertGrantHandle(vault, record, grant, context));
+  }
+
+  pruneExpiredGrants(vault, record, now = Date.now()) {
+    let changed = false;
+    record.grants = record.grants.filter((grant) => {
+      if (!grant.expiresAt || Date.parse(grant.expiresAt) > now) return true;
+      this.revokeGrantKernelObject(grant, "keychain-grant-expired");
+      changed = true;
+      return false;
+    });
+    if (changed) {
+      record.updatedAt = new Date().toISOString();
+      this.audit(vault, "grant-expire", record.name, record.ownerAppId, "allowed");
+      this.writeMetadata(vault);
+    }
+    return changed;
+  }
+
+  registerGrantKernelObject(vault, record, grant, context = {}) {
+    if (!this.os.objects) return null;
+    if (grant.objectId) {
+      return this.os.objects.update(grant.objectId, {
+        expiresAt: grant.expiresAt || "",
+        metadata: grantKernelMetadata(vault, record, grant, context),
+      });
+    }
+    const object = this.os.objects.register("keychain-grant", {
+      ref: `keychain:${vault.user}:${record.name}:${grant.appId}`,
+      name: `${record.name}:${grant.appId}`,
+      ownerPid: context.process?.pid || 0,
+      namespace: context.process?.manifest?.namespace || null,
+      user: vault.user,
+      rights: ["read"],
+      expiresAt: grant.expiresAt || "",
+      metadata: grantKernelMetadata(vault, record, grant, context),
+    });
+    grant.objectId = object?.id || "";
+    return object;
+  }
+
+  assertGrantHandle(vault, record, grant, context = {}) {
+    if (!this.os.objects) return true;
+    const object = this.registerGrantKernelObject(vault, record, grant, context);
+    if (!object?.id) return true;
+    if (object.status && object.status !== "active") return null;
+    const process = context.process || {};
+    const ownerPid = Number(process.pid || 0);
+    const handles = Array.isArray(grant.handles) ? grant.handles : [];
+    grant.handles = handles;
+    const existing = handles.find((handle) => Number(handle.ownerPid || 0) === ownerPid);
+    if (existing?.handleId) {
+      try {
+        return this.os.objects.assertHandle(existing.handleId, {
+          ownerPid,
+          objectType: "keychain-grant",
+          rights: ["read"],
+        });
+      } catch (error) {
+        existing.status = "revoked";
+        existing.revokedAt = new Date().toISOString();
+        existing.revocationReason = error.code || "keychain-grant-stale";
+        return null;
+      }
+    }
+    const handle = this.os.objects.createHandle(object.id, {
+      ownerPid,
+      user: process.user || vault.user,
+      uid: process.uid || 0,
+      gid: process.gid || 0,
+      groups: process.groups || [],
+      namespace: process.manifest?.namespace || null,
+      rights: ["read"],
+      expiresAt: grant.expiresAt || "",
+      closeOnExec: true,
+      transferPolicy: "none",
+      metadata: grantHandleMetadata(record, grant, process),
+    });
+    handles.push({
+      ownerPid,
+      handleId: handle.id,
+      createdAt: handle.createdAt,
+      status: handle.status,
+    });
+    return handle;
+  }
+
+  revokeGrantKernelObject(grant, reason = "keychain-grant-revoked") {
+    if (grant?.objectId && this.os.objects) this.os.objects.revoke(grant.objectId, reason);
+    (grant?.handles || []).forEach((handle) => {
+      if (handle.handleId && this.os.objects) this.os.objects.revokeHandle(handle.handleId, reason);
+      handle.status = "revoked";
+      handle.revokedAt = new Date().toISOString();
+      handle.revocationReason = reason;
+    });
+    if (grant) {
+      grant.revokedAt = new Date().toISOString();
+      grant.revocationReason = reason;
+    }
   }
 
   audit(vault, action, name, requester, result, detail = "") {
@@ -442,6 +560,33 @@ function publicRecord(record) {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     grants: record.grants.map((grant) => ({ ...grant })),
+  };
+}
+
+function grantKernelMetadata(vault, record, grant, context = {}) {
+  return {
+    vaultUser: vault.user,
+    secretName: record.name,
+    secretKind: record.kind,
+    ownerAppId: record.ownerAppId,
+    targetAppId: grant.appId,
+    grantedBy: requesterId(context),
+    grantedAt: grant.grantedAt || "",
+    expiresAt: grant.expiresAt || "",
+    exportable: Boolean(record.exportable),
+    activeHandleCount: (grant.handles || []).filter((handle) => handle.status !== "revoked").length,
+  };
+}
+
+function grantHandleMetadata(record, grant, process = {}) {
+  return {
+    secretName: record.name,
+    secretKind: record.kind,
+    ownerAppId: record.ownerAppId,
+    targetAppId: grant.appId,
+    processAppId: process.appId || "",
+    grantedAt: grant.grantedAt || "",
+    expiresAt: grant.expiresAt || "",
   };
 }
 

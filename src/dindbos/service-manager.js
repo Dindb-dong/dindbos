@@ -36,6 +36,8 @@ export class ServiceManager {
           lastRunAt: "",
           runCount: 0,
           lastError: "",
+          objectId: "",
+          handleId: "",
         });
       } else {
         const record = this.records.get(service.id);
@@ -47,6 +49,7 @@ export class ServiceManager {
         record.namespace = cloneJson(service.namespace || null);
       }
       this.writeState();
+      this.registerServiceKernelObject(this.records.get(service.id), service);
       return this.get(service.id);
     });
   }
@@ -85,8 +88,10 @@ export class ServiceManager {
   enable(serviceId, context = {}) {
     this.assertManage(context);
     const record = this.requireRecord(serviceId);
+    this.assertServiceHandle(record, ["manage"]);
     record.enabled = true;
     if (record.state === "disabled") record.state = "stopped";
+    this.syncServiceKernelObject(record);
     this.log(serviceId, "enabled");
     this.writeState();
     return this.get(serviceId);
@@ -95,9 +100,11 @@ export class ServiceManager {
   disable(serviceId, context = {}) {
     this.assertManage(context);
     const record = this.requireRecord(serviceId);
+    this.assertServiceHandle(record, ["manage"]);
     if (record.pid) this.stop(serviceId, context);
     record.enabled = false;
     record.state = "disabled";
+    this.syncServiceKernelObject(record);
     this.log(serviceId, "disabled");
     this.writeState();
     return this.get(serviceId);
@@ -107,12 +114,14 @@ export class ServiceManager {
     this.assertManage(context);
     return this.runServiceMutation(() => {
       const record = this.requireRecord(serviceId);
+      this.assertServiceHandle(record, ["manage"]);
       if (record.pid) this.stop(serviceId, context);
       this.definitions.delete(serviceId);
       this.records.delete(serviceId);
       this.logs.delete(serviceId);
       this.log(serviceId, "unregistered");
       this.writeState();
+      this.revokeServiceKernelObject(record, "service-unregister");
       return { ...record, state: "unregistered", pid: 0 };
     });
   }
@@ -121,10 +130,12 @@ export class ServiceManager {
     this.assertManage(context);
     const service = this.requireDefinition(serviceId);
     const record = this.requireRecord(serviceId);
+    this.assertServiceHandle(record, ["start"]);
     if (!record.enabled) throw new Error(`service: ${serviceId}: disabled`);
     if (record.state === "running") return this.get(serviceId);
     record.state = "starting";
     record.lastError = "";
+    this.syncServiceKernelObject(record);
     this.log(serviceId, "starting");
     this.writeState();
     const process = this.os.processes.spawn({
@@ -143,11 +154,13 @@ export class ServiceManager {
       namespace: cloneJson(service.namespace || null),
     });
     record.pid = process.pid;
+    this.syncServiceKernelObject(record);
     try {
       if (typeof service.start === "function") await service.start(this.serviceContext(service, record));
       record.state = "running";
       record.startedAt = new Date().toISOString();
       this.os.processes.markReady(process.pid);
+      this.syncServiceKernelObject(record);
       this.log(serviceId, "running");
       this.emit("start", record);
       this.writeState();
@@ -165,10 +178,12 @@ export class ServiceManager {
     this.assertManage(context);
     const service = this.requireDefinition(serviceId);
     const record = this.requireRecord(serviceId);
+    this.assertServiceHandle(record, ["stop"]);
     if (record.pid && this.os.processes.get(record.pid)) this.os.processes.kill(record.pid, "service-stopped");
     record.pid = 0;
     record.state = record.enabled ? "stopped" : "disabled";
     record.stoppedAt = new Date().toISOString();
+    this.syncServiceKernelObject(record);
     this.log(serviceId, "stopped");
     this.emit("stop", record);
     if (typeof service.stop === "function") service.stop(this.serviceContext(service, record));
@@ -179,6 +194,7 @@ export class ServiceManager {
   async restart(serviceId, context = {}) {
     this.assertManage(context);
     const record = this.requireRecord(serviceId);
+    this.assertServiceHandle(record, ["restart"]);
     if (record.pid) this.stop(serviceId, context);
     this.log(serviceId, "restarting");
     return this.start(serviceId, context);
@@ -187,9 +203,11 @@ export class ServiceManager {
   crash(serviceId, error, context = {}) {
     this.assertManage(context);
     const record = this.requireRecord(serviceId);
+    this.assertServiceHandle(record, ["crash"]);
     record.state = "crashed";
     record.lastError = error?.message || String(error);
     if (record.pid && this.os.processes.get(record.pid)) this.os.processes.crash(record.pid, error);
+    this.syncServiceKernelObject(record);
     this.log(serviceId, `crashed ${record.lastError}`, "error");
     this.emit("crash", record);
     this.writeState();
@@ -200,13 +218,16 @@ export class ServiceManager {
     this.assertManage(context);
     const service = this.requireDefinition(serviceId);
     const record = this.requireRecord(serviceId);
+    this.assertServiceHandle(record, ["run"]);
     if (!record.enabled) throw new Error(`service: ${serviceId}: disabled`);
     record.lastRunAt = new Date().toISOString();
     record.runCount += 1;
+    this.syncServiceKernelObject(record);
     this.log(serviceId, `scheduled-run ${record.runCount}`);
     try {
       if (typeof service.run === "function") await service.run(this.serviceContext(service, record));
       if (record.state === "degraded") record.state = record.pid ? "running" : "stopped";
+      this.syncServiceKernelObject(record);
       this.emit("scheduled-run", record);
       this.writeState();
       const state = this.get(serviceId);
@@ -215,6 +236,7 @@ export class ServiceManager {
     } catch (error) {
       record.state = "degraded";
       record.lastError = error?.message || String(error);
+      this.syncServiceKernelObject(record);
       this.log(serviceId, `degraded ${record.lastError}`, "error");
       this.emit("degraded", record);
       this.writeState();
@@ -244,12 +266,14 @@ export class ServiceManager {
       if (shouldDegradeOnSuspend(lifecyclePolicy, reason)) {
         record.state = "degraded";
         record.lastError = `policy ${lifecyclePolicy} cannot continue during ${reason}`;
+        this.syncServiceKernelObject(record);
         this.log(record.id, `degraded ${record.lastError}`, "warn");
         this.emit("degraded", record);
         return;
       }
       record.previousState = "running";
       record.state = "suspended";
+      this.syncServiceKernelObject(record);
       this.log(record.id, `suspended ${reason}`);
       this.emit("suspend", record);
     });
@@ -262,6 +286,7 @@ export class ServiceManager {
       if (record.state !== "suspended") return;
       record.state = record.previousState || "running";
       delete record.previousState;
+      this.syncServiceKernelObject(record);
       this.log(record.id, `resumed ${reason}`);
       this.emit("resume", record);
     });
@@ -320,6 +345,81 @@ export class ServiceManager {
     const principal = context.principal || this.os.permissions?.systemPrincipal?.() || { system: true };
     if (principal.system || principal.user === "root") return;
     throw new Error("service: manage denied");
+  }
+
+  registerServiceKernelObject(record, service = null) {
+    if (!record || !this.os.objects) return null;
+    const definition = service || this.definitions.get(record.id) || {};
+    if (record.objectId) {
+      const existing = this.os.objects.get(record.objectId);
+      if (existing?.status === "active") {
+        return this.syncServiceKernelObject(record, definition);
+      }
+      record.objectId = "";
+      record.handleId = "";
+    }
+    const rights = serviceRights(record);
+    const object = this.os.objects.register("service", {
+      ref: `service:${record.id}`,
+      name: record.name || record.id,
+      ownerPid: 0,
+      namespace: definition.namespace || record.namespace || null,
+      user: this.os.session?.user || "guest",
+      rights,
+      metadata: serviceKernelMetadata(record, definition),
+    });
+    record.objectId = object?.id || "";
+    const handle = record.objectId ? this.os.objects.createHandle(record.objectId, {
+      ownerPid: 0,
+      user: this.os.session?.user || "guest",
+      groups: this.os.session?.groups || [],
+      rights,
+      closeOnExec: false,
+      transferPolicy: "none",
+      metadata: serviceHandleMetadata(record),
+    }) : null;
+    record.handleId = handle?.id || "";
+    return object;
+  }
+
+  syncServiceKernelObject(record, service = null) {
+    if (!record || !this.os.objects) return null;
+    if (!record.objectId) return this.registerServiceKernelObject(record, service);
+    const definition = service || this.definitions.get(record.id) || {};
+    const rights = serviceRights(record);
+    const object = this.os.objects.update(record.objectId, {
+      ownerPid: 0,
+      namespace: definition.namespace || record.namespace || null,
+      rights,
+      metadata: serviceKernelMetadata(record, definition),
+    });
+    if (record.handleId) {
+      this.os.objects.updateHandle(record.handleId, {
+        rights,
+        metadata: serviceHandleMetadata(record),
+      });
+    }
+    return object;
+  }
+
+  revokeServiceKernelObject(record, reason = "service-unregister") {
+    if (!record?.objectId || !this.os.objects) return null;
+    return this.os.objects.revoke(record.objectId, reason);
+  }
+
+  assertServiceHandle(record, rights = []) {
+    if (!record || !this.os.objects) return null;
+    if (!record.handleId) this.registerServiceKernelObject(record);
+    if (!record.handleId) return null;
+    try {
+      return this.os.objects.assertHandle(record.handleId, {
+        ownerPid: 0,
+        objectType: "service",
+        rights,
+      });
+    } catch (error) {
+      throw new Error(`service handle: ${error.message}`);
+    }
   }
 
   requireDefinition(serviceId) {
@@ -412,6 +512,35 @@ function normalizeService(definition = {}) {
     start: definition.start || null,
     stop: definition.stop || null,
     run: definition.run || null,
+  };
+}
+
+function serviceRights() {
+  return ["crash", "inspect", "manage", "restart", "resume", "run", "start", "stop", "suspend", "sync"];
+}
+
+function serviceKernelMetadata(record = {}, definition = {}) {
+  return {
+    serviceId: record.id || "",
+    name: record.name || "",
+    state: record.state || "",
+    enabled: Boolean(record.enabled),
+    pid: Number(record.pid || 0),
+    packageId: record.packageId || definition.packageId || "",
+    lifecyclePolicy: record.lifecyclePolicy || definition.lifecyclePolicy || "",
+    namespace: cloneJson(record.namespace || definition.namespace || null),
+    runCount: Number(record.runCount || 0),
+    lastError: record.lastError || "",
+  };
+}
+
+function serviceHandleMetadata(record = {}) {
+  return {
+    serviceId: record.id || "",
+    name: record.name || "",
+    state: record.state || "",
+    pid: Number(record.pid || 0),
+    packageId: record.packageId || "",
   };
 }
 

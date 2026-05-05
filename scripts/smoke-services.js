@@ -29,10 +29,18 @@ os.services.register({
     log("indexer run");
   },
 });
+const registeredIndexer = os.services.get("search-indexer");
+assert(registeredIndexer.objectId && registeredIndexer.handleId, "registered service missing kernel object and handle ids");
+const serviceObject = os.objects.list({ type: "service", status: "active" }).find((object) => object.metadata?.serviceId === "search-indexer");
+assert(serviceObject?.rights.includes("start") && serviceObject.rights.includes("stop") && serviceObject.rights.includes("run"), "service kernel object rights mismatch");
+const serviceHandle = os.objects.getHandle(registeredIndexer.handleId);
+assert(serviceHandle?.objectId === serviceObject.id && serviceHandle.rights.includes("restart"), "service handle did not target service object");
 
 const started = await os.services.start("search-indexer");
 assert(started.state === "running", "service did not enter running state");
 assert(started.pid > 0 && os.processes.get(started.pid), "service did not create a runtime process");
+assert(os.objects.get(started.objectId).metadata.state === "running", "service kernel object metadata did not refresh running state");
+assert(os.objects.get(started.objectId).metadata.pid === started.pid, "service kernel object metadata did not track runtime pid");
 assert(serviceFlushes === 1, "service start did not wait for durability sync");
 assert(os.fs.readFile("/var/run/dindbos/services.json").includes("search-indexer"), "service state file missing registered service");
 assert(fsEvents.some((event) => event.action === "atomic-create" && event.path === "/var/run/dindbos/services.json"), "service state was not atomically created");
@@ -77,6 +85,10 @@ assert(events.includes("degraded:visible-sync:degraded"), "service lifecycle pol
 
 const deniedPrincipal = os.permissions.principal({ user: "guest", groups: ["users"] });
 assertThrows(() => os.services.stop("search-indexer", { principal: deniedPrincipal }), "service: manage denied");
+os.services.register({ id: "handle-gated", name: "Handle Gated" });
+const handleGated = os.services.get("handle-gated");
+os.objects.revokeHandle(handleGated.handleId, "service-handle-smoke");
+await assertRejects(() => os.services.start("handle-gated"), "stale handle");
 
 const serviceStatePath = "/var/run/dindbos/services.json";
 const serviceLogPath = "/var/log/dindbos/services.log";
@@ -200,6 +212,16 @@ function createNoopStorage() {
 function assertThrows(fn, expected) {
   try {
     fn();
+  } catch (error) {
+    if (!String(error.message).includes(expected)) throw error;
+    return;
+  }
+  throw new Error(`expected error containing ${expected}`);
+}
+
+async function assertRejects(fn, expected) {
+  try {
+    await fn();
   } catch (error) {
     if (!String(error.message).includes(expected)) throw error;
     return;

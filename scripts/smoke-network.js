@@ -122,14 +122,25 @@ assert(response.text === "ok:api.example.test:/data", "sandbox net.fetch did not
 assert(!os.fs.readFile("/var/log/dindbos/network.log").includes("package-secret"), "network log exposed package query secret");
 await assertRejects(() => allowedSandbox.net.fetch("https://blocked.example.test/data"), "host denied");
 const ws = allowedSandbox.net.openWebSocket("wss://api.example.test/socket");
+assert(ws.objectId && ws.handleId, "websocket did not expose socket object and handle ids");
+const wsObject = os.objects.get(ws.objectId);
+assert(wsObject?.type === "socket" && wsObject.rights.includes("send") && wsObject.rights.includes("close"), "websocket kernel object rights mismatch");
 sockets.at(-1).emit("open");
+assert(os.objects.get(ws.objectId).metadata.state === "open", "websocket kernel object did not refresh open state");
 ws.send("hello socket");
 sockets.at(-1).emit("message", { data: "reply" });
+assert(os.objects.get(ws.objectId).metadata.messagesSent === 1 && os.objects.get(ws.objectId).metadata.messagesReceived === 1, "websocket kernel object did not refresh traffic counters");
 assert(os.network.status().websocket.sessions.some((entry) => entry.id === ws.id && entry.state === "open" && entry.messagesSent === 1 && entry.messagesReceived === 1), "websocket session did not open through broker");
 ws.close(1000, "done");
 assert(os.network.status().websocket.history.some((entry) => entry.id === ws.id && entry.state === "closed"), "websocket close was not recorded");
+assert(os.objects.get(ws.objectId).status === "revoked", "websocket kernel object was not revoked on close");
+const guardedWs = allowedSandbox.net.openWebSocket("wss://api.example.test/guarded-socket");
+os.objects.revokeHandle(guardedWs.handleId, "websocket-handle-smoke");
+await assertRejects(() => guardedWs.send("blocked"), "stale handle");
+os.network.finishWebSocket(guardedWs.id, 1000, "smoke-cleanup");
 await assertRejects(() => allowedSandbox.net.openWebSocket("wss://blocked.example.test/socket"), "host denied");
 const rtc = allowedSandbox.net.openDataChannel("api.example.test", { label: "updates" });
+assert(rtc.objectId && rtc.handleId && os.objects.get(rtc.objectId).metadata.kind === "webrtc", "WebRTC data channel did not expose socket object and handle ids");
 peerConnections.at(-1).channels[0].emit("open");
 rtc.send("hello rtc");
 peerConnections.at(-1).channels[0].emit("message", { data: "rtc reply" });
@@ -150,8 +161,10 @@ os.network.rawSocketCompanion = {
   closeRaw: (id, reason) => rawCompanionCalls.push({ action: "close", id, reason }),
 };
 const rawTcp = allowedSandbox.net.openRawSocket("tcp", "api.example.test", 443);
+assert(rawTcp.objectId && rawTcp.handleId && os.objects.get(rawTcp.objectId).metadata.kind === "raw", "raw TCP socket did not expose socket object and handle ids");
 assert(os.network.status().rawSockets.sessions.some((entry) => entry.id === rawTcp.id && entry.companion === "networkd"), "raw TCP session did not open through companion boundary");
 rawTcp.close("done");
+assert(os.objects.get(rawTcp.objectId).status === "revoked", "raw TCP socket object was not revoked on close");
 const rawUdp = allowedSandbox.net.openRawSocket("udp", "api.example.test", 53);
 rawUdp.close("done");
 assert(os.network.status().rawSockets.history.some((entry) => entry.protocol === "udp" && entry.state === "closed"), "raw UDP close was not recorded");

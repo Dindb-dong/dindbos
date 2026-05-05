@@ -64,6 +64,9 @@ assert(webAuthnCalls.join(",") === "create,get,get", `unexpected WebAuthn call s
 
 result = await shell.executeAsync("keychain grant registry.token secret-package 1000");
 assert(result.status === 0 && result.output === "keychain grant registry.token secret-package", `keychain grant package mismatch: ${JSON.stringify(result)}`);
+const packageGrantObject = os.objects.list({ type: "keychain-grant", status: "active" })
+  .find((object) => object.metadata?.secretName === "registry.token" && object.metadata?.targetAppId === "secret-package");
+assert(packageGrantObject?.rights.includes("read"), "keychain package grant kernel object missing read right");
 os.packages.install({
   id: "secret-package",
   name: "Secret Package",
@@ -99,6 +102,10 @@ await assertArchiveDoesNotExposeSecret("/var/log/dindbos", "s3cr3t-token", "audi
 const secretWindow = os.apps.launch("secret-package");
 await secretWindow.rendered;
 assert(secretWindow.content.innerHTML.includes("registry:repository-token:registry.token:s3cr3t-token:undeclared-denied"), `package secret reference render mismatch: ${secretWindow.content.innerHTML}`);
+const packageGrantHandle = os.objects.listHandles({ objectType: "keychain-grant", ownerPid: secretWindow.pid, status: "active" })
+  .find((handle) => handle.objectId === packageGrantObject.id);
+assert(packageGrantHandle?.rights.includes("read"), "keychain package grant handle missing for launched process");
+assert(os.fs.readFile(`/proc/${secretWindow.pid}/handles.json`).includes(packageGrantHandle.id), "keychain package grant handle missing from process procfs");
 
 await assertRejects(() => os.keychain.exportSecret("registry.token", { appId: "shell", principal: os.permissions.principal(os.session) }), "export denied by policy");
 result = await shell.executeAsync("keychain export registry.token");
@@ -117,7 +124,8 @@ const appSandbox = new AppSandbox(os, appProcess);
 appSandbox.keychain.set("api.token", "app-secret");
 assert(appSandbox.keychain.get("api.token") === "app-secret", "app-scoped keychain read failed");
 
-const otherSandbox = new AppSandbox(os, processFor("other-app", ["keychain.read"]));
+const otherProcess = processFor("other-app", ["keychain.read"]);
+const otherSandbox = new AppSandbox(os, otherProcess);
 await assertRejects(() => otherSandbox.keychain.get("api.token"), "access denied");
 
 os.keychain.grant("api.token", "other-app", { ttlMs: 10 }, { process: appProcess, principal: os.permissions.principal(os.session) });
@@ -127,8 +135,16 @@ await assertRejects(() => otherSandbox.keychain.get("api.token"), "access denied
 
 os.keychain.grant("api.token", "other-app", { ttlMs: 1000 }, { process: appProcess, principal: os.permissions.principal(os.session) });
 assert(otherSandbox.keychain.get("api.token") === "app-secret", "regranted keychain read failed");
+const otherGrantHandle = os.objects.listHandles({ objectType: "keychain-grant", ownerPid: otherProcess.pid, status: "active" })
+  .find((handle) => handle.metadata?.secretName === "api.token" && handle.metadata?.targetAppId === "other-app");
+assert(otherGrantHandle?.rights.includes("read"), "app keychain grant handle missing read right");
+os.objects.revokeHandle(otherGrantHandle.id, "keychain-grant-smoke");
+await assertRejects(() => otherSandbox.keychain.get("api.token"), "access denied");
+os.keychain.grant("api.token", "other-app", { ttlMs: 1000 }, { process: appProcess, principal: os.permissions.principal(os.session) });
+assert(otherSandbox.keychain.get("api.token") === "app-secret", "keychain read after stale-handle regrant failed");
 os.keychain.revoke("api.token", "other-app", { process: appProcess, principal: os.permissions.principal(os.session) });
 await assertRejects(() => otherSandbox.keychain.get("api.token"), "access denied");
+assert(os.objects.list({ type: "keychain-grant", status: "revoked" }).some((object) => object.metadata?.secretName === "api.token"), "revoked keychain grant object missing diagnostics");
 
 result = await shell.executeAsync("keychain signing create package.sign com.example");
 assert(result.status === 0 && result.output.includes("ed25519-pub:v1:"), `signing create mismatch: ${JSON.stringify(result)}`);

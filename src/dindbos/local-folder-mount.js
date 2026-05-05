@@ -73,8 +73,11 @@ export class LocalFolderMountManager {
       handle,
       handleName: options.handleName || handle.name || mountName,
       mode: options.mode || this.defaultMode,
+      objectId: "",
+      handleId: "",
     };
     this.mounts.set(node.path, record);
+    this.registerMountKernelObject(record);
     await this.syncDirectory(node.path);
     if (options.persist !== false) await this.persistMount(record);
     this.os.writeMountTableProcfs?.("local-mount");
@@ -86,6 +89,7 @@ export class LocalFolderMountManager {
     const mount = this.mountFor(normalized);
     if (!mount || mount.path !== normalized) throw new Error(`umount: ${path}: not a mount root`);
     this.mounts.delete(mount.path);
+    this.revokeMountKernelObject(mount, options.forget ? "local-mount-forget" : "local-unmount");
     if (this.os.fs.exists(mount.path)) this.os.fs.remove(mount.path, "/", { recursive: true }, this.os.permissions.systemPrincipal());
     if (options.forget) await this.forgetMount(mount.path);
     this.os.writeMountTableProcfs?.("local-unmount");
@@ -288,6 +292,7 @@ export class LocalFolderMountManager {
 
   async list(path, cwd = "/") {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertMountHandleForPath(normalized, ["read"]);
     const directory = await this.directoryHandleFor(normalized);
     const entries = [];
     for await (const [name, handle] of directory.entries()) {
@@ -302,6 +307,7 @@ export class LocalFolderMountManager {
     const normalized = this.os.fs.normalize(path, cwd);
     const mount = this.mountFor(normalized);
     if (!mount) return null;
+    this.assertMountHandle(mount, ["read"]);
     if (normalized === mount.path) {
       return {
         path: mount.path,
@@ -323,6 +329,7 @@ export class LocalFolderMountManager {
 
   async readFile(path, cwd = "/") {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertMountHandleForPath(normalized, ["read"]);
     const { parentHandle, name } = await this.parentHandleFor(normalized);
     const handle = await parentHandle.getFileHandle(name);
     const file = await handle.getFile();
@@ -331,6 +338,7 @@ export class LocalFolderMountManager {
 
   async readFileBytes(path, cwd = "/") {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertMountHandleForPath(normalized, ["read"]);
     const { parentHandle, name } = await this.parentHandleFor(normalized);
     const handle = await parentHandle.getFileHandle(name);
     const file = await handle.getFile();
@@ -339,6 +347,7 @@ export class LocalFolderMountManager {
 
   async writeFile(path, content, cwd = "/") {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertMountHandleForPath(normalized, ["write"]);
     await this.assertNoSyncConflict(normalized, "write");
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
@@ -351,6 +360,7 @@ export class LocalFolderMountManager {
 
   async writeFileBytes(path, bytes, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertMountHandleForPath(normalized, ["write"]);
     await this.assertNoSyncConflict(normalized, "write");
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
@@ -363,6 +373,7 @@ export class LocalFolderMountManager {
 
   async writeFileBlob(path, blob, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertMountHandleForPath(normalized, ["write"]);
     await this.assertNoSyncConflict(normalized, "write");
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
@@ -381,6 +392,7 @@ export class LocalFolderMountManager {
 
   async createDirectory(path, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertMountHandleForPath(normalized, ["write"]);
     if (options.parents) {
       await this.directoryHandleFor(normalized, { create: true });
     } else {
@@ -393,6 +405,7 @@ export class LocalFolderMountManager {
 
   async remove(path, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertMountHandleForPath(normalized, ["write"]);
     await this.assertNoSyncConflict(normalized, "remove");
     const mount = this.mountFor(normalized);
     if (!mount || normalized === mount.path) throw new Error(`rm: cannot remove mount root: ${normalized}`);
@@ -647,7 +660,9 @@ export class LocalFolderMountManager {
 
   async syncDirectory(path) {
     const normalized = this.os.fs.normalize(path);
-    if (!this.mountFor(normalized)) return [];
+    const mount = this.mountFor(normalized);
+    if (!mount) return [];
+    this.assertMountHandle(mount, ["sync"]);
     return this.list(normalized);
   }
 
@@ -662,6 +677,8 @@ export class LocalFolderMountManager {
       path: mount.path,
       handleName: mount.handleName,
       mode: mount.mode || this.defaultMode,
+      objectId: mount.objectId || "",
+      handleId: mount.handleId || "",
       access: mount.mode === "read" ? "read-only" : "read-write",
       type: "local-folder",
       nativeHelper: {
@@ -673,6 +690,71 @@ export class LocalFolderMountManager {
       },
       ...extra,
     };
+  }
+
+  registerMountKernelObject(mount) {
+    if (!mount || mount.objectId || !this.os.objects) return null;
+    const rights = mountRights(mount);
+    const object = this.os.objects.register("mount", {
+      ref: `mount:${mount.path}`,
+      name: `${mount.name}:${mount.path}`,
+      ownerPid: 0,
+      user: this.os.session?.user || "guest",
+      rights,
+      metadata: mountKernelMetadata(mount),
+    });
+    mount.objectId = object?.id || "";
+    const handle = mount.objectId ? this.os.objects.createHandle(mount.objectId, {
+      ownerPid: 0,
+      user: this.os.session?.user || "guest",
+      groups: this.os.session?.groups || [],
+      rights,
+      closeOnExec: false,
+      transferPolicy: "none",
+      metadata: mountHandleMetadata(mount),
+    }) : null;
+    mount.handleId = handle?.id || "";
+    return object;
+  }
+
+  syncMountKernelObject(mount) {
+    if (!mount?.objectId || !this.os.objects) return null;
+    const rights = mountRights(mount);
+    const object = this.os.objects.update(mount.objectId, {
+      rights,
+      metadata: mountKernelMetadata(mount),
+    });
+    if (mount.handleId) {
+      this.os.objects.updateHandle(mount.handleId, {
+        rights,
+        metadata: mountHandleMetadata(mount),
+      });
+    }
+    return object;
+  }
+
+  revokeMountKernelObject(mount, reason = "local-unmount") {
+    if (!mount?.objectId || !this.os.objects) return null;
+    return this.os.objects.revoke(mount.objectId, reason);
+  }
+
+  assertMountHandleForPath(path, rights = []) {
+    const mount = this.mountFor(path);
+    if (!mount) throw new Error(`local mount not found: ${path}`);
+    return this.assertMountHandle(mount, rights);
+  }
+
+  assertMountHandle(mount, rights = []) {
+    if (!mount?.handleId || !this.os.objects) return null;
+    try {
+      return this.os.objects.assertHandle(mount.handleId, {
+        ownerPid: 0,
+        objectType: "mount",
+        rights,
+      });
+    } catch (error) {
+      throw new Error(`local mount handle: ${error.message}`);
+    }
   }
 
   ensureMountRoot() {
@@ -967,6 +1049,32 @@ function localMountFsckProblem(code, path, message, repairable = false) {
     path,
     message,
     repairable: Boolean(repairable),
+  };
+}
+
+function mountRights(mount = {}) {
+  const rights = ["read", "sync", "stat", "list", "unmount"];
+  if ((mount.mode || "readwrite") !== "read") rights.push("write", "create", "remove", "rename");
+  return rights;
+}
+
+function mountKernelMetadata(mount = {}) {
+  return {
+    path: mount.path || "",
+    name: mount.name || "",
+    handleName: mount.handleName || "",
+    mode: mount.mode || "readwrite",
+    access: (mount.mode || "readwrite") === "read" ? "read-only" : "read-write",
+    source: "browser-directory-handle",
+  };
+}
+
+function mountHandleMetadata(mount = {}) {
+  return {
+    path: mount.path || "",
+    name: mount.name || "",
+    handleName: mount.handleName || "",
+    mode: mount.mode || "readwrite",
   };
 }
 
