@@ -1,6 +1,6 @@
 # DindbOS.js Roadmap
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 
 DindbOS.js should behave like a browser-native OS runtime, not an OS-themed portfolio page. The portfolio is the demo workload that proves the runtime.
 
@@ -169,6 +169,387 @@ Already present:
 - Files.app keyboard navigation is implemented for selection movement, folder traversal, open, Trash, rename, and copy/paste, covered by `npm run smoke:files`.
 - Viewer.app controls cover zoom, Browser.app handoff, export, copy path, PDF page navigation through the optional PDF.js adapter, and deck/large-preview behavior, covered by `npm run smoke:viewer`.
 
+## Native OS Convergence Roadmap
+
+This section tracks work that is technically possible inside the browser, even when it is hard, expensive, or requires optional helper processes. These items should move DindbOS closer to a native operating system without lying about the browser sandbox.
+
+The principle is strict: each item must create a reusable OS primitive. A terminal demo, a fake process row, or a one-off app shortcut does not count. The work counts only when apps, shell commands, packages, and tests can all use the same runtime boundary.
+
+### Convergence 1: Browser-Native Syscall ABI
+
+Status: Next.
+
+Goal: define a stable syscall-style interface between user programs and the DindbOS runtime.
+
+Why it matters:
+
+- Native OSes are not just UI shells; user programs call a kernel boundary.
+- DindbOS already has kernel services, but apps currently use higher-level JavaScript APIs.
+- A syscall ABI gives scripts, WASM programs, NodeCompat packages, and future language runtimes one common low-level contract.
+
+Implementation tasks:
+
+- Define a numbered or named syscall table for filesystem, process, clock, entropy, terminal IO, environment, permissions, package metadata, app launch, and diagnostics.
+- Add `os.syscall(nameOrNumber, args)` as an internal low-level runtime API.
+- Route existing high-level app APIs through the syscall layer where practical, instead of letting every surface call kernel services differently.
+- Return structured errno-style failures such as `ENOENT`, `EACCES`, `EINVAL`, `ENOSYS`, `EIO`, and `EPERM`.
+- Add syscall tracing under `/proc/<pid>/syscalls` and `/var/log/dindbos/syscall.log`.
+- Add permission checks at the syscall boundary, not only in high-level app wrappers.
+- Document ABI stability rules in `docs/syscalls.md`.
+
+Verification:
+
+- Add smoke coverage proving the same file read/write, process lookup, app launch, and permission denial behavior through shell, app API, NodeCompat, and raw syscall calls.
+- Add regression tests for unknown syscall, invalid arguments, permission denial, and syscall trace output.
+
+Completion criteria:
+
+- Third-party code can target the syscall table without importing private runtime internals.
+- Unsupported syscalls fail explicitly with `ENOSYS`.
+- Syscall logs are useful for debugging broken apps and packages.
+
+### Convergence 2: WASM User Processes
+
+Status: Next.
+
+Goal: run WebAssembly programs as first-class DindbOS processes with VFS, stdin/stdout/stderr, arguments, environment variables, and syscall access.
+
+Why it matters:
+
+- WASM is the browser path closest to native binary execution.
+- This is the realistic route for C, Rust, Zig, Go, and TinyGo-style programs inside DindbOS.
+- It moves DindbOS from "JavaScript apps only" toward a real multi-runtime userland.
+
+Implementation tasks:
+
+- Add a `wasm` loader that can execute `.wasm` modules from VFS paths.
+- Support WASI-style imports where possible, mapped to the DindbOS syscall ABI.
+- Provide argv/env/cwd/stdin/stdout/stderr for WASM processes.
+- Mount process-local descriptors for files, pipes, and terminal streams.
+- Enforce process filesystem scopes before WASM code touches VFS paths.
+- Add memory and execution guards: max memory pages, cooperative timeout, abort handling, and crash report capture.
+- Add shell integration: `chmod +x hello.wasm`, then `./hello.wasm arg1 arg2`.
+- Add package manifest support for WASM entry points.
+- Add developer docs for compiling small C/Rust/Zig examples to the supported WASM/WASI target.
+
+Verification:
+
+- Add smoke fixture programs for hello stdout, argv/env printing, file read/write, permission denial, nonzero exit, and crash reporting.
+- Add package install smoke coverage for a WASM-backed app launched through AppRegistry.
+
+Completion criteria:
+
+- A small WASI-compatible program runs from Terminal without special UI handling.
+- WASM process state appears in Activity Monitor and `/proc`.
+- WASM cannot escape its declared filesystem and capability scopes.
+
+### Convergence 3: Real Process Isolation With Workers
+
+Status: Next.
+
+Goal: move risky or heavy userland execution out of the main UI thread into Web Workers or dedicated worker pools.
+
+Why it matters:
+
+- Native OSes isolate processes so one busy program does not freeze the desktop.
+- DindbOS currently has process accounting and crash isolation, but much of the runtime still shares the browser main thread.
+- Worker-backed execution is the browser-native version of stronger process isolation.
+
+Implementation tasks:
+
+- Add a `ProcessExecutor` abstraction with main-thread, worker, and future companion-backed execution modes.
+- Run NodeCompat programs and WASM programs in dedicated workers where possible.
+- Provide a message-based syscall bridge from worker processes back to the runtime kernel.
+- Transfer binary data with `ArrayBuffer`/`MessagePort` instead of JSON-only payloads.
+- Add per-process cancellation, timeout, output buffering, and crash propagation.
+- Add worker lifecycle state to `/proc/<pid>/status`.
+- Make Activity Monitor distinguish `main-thread`, `worker`, and `companion` execution backends.
+
+Verification:
+
+- Add smoke coverage proving a CPU-heavy worker process does not block window rendering or shell input.
+- Add tests for worker crash, timeout, kill, stdout/stderr delivery, and VFS syscall denial.
+
+Completion criteria:
+
+- Heavy package/WASM execution can be killed from Activity Monitor.
+- The desktop remains responsive while a worker process is busy.
+- Worker processes use the same permission and syscall boundaries as main-thread apps.
+
+### Convergence 4: File Descriptors, Pipes, And Device Nodes
+
+Status: Next.
+
+Goal: add a descriptor table model that supports files, pipes, terminals, sockets, and pseudo-devices consistently.
+
+Why it matters:
+
+- Native userland depends on file descriptors, not only path-based file APIs.
+- Pipes and device files are the foundation for serious shell scripting, WASM/WASI compatibility, and process IO.
+
+Implementation tasks:
+
+- Add per-process descriptor tables for `stdin`, `stdout`, `stderr`, opened files, pipes, and device handles.
+- Implement `open`, `close`, `read`, `write`, `seek`, `stat`, and `ioctl`-style descriptor syscalls.
+- Back shell pipelines with real pipe descriptors instead of only command string plumbing.
+- Add `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty`, and `/dev/clipboard` where browser policy allows.
+- Add pseudo-terminal sessions for Terminal.app so interactive programs can read/write through a TTY-like device.
+- Add descriptor leak cleanup when a process exits or crashes.
+
+Verification:
+
+- Add smoke coverage for descriptor open/read/write/close, pipe chaining, `/dev/null`, entropy devices, TTY output, and descriptor cleanup after process kill.
+
+Completion criteria:
+
+- Shell, WASM, and NodeCompat can share the same descriptor-backed IO path.
+- Process crashes do not leave open descriptors or stale pipe state.
+
+### Convergence 5: Virtual Networking Stack
+
+Status: Later.
+
+Goal: provide explicit network primitives without giving apps unrestricted browser fetch access.
+
+Why it matters:
+
+- A native OS has sockets, DNS policy, firewall rules, and network diagnostics.
+- Browser security prevents raw sockets, but DindbOS can still expose a controlled virtual network stack over Fetch, WebSocket, WebRTC data channels, and optional companions.
+
+Implementation tasks:
+
+- Add a network permission model: `net.fetch`, `net.websocket`, `net.webrtc`, `net.dns`, and host allowlists.
+- Implement a runtime network broker so apps request network operations through DindbOS instead of calling `fetch` directly.
+- Add `/proc/net` diagnostics for active requests, WebSocket sessions, denied hosts, and bandwidth estimates.
+- Add Terminal commands such as `netstat`, `curl`, `ping` policy probe, and `dig` policy probe where browser APIs allow.
+- Add package manifest network scopes.
+- Add traffic logging with redaction rules so debugging is possible without leaking secrets.
+- Add optional companion protocol for capabilities browsers cannot expose, such as raw TCP/UDP experiments, only behind explicit trust prompts.
+
+Verification:
+
+- Add smoke coverage for allowed fetch, denied host, WebSocket open/close, request cancellation, and `/proc/net` reporting.
+- Add tests proving apps without network permission cannot bypass the broker through runtime APIs.
+
+Completion criteria:
+
+- Apps can perform declared network work through a visible, auditable OS boundary.
+- Network denial is deterministic and explainable.
+- Browser-only and companion-enhanced network capabilities are clearly separated.
+
+### Convergence 6: Multi-User Sessions And Access Control
+
+Status: Later.
+
+Goal: strengthen the current session/user model into a fuller multi-user environment.
+
+Why it matters:
+
+- Native OS behavior depends on users, groups, ownership, process credentials, and login/session boundaries.
+- DindbOS already has session user and ownership primitives, but it needs stronger cross-user behavior to feel OS-like.
+
+Implementation tasks:
+
+- Add persistent user and group records under `/etc/dindbos/users.json` and `/etc/dindbos/groups.json`.
+- Add login, logout, lock, unlock, password/passkey placeholder policy, and guest reset behavior.
+- Track process credentials: uid, gid, supplementary groups, effective permissions, and session id.
+- Expand chmod/chown/chgrp behavior across VFS and local mount metadata where possible.
+- Add per-user homes, app state, cache, package preferences, shell history, and desktop layout.
+- Add administrator-only operations for package trust, system settings, and companion permissions.
+- Add audit logs for permission escalation, denied access, package trust changes, and companion pairing.
+
+Verification:
+
+- Add smoke coverage for cross-user file denial, group access, admin-only command denial, session switch, and per-user app state separation.
+
+Completion criteria:
+
+- Two users can share one DindbOS installation without reading each other's private home files by default.
+- Runtime APIs consistently use process credentials instead of a global current user shortcut.
+
+### Convergence 7: Stronger Storage Semantics
+
+Status: Later.
+
+Goal: make browser-backed storage behave more like a real disk with transactions, snapshots, quotas, repair, and optional encryption.
+
+Why it matters:
+
+- A native OS must survive crashes, interrupted writes, quota pressure, and partial corruption.
+- DindbOS already persists files, but native-like reliability requires a clearer disk layer.
+
+Implementation tasks:
+
+- Add a journal or transaction log for multi-file operations.
+- Add atomic rename/write semantics for package installs, editor saves, and archive imports.
+- Add filesystem snapshots and rollback points for package updates and user-triggered restore.
+- Add quota reservation before large writes and package installs.
+- Add `fsck`-style integrity checks for inode/content mismatches, orphaned content records, broken mount metadata, and package DB drift.
+- Add optional per-user encrypted volumes using WebCrypto-derived keys.
+- Add storage pressure handling that can evict cache volumes without touching durable user files.
+
+Verification:
+
+- Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, quota denial before mutation, and repair of orphaned records.
+
+Completion criteria:
+
+- DindbOS can explain and recover from common storage failure states.
+- Durable user files are not silently replaced by partial writes.
+
+### Convergence 8: Scheduler, Resource Accounting, And Quotas
+
+Status: Later.
+
+Goal: replace coarse process bookkeeping with enforceable runtime resource policy.
+
+Why it matters:
+
+- A native OS schedules CPU time, memory, IO, and process limits.
+- Browsers do not expose full CPU control, but DindbOS can enforce cooperative limits around worker execution, async operations, storage, network, and app launches.
+
+Implementation tasks:
+
+- Add process groups and job control concepts for shell-launched pipelines.
+- Add per-process and per-app limits for runtime memory estimate, output buffer size, open descriptors, file writes, network requests, and child processes.
+- Add cooperative yield requirements for long-running built-in operations.
+- Add kill escalation: graceful cancel, forced worker termination, crash report, descriptor cleanup.
+- Add Activity Monitor views for resource limits, usage, throttling, and kill reason.
+- Add package manifest resource hints and maximums.
+
+Verification:
+
+- Add smoke coverage for output quota, descriptor quota, child process limit, long-operation cancellation, and worker forced termination.
+
+Completion criteria:
+
+- A misbehaving app can be throttled or killed without corrupting shared runtime state.
+- Resource policy is visible to users and package authors.
+
+### Convergence 9: Native-Adjacent Companion Framework
+
+Status: Later.
+
+Goal: split optional native capabilities into small, named, auditable companions instead of expanding one privileged bridge.
+
+Why it matters:
+
+- The browser cannot provide every native OS feature.
+- DindbOS can still get closer to native behavior by using explicit helper processes with narrow protocols and clear trust boundaries.
+
+Implementation tasks:
+
+- Define a companion registry with identity, protocol version, capabilities, health checks, and pairing state.
+- Keep `browserd` browser-only and add separate companion identities for file helper, network helper, device helper, and build/runtime helper.
+- Add a user approval flow for pairing each companion and granting capabilities.
+- Add signed companion manifests and protocol compatibility checks.
+- Add `/etc/dindbos/companions.json` and Settings UI for revoke, inspect, and test.
+- Add audit logging for every companion operation that touches host-adjacent capabilities.
+- Add failure UX that keeps DindbOS usable when companions are absent.
+
+Verification:
+
+- Add smoke coverage for companion identity mismatch, missing capability, revoked pairing, protocol mismatch, and successful helper operation.
+
+Completion criteria:
+
+- Host-adjacent features are opt-in, inspectable, revocable, and separated by protocol.
+- No app receives direct companion access without the DindbOS runtime broker.
+
+### Convergence 10: Language Runtime And SDK Layer
+
+Status: Later.
+
+Goal: let developers build real DindbOS programs in more than one language/runtime.
+
+Why it matters:
+
+- Native OS ecosystems are useful because many runtimes can target the same platform.
+- DindbOS should expose a stable SDK over syscalls, package manifests, permissions, VFS, processes, and UI handoff.
+
+Implementation tasks:
+
+- Publish JavaScript/TypeScript SDK wrappers around the syscall ABI.
+- Add WASM SDK examples for C/Rust/Zig/TinyGo where toolchains can produce compatible WASI modules.
+- Add package templates for GUI app, CLI app, WASM CLI, and background worker.
+- Add app testing helpers that run inside the DindbOS runtime instead of mocking private internals.
+- Add API version negotiation so old packages can run when the runtime evolves.
+- Add developer docs for permissions, filesystem scopes, process lifecycle, app state, package signing, and compatibility limits.
+
+Verification:
+
+- Add example packages that install and run through the normal package system.
+- Add smoke coverage that builds or loads SDK fixtures and verifies real VFS/process/app behavior.
+
+Completion criteria:
+
+- A third-party developer can create, package, install, run, debug, and remove a DindbOS app without editing core runtime files.
+
+### Convergence 11: Background Services And Daemons
+
+Status: Later.
+
+Goal: support long-lived background services with explicit lifecycle, permissions, and user visibility.
+
+Why it matters:
+
+- Native OSes have daemons, agents, and background jobs.
+- DindbOS needs an equivalent for indexing, sync, package update checks, companion monitoring, and scheduled maintenance.
+
+Implementation tasks:
+
+- Add service manifests for runtime-managed background processes.
+- Add service states: disabled, enabled, starting, running, degraded, stopped, crashed.
+- Add scheduled jobs for cache cleanup, storage integrity checks, package update checks, and local mount sync checks.
+- Add Settings and Activity Monitor surfaces for service status, logs, restart, disable, and permission review.
+- Add wake/suspend behavior tied to browser visibility, page lifecycle, and storage flush state.
+- Add clear browser limitation docs for work that cannot continue after the page is closed.
+
+Verification:
+
+- Add smoke coverage for service start/stop/restart, crash reporting, scheduled job execution, visibility suspend/resume, and permission denial.
+
+Completion criteria:
+
+- Background work is visible and controllable instead of hidden inside app render code.
+- Services degrade cleanly when browser lifecycle limitations prevent native-style persistence.
+
+### Convergence 12: Compatibility Targets And Honest Boundaries
+
+Status: In progress.
+
+Goal: define what "native-like" means for DindbOS in measurable compatibility tiers.
+
+Why it matters:
+
+- Without tiers, the project can drift into vague claims.
+- Compatibility targets let the roadmap say exactly what DindbOS can run and what it refuses to fake.
+
+Implementation tasks:
+
+- Already present: compatibility tiers are defined in the runtime:
+  - Tier A: DindbOS JavaScript GUI/CLI apps.
+  - Tier B: Browser-safe npm CLI packages through NodeCompat.
+  - Tier C: WASI-style WASM CLI programs.
+  - Tier D: Worker-isolated long-running programs.
+  - Tier E: Companion-assisted native-adjacent capabilities.
+- Already present: `doctor compat` prints tier support, browser capability probes, storage backend, companion/provider state, and unsupported native boundaries.
+- Already present: package manifests can declare `compatibility.tier`, `compatibility.requiredTier`, `compatibilityTier`, or `requiredCompatibilityTier`; unsupported required tiers fail before package filesystem mutation.
+- Already present: `docs/app-manifest.md` documents package compatibility tier fields and install refusal behavior.
+- Add a compatibility matrix for filesystem, process, network, terminal, package, browser, and device features.
+- Add package fallback behavior metadata beyond current fail-closed required-tier checks.
+- Expand hard no-go boundary docs from `doctor compat` and app manifest docs into a dedicated compatibility document.
+
+Verification:
+
+- Already present: `npm run smoke:shell` verifies `doctor compat` output.
+- Already present: `npm run smoke:packages` verifies package compatibility refusal when a required tier is unavailable and verifies no package/app mutation occurs.
+- Add smoke coverage for the future compatibility matrix and fallback metadata once those are implemented.
+
+Completion criteria:
+
+- Users and package authors can tell whether a workload is supported, degraded, companion-required, or impossible in browser-only mode.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
@@ -178,17 +559,19 @@ Already present:
 
 ## Current Priority
 
-Browser.app is complete as the current proof point first pass.
+Browser.app is complete as the current proof point first pass. The next product direction is native OS convergence: keep the browser-native kernel honest, then add lower-level execution and isolation primitives that real programs can target.
 
 Process/activity visibility, persistent storage, local folder mounts, npm install, NodeCompat, Browser.app, and document viewers are now in first-pass shape for the portfolio demo to run real URL/document workloads inside the OS shell, not just open built-in demo panels.
 
 The next practical sequence:
 
-1. Add new Browser.app or companion work only when smoke coverage or real URL workloads expose a gap.
-2. Add focused verification before broadening provider/native-adjacent capabilities.
-3. Improve document viewers only when real document workloads expose a gap.
-4. Harden app packaging and runtime lifecycle when third-party app usage exposes a gap.
-5. Polish window management and UX only after the core runtime behavior remains reliable under real workloads.
+1. Define the compatibility tiers and `doctor compat` output first, so every future native-like claim has a measurable support boundary.
+2. Add the browser-native syscall ABI and route high-level app APIs through it where practical.
+3. Add WASM user processes on top of the syscall ABI with VFS, argv/env, stdio, permissions, and `/proc` visibility.
+4. Move heavy NodeCompat/WASM execution into worker-backed process executors with kill, timeout, crash, and descriptor cleanup behavior.
+5. Add descriptor-backed IO, real pipes, pseudo-devices, and TTY-like Terminal sessions.
+6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, and native-adjacent companions only after the syscall/WASM/worker/descriptor base is verifiable.
+7. Continue Browser.app, document viewer, package, and UX work only when real workloads expose gaps in the already completed first-pass surfaces.
 
 ## 0. Immediate Carry-Over Work
 
