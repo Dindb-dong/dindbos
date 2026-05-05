@@ -215,10 +215,21 @@ await waitFor(() => cleanupWindow.content.innerHTML.includes("data-cleanup-demo"
 const cleanupChild = os.processes.list().find((process) => process.parentPid === cleanupWindow.pid && process.appId === "namespace-child");
 assert(cleanupChild?.manifest?.namespace?.processGroup === "package:cleanup-demo", "cleanup child did not inherit package namespace");
 assert(os.ipcEndpoints.has("cleanup-demo.echo"), "cleanup demo IPC endpoint was not registered");
+const cleanupRecord = packages.info("cleanup-demo");
+os.ipcEndpoints.set("cleanup-demo.daemon", {
+  endpoint: "cleanup-demo.daemon",
+  ownerPid: 0,
+  ownerAppId: "",
+  ownerNamespace: cleanupRecord.namespace.processGroup,
+  ownerPackageId: cleanupRecord.id,
+  handler: () => ({ ok: true }),
+  createdAt: new Date().toISOString(),
+});
 packages.remove("cleanup-demo");
 assert(!os.processes.get(cleanupWindow.pid), "package uninstall left package app process running");
 assert(!os.processes.get(cleanupChild.pid), "package uninstall left namespace child process running");
 assert(!os.ipcEndpoints.has("cleanup-demo.echo"), "package uninstall left namespace IPC endpoint registered");
+assert(!os.ipcEndpoints.has("cleanup-demo.daemon"), "package uninstall left non-process namespace IPC endpoint registered");
 assert(!os.fs.exists("/var/lib/dindbos/package-state/cleanup-demo"), "package uninstall left cleanup namespace state root");
 assert(!os.fs.exists("/var/cache/dindbos/packages/cleanup-demo"), "package uninstall left cleanup namespace cache root");
 assert(!os.fs.exists("/tmp/dindbos/packages/cleanup-demo"), "package uninstall left cleanup namespace temp root");

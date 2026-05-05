@@ -1096,6 +1096,7 @@ export class PackageManager {
       .forEach((process) => {
         if (this.os.processes?.get?.(process.pid)) this.os.processes.kill(process.pid, "package-uninstall");
       });
+    this.os.unregisterIpcEndpointsForNamespace?.(namespace, "package-uninstall");
   }
 
   ensureDirectoryPath(path, options = {}) {
