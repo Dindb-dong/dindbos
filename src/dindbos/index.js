@@ -186,6 +186,7 @@ export class DindbOS {
       lastError: "",
     };
     this.virtualMounts = new Map();
+    this.overlayMounts = new Map();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
@@ -2275,6 +2276,11 @@ export class DindbOS {
     const localMounts = this.localMounts?.listMounts?.() || [];
     const packageMounts = this.packages?.packageImageMounts?.() || [];
     packageMounts.forEach((mount) => roots.push({ ...mount }));
+    [...this.overlayMounts.values()].forEach((mount) => roots.push({
+      ...mount,
+      usedBytes: this.countBytes(mount.root),
+      support: "browser-vfs-snapshot",
+    }));
     [...this.virtualMounts.values()].forEach((mount) => roots.push({
       ...mount,
       usedBytes: this.countBytes(mount.root),
@@ -2304,6 +2310,7 @@ export class DindbOS {
     const root = this.fs.normalize(path || "");
     if (!root || root === "/") throw new Error("mount: path is required");
     const driver = normalizeVirtualMountDriver(options.driver || options.type || "memfs");
+    if (driver === "overlayfs") return this.mountOverlay(root, options, principal);
     if (this.virtualMounts.has(root)) throw new Error(`mount: ${root}: already mounted`);
     const readonly = Boolean(options.readonly);
     const system = this.permissions.systemPrincipal();
@@ -2332,11 +2339,59 @@ export class DindbOS {
 
   unmountVirtual(path, principal = this.permissions.systemPrincipal()) {
     const root = this.fs.normalize(path || "");
+    if (this.overlayMounts.has(root)) return this.unmountOverlay(root, principal);
     const record = this.virtualMounts.get(root);
     if (!record) throw new Error(`umount: ${root}: not a virtual mount`);
     if (this.fs.exists(root)) this.fs.remove(root, "/", { recursive: true }, this.permissions.systemPrincipal());
     this.virtualMounts.delete(root);
     this.writeMountTableProcfs("virtual-unmount");
+    return { ...record };
+  }
+
+  mountOverlay(path, options = {}, principal = this.permissions.systemPrincipal()) {
+    const root = this.fs.normalize(path || "");
+    const lower = this.fs.normalize(options.lower || "");
+    const upper = this.fs.normalize(options.upper || "");
+    if (!lower || !upper) throw codedError("EINVAL", "mount: overlayfs requires lower and upper paths");
+    if (this.overlayMounts.has(root) || this.virtualMounts.has(root)) throw codedError("EBUSY", `mount: ${root}: already mounted`);
+    assertDirectoryLike(this.fs, lower, "lower");
+    assertDirectoryLike(this.fs, upper, "upper");
+    const system = this.permissions.systemPrincipal();
+    this.fs.createMount(root, {
+      mountType: "overlayfs",
+      handleName: `${upper} over ${lower}`,
+      permissions: "dr-xr-xr-x",
+      owner: principal.user || this.session.user || "guest",
+      group: principal.groups?.[0] || "users",
+    }, system);
+    materializeOverlayTree(this.fs, lower, root, system);
+    materializeOverlayTree(this.fs, upper, root, system);
+    const record = {
+      id: `overlay:${root}`,
+      root,
+      driver: "overlayfs",
+      readonly: true,
+      owner: principal.user || this.session.user || "guest",
+      durability: "runtime",
+      quotaPolicy: "memory",
+      capabilities: ["mount.manage"],
+      source: options.source || "syscall",
+      lower,
+      upper,
+      precedence: "upper",
+    };
+    this.overlayMounts.set(root, record);
+    this.writeMountTableProcfs("overlay-mount");
+    return { ...record };
+  }
+
+  unmountOverlay(path, principal = this.permissions.systemPrincipal()) {
+    const root = this.fs.normalize(path || "");
+    const record = this.overlayMounts.get(root);
+    if (!record) throw new Error(`umount: ${root}: not an overlay mount`);
+    if (this.fs.exists(root)) this.fs.remove(root, "/", { recursive: true }, this.permissions.systemPrincipal());
+    this.overlayMounts.delete(root);
+    this.writeMountTableProcfs("overlay-unmount");
     return { ...record };
   }
 
@@ -2886,7 +2941,57 @@ function mountDriverForDiskArea(area) {
 function normalizeVirtualMountDriver(driver) {
   const value = String(driver || "memfs").toLowerCase();
   if (value === "memfs") return "memfs";
+  if (value === "overlayfs") return "overlayfs";
   throw codedError("ENOTSUP", `mount: unsupported driver: ${value}`);
+}
+
+function assertDirectoryLike(fs, path, label) {
+  const node = fs.resolve(path);
+  if (!node || (node.type !== "directory" && node.type !== "mount")) {
+    throw codedError("ENOENT", `mount: overlayfs ${label}: ${path}: no such directory`);
+  }
+}
+
+function materializeOverlayTree(fs, sourceRoot, targetRoot, principal) {
+  fs.list(sourceRoot, "/", principal).forEach((entry) => {
+    const targetPath = fs.join(targetRoot, entry.name);
+    materializeOverlayEntry(fs, entry, targetPath, principal);
+  });
+}
+
+function materializeOverlayEntry(fs, entry, targetPath, principal) {
+  const existing = fs.resolve(targetPath);
+  if (entry.type === "directory" || entry.type === "mount") {
+    if (existing && existing.type !== "directory" && existing.type !== "mount") fs.remove(targetPath, "/", { recursive: true }, principal);
+    if (!fs.exists(targetPath)) {
+      fs.createDirectory(targetPath, "/", {
+        owner: entry.owner || "root",
+        group: entry.group || "root",
+        permissions: entry.permissions || "dr-xr-xr-x",
+      }, principal);
+    }
+    materializeOverlayTree(fs, entry.path, targetPath, principal);
+    return;
+  }
+  if (existing) fs.remove(targetPath, "/", { recursive: true }, principal);
+  if (entry.type === "file") {
+    fs.writeOrCreateFileBytes(targetPath, fs.readFileBytes(entry.path, "/", principal), "/", {
+      mime: entry.mime,
+      owner: entry.owner || "root",
+      group: entry.group || "root",
+      permissions: entry.permissions || "-r--r--r--",
+    }, principal);
+    return;
+  }
+  if (entry.type === "link" || entry.type === "symlink") {
+    fs.createSymlink(entry.target || "", targetPath, "/", {
+      owner: entry.owner || "root",
+      group: entry.group || "root",
+      permissions: entry.permissions || "lrwxrwxrwx",
+    }, principal);
+    return;
+  }
+  fs.copy(entry.path, targetPath, "/", { recursive: true }, principal);
 }
 
 function formatMountTableLine(entry) {

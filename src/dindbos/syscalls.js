@@ -223,6 +223,8 @@ export class SyscallDispatcher {
     return this.os.mountVirtual(path, {
       driver: args.driver || args.type || "memfs",
       readonly: Boolean(args.readonly),
+      lower: args.lower,
+      upper: args.upper,
       source: args.source || "syscall",
     }, context.principal);
   }

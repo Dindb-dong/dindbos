@@ -950,11 +950,15 @@ export class ShellSession {
 
   mountVirtual(args = []) {
     const [flag, driver, path, ...rest] = args;
-    if (flag !== "-t" || !driver || !path) return "mount: usage: mount -t memfs <path> [--readonly]";
+    if (flag !== "-t" || !driver || !path) return "mount: usage: mount -t memfs <path> [--readonly] | mount -t overlayfs <path> --lower <path> --upper <path>";
+    const lowerIndex = rest.indexOf("--lower");
+    const upperIndex = rest.indexOf("--upper");
     const result = this.os.syscall("mount.mount", {
       driver,
       path: this.os.fs.normalize(path, this.cwd),
       readonly: rest.includes("--readonly") || rest.includes("-r"),
+      lower: lowerIndex >= 0 ? this.os.fs.normalize(rest[lowerIndex + 1] || "", this.cwd) : "",
+      upper: upperIndex >= 0 ? this.os.fs.normalize(rest[upperIndex + 1] || "", this.cwd) : "",
       source: "shell",
     }, { principal: this.principal, env: this.env });
     if (!result.ok) throw new Error(result.error.message);
