@@ -529,29 +529,31 @@ export class PackageManager {
   remove(packageId) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
-    this.emitSessionPackageOperation("remove", record, "start");
-    const cleanup = {
-      installPath: record.installPath,
-      launcher: this.launcherPath(record),
-      recordPath: this.packageRecordPath(record.id),
-      appStatePath: removeAppState(this.os, record.app.id),
-    };
-    try {
-      const launcher = this.launcherPath(record);
-      if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
-      if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
-      if (this.os.fs.exists(this.packageRecordPath(record.id))) {
-        this.os.fs.remove(this.packageRecordPath(record.id), "/", {}, this.system);
+    return this.withPackageDbLock(record, "remove", () => {
+      this.emitSessionPackageOperation("remove", record, "start");
+      const cleanup = {
+        installPath: record.installPath,
+        launcher: this.launcherPath(record),
+        recordPath: this.packageRecordPath(record.id),
+        appStatePath: removeAppState(this.os, record.app.id),
+      };
+      try {
+        const launcher = this.launcherPath(record);
+        if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
+        if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
+        if (this.os.fs.exists(this.packageRecordPath(record.id))) {
+          this.os.fs.remove(this.packageRecordPath(record.id), "/", {}, this.system);
+        }
+        this.os.unregisterApp(record.app.id);
+        this.emitPackageLifecycle("uninstall-cleanup", record, { cleanup });
+        this.emitPackageLifecycle("uninstall", record, { cleanup });
+        this.emitSessionPackageOperation("remove", record, "complete");
+        return record;
+      } catch (error) {
+        this.emitSessionPackageOperation("remove", record, "error", error);
+        throw error;
       }
-      this.os.unregisterApp(record.app.id);
-      this.emitPackageLifecycle("uninstall-cleanup", record, { cleanup });
-      this.emitPackageLifecycle("uninstall", record, { cleanup });
-      this.emitSessionPackageOperation("remove", record, "complete");
-      return record;
-    } catch (error) {
-      this.emitSessionPackageOperation("remove", record, "error", error);
-      throw error;
-    }
+    });
   }
 
   markFirstRun(packageId) {
@@ -584,33 +586,45 @@ export class PackageManager {
   }
 
   runPackageTransaction(record, operation, install) {
-    const beforeRoot = this.os.fs.snapshot();
-    const previousApp = this.os.apps?.apps?.get?.(record.app.id) || null;
-    this.emitSessionPackageOperation(operation, record, "start");
-    try {
-      const result = install();
-      this.emitSessionPackageOperation(operation, record, "complete");
-      return result;
-    } catch (error) {
-      this.rollbackPackageTransaction(record, beforeRoot, previousApp);
-      this.emitSessionPackageOperation(operation, record, "error", error);
-      throw error;
-    }
+    return this.withPackageDbLock(record, operation, () => {
+      const beforeRoot = this.os.fs.snapshot();
+      const previousApp = this.os.apps?.apps?.get?.(record.app.id) || null;
+      this.emitSessionPackageOperation(operation, record, "start");
+      try {
+        const result = install();
+        this.emitSessionPackageOperation(operation, record, "complete");
+        return result;
+      } catch (error) {
+        this.rollbackPackageTransaction(record, beforeRoot, previousApp);
+        this.emitSessionPackageOperation(operation, record, "error", error);
+        throw error;
+      }
+    });
   }
 
   async runPackageTransactionAsync(record, operation, install) {
-    const beforeRoot = this.os.fs.snapshot();
-    const previousApp = this.os.apps?.apps?.get?.(record.app.id) || null;
-    this.emitSessionPackageOperation(operation, record, "start");
-    try {
-      const result = await install();
-      this.emitSessionPackageOperation(operation, record, "complete");
-      return result;
-    } catch (error) {
-      this.rollbackPackageTransaction(record, beforeRoot, previousApp);
-      this.emitSessionPackageOperation(operation, record, "error", error);
-      throw error;
-    }
+    return this.withPackageDbLock(record, operation, async () => {
+      const beforeRoot = this.os.fs.snapshot();
+      const previousApp = this.os.apps?.apps?.get?.(record.app.id) || null;
+      this.emitSessionPackageOperation(operation, record, "start");
+      try {
+        const result = await install();
+        this.emitSessionPackageOperation(operation, record, "complete");
+        return result;
+      } catch (error) {
+        this.rollbackPackageTransaction(record, beforeRoot, previousApp);
+        this.emitSessionPackageOperation(operation, record, "error", error);
+        throw error;
+      }
+    });
+  }
+
+  withPackageDbLock(record, operation, callback) {
+    if (typeof this.os.withRuntimeOperationLock !== "function") return callback();
+    return this.os.withRuntimeOperationLock("package-db", {
+      operation,
+      packageId: record.id,
+    }, callback);
   }
 
   emitSessionPackageOperation(operation, record, phase, error = null) {

@@ -164,8 +164,18 @@ tabA.packages.install({
 });
 assert(packageEvents.includes("tab-a:session-pkg:install:start") && packageEvents.includes("tab-a:session-pkg:install:complete"), "peer package install events were not delivered");
 assert(tabB.sessionCoordinationStatus().packageOperation.lastPeerPackageId === "session-pkg", "peer package operation status was not recorded");
+const packageDbLock = tabA.acquireRuntimeOperationLock("package-db", { operation: "install", packageId: "locked-pkg" });
+assertRejects(() => tabB.packages.install({
+  id: "locked-pkg",
+  name: "Locked Package",
+  version: "1.0.0",
+  app: { id: "locked-pkg", name: "Locked Package", entry: "app.js" },
+  files: [{ path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" }],
+}), "package-db: operation locked by tab-a");
+assert(!tabB.fs.exists("/var/lib/dindbos/packages/locked-pkg.json"), "package DB lock did not prevent package record mutation");
+tabA.releaseRuntimeOperationLock("package-db", packageDbLock);
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages package-lock");
 
 function createStorage(values = new Map()) {
   return {
@@ -177,8 +187,14 @@ function createStorage(values = new Map()) {
     async readValue(key) {
       return values.get(key) ?? null;
     },
+    readValueSync(key) {
+      return values.get(key) ?? null;
+    },
     writeValue(key, value) {
       values.set(key, value);
+    },
+    removeValue(key) {
+      values.delete(key);
     },
     status: () => ({ backend: "memory" }),
     estimate: async () => ({ backend: "memory" }),
