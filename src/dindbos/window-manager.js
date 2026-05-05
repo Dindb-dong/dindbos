@@ -185,6 +185,7 @@ export class WindowManager {
     const task = this.windows.get(id);
     if (!task) return;
     if (task.minimized && task.frame.hidden) return;
+    this.releaseProcessCapture(task.pid, "process-suspend");
     task.minimized = true;
     task.frame.hidden = false;
     task.frame.classList.add("is-minimizing");
@@ -593,6 +594,24 @@ export class WindowManager {
 
   releaseWindowCapture(windowId, reason = "window-cleanup") {
     return this.releasePointerCapture(windowId, 0, reason);
+  }
+
+  releaseProcessCapture(pid, reason = "process-cleanup") {
+    const processPid = Number(pid || 0);
+    if (!processPid) return null;
+    const released = {
+      pid: processPid,
+      reason: String(reason || "process-cleanup"),
+      pointerCapture: null,
+      pointerLock: null,
+    };
+    if (this.lastCapture?.pid === processPid) {
+      released.pointerCapture = this.releasePointerCapture(this.lastCapture.windowId, this.lastCapture.pointerId, released.reason);
+    }
+    if (this.pointerLock.pid === processPid) {
+      released.pointerLock = this.releasePointerLock(this.pointerLock.activeWindowId, released.reason);
+    }
+    return released.pointerCapture || released.pointerLock ? released : null;
   }
 
   compositorStatus() {
