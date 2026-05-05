@@ -217,7 +217,7 @@ Completion criteria:
 
 ### Convergence 2: WASM User Processes
 
-Status: Next.
+Status: In progress.
 
 Goal: run WebAssembly programs as first-class DindbOS processes with VFS, stdin/stdout/stderr, arguments, environment variables, and syscall access.
 
@@ -229,19 +229,22 @@ Why it matters:
 
 Implementation tasks:
 
-- Add a `wasm` loader that can execute `.wasm` modules from VFS paths.
-- Support WASI-style imports where possible, mapped to the DindbOS syscall ABI.
-- Provide argv/env/cwd/stdin/stdout/stderr for WASM processes.
+- Already present: `WasmRunner` executes `.wasm` modules from VFS paths through browser `WebAssembly.instantiate`.
+- Already present: shell integration supports executable `.wasm` files and explicit `wasm <file> [args...]` runs.
+- Already present: WASM runs spawn DindbOS processes with argv, cwd, environment, exit status, stdout, stderr, and process history.
+- Already present: the `dindbos` WASM import namespace exposes stdout/stderr helpers, argv/env helpers, `syscall(ptr,len)`, and `exit(code)`.
+- Already present: first-pass WASM syscalls map to the DindbOS syscall ABI and are covered by global syscall tracing.
+- Support fuller WASI-style imports where possible, mapped to the DindbOS syscall ABI.
 - Mount process-local descriptors for files, pipes, and terminal streams.
-- Enforce process filesystem scopes before WASM code touches VFS paths.
+- Broaden process filesystem scopes beyond the first-pass executable-directory policy.
 - Add memory and execution guards: max memory pages, cooperative timeout, abort handling, and crash report capture.
-- Add shell integration: `chmod +x hello.wasm`, then `./hello.wasm arg1 arg2`.
 - Add package manifest support for WASM entry points.
 - Add developer docs for compiling small C/Rust/Zig examples to the supported WASM/WASI target.
 
 Verification:
 
-- Add smoke fixture programs for hello stdout, argv/env printing, file read/write, permission denial, nonzero exit, and crash reporting.
+- Already present: `npm run smoke:wasm` verifies shell execution, argv/env stdout, syscall-backed file write, syscall tracing, nonzero exit status, and process tracking.
+- Add smoke fixture programs for permission denial and crash reporting.
 - Add package install smoke coverage for a WASM-backed app launched through AppRegistry.
 
 Completion criteria:

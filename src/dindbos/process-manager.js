@@ -20,7 +20,7 @@ export class ProcessManager {
       name: app.name || app.id,
       state: "running",
       user: this.os.session.user || "guest",
-      cwd: this.os.session.home || "/",
+      cwd: context.cwd || this.os.session.home || "/",
       manifest: app.manifest,
       context,
       startedAt: now,

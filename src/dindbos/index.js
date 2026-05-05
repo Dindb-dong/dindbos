@@ -13,6 +13,7 @@ import { PersistentStorage } from "./persistent-storage.js?v=20260422-browserd";
 import { ProcessManager } from "./process-manager.js?v=20260422-browserd";
 import { SyscallDispatcher } from "./syscalls.js?v=20260422-browserd";
 import { VirtualFileSystem } from "./vfs.js?v=20260422-browserd";
+import { WasmRunner } from "./wasm-runner.js?v=20260422-browserd";
 import { WindowManager } from "./window-manager.js?v=20260422-browserd";
 
 export const BOOT_PHASES = [
@@ -79,6 +80,7 @@ export class DindbOS {
     this.packages = new PackageManager(this);
     this.npm = new NpmInstaller(this);
     this.node = new NodeCompat(this);
+    this.wasm = new WasmRunner(this);
     this.localMounts = new LocalFolderMountManager(this, options.localMounts || {});
     this.bootPhases = new Map(BOOT_PHASES.map((phase, index) => [phase.id, {
       ...phase,
@@ -784,4 +786,4 @@ function normalizeBrowserProviderUrl(url) {
   }
 }
 
-export { AppRegistry, AppSandbox, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WindowManager };
+export { AppRegistry, AppSandbox, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WasmRunner, WindowManager };
