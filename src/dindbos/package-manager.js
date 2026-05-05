@@ -870,6 +870,8 @@ export class PackageManager {
       key: `package:${record.id}`,
       storageFormat: "package-install",
       transactionKind: "package-install",
+      storageClass: "package-roots",
+      storageClassUsageBytes: this.os.countBytes?.(PACKAGE_INSTALL_ROOT) || 0,
       packageId: record.id,
       source: options.remote ? "remote" : "inline",
     });

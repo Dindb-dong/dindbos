@@ -212,7 +212,7 @@ Implementation cuts:
 - Already present: `fsck --explain` reports why each problem is repairable or non-repairable, every shell `fsck` run appends a summary to `/var/log/dindbos/fsck.log`, and repair/refusal audit JSONL records are written to `/var/log/dindbos/fsck-audit.log`.
 - Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts beyond DB/root drift, partial journals, stale local mount metadata, and conservative salvage export.
 - Already present: large app writes and Files.app imports reserve storage bytes before VFS mutation so quota denial preserves existing files and prevents archive staging.
-- Add storage-class quota arbitration for package roots, package state, cache, temp, snapshots, logs, backups, sync staging, and recovery data.
+- Already present: PersistentStorage supports first-pass storage-class quota arbitration for package roots, package state, cache, temp, snapshots, logs, backups, sync staging, recovery data, and user data using explicit reservation metadata or path/transaction inference.
 - Already present: VFS repair operations run through a protected-metadata guard so fsck repair never weakens ownership, group, permissions, security labels, quarantine state, or encrypted-volume locks while applying safe metadata repairs.
 
 Verification:
@@ -233,6 +233,7 @@ Verification:
 - Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, `npm run smoke:descriptors`, `npm run smoke:services`, `npm run smoke:packages`, and `npm run smoke:wasm` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, descriptor-backed `fd.sync`, service/package-service lifecycle sync barriers, and WASM async syscall / WASI `fd_sync` barriers, while sandboxed callers without `storage.read` are denied.
 - Already present: `npm run smoke:files` and `npm run smoke:permissions` verify quota denial happens before Files.app import replacement/archive staging and AppSandbox write mutation.
 - Already present: `npm run smoke:storage` verifies fsck repair preserves owner, group, permissions, security label, quarantine state, and encrypted-volume lock metadata while repairing corrupt size metadata.
+- Already present: `npm run smoke:persistent-storage` verifies storage-class quota reservation, class-specific denial, denial journaling, and path-based cache class inference.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, journal replay, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for VFS inode/content mismatch.
