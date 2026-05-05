@@ -476,7 +476,8 @@ Why it matters:
 
 Implementation tasks:
 
-- Add a journal or transaction log for multi-file operations.
+- Already present: persistent storage records a first-pass write journal for queued, completed, failed, and fallback browser storage writes, exposed through storage status and `PersistentStorage.journal()`.
+- Extend the first-pass storage write journal into explicit multi-file transaction groups.
 - Add atomic rename/write semantics for package installs, editor saves, and archive imports.
 - Add filesystem snapshots and rollback points for package updates and user-triggered restore.
 - Add quota reservation before large writes and package installs.
@@ -486,6 +487,7 @@ Implementation tasks:
 
 Verification:
 
+- Already present: `npm run smoke:persistent-storage` verifies storage write journal records for snapshot fallback writes and OPFS write-failure fallback.
 - Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, quota denial before mutation, and repair of orphaned records.
 
 Completion criteria:

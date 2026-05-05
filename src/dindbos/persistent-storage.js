@@ -18,6 +18,9 @@ export class PersistentStorage {
     this.memory = new Map();
     this.dbPromise = null;
     this.writeQueue = Promise.resolve();
+    this.writeJournal = [];
+    this.nextJournalId = 1;
+    this.activeWriteJournalId = "";
     this.lastStatus = {
       key: this.key,
       backend: this.opfsProvider ? "opfs" : this.indexedDB ? "indexedDB" : this.adapter ? "localStorage" : "memory",
@@ -29,6 +32,8 @@ export class PersistentStorage {
       lastWriteQueuedAt: "",
       lastWriteCompletedAt: "",
       lastWriteError: "",
+      storageJournalRecords: 0,
+      lastStorageJournalAction: "",
     };
   }
 
@@ -106,8 +111,8 @@ export class PersistentStorage {
       savedAt: new Date().toISOString(),
       root: this.serializeSnapshotTree(root),
     });
-    this.updateStatus(payload, { storageFormat: "snapshot", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
-    this.write(this.key, payload);
+      this.updateStatus(payload, { storageFormat: "snapshot", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
+      this.write(this.key, payload);
   }
 
   clearFileSystem() {
@@ -123,6 +128,10 @@ export class PersistentStorage {
 
   status() {
     return { ...this.lastStatus };
+  }
+
+  journal() {
+    return this.writeJournal.map((entry) => ({ ...entry }));
   }
 
   async estimate() {
@@ -236,7 +245,9 @@ export class PersistentStorage {
         });
       return;
     }
+    this.markWriteQueued({ backend: this.lastStatus.backend, key });
     this.writeFallback(key, value);
+    this.markWriteComplete({ backend: this.lastStatus.backend, key });
   }
 
   remove(key) {
@@ -527,7 +538,9 @@ export class PersistentStorage {
     this.markWriteComplete();
   }
 
-  markWriteQueued() {
+  markWriteQueued(details = {}) {
+    const entry = this.recordStorageJournal("write-queued", details);
+    this.activeWriteJournalId = entry.id;
     this.lastStatus = {
       ...this.lastStatus,
       writePending: true,
@@ -536,7 +549,11 @@ export class PersistentStorage {
     };
   }
 
-  markWriteComplete() {
+  markWriteComplete(details = {}) {
+    this.recordStorageJournal("write-completed", {
+      journalId: this.activeWriteJournalId,
+      ...details,
+    });
     this.lastStatus = {
       ...this.lastStatus,
       writePending: false,
@@ -544,12 +561,38 @@ export class PersistentStorage {
     };
   }
 
-  markWriteError(error) {
+  markWriteError(error, details = {}) {
+    this.recordStorageJournal("write-error", {
+      journalId: this.activeWriteJournalId,
+      error: error?.message || String(error),
+      ...details,
+    });
     this.lastStatus = {
       ...this.lastStatus,
       writePending: false,
       lastWriteError: error?.message || String(error),
     };
+  }
+
+  recordStorageJournal(action, details = {}) {
+    const entry = {
+      id: `storage-journal-${this.nextJournalId++}`,
+      at: new Date().toISOString(),
+      action: String(action || "write"),
+      backend: String(details.backend || this.lastStatus.backend || "memory"),
+      storageFormat: String(details.storageFormat || this.lastStatus.storageFormat || ""),
+      key: String(details.key || this.key || ""),
+      journalId: String(details.journalId || ""),
+      error: String(details.error || ""),
+    };
+    this.writeJournal.push(entry);
+    this.writeJournal = this.writeJournal.slice(-100);
+    this.lastStatus = {
+      ...this.lastStatus,
+      storageJournalRecords: this.writeJournal.length,
+      lastStorageJournalAction: entry.action,
+    };
+    return entry;
   }
 
   serializeSnapshotTree(node) {
