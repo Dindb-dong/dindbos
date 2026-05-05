@@ -1095,20 +1095,22 @@ Implementation tasks:
 
 - Already present: runtime instances have stable `instanceId` values, storage-backed session locks, primary/secondary election, readonly secondary diagnostics, and stale-lock recovery for tabs sharing one browser profile.
 - Already present: BroadcastChannel-backed session messages deliver cross-tab VFS file-change events and expose channel diagnostics in session coordination status.
+- Already present: same-path VFS edits from different runtime instances are recorded as pending session conflicts and exposed through `/proc/sessions` plus Settings.
 - Add BroadcastChannel or SharedWorker coordination for package installs, app state, and storage flushes.
-- Add conflict policy for two active sessions modifying the same VFS paths or package DB records.
+- Add conflict policy for two active sessions modifying package DB records.
 - Add optional remote sync backend for encrypted snapshots, package cache indexes, settings, and selected user files.
 - Add remote desktop/session handoff protocol for viewing or controlling a running DindbOS instance from another tab or device.
 - Already present: `/proc/sessions`, Settings, and `doctor` expose the local runtime instance id, primary/secondary role, lock owner, readonly fallback, and stale-lock recovery state.
-- Already present: Settings exposes session channel connection state and received message count.
-- Add richer Settings diagnostics for sync status, conflict queue, and last successful snapshot.
+- Already present: Settings exposes session channel connection state, received message count, and pending conflict count.
+- Add richer Settings diagnostics for sync status and last successful snapshot.
 - Add offline-first merge rules for user documents, app state, package metadata, and search indexes.
 
 Verification:
 
 - Already present: `npm run smoke:sessions` verifies primary election, secondary readonly fallback diagnostics, stale lock recovery, and `/proc/sessions`.
 - Already present: `npm run smoke:sessions` verifies cross-tab file event delivery over the session channel.
-- Add smoke coverage for conflict detection and reload-safe session recovery.
+- Already present: `npm run smoke:sessions` verifies same-path session conflict detection, conflict event delivery, and `/proc/sessions` conflict diagnostics.
+- Add smoke coverage for reload-safe session recovery.
 - Add tests proving package install/update cannot run concurrently from two primary runtimes against the same storage root.
 
 Completion criteria:

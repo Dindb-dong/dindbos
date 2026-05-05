@@ -3515,6 +3515,7 @@ function renderSettingsSessionCoordination(coordination) {
       <div><dt>Readonly</dt><dd>${Boolean(coordination?.readonly)}</dd></div>
       <div><dt>Stale Recovery</dt><dd>${Boolean(coordination?.staleRecovered)}</dd></div>
       <div><dt>Channel</dt><dd>${coordination?.channel?.connected ? `connected · received=${Number(coordination.channel.received || 0)}` : "unavailable"}</dd></div>
+      <div><dt>Conflicts</dt><dd>${Number(coordination?.conflicts?.pending || 0)} pending · total=${Number(coordination?.conflicts?.total || 0)}</dd></div>
     </dl>
   `;
 }
