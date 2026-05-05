@@ -13,7 +13,7 @@ export class VirtualFileSystem {
 
   list(path = "/", cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
-    if (!node || node.type !== "directory") return [];
+    if (!node || !isDirectoryLike(node)) return [];
     this.assertTraversalAccess(node.path, "/", principal);
     this.assertAccess(node, "read", principal, node.path);
     this.assertAccess(node, "execute", principal, node.path);
@@ -30,7 +30,7 @@ export class VirtualFileSystem {
     let currentPath = "/";
     for (let index = 0; index < parts.length; index += 1) {
       const part = parts[index];
-      if (!current || current.type !== "directory") return null;
+      if (!current || !isDirectoryLike(current)) return null;
       current = (current.children || []).find((child) => child.name === part);
       currentPath = this.join(currentPath, part);
       if (current && this.isLink(current)) {
@@ -426,7 +426,7 @@ export class VirtualFileSystem {
   parentFor(path) {
     const parentPath = this.dirname(path);
     const parent = this.resolve(parentPath);
-    if (!parent || parent.type !== "directory") throw new Error(`No such directory: ${parentPath}`);
+    if (!parent || !isDirectoryLike(parent)) throw new Error(`No such directory: ${parentPath}`);
     return parent;
   }
 
@@ -524,17 +524,21 @@ export class VirtualFileSystem {
 }
 
 function sortNodes(a, b) {
-  const aRank = a.type === "directory" || a.type === "mount" ? 0 : 1;
-  const bRank = b.type === "directory" || b.type === "mount" ? 0 : 1;
+  const aRank = isDirectoryLike(a) ? 0 : 1;
+  const bRank = isDirectoryLike(b) ? 0 : 1;
   if (aRank !== bRank) return aRank - bRank;
   return a.name.localeCompare(b.name);
 }
 
 function defaultPermissions(node) {
-  if (node.type === "directory" || node.type === "mount") return "drwxr-xr-x";
+  if (isDirectoryLike(node)) return "drwxr-xr-x";
   if (node.type === "app") return "-rwxr-xr-x";
   if (node.type === "link" || node.type === "symlink") return "lrwxrwxrwx";
   return "-rw-r--r--";
+}
+
+function isDirectoryLike(node) {
+  return node?.type === "directory" || node?.type === "mount";
 }
 
 function normalizePermissions(value, node) {

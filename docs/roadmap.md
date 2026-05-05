@@ -970,7 +970,8 @@ Verification:
 
 - Already present: `npm run smoke:boot` verifies mount table entries for browser-backed user storage, package storage, cache storage, and procfs; `npm run smoke:shell` verifies `mount` output; `npm run smoke:local-mounts` verifies local mounts refresh mount table procfs.
 - Already present: `npm run smoke:shell` verifies shell `mount -t memfs`, shell `umount`, `mount.list`, `mount.mount`, and `mount.unmount`; `npm run smoke:permissions` verifies sandbox denial for mount management without capability.
-- Add smoke coverage for readonly denial, overlay precedence, package image mount, zip mount listing, and driver error normalization.
+- Already present: `npm run smoke:boot` verifies readonly runtime `memfs` write denial with `EACCES` and unsupported driver normalization with `ENOTSUP`.
+- Add smoke coverage for overlay precedence, package image mount, zip mount listing, and cross-driver metadata/error normalization.
 - Add cross-driver tests proving shell, app APIs, NodeCompat, and WASI see the same path behavior for mounted trees.
 
 Completion criteria:
