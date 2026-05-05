@@ -96,6 +96,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-symlink.wasm", wasiSymlinkWas
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-hardlink.wasm", wasiHardLinkWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFile("/home/guest/bin/wasi-file.txt", "opened read\n", "/", {
   owner: "guest",
   group: "users",
@@ -120,6 +126,11 @@ os.fs.createDirectory("/home/guest/bin/wasi-rename-dir", "/", {
   group: "users",
 }, system);
 os.fs.writeOrCreateFile("/home/guest/bin/wasi-symlink-target.txt", "through symlink\n", "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rw-r--r--",
+}, system);
+os.fs.writeOrCreateFile("/home/guest/bin/wasi-hardlink-source.txt", "linked data\n", "/", {
   owner: "guest",
   group: "users",
   permissions: "-rw-r--r--",
@@ -240,7 +251,21 @@ assert(os.fs.lstat("/home/guest/bin/wasi-link.txt")?.type === "link", "wasi path
 assert(os.fs.readlink("/home/guest/bin/wasi-link.txt") === "wasi-symlink-target.txt", "wasi readlink target mismatch");
 assert(os.fs.readFile("/home/guest/bin/wasi-link.txt") === "through symlink\n", "wasi symlink did not resolve to target file content");
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir mkdir remove rename symlink process");
+const wasiHardLink = await os.wasm.runFile("/home/guest/bin/wasi-hardlink.wasm", "/home/guest/bin", {
+  argv: ["wasi-hardlink.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiHardLink.status === 0, `wasi path_link status mismatch: ${wasiHardLink.status} ${wasiHardLink.stderr}`);
+assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "linked data\n", "wasi path_link did not preserve file content");
+assert(os.fs.stat("/home/guest/bin/wasi-hardlink-source.txt")?.linkCount === 2, "wasi path_link source link count mismatch");
+assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 2, "wasi path_link destination link count mismatch");
+os.fs.writeFile("/home/guest/bin/wasi-hardlink.txt", "changed through link\n", "/", os.permissions.principal(os.session));
+assert(os.fs.readFile("/home/guest/bin/wasi-hardlink-source.txt") === "changed through link\n", "wasi hard link did not share writes with source");
+os.fs.remove("/home/guest/bin/wasi-hardlink-source.txt", "/", {}, os.permissions.principal(os.session));
+assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "changed through link\n", "wasi hard link did not survive source removal");
+assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 1, "wasi hard link count did not update after source removal");
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir mkdir remove rename symlink hardlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -659,6 +684,33 @@ function wasiSymlinkWasm() {
       0x41, 0x03, 0x41, ...i32(linkOffset), 0x41, ...i32(linkPath.length), 0x41, ...i32(bufferOffset), 0x41, ...i32(target.length), 0x41, ...i32(nreadOffset), 0x10, 0x01, 0x1a,
       0x41, 0x01, 0x41, ...i32(iovOffset), 0x41, 0x01, 0x41, ...i32(nwrittenOffset), 0x10, 0x02,
       0x10, 0x03,
+      0x0b,
+    ],
+    data,
+  });
+}
+
+function wasiHardLinkWasm() {
+  const source = bytes("wasi-hardlink-source.txt");
+  const destination = bytes("wasi-hardlink.txt");
+  const destinationOffset = 32;
+  const data = new Uint8Array(64);
+  data.set(source, 0);
+  data.set(destination, destinationOffset);
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "path_link", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 1 },
+    ],
+    startType: 2,
+    body: [
+      0x41, 0x03, 0x41, 0x00, 0x41, 0x00, 0x41, ...i32(source.length), 0x41, 0x03, 0x41, ...i32(destinationOffset), 0x41, ...i32(destination.length), 0x10, 0x00,
+      0x10, 0x01,
       0x0b,
     ],
     data,

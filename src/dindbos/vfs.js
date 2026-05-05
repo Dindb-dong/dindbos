@@ -72,9 +72,14 @@ export class VirtualFileSystem {
     if (!node || node.type !== "file") throw new Error(`File not found: ${path}`);
     this.assertTraversalAccess(node.path, "/", principal);
     this.assertAccess(node, "write", principal, node.path);
-    node.content = normalizeFileContent(content, { mime: node.mime });
-    node.size = fileContentByteLength(node.content);
-    node.modified = new Date().toISOString();
+    const normalizedContent = normalizeFileContent(content, { mime: node.mime });
+    const linked = node.linkId ? this.linkedFiles(node.linkId) : [node];
+    const modified = new Date().toISOString();
+    linked.forEach((linkedNode) => {
+      linkedNode.content = cloneFileContent(normalizedContent);
+      linkedNode.size = fileContentByteLength(linkedNode.content);
+      linkedNode.modified = modified;
+    });
     this.emitChange("write", node.path);
     return this.withPath(node, this.normalize(path, cwd));
   }
@@ -168,6 +173,35 @@ export class VirtualFileSystem {
     parent.children.push(node);
     this.emitChange("symlink", normalized);
     return this.withPath(node, normalized);
+  }
+
+  createHardLink(sourcePath, destinationPath, cwd = "/", principal = this.systemPrincipal) {
+    const source = this.resolve(sourcePath, cwd);
+    if (!source) throw new Error(`ln: ${sourcePath}: no such file or directory`);
+    if (source.type !== "file") throw new Error(`ln: ${sourcePath}: not a regular file`);
+    const normalizedDestination = this.normalize(destinationPath, cwd);
+    if (this.exists(normalizedDestination)) throw new Error(`ln: ${normalizedDestination}: file exists`);
+    this.assertTraversalAccess(source.path, "/", principal);
+    this.assertAccess(source, "read", principal, source.path);
+    const parent = this.parentFor(normalizedDestination);
+    this.assertTraversalAccess(parent.path, "/", principal);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
+    if (!source.linkId) source.linkId = this.nextLinkId(source.path);
+    const node = this.createNode({
+      name: this.basename(normalizedDestination),
+      type: "file",
+      mime: source.mime || mimeFromName(this.basename(normalizedDestination)),
+      content: cloneFileContent(source.content),
+      icon: source.icon || iconFromMime(source.mime || mimeFromName(this.basename(normalizedDestination))),
+      permissions: source.permissions || "-rw-r--r--",
+      owner: source.owner || ownerFromPrincipal(principal),
+      group: source.group || groupFromPrincipal(principal),
+      linkId: source.linkId,
+    });
+    parent.children.push(node);
+    this.emitChange("link", normalizedDestination);
+    return this.withPath(node, normalizedDestination);
   }
 
   createApp(path, appId, icon = "app", cwd = "/", options = {}, principal = this.systemPrincipal) {
@@ -414,6 +448,35 @@ export class VirtualFileSystem {
     };
   }
 
+  linkedFiles(linkId) {
+    const matches = [];
+    const visit = (node) => {
+      if (!node) return;
+      if (node.type === "file" && node.linkId === linkId) matches.push(node);
+      (node.children || []).forEach(visit);
+    };
+    visit(this.root);
+    return matches;
+  }
+
+  nextLinkId(path) {
+    const normalized = this.normalize(path);
+    const existing = new Set();
+    const visit = (node) => {
+      if (!node) return;
+      if (node.linkId) existing.add(node.linkId);
+      (node.children || []).forEach(visit);
+    };
+    visit(this.root);
+    let candidate = `link:${normalized}:${Date.now().toString(36)}`;
+    let index = 0;
+    while (existing.has(candidate)) {
+      index += 1;
+      candidate = `link:${normalized}:${Date.now().toString(36)}:${index}`;
+    }
+    return candidate;
+  }
+
   snapshot() {
     return cloneForSnapshot(this.root);
   }
@@ -453,6 +516,8 @@ export class VirtualFileSystem {
       owner: node.owner || resolved.owner || "root",
       group: node.group || resolved.group || "root",
       size: resolved.size ?? fileContentByteLength(resolved.content),
+      linkId: resolved.linkId || node.linkId || "",
+      linkCount: resolved.linkId || node.linkId ? this.linkedFiles(resolved.linkId || node.linkId).length : 1,
       modified: resolved.modified || node.modified || "2026-04-20T00:00:00.000Z",
     };
   }
