@@ -306,18 +306,20 @@ Implementation tasks:
 - Already present: first-pass descriptor syscalls cover `fd.list`, `fd.open`, `fd.read`, `fd.write`, `fd.seek`, `fd.stat`, and `fd.close` for text VFS files.
 - Already present: WASI `fd_write` for stdout/stderr writes through the shared descriptor table instead of a separate direct output path.
 - Already present: WASI `fd_read` reads through the shared descriptor table, including stdin supplied by shell pipelines and `runFile({ stdin })`.
+- Already present: WASI programs receive a preopened cwd descriptor and can use `path_open` plus `fd_read`/`fd_write`/`fd_close` for scoped VFS file read/write through opened descriptors.
 - Add `ioctl`-style descriptor syscalls once terminal and device behavior needs structured control operations.
 - Back shell pipelines with real pipe descriptors instead of only command string plumbing.
 - Already present: `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom` can be opened through descriptor syscalls.
 - Add `/dev/tty` and `/dev/clipboard` where browser policy allows.
 - Add pseudo-terminal sessions for Terminal.app so interactive programs can read/write through a TTY-like device.
-- Map opened WASI file descriptors to the shared descriptor table.
+- Broaden WASI descriptor coverage beyond the first scoped `path_open` subset, including richer rights/flags handling and directory operations.
 
 Verification:
 
 - Already present: `npm run smoke:descriptors` verifies descriptor open/read/write/seek/close, `/dev/null`, `/dev/zero`, `/proc/<pid>/fd.json`, and descriptor cleanup after process kill.
 - Already present: `npm run smoke:wasm` verifies WASI `fd_read` from stdin plus shell pipeline stdin delivery into executable `.wasm` files.
-- Add smoke coverage for pipe chaining, entropy devices, TTY output, opened WASI file-descriptor mapping, and descriptor cleanup after crash.
+- Already present: `npm run smoke:wasm` verifies WASI `path_open` read/write against scoped VFS files through opened descriptors.
+- Add smoke coverage for pipe chaining, entropy devices, TTY output, richer WASI descriptor rights/flags, and descriptor cleanup after crash.
 
 Completion criteria:
 
