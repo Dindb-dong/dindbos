@@ -533,7 +533,7 @@ Implementation tasks:
 
 - Publish JavaScript/TypeScript SDK wrappers around the syscall ABI.
 - Already present: `docs/wasm-toolchains.md` gives first-pass C/Rust/Zig/TinyGo examples for toolchains that produce compatible WASI modules.
-- Add package templates for GUI app, CLI app, WASM CLI, and background worker.
+- Already present: installable GUI app, CLI app, WASM CLI, and background worker package templates are seeded under `/opt/dindbos/templates`.
 - Add app testing helpers that run inside the DindbOS runtime instead of mocking private internals.
 - Add API version negotiation so old packages can run when the runtime evolves.
 - Add developer docs for permissions, filesystem scopes, process lifecycle, app state, package signing, and compatibility limits.
@@ -541,7 +541,8 @@ Implementation tasks:
 Verification:
 
 - Add example packages that install and run through the normal package system.
-- Add smoke coverage that builds or loads SDK fixtures and verifies real VFS/process/app behavior.
+- Already present: `npm run smoke:packages` installs and launches the GUI, CLI, WASM CLI, and background worker package templates through the normal package manager path.
+- Add smoke coverage that builds or loads SDK fixtures and verifies real VFS/process/app behavior beyond template install/launch.
 
 Completion criteria:
 

@@ -74,6 +74,13 @@ The runtime includes local sample packages:
 - `/opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json` for a packaged PDF file-viewer manifest.
 - `/opt/dindbos/packages/api-lab/dindbos.app.json` for a third-party API proof that uses sandboxed filesystem, package, and process APIs.
 
+The runtime also seeds installable package templates:
+
+- `/opt/dindbos/templates/template-gui-app/dindbos.app.json` for a JavaScript GUI package.
+- `/opt/dindbos/templates/template-cli-app/dindbos.app.json` for a command-oriented JavaScript package with `bin/cli.js`.
+- `/opt/dindbos/templates/template-wasm-cli/dindbos.app.json` for a WASI-style WASM CLI package.
+- `/opt/dindbos/templates/template-background-worker/dindbos.app.json` for a package with a worker task entry.
+
 Remote installs fetch `dindbos.app.json` over `http` or `https`. A remote manifest can declare small package files with inline `content`, UTF-8 `base64`, or a relative/absolute file `url`. Relative file URLs resolve from the manifest URL.
 
 Remote manifests must pass package signature verification before files, launchers, records, or app registrations are written. `pkg info <package>` shows `trust.source`, `trust.trusted`, `trust.signature`, `trust.publisher`, and `trust.warnings` so users can see whether an app came from local VFS content or a trusted remote publisher.
