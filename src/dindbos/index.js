@@ -100,6 +100,18 @@ export class DindbOS {
       lastPeerPhase: "",
       lastPeerAt: "",
     };
+    this.sessionAppStateChanges = new Map();
+    this.sessionAppStateStatus = {
+      localChanges: 0,
+      peerChanges: 0,
+      lastLocalAppId: "",
+      lastLocalAction: "",
+      lastLocalAt: "",
+      lastPeerSource: "",
+      lastPeerAppId: "",
+      lastPeerAction: "",
+      lastPeerAt: "",
+    };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
@@ -217,7 +229,45 @@ export class DindbOS {
       this.bus.emit("session:file-change", event);
     }
     if (message.type === "storage-flush") this.recordSessionStorageFlush(message.source, message.payload, message.at);
+    if (message.type === "app-state") this.recordSessionAppStateChange(message.source, message.payload, message.at);
     return message;
+  }
+
+  publishSessionAppStateChange(action, details = {}) {
+    const at = new Date().toISOString();
+    const payload = {
+      action: String(action || "change"),
+      appId: String(details.appId || ""),
+      key: String(details.key || ""),
+      path: String(details.path || ""),
+      updatedAt: String(details.updatedAt || at),
+    };
+    this.sessionAppStateStatus.localChanges += 1;
+    this.sessionAppStateStatus.lastLocalAppId = payload.appId;
+    this.sessionAppStateStatus.lastLocalAction = payload.action;
+    this.sessionAppStateStatus.lastLocalAt = at;
+    return this.publishSessionEvent("app-state", payload);
+  }
+
+  recordSessionAppStateChange(source, payload = {}, at = "") {
+    const entry = {
+      source: String(source || "unknown"),
+      action: String(payload.action || "change"),
+      appId: String(payload.appId || ""),
+      key: String(payload.key || ""),
+      path: String(payload.path || ""),
+      updatedAt: String(payload.updatedAt || at || ""),
+      at: at || new Date().toISOString(),
+    };
+    if (!entry.appId) return null;
+    this.sessionAppStateChanges.set(`${entry.source}:${entry.appId}`, entry);
+    this.sessionAppStateStatus.peerChanges += 1;
+    this.sessionAppStateStatus.lastPeerSource = entry.source;
+    this.sessionAppStateStatus.lastPeerAppId = entry.appId;
+    this.sessionAppStateStatus.lastPeerAction = entry.action;
+    this.sessionAppStateStatus.lastPeerAt = entry.at;
+    this.bus.emit("session:app-state", { ...entry });
+    return entry;
   }
 
   publishSessionStorageFlush(phase, extra = {}) {
@@ -843,6 +893,10 @@ export class DindbOS {
       storageFlush: {
         ...this.sessionStorageFlushStatus,
         peers: [...this.sessionStorageFlushes.values()].map((entry) => ({ ...entry })),
+      },
+      appState: {
+        ...this.sessionAppStateStatus,
+        peers: [...this.sessionAppStateChanges.values()].map((entry) => ({ ...entry })),
       },
     };
   }

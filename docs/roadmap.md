@@ -1097,12 +1097,13 @@ Implementation tasks:
 - Already present: BroadcastChannel-backed session messages deliver cross-tab VFS file-change events and expose channel diagnostics in session coordination status.
 - Already present: same-path VFS edits from different runtime instances are recorded as pending session conflicts and exposed through `/proc/sessions` plus Settings.
 - Already present: storage flush start/complete/error phases are broadcast to peer sessions and exposed through session coordination diagnostics.
-- Add BroadcastChannel or SharedWorker coordination for package installs and app state.
+- Already present: app-state set/remove/clear/uninstall changes are broadcast to peer sessions and exposed through session coordination diagnostics.
+- Add BroadcastChannel or SharedWorker coordination for package installs.
 - Add conflict policy for two active sessions modifying package DB records.
 - Add optional remote sync backend for encrypted snapshots, package cache indexes, settings, and selected user files.
 - Add remote desktop/session handoff protocol for viewing or controlling a running DindbOS instance from another tab or device.
 - Already present: `/proc/sessions`, Settings, and `doctor` expose the local runtime instance id, primary/secondary role, lock owner, readonly fallback, and stale-lock recovery state.
-- Already present: Settings exposes session channel connection state, received message count, pending conflict count, and latest peer storage flush phase.
+- Already present: Settings exposes session channel connection state, received message count, pending conflict count, latest peer storage flush phase, and latest peer app-state change.
 - Add richer Settings diagnostics for sync status and last successful snapshot.
 - Add offline-first merge rules for user documents, app state, package metadata, and search indexes.
 
@@ -1112,6 +1113,7 @@ Verification:
 - Already present: `npm run smoke:sessions` verifies cross-tab file event delivery over the session channel.
 - Already present: `npm run smoke:sessions` verifies same-path session conflict detection, conflict event delivery, and `/proc/sessions` conflict diagnostics.
 - Already present: `npm run smoke:sessions` verifies peer storage flush event delivery and session coordination status updates.
+- Already present: `npm run smoke:sessions` verifies peer app-state event delivery and session coordination status updates.
 - Add smoke coverage for reload-safe session recovery.
 - Add tests proving package install/update cannot run concurrently from two primary runtimes against the same storage root.
 
