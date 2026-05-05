@@ -29,11 +29,12 @@ argc() -> i32
 writeArg(index)
 writeEnv(ptr, len)
 syscall(ptr, len) -> i32
+syscallAsync(ptr, len) -> i32
 checkDeadline() -> i32
 exit(code)
 ```
 
-`write`, `writeErr`, `writeEnv`, and `syscall` read bytes from exported module memory. `checkDeadline()` is a cooperative execution guard: modules that call it periodically will crash through the DindbOS process crash path when `timeoutMs` has expired or the run was started with an aborted signal. `syscall(ptr, len)` expects a JSON request such as:
+`write`, `writeErr`, `writeEnv`, `syscall`, and `syscallAsync` read bytes from exported module memory. `checkDeadline()` is a cooperative execution guard: modules that call it periodically will crash through the DindbOS process crash path when `timeoutMs` has expired or the run was started with an aborted signal. `syscall(ptr, len)` and `syscallAsync(ptr, len)` expect a JSON request such as:
 
 ```json
 {
@@ -45,7 +46,7 @@ exit(code)
 }
 ```
 
-It returns `0` on success or an errno-style number for failure. The structured syscall result is still recorded through DindbOS syscall tracing.
+`syscall(ptr, len)` returns `0` on success or an errno-style number for failure. The structured syscall result is still recorded through DindbOS syscall tracing. `syscallAsync(ptr, len)` starts an async runtime syscall such as `storage.sync` and returns an immediate errno for malformed requests or dispatch failure; DindbOS waits for every pending async WASM syscall before reporting process completion, so durability barriers are not reported as successful until the browser-backed persistence path has completed.
 
 Current modules can also import these WASI-style functions from `wasi_snapshot_preview1`:
 
@@ -60,6 +61,8 @@ fd_close(fd) -> errno
 fd_fdstat_get(fd, resultPtr) -> errno
 fd_filestat_get(fd, resultPtr) -> errno
 fd_readdir(fd, bufPtr, bufLen, cookie, nreadPtr) -> errno
+fd_sync(fd) -> errno
+fd_datasync(fd) -> errno
 path_create_directory(dirfd, pathPtr, pathLen) -> errno
 path_unlink_file(dirfd, pathPtr, pathLen) -> errno
 path_remove_directory(dirfd, pathPtr, pathLen) -> errno
@@ -76,7 +79,7 @@ random_get(ptr, len) -> errno
 clock_time_get(id, precision, resultPtr) -> errno
 ```
 
-`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read` reads through the same table, including stdin data supplied by shell pipelines and `runFile({ stdin })`. WASI programs receive a preopened cwd descriptor and can use `path_open` for scoped VFS file read/write. `path_open` honors first-pass `rightsBase` read/write rights by mapping them onto descriptor read/write permission checks. `fd_fdstat_get` exposes descriptor file type, append flag, and first-pass read/write rights. `fd_filestat_get` and `path_filestat_get` expose first-pass VFS type, size, link count, timestamp, and stable inode metadata. `fd_readdir` can enumerate directory descriptors such as the preopened cwd; `path_create_directory`, `path_unlink_file`, `path_remove_directory`, `path_rename`, `path_symlink`, `path_readlink`, and `path_link` provide first-pass directory mutation and link metadata under scoped directory descriptors. Full pseudo-terminal behavior remains roadmap work.
+`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read` reads through the same table, including stdin data supplied by shell pipelines and `runFile({ stdin })`. WASI programs receive a preopened cwd descriptor and can use `path_open` for scoped VFS file read/write. `path_open` honors first-pass `rightsBase` read/write rights by mapping them onto descriptor read/write permission checks. `fd_sync` and `fd_datasync` validate file descriptors, start the DindbOS descriptor sync path, and are awaited by `WasmRunner` before process completion. `fd_fdstat_get` exposes descriptor file type, append flag, and first-pass read/write rights. `fd_filestat_get` and `path_filestat_get` expose first-pass VFS type, size, link count, timestamp, and stable inode metadata. `fd_readdir` can enumerate directory descriptors such as the preopened cwd; `path_create_directory`, `path_unlink_file`, `path_remove_directory`, `path_rename`, `path_symlink`, `path_readlink`, and `path_link` provide first-pass directory mutation and link metadata under scoped directory descriptors. Full pseudo-terminal behavior remains roadmap work.
 
 ## Process Model
 
@@ -106,4 +109,4 @@ Direct `runFile` callers can broaden a process beyond the executable-directory d
 npm run smoke:wasm
 ```
 
-The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, explicit filesystem scope broadening for direct `runFile` calls, trap crash report capture, `maxMemoryPages` crash handling, cooperative `checkDeadline()` timeout/abort/grow-limit handling, basic WASI `fd_write`/`fd_read`/`fd_fdstat_get`/`fd_filestat_get`/`fd_readdir`/`path_create_directory`/`path_unlink_file`/`path_remove_directory`/`path_rename`/`path_symlink`/`path_readlink`/`path_link`/`path_filestat_get`/`path_open`/`fd_close`/`proc_exit`, worker-backed WASM stdout/status/process backend tracking plus memory-limit, abort, and grow-limit denial, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, read-only `rightsBase` denial for descriptor writes, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
+The smoke verifies shell execution, argv/env output, syscall-backed file write, async `storage.sync` syscall completion, denied syscall EACCES tracing, explicit filesystem scope broadening for direct `runFile` calls, trap crash report capture, `maxMemoryPages` crash handling, cooperative `checkDeadline()` timeout/abort/grow-limit handling, basic WASI `fd_write`/`fd_read`/`fd_fdstat_get`/`fd_filestat_get`/`fd_readdir`/`fd_sync`/`path_create_directory`/`path_unlink_file`/`path_remove_directory`/`path_rename`/`path_symlink`/`path_readlink`/`path_link`/`path_filestat_get`/`path_open`/`fd_close`/`proc_exit`, worker-backed WASM stdout/status/process backend tracking plus memory-limit, abort, and grow-limit denial, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, read-only `rightsBase` denial for descriptor writes, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.

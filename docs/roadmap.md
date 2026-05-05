@@ -203,8 +203,8 @@ Implementation cuts:
 - Already present: AppRegistry register/unregister mutations group the in-memory app map, manifest file, and launcher file under one VFS snapshot rollback boundary.
 - Already present: ServiceManager register/unregister mutations group definitions, records, logs, and persisted service state under one VFS snapshot rollback boundary.
 - Extend staged activation to broader service lifecycle transaction groups.
-- Already present: first-pass `storage.sync` / `fsync`-style durability barrier is exposed through async syscalls, Shell raw syscall usage, SDK `storage.sync()`, AppSandbox `os.storage.sync()`, NodeCompat async `fsync`/`fdatasync` APIs, descriptor-backed `fd.sync` for file descriptors, and `os.services.sync()` / service-context `sync()` for service and package-service lifecycle writes so programs can wait for the runtime persistence flush path before reporting success.
-- Extend durability barriers into WASM and future mapped-file writes.
+- Already present: first-pass `storage.sync` / `fsync`-style durability barrier is exposed through async syscalls, Shell raw syscall usage, SDK `storage.sync()`, AppSandbox `os.storage.sync()`, NodeCompat async `fsync`/`fdatasync` APIs, descriptor-backed `fd.sync` for file descriptors, `os.services.sync()` / service-context `sync()` for service and package-service lifecycle writes, and WASM async syscall / WASI `fd_sync` imports so programs can wait for the runtime persistence flush path before reporting success.
+- Extend durability barriers into future mapped-file writes.
 - Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
 - Already present: `fsck --dry-run` includes first-pass package DB drift checks for package records whose `/opt/<package>` root is missing and `pkgfs` roots with no package DB record.
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
@@ -227,7 +227,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package fsck repair removes orphan `pkgfs` roots and does not attempt unsafe repair of missing package roots.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Already present: `npm run smoke:shell` verifies `fsck --explain` prints repair policy explanations and `/var/log/dindbos/fsck.log` records dry-run and repaired runs.
-- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, `npm run smoke:descriptors`, `npm run smoke:services`, and `npm run smoke:packages` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, descriptor-backed `fd.sync`, and service/package-service lifecycle sync barriers, while sandboxed callers without `storage.read` are denied.
+- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, `npm run smoke:descriptors`, `npm run smoke:services`, `npm run smoke:packages`, and `npm run smoke:wasm` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, descriptor-backed `fd.sync`, service/package-service lifecycle sync barriers, and WASM async syscall / WASI `fd_sync` barriers, while sandboxed callers without `storage.read` are denied.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
@@ -530,10 +530,10 @@ Implementation tasks:
 - Already present: `WasmRunner` executes `.wasm` modules from VFS paths through browser `WebAssembly.instantiate`.
 - Already present: shell integration supports executable `.wasm` files and explicit `wasm <file> [args...]` runs.
 - Already present: WASM runs spawn DindbOS processes with argv, cwd, environment, exit status, stdout, stderr, and process history.
-- Already present: the `dindbos` WASM import namespace exposes stdout/stderr helpers, argv/env helpers, `syscall(ptr,len)`, and `exit(code)`.
+- Already present: the `dindbos` WASM import namespace exposes stdout/stderr helpers, argv/env helpers, `syscall(ptr,len)`, `syscallAsync(ptr,len)` for async runtime barriers, and `exit(code)`.
 - Already present: first-pass WASM syscalls map to the DindbOS syscall ABI and are covered by global syscall tracing.
 - Already present: package manifests support DindbOS ABI WASM entry points through `app.runtime: "wasm"` or `.wasm` entries, launched through AppRegistry and rendered into package windows.
-- Already present: a basic `wasi_snapshot_preview1` import subset covers args/env sizing and buffers, `fd_write` for stdout/stderr, `proc_exit`, `random_get`, and `clock_time_get`.
+- Already present: a basic `wasi_snapshot_preview1` import subset covers args/env sizing and buffers, `fd_write` for stdout/stderr, `fd_sync` / `fd_datasync` for descriptor-backed durability barriers, `proc_exit`, `random_get`, and `clock_time_get`.
 - Expand WASI-style imports where possible, mapped to the DindbOS syscall ABI and future descriptor tables.
 - Already present: a first-pass process descriptor table exists for stdin/stdout/stderr, text VFS files, and basic pseudo-devices; WASI file descriptor mapping remains future work.
 - Already present: stdout/stderr-only DindbOS ABI and basic WASI modules can opt into worker execution through `ProcessExecutor` output buffers.
@@ -547,8 +547,10 @@ Implementation tasks:
 Verification:
 
 - Already present: `npm run smoke:wasm` verifies shell execution, argv/env stdout, syscall-backed file write, syscall tracing, nonzero exit status, and process tracking.
+- Already present: `npm run smoke:wasm` verifies `dindbos.syscallAsync(ptr,len)` waits for async `storage.sync` before process completion and records syscall tracing.
 - Already present: `npm run smoke:wasm` verifies permission-denied syscall behavior, EACCES syscall tracing, trap crash report files, and crash index entries.
 - Already present: `npm run smoke:wasm` verifies basic WASI `fd_write` stdout and `proc_exit`.
+- Already present: `npm run smoke:wasm` verifies WASI `fd_sync` waits for descriptor-backed storage flush after a file write.
 - Already present: `npm run smoke:wasm` verifies worker-backed WASM stdout, exit status, and process backend history for output-only modules.
 - Already present: `npm run smoke:wasm` verifies `maxMemoryPages` crash reporting in the main runner and worker memory-limit denial.
 - Already present: `npm run smoke:wasm` verifies explicit direct-run filesystem scopes can allow a WASM syscall write outside the executable directory while the default scope denies it.

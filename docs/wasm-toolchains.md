@@ -8,6 +8,7 @@ The runtime target is intentionally narrow:
 - export `_start` or `main`
 - use `wasi_snapshot_preview1` for CLI IO, argv/env, file descriptors, scoped path operations, random, and clock calls listed in [wasm.md](./wasm.md)
 - optionally import `dindbos.checkDeadline()` for cooperative timeout, abort, and grow-time memory checks
+- optionally import `dindbos.syscallAsync(ptr, len)` or use WASI `fd_sync` / `fd_datasync` when a browser-backed durability barrier must complete before the WASM process reports success
 - avoid unsupported host APIs such as sockets, native threads, subprocesses, mmap-style OS calls, and unrestricted filesystem paths
 
 ## C With WASI SDK
@@ -132,6 +133,10 @@ extern int dindbos_check_deadline(void);
 ```
 
 Call it inside long loops and after large allocations. If `timeoutMs`, `abortSignal`, or `maxMemoryPages` has been violated, DindbOS routes the failure through the normal process crash path.
+
+## Durability Barriers
+
+WASM imports are synchronous, so DindbOS does not pretend a module can block the JavaScript event loop until browser storage finishes. Instead, `dindbos.syscallAsync(ptr, len)` starts an async syscall such as `storage.sync`, and WASI `fd_sync` / `fd_datasync` start descriptor-backed sync work. `WasmRunner` waits for those pending barriers before it reports the process exit status.
 
 ## Compatibility Checklist
 

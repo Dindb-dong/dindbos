@@ -69,6 +69,17 @@ export class WasmRunner {
       assertCapability: (capability) => this.assertCapability(capability, process),
       filterDirectoryEntries: (path, entries) => this.filterDependencyList(path, entries, process),
     };
+    const pendingAsyncBoundaries = [];
+    const trackAsyncBoundary = (label, promise) => {
+      pendingAsyncBoundaries.push(Promise.resolve(promise).then((result) => {
+        if (result?.ok === false) throw wasmAsyncBoundaryError(label, result.error);
+        return result;
+      }));
+    };
+    const waitForAsyncBoundaries = async () => {
+      if (!pendingAsyncBoundaries.length) return;
+      await Promise.all(pendingAsyncBoundaries);
+    };
     const readMemory = (ptr, length) => {
       const memory = instance?.exports?.memory;
       if (!memory) throw new Error("wasm: module must export memory for DindbOS imports");
@@ -162,6 +173,18 @@ export class WasmRunner {
           const result = this.os.syscall(request.name, request.args || {}, context);
           return result.ok ? 0 : errnoNumber(result.error?.code);
         },
+        syscallAsync: (ptr, length) => {
+          try {
+            const request = parseSyscallRequest(readString(ptr, length));
+            trackAsyncBoundary(
+              request.name,
+              callAsyncSyscall(this.os, request.name, request.args || {}, context),
+            );
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
         checkDeadline,
         exit: (code) => {
           throw new WasmExit(code);
@@ -234,6 +257,26 @@ export class WasmRunner {
         fd_close: (fd) => {
           try {
             this.os.descriptors.close(process, { fd }, context);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
+        fd_sync: (fd) => {
+          try {
+            const descriptor = this.os.descriptors.stat(process, { fd }, context);
+            if (descriptor.kind !== "file") return errnoNumber("EINVAL");
+            trackAsyncBoundary(`fd.sync:${descriptor.fd}`, this.os.descriptors.sync(process, { fd }, context));
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
+        fd_datasync: (fd) => {
+          try {
+            const descriptor = this.os.descriptors.stat(process, { fd }, context);
+            if (descriptor.kind !== "file") return errnoNumber("EINVAL");
+            trackAsyncBoundary(`fd.datasync:${descriptor.fd}`, this.os.descriptors.sync(process, { fd }, context));
             return 0;
           } catch (error) {
             return errnoNumber(error.code || "EIO");
@@ -437,11 +480,23 @@ export class WasmRunner {
       if (typeof start !== "function") throw new Error("wasm: module must export _start or main");
       const returned = start();
       if (Number.isFinite(returned)) status = Number(returned);
+      await waitForAsyncBoundaries();
       this.os.processes.markReady(process.pid);
       this.os.processes.log(process.pid, `wasm exit ${status}`);
     } catch (error) {
       if (error instanceof WasmExit) {
         status = error.code;
+        try {
+          await waitForAsyncBoundaries();
+        } catch (boundaryError) {
+          status = errnoNumber(boundaryError.code || "EIO");
+          stderr.push(boundaryError.message || String(boundaryError));
+        }
+        this.os.processes.markReady(process.pid);
+        this.os.processes.log(process.pid, `wasm exit ${status}`);
+      } else if (error?.asyncBoundary) {
+        status = errnoNumber(error.code || "EIO");
+        stderr.push(error.message || String(error));
         this.os.processes.markReady(process.pid);
         this.os.processes.log(process.pid, `wasm exit ${status}`);
       } else {
@@ -572,6 +627,28 @@ function parseSyscallRequest(text) {
   } catch (error) {
     throw new Error(`wasm: invalid syscall request: ${error.message}`);
   }
+}
+
+function callAsyncSyscall(os, name, args, context) {
+  if (typeof os.syscallAsync === "function") return os.syscallAsync(name, args, context);
+  if (typeof os.syscalls?.callAsync === "function") return os.syscalls.callAsync(name, args, context);
+  if (typeof os.syscall === "function") return Promise.resolve(os.syscall(name, args, context));
+  return Promise.resolve({
+    ok: false,
+    error: {
+      code: "ENOSYS",
+      message: "wasm: async syscall dispatch is unavailable",
+      syscall: name,
+    },
+  });
+}
+
+function wasmAsyncBoundaryError(label, error = {}) {
+  const failure = new Error(error.message || `wasm: async boundary failed: ${label}`);
+  failure.code = error.code || "EIO";
+  failure.syscall = error.syscall || label;
+  failure.asyncBoundary = true;
+  return failure;
 }
 
 function errnoNumber(code) {
