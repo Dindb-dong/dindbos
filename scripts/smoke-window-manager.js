@@ -276,7 +276,9 @@ async function runLiveWindowStateSmoke() {
       title: "Browser.app",
       width: 640,
       height: 420,
+      manifest: { capabilities: [] },
       render: (_content, windowApi) => {
+        _content.textContent = "Browser surface body";
         windowApi.setState("browser", { address: "https://example.com", title: "Example Domain", status: "ready" });
         windowApi.setTitle("Example Domain - Browser");
       },
@@ -343,6 +345,42 @@ async function runLiveWindowStateSmoke() {
     assert(axTree.children.length === 2 && api.getAccessibilityTree().children[0].role === "textbox", "window accessibility tree was not stored");
     const axSurface = JSON.parse(liveOs.fs.readFile("/proc/compositor")).surfaces.find((surface) => surface.windowId === "browser");
     assert(axSurface.accessibility.name === "Browser" && axSurface.accessibility.nodeCount === 3, "/proc/compositor did not expose accessibility summary");
+    const ownCapture = api.captureSurface();
+    assert(ownCapture.handled && ownCapture.scope === "window" && ownCapture.format === "metadata+dom-text", "own-window surface capture did not return a descriptor");
+    assert(ownCapture.surfaces[0].text.includes("Browser surface body") && ownCapture.pixelDataAvailable === false, "surface capture descriptor overclaimed or missed window text");
+    const deniedDesktopCapture = api.captureDesktop({ userApproved: true });
+    assert(!deniedDesktopCapture.handled && deniedDesktopCapture.deniedReason === "capability-denied", "desktop capture without capability was not denied");
+    liveManager.open({
+      id: "settings",
+      appId: "settings",
+      pid: 43,
+      title: "Settings",
+      width: 500,
+      height: 360,
+      manifest: { capabilities: [] },
+      render: (content) => {
+        content.textContent = "Settings surface body";
+      },
+    });
+    const recorderApi = liveManager.open({
+      id: "recorder",
+      appId: "recorder",
+      pid: 44,
+      title: "Recorder",
+      width: 480,
+      height: 320,
+      manifest: { capabilities: ["compositor.captureWindow", "compositor.captureDesktop"] },
+      render: (content) => {
+        content.textContent = "Recorder surface body";
+      },
+    });
+    liveManager.focus("browser");
+    const deniedCrossCapture = api.captureSurface({ targetWindowId: "settings", userApproved: true });
+    assert(!deniedCrossCapture.handled && deniedCrossCapture.deniedReason === "capability-denied", "cross-app surface capture without capability was not denied");
+    const desktopCapture = recorderApi.captureDesktop({ userApproved: true });
+    assert(desktopCapture.handled && desktopCapture.scope === "desktop" && desktopCapture.surfaces.length >= 3, "capability-approved desktop capture did not include visible surfaces");
+    const captureStatus = JSON.parse(liveOs.fs.readFile("/proc/compositor")).surfaceCapture;
+    assert(captureStatus.captured === 2 && captureStatus.denied >= 2, "/proc/compositor did not expose surface capture policy state");
     const lockTarget = { locked: false, requestPointerLock() { this.locked = true; } };
     const lockResult = liveManager.requestPointerLock("browser", { target: lockTarget });
     assert(lockResult.handled && lockTarget.locked, "focused window pointer-lock request did not route");
@@ -369,6 +407,7 @@ async function runLiveWindowStateSmoke() {
       title: "Browser.app",
       width: 640,
       height: 420,
+      manifest: { capabilities: [] },
       render: () => {},
     });
     liveManager.activate("browser");

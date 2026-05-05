@@ -1,3 +1,5 @@
+import { canUseCapability } from "./app-manifest.js?v=20260422-browserd";
+
 const MIN_WIDTH = 340;
 const MIN_HEIGHT = 240;
 const MINIMIZE_ANIMATION_MS = 160;
@@ -39,6 +41,12 @@ export class WindowManager {
       releaseReason: "",
       denied: 0,
       lastRequest: null,
+    };
+    this.surfaceCapture = {
+      captured: 0,
+      denied: 0,
+      lastCapture: null,
+      lastDenied: null,
     };
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
     this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
@@ -129,6 +137,8 @@ export class WindowManager {
       },
       setAccessibilityTree: (tree) => this.setAccessibilityTree(config.id, tree),
       getAccessibilityTree: () => cloneState(task.accessibilityTree || null),
+      captureSurface: (options = {}) => this.captureSurface({ ...options, requesterWindowId: config.id, scope: "window" }),
+      captureDesktop: (options = {}) => this.captureSurface({ ...options, requesterWindowId: config.id, scope: "desktop" }),
     };
     const task = { ...config, frame, titlebar, content, api, state: {}, accessibilityTree: null, minimized: false, maximized: Boolean(placement.maximized) };
     this.windows.set(config.id, task);
@@ -428,6 +438,70 @@ export class WindowManager {
     return cloneState(task.accessibilityTree);
   }
 
+  captureSurface(request = {}) {
+    const scope = normalizeCaptureScope(request.scope);
+    const requesterWindowId = String(request.requesterWindowId || "");
+    const requester = this.windows.get(requesterWindowId);
+    const targetWindowId = scope === "desktop" ? "" : String(request.targetWindowId || requesterWindowId || this.activeWindowId || "");
+    const target = scope === "desktop" ? null : this.windows.get(targetWindowId);
+    const ownWindow = Boolean(requester && target && requester.id === target.id);
+    const requiredCapability = scope === "desktop" ? "compositor.captureDesktop" : "compositor.captureWindow";
+    const userApproved = Boolean(request.userApproved || request.approved);
+    const system = Boolean(request.system || request.principal?.system);
+    const hasCapability = system || Boolean(requester?.manifest && canUseCapability(requester.manifest, requiredCapability));
+    const route = {
+      requestId: captureRequestId(),
+      scope,
+      requesterWindowId,
+      requesterPid: requester?.pid || 0,
+      requesterAppId: requester?.appId || "",
+      targetWindowId,
+      targetPid: target?.pid || 0,
+      targetAppId: target?.appId || "",
+      requiredCapability: ownWindow ? "" : requiredCapability,
+      userVisiblePermission: true,
+      userApproved: ownWindow || userApproved,
+      handled: false,
+      deniedReason: "",
+      at: new Date().toISOString(),
+    };
+    if (!requester && !system) route.deniedReason = "requester-window-not-found";
+    else if (scope === "window" && !target) route.deniedReason = "target-window-not-found";
+    else if (!ownWindow && !hasCapability) route.deniedReason = "capability-denied";
+    else if (!ownWindow && !userApproved) route.deniedReason = "user-permission-required";
+    else route.handled = true;
+
+    if (!route.handled) {
+      this.surfaceCapture.denied += 1;
+      this.surfaceCapture.lastDenied = route;
+      this.writeCompositorProcfs("surface-capture-denied");
+      this.os.bus?.emit?.("compositor:capture", { ...route });
+      return { ...route };
+    }
+
+    const capture = {
+      ...route,
+      captureId: route.requestId,
+      type: "surface-capture",
+      format: "metadata+dom-text",
+      encoding: "json",
+      pixelDataAvailable: false,
+      browserBoundary: "DOM-backed captures expose OS surface metadata and bounded text only; pixel screenshots require browser Screen Capture or a permissioned renderer.",
+      viewport: {
+        width: globalThis.window?.innerWidth || 0,
+        height: globalThis.window?.innerHeight || 0,
+      },
+      surfaces: scope === "desktop"
+        ? [...this.windows.values()].map((task) => captureSurfaceForTask(task, this.activeWindowId))
+        : [captureSurfaceForTask(target, this.activeWindowId)],
+    };
+    this.surfaceCapture.captured += 1;
+    this.surfaceCapture.lastCapture = summarizeSurfaceCapture(capture);
+    this.writeCompositorProcfs("surface-capture");
+    this.os.bus?.emit?.("compositor:capture", summarizeSurfaceCapture(capture));
+    return cloneState(capture);
+  }
+
   requestPointerLock(windowId = this.activeWindowId, options = {}) {
     const targetWindowId = String(windowId || "");
     const task = this.windows.get(targetWindowId);
@@ -585,6 +659,12 @@ export class WindowManager {
         releaseReason: this.pointerLock.releaseReason,
         denied: this.pointerLock.denied,
         lastRequest: this.pointerLock.lastRequest ? { ...this.pointerLock.lastRequest } : null,
+      },
+      surfaceCapture: {
+        captured: this.surfaceCapture.captured,
+        denied: this.surfaceCapture.denied,
+        lastCapture: this.surfaceCapture.lastCapture ? cloneState(this.surfaceCapture.lastCapture) : null,
+        lastDenied: this.surfaceCapture.lastDenied ? { ...this.surfaceCapture.lastDenied } : null,
       },
       surfaces,
       updatedAt: new Date().toISOString(),
@@ -888,6 +968,70 @@ function normalizeShortcutScope(value) {
 function normalizeClipboardAction(action) {
   const value = String(action || "paste").toLowerCase();
   return value === "copy" ? "copy" : "paste";
+}
+
+function normalizeCaptureScope(scope) {
+  return String(scope || "window").toLowerCase() === "desktop" ? "desktop" : "window";
+}
+
+function captureRequestId() {
+  return `capture-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function captureSurfaceForTask(task, activeWindowId = "") {
+  const rect = surfaceRectForTask(task);
+  return {
+    windowId: task.id,
+    appId: task.appId,
+    pid: task.pid,
+    title: task.title,
+    focused: task.id === activeWindowId,
+    minimized: Boolean(task.minimized),
+    hidden: Boolean(task.frame.hidden),
+    paintMode: "dom",
+    rect,
+    text: extractElementText(task.content),
+    accessibility: task.accessibilityTree ? summarizeAccessibilityTree(task.accessibilityTree) : null,
+  };
+}
+
+function summarizeSurfaceCapture(capture) {
+  return {
+    captureId: capture.captureId,
+    scope: capture.scope,
+    format: capture.format,
+    pixelDataAvailable: Boolean(capture.pixelDataAvailable),
+    requesterWindowId: capture.requesterWindowId,
+    requesterPid: capture.requesterPid,
+    requesterAppId: capture.requesterAppId,
+    targetWindowId: capture.targetWindowId,
+    targetPid: capture.targetPid,
+    targetAppId: capture.targetAppId,
+    surfaceCount: Array.isArray(capture.surfaces) ? capture.surfaces.length : 0,
+    userVisiblePermission: Boolean(capture.userVisiblePermission),
+    userApproved: Boolean(capture.userApproved),
+    at: capture.at,
+  };
+}
+
+function extractElementText(element) {
+  const chunks = [];
+  collectElementText(element, chunks);
+  return chunks.join(" ").replace(/\s+/g, " ").trim().slice(0, 4096);
+}
+
+function collectElementText(element, chunks) {
+  if (!element || chunks.join(" ").length > 4096) return;
+  if (typeof element.innerText === "string" && element.innerText.trim()) {
+    chunks.push(element.innerText);
+    return;
+  }
+  if (typeof element.textContent === "string" && element.textContent.trim()) {
+    chunks.push(element.textContent);
+    return;
+  }
+  const children = Array.isArray(element.children) ? element.children : [...(element.children || [])];
+  children.forEach((child) => collectElementText(child, chunks));
 }
 
 function byteLength(value) {

@@ -52,6 +52,7 @@ export class AppRegistry {
       width: app.width || 760,
       height: app.height || 520,
       singleton: app.singleton,
+      manifest: app.manifest,
       shortcuts: app.manifest?.shortcuts || [],
       render: (content, windowApi) => {
         try {
