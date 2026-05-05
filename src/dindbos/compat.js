@@ -36,6 +36,9 @@ export const COMPATIBILITY_TIERS = [
   },
 ];
 
+export const DINDBOS_API_VERSIONS = [1];
+export const CURRENT_DINDBOS_API_VERSION = Math.max(...DINDBOS_API_VERSIONS);
+
 export function compatibilitySnapshot(runtime = {}) {
   const browser = browserCapabilities();
   const storageStatus = safeRead(() => runtime.storage?.status?.(), {});
@@ -51,6 +54,10 @@ export function compatibilitySnapshot(runtime = {}) {
     runtime: "DindbOS.js",
     version: "0.2.0",
     mode: "browser-native",
+    api: {
+      currentVersion: CURRENT_DINDBOS_API_VERSION,
+      supportedVersions: [...DINDBOS_API_VERSIONS],
+    },
     tiers,
     browser,
     storage: {
@@ -91,6 +98,44 @@ export function compatibilityRequirementForManifest(manifest = {}) {
   };
 }
 
+export function apiRequirementForManifest(manifest = {}) {
+  const declared = manifest.api || manifest.dindbosApi || manifest.dindbos || {};
+  const hasRange = declared.minVersion !== undefined
+    || declared.maxVersion !== undefined
+    || manifest.minApiVersion !== undefined
+    || manifest.maxApiVersion !== undefined;
+  const target = apiVersionNumber(
+    declared.targetVersion
+      ?? declared.version
+      ?? manifest.apiVersion
+      ?? manifest.dindbosApiVersion
+      ?? manifest.runtimeApiVersion
+      ?? CURRENT_DINDBOS_API_VERSION,
+    "api version",
+  );
+  const minVersion = hasRange
+    ? apiVersionNumber(declared.minVersion ?? manifest.minApiVersion ?? 1, "minimum API version")
+    : target;
+  const maxVersion = hasRange
+    ? apiVersionNumber(declared.maxVersion ?? manifest.maxApiVersion ?? target, "maximum API version")
+    : target;
+  if (minVersion > maxVersion) throw new Error(`pkg: invalid API version range: min ${minVersion} > max ${maxVersion}`);
+  const candidates = DINDBOS_API_VERSIONS
+    .filter((version) => version >= minVersion && version <= maxVersion)
+    .sort((left, right) => right - left);
+  const negotiatedVersion = candidates.find((version) => version <= target) || candidates[0] || 0;
+  return {
+    targetVersion: target,
+    minVersion,
+    maxVersion,
+    negotiatedVersion,
+    supportedVersions: [...DINDBOS_API_VERSIONS],
+    currentVersion: CURRENT_DINDBOS_API_VERSION,
+    supported: Boolean(negotiatedVersion),
+    status: negotiatedVersion === target ? "matched" : negotiatedVersion ? "downgraded" : "unsupported",
+  };
+}
+
 export function findCompatibilityTier(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return null;
@@ -113,6 +158,12 @@ function browserCapabilities() {
     webCrypto: Boolean(globalThis.crypto?.subtle),
     webSocket: typeof globalThis.WebSocket === "function",
   };
+}
+
+function apiVersionNumber(value, label) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 1) throw new Error(`pkg: ${label} must be a positive integer`);
+  return number;
 }
 
 function safeRead(read, fallback) {
