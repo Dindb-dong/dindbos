@@ -109,6 +109,7 @@ const os = {
       readonly: true,
       staleRecovered: false,
       channel: { connected: true, received: 2 },
+      conflicts: { pending: 1, total: 3 },
     };
   },
   fs: {
@@ -155,6 +156,7 @@ assert(markup.includes("<dt>Lifecycle</dt><dd>recovered</dd>"), "settings markup
 assert(markup.includes("<dt>Session Role</dt><dd>secondary</dd>"), "settings markup did not render session role");
 assert(markup.includes("<dt>Lock Owner</dt><dd>primary-tab</dd>"), "settings markup did not render lock owner");
 assert(markup.includes("<dt>Channel</dt><dd>connected · received=2</dd>"), "settings markup did not render channel diagnostics");
+assert(markup.includes("<dt>Conflicts</dt><dd>1 pending · total=3</dd>"), "settings markup did not render conflict diagnostics");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");

@@ -88,6 +88,8 @@ export class DindbOS {
       received: 0,
       sent: 0,
     };
+    this.sessionFileChanges = new Map();
+    this.sessionConflicts = [];
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
@@ -156,7 +158,8 @@ export class DindbOS {
       policy: this.permissions,
       onChange: (event) => {
         this.schedulePersistFileSystem(event);
-        this.publishSessionEvent("file-change", event);
+        const message = this.publishSessionEvent("file-change", event);
+        this.recordSessionFileChange(this.instanceId, event, message?.at);
       },
     });
   }
@@ -197,8 +200,50 @@ export class DindbOS {
     this.sessionChannelStatus.received += 1;
     this.sessionChannelStatus.lastReceivedAt = message.at || new Date().toISOString();
     this.bus.emit("session:message", { ...message });
-    if (message.type === "file-change") this.bus.emit("session:file-change", { ...message.payload, source: message.source, at: message.at });
+    if (message.type === "file-change") {
+      const conflict = this.recordSessionFileChange(message.source, message.payload, message.at);
+      const event = { ...message.payload, source: message.source, at: message.at };
+      if (conflict) event.conflict = conflict;
+      this.bus.emit("session:file-change", event);
+    }
     return message;
+  }
+
+  recordSessionFileChange(source, event = {}, at = "") {
+    const path = event?.path ? String(event.path) : "";
+    if (!this.shouldTrackSessionFileConflict(path)) return null;
+    const entry = {
+      source: String(source || "unknown"),
+      action: String(event.action || "change"),
+      path,
+      at: at || new Date().toISOString(),
+    };
+    const previous = this.sessionFileChanges.get(path);
+    this.sessionFileChanges.set(path, entry);
+    if (!previous || previous.source === entry.source) return null;
+    const conflict = {
+      id: `${path}:${previous.source}:${previous.at}:${entry.source}:${entry.at}`,
+      path,
+      firstSource: previous.source,
+      firstAction: previous.action,
+      firstAt: previous.at,
+      secondSource: entry.source,
+      secondAction: entry.action,
+      secondAt: entry.at,
+      status: "pending",
+    };
+    if (this.sessionConflicts.some((item) => item.id === conflict.id)) return null;
+    this.sessionConflicts.push(conflict);
+    this.sessionConflicts = this.sessionConflicts.slice(-50);
+    this.bus.emit("session:conflict", { ...conflict });
+    this.writeSessionCoordinationStatus();
+    return conflict;
+  }
+
+  shouldTrackSessionFileConflict(path) {
+    if (!path || path.startsWith("/proc")) return false;
+    if (path.startsWith("/var/run/dindbos")) return false;
+    return path.startsWith("/home") || path.startsWith("/opt") || path.startsWith("/var/lib") || path.startsWith("/mnt");
   }
 
   async loadPersistentFileSystem(options = {}) {
@@ -736,10 +781,17 @@ export class DindbOS {
   }
 
   sessionCoordinationStatus() {
+    const pendingConflicts = this.sessionConflicts.filter((conflict) => conflict.status === "pending");
     return {
       ...this.sessionCoordination,
       canWrite: this.sessionCoordination.role !== "secondary",
       channel: { ...this.sessionChannelStatus },
+      conflicts: {
+        total: this.sessionConflicts.length,
+        pending: pendingConflicts.length,
+        lastConflictAt: pendingConflicts.at(-1)?.secondAt || "",
+        items: pendingConflicts.slice(-10).map((conflict) => ({ ...conflict })),
+      },
     };
   }
 

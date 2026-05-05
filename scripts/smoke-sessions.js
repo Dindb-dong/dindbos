@@ -136,8 +136,14 @@ tabB.bus.on("session:file-change", (event) => fileEvents.push(`${event.source}:$
 tabA.fs.writeOrCreateFile("/home/guest/Documents/cross-tab.txt", "event", "/", {}, tabA.permissions.systemPrincipal());
 assert(fileEvents.some((event) => event.includes("tab-a") && event.includes("/home/guest/Documents/cross-tab.txt")), "cross-tab file event was not delivered");
 assert(tabB.sessionCoordinationStatus().channel.received > 0, "session channel receive count was not recorded");
+const conflicts = [];
+tabA.bus.on("session:conflict", (event) => conflicts.push(`${event.path}:${event.firstSource}->${event.secondSource}`));
+tabB.fs.writeOrCreateFile("/home/guest/Documents/cross-tab.txt", "peer edit", "/", {}, tabB.permissions.systemPrincipal());
+assert(tabB.sessionCoordinationStatus().conflicts.pending === 1, "local same-path session conflict was not recorded");
+assert(conflicts.some((event) => event.includes("/home/guest/Documents/cross-tab.txt:tab-a->tab-b")), "peer same-path session conflict was not delivered");
+assert(JSON.parse(tabB.fs.readFile("/proc/sessions")).conflicts.pending === 1, "/proc/sessions did not expose pending session conflicts");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts");
 
 function createStorage(values = new Map()) {
   return {
