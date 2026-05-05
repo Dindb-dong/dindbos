@@ -174,8 +174,16 @@ assertRejects(() => tabB.packages.install({
 }), "package-db: operation locked by tab-a");
 assert(!tabB.fs.exists("/var/lib/dindbos/packages/locked-pkg.json"), "package DB lock did not prevent package record mutation");
 tabA.releaseRuntimeOperationLock("package-db", packageDbLock);
+const reloadShutdown = tabB.writeRecoveryRecord("session-reload-smoke", { dirty: true });
+assert(reloadShutdown.session.conflicts.pending === 1, "session shutdown record did not capture pending conflicts");
+const reloadOs = new DindbOS({ root: null, fileSystem: tabB.fs.snapshot(), storage: createStorage(new Map()), instanceId: "reload-tab" });
+await reloadOs.loadPersistentFileSystem();
+const reloadRecovery = reloadOs.recoveryStatus().lastRecovery;
+assert(reloadRecovery.sessionRecovery.pendingConflicts === 1, "reload recovery did not preserve pending conflict count");
+assert(reloadOs.sessionCoordinationStatus().recovery.pendingConflicts === 1, "session coordination did not expose reload recovery");
+assert(JSON.parse(reloadOs.fs.readFile("/proc/sessions")).recovery.recovered === true, "/proc/sessions did not expose reload recovery");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages package-lock");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages package-lock reload-recovery");
 
 function createStorage(values = new Map()) {
   return {
