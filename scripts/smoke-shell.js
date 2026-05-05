@@ -150,6 +150,11 @@ assert(result.output.includes("serviceWorker=false periodicSync=false"), `doctor
 assert(result.output.includes("background serviceWorker=false periodicSync=false registered=false closedPagePersistent=false decision=unsupported-in-this-runtime"), `doctor compat background boundary missing: ${result.output}`);
 assert(result.output.includes("unsupported native=kernel-mode execution"), `doctor compat unsupported native boundary missing: ${result.output}`);
 
+result = await shell.executeAsync("mount");
+assert(result.status === 0, `mount status mismatch: ${result.status}`);
+assert(result.output.includes("rootfs / rootfs rw"), `mount output missing rootfs entry: ${result.output}`);
+assert(result.output.includes("procfs /proc procfs ro"), `mount output missing procfs entry: ${result.output}`);
+
 result = await shell.executeAsync("mount-local --helper");
 assert(result.status === 0, `mount helper status mismatch: ${result.status}`);
 assert(result.output.includes("protocol=dindbos-file-helper-v1"), `mount helper protocol missing: ${result.output}`);
@@ -278,6 +283,10 @@ function bootOs() {
         renameSupported: false,
       }),
     },
+    mountLines: () => [
+      "rootfs / rootfs rw owner=root durability=persistent quota=browser-storage caps=-",
+      "procfs /proc procfs ro owner=root durability=runtime quota=generated caps=-",
+    ],
     storage: {
       status: () => ({ backend: "memory", bytes: 0 }),
       estimate: async () => ({ backend: "memory", bytes: 0 }),

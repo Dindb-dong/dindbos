@@ -77,6 +77,7 @@ export class LocalFolderMountManager {
     this.mounts.set(node.path, record);
     await this.syncDirectory(node.path);
     if (options.persist !== false) await this.persistMount(record);
+    this.os.writeMountTableProcfs?.("local-mount");
     return this.summary(record, { persisted: options.persist !== false, status: "mounted" });
   }
 
@@ -87,6 +88,7 @@ export class LocalFolderMountManager {
     this.mounts.delete(mount.path);
     if (this.os.fs.exists(mount.path)) this.os.fs.remove(mount.path, "/", { recursive: true }, this.os.permissions.systemPrincipal());
     if (options.forget) await this.forgetMount(mount.path);
+    this.os.writeMountTableProcfs?.("local-unmount");
     return this.summary(mount, { persisted: !options.forget, status: "unmounted" });
   }
 

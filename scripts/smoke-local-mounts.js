@@ -207,6 +207,7 @@ const handle = new MemoryDirectoryHandle("disk", {
 });
 const mounted = await mounts.mountLocal("disk", { handle, persist: false });
 assert(mounted.path === "/mnt/disk", `mounted path mismatch: ${mounted.path}`);
+assert(os.mountTableWrites.includes("local-mount"), "local mount did not refresh mount table procfs");
 assert(await mounts.readFile("/mnt/disk/note.txt") === "external v1", "initial local mount mirror did not read external file");
 await assertRejects(
   () => mounts.move("/mnt/disk/rename-me.txt", "/mnt/disk/renamed.txt"),
@@ -259,6 +260,10 @@ function bootOs() {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
+    mountTableWrites: [],
+    writeMountTableProcfs(reason) {
+      this.mountTableWrites.push(reason);
+    },
     storage: {
       async readValue() {
         return null;
