@@ -93,7 +93,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 780,
     height: 520,
     manifest: {
-      capabilities: ["app.launch", "process.read", "process.manage"],
+      capabilities: ["app.launch", "process.read", "process.manage", "service.read", "service.manage"],
       fileSystem: { read: ["/proc"], write: [] },
     },
     render: ({ os: runtime, content }) => renderActivityMonitor(runtime, content),
@@ -3087,6 +3087,9 @@ function renderActivityMonitor(os, content) {
     if (!processes.some((process) => process.pid === selectedPid)) selectedPid = processes[0]?.pid || null;
     const selected = selectedPid ? processes.find((process) => process.pid === selectedPid) : null;
     const processLog = selected ? safeRead(() => os.processes.log(selected.pid), "") : "";
+    const selectedServiceId = serviceIdForProcess(selected);
+    const selectedService = selectedServiceId ? safeRead(() => os.services?.get?.(selectedServiceId), null) : null;
+    const selectedServiceLog = selectedServiceId ? safeRead(() => os.services?.log?.(selectedServiceId), []) : [];
     content.innerHTML = `
       <section class="activity-app">
         <header>
@@ -3135,7 +3138,7 @@ function renderActivityMonitor(os, content) {
             `).join("") || `<p class="activity-empty">No running processes.</p>`}
           </div>
           <aside class="activity-detail">
-            ${selected ? renderActivityDetail(selected, processLog) : "<p>No process selected.</p>"}
+            ${selected ? renderActivityDetail(selected, processLog, selectedService, selectedServiceLog) : "<p>No process selected.</p>"}
           </aside>
         </div>
       </section>
@@ -3174,6 +3177,18 @@ function renderActivityMonitor(os, content) {
           selectedPid = selectedPid === pid && button.dataset.processAction !== "open-proc"
             ? os.processes.current()?.pid || null
             : selectedPid;
+          draw();
+        }
+      });
+    });
+    content.querySelectorAll("[data-service-action]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const serviceId = button.dataset.serviceId;
+        try {
+          if (button.dataset.serviceAction === "restart") await os.services.restart(serviceId);
+          if (button.dataset.serviceAction === "disable") await os.services.disable(serviceId);
+        } finally {
+          selectedPid = os.processes.current()?.pid || null;
           draw();
         }
       });
@@ -3236,7 +3251,7 @@ function activitySortOptions(selected) {
   `).join("");
 }
 
-function renderActivityDetail(process, processLog) {
+export function renderActivityDetail(process, processLog, service = null, serviceLog = []) {
   return `
     <div class="activity-detail-header">
       <div>
@@ -3264,8 +3279,44 @@ function renderActivityDetail(process, processLog) {
       <div><dt>Activity</dt><dd>${escapeHtml(formatActivityScore(process.activityScore))} · ${process.activitySamples || 0} samples</dd></div>
       <div><dt>Runtime</dt><dd>${escapeHtml(formatBytes(process.runtimeBytes))} · ${process.logLines || 0} logs</dd></div>
     </dl>
+    ${service ? renderActivityServiceDetail(service, serviceLog) : ""}
     <pre>${escapeHtml(processLog || "No process log yet.")}</pre>
   `;
+}
+
+function renderActivityServiceDetail(service, serviceLog = []) {
+  return `
+    <section class="activity-service-detail">
+      <header>
+        <div>
+          <p class="dos-kicker">Service</p>
+          <h4>${escapeHtml(service.name || service.id)}</h4>
+        </div>
+        <div>
+          <button type="button" data-service-action="restart" data-service-id="${escapeAttr(service.id)}">Restart service</button>
+          <button type="button" data-service-action="disable" data-service-id="${escapeAttr(service.id)}">Disable service</button>
+        </div>
+      </header>
+      <dl>
+        <div><dt>Service ID</dt><dd>${escapeHtml(service.id)}</dd></div>
+        <div><dt>Service State</dt><dd>${escapeHtml(service.state || "unknown")}</dd></div>
+        <div><dt>Runs</dt><dd>${Number(service.runCount || 0)}</dd></div>
+        <div><dt>Last Run</dt><dd>${escapeHtml(shortTime(service.lastRunAt))}</dd></div>
+        <div><dt>Last Error</dt><dd>${escapeHtml(service.lastError || "-")}</dd></div>
+      </dl>
+      <pre>${escapeHtml(formatServiceLog(serviceLog))}</pre>
+    </section>
+  `;
+}
+
+function formatServiceLog(entries = []) {
+  if (!entries.length) return "No service log yet.";
+  return entries.map((entry) => `${entry.at || ""} ${String(entry.level || "info").toUpperCase()} ${entry.message || ""}`.trim()).join("\n");
+}
+
+function serviceIdForProcess(process) {
+  const appId = String(process?.appId || "");
+  return appId.startsWith("service:") ? appId.slice("service:".length) : "";
 }
 
 function formatActivityScore(value) {

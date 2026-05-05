@@ -5,7 +5,7 @@ import { ProcessExecutor } from "../src/dindbos/process-executor.js";
 import { ProcessManager } from "../src/dindbos/process-manager.js";
 import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
-import { filterAndSortActivityProcesses } from "../src/dindbos/apps/builtins.js";
+import { filterAndSortActivityProcesses, renderActivityDetail } from "../src/dindbos/apps/builtins.js";
 
 const os = bootOs();
 const launched = [];
@@ -107,6 +107,17 @@ const activitySorted = filterAndSortActivityProcesses([
   { pid: 2, appId: "busy", state: "running", activityScore: 8 },
 ], { sort: "activity", direction: "desc" });
 assert(activitySorted.map((item) => item.pid).join(",") === "2,1", "activity score sort mismatch");
+
+const serviceDetail = renderActivityDetail(
+  { pid: 450, appId: "service:search-indexer", name: "Search Indexer", state: "running", user: "guest", startedAt: new Date().toISOString() },
+  "process ready",
+  { id: "search-indexer", name: "Search Indexer", state: "running", runCount: 2, lastRunAt: new Date().toISOString() },
+  [{ at: "2026-05-05T00:00:00.000Z", level: "info", message: "indexed" }],
+);
+assert(serviceDetail.includes("Service ID"), "activity service detail did not render service metadata");
+assert(serviceDetail.includes("data-service-action=\"restart\""), "activity service detail did not expose restart action");
+assert(serviceDetail.includes("data-service-action=\"disable\""), "activity service detail did not expose disable action");
+assert(serviceDetail.includes("indexed"), "activity service detail did not render service log");
 
 const workerStartedAt = Date.now();
 const workerRun = os.executor.runCpuTask({ appId: "worker:busy", name: "Busy Worker", durationMs: 150 });
