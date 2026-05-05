@@ -207,6 +207,7 @@ Implementation cuts:
 - Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
 - Already present: `fsck --dry-run` includes first-pass package DB drift checks for package records whose `/opt/<package>` root is missing and `pkgfs` roots with no package DB record.
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
+- Already present: `fsck --explain` reports why each problem is repairable or non-repairable, and every shell `fsck` run appends a summary to `/var/log/dindbos/fsck.log`.
 - Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts beyond DB/root drift, partial journals, stale local mount metadata, and conservative salvage export.
 - Add storage-class quota arbitration for user data, package roots, package state, cache, temp, snapshots, logs, backups, sync staging, and recovery data.
 - Add conservative repair rules: never weaken ownership, permissions, security labels, quarantine state, or encrypted-volume locks during repair.
@@ -224,6 +225,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package fsck and shell `fsck --dry-run` report missing package roots and orphan `pkgfs` roots without mutating the tree.
 - Already present: `npm run smoke:packages` verifies package fsck repair removes orphan `pkgfs` roots and does not attempt unsafe repair of missing package roots.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
+- Already present: `npm run smoke:shell` verifies `fsck --explain` prints repair policy explanations and `/var/log/dindbos/fsck.log` records dry-run and repaired runs.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
