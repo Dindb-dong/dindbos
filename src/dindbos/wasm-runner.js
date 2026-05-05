@@ -48,7 +48,33 @@ export class WasmRunner {
       if (!memory) throw new Error("wasm: module must export memory for DindbOS imports");
       return new Uint8Array(memory.buffer, Number(ptr || 0), Number(length || 0));
     };
+    const memoryView = () => {
+      const memory = instance?.exports?.memory;
+      if (!memory) throw new Error("wasm: module must export memory for DindbOS imports");
+      return new DataView(memory.buffer);
+    };
+    const writeMemory = (ptr, bytes) => readMemory(ptr, bytes.length).set(bytes);
+    const writeU32 = (ptr, value) => memoryView().setUint32(Number(ptr || 0), Number(value || 0), true);
+    const writeU64 = (ptr, value) => {
+      const view = memoryView();
+      const bigint = BigInt(value || 0);
+      if (typeof view.setBigUint64 === "function") view.setBigUint64(Number(ptr || 0), bigint, true);
+      else {
+        view.setUint32(Number(ptr || 0), Number(bigint & 0xffffffffn), true);
+        view.setUint32(Number(ptr || 0) + 4, Number((bigint >> 32n) & 0xffffffffn), true);
+      }
+    };
     const readString = (ptr, length) => new TextDecoder().decode(readMemory(ptr, length));
+    const envEntries = () => Object.entries(env).map(([key, value]) => `${key}=${value}`);
+    const writeCStringArray = (pointersPtr, bufferPtr, values) => {
+      let cursor = Number(bufferPtr || 0);
+      values.forEach((value, index) => {
+        const bytes = new TextEncoder().encode(`${value}\0`);
+        writeU32(Number(pointersPtr || 0) + index * 4, cursor);
+        writeMemory(cursor, bytes);
+        cursor += bytes.length;
+      });
+    };
     const imports = {
       dindbos: {
         write: (ptr, length) => stdout.push(readString(ptr, length)),
@@ -63,6 +89,62 @@ export class WasmRunner {
         },
         exit: (code) => {
           throw new WasmExit(code);
+        },
+      },
+      wasi_snapshot_preview1: {
+        args_sizes_get: (argcPtr, argvBufSizePtr) => {
+          const argv = options.argv || [];
+          writeU32(argcPtr, argv.length);
+          writeU32(argvBufSizePtr, cStringBytes(argv));
+          return 0;
+        },
+        args_get: (argvPtr, argvBufPtr) => {
+          writeCStringArray(argvPtr, argvBufPtr, options.argv || []);
+          return 0;
+        },
+        environ_sizes_get: (environCountPtr, environBufSizePtr) => {
+          const entries = envEntries();
+          writeU32(environCountPtr, entries.length);
+          writeU32(environBufSizePtr, cStringBytes(entries));
+          return 0;
+        },
+        environ_get: (environPtr, environBufPtr) => {
+          writeCStringArray(environPtr, environBufPtr, envEntries());
+          return 0;
+        },
+        fd_write: (fd, iovsPtr, iovsLength, nwrittenPtr) => {
+          const descriptor = Number(fd);
+          if (![1, 2].includes(descriptor)) return 8;
+          const view = memoryView();
+          let written = 0;
+          for (let index = 0; index < Number(iovsLength || 0); index += 1) {
+            const base = Number(iovsPtr || 0) + index * 8;
+            const ptr = view.getUint32(base, true);
+            const length = view.getUint32(base + 4, true);
+            const text = readString(ptr, length);
+            if (descriptor === 1) stdout.push(text);
+            else stderr.push(text);
+            written += length;
+          }
+          writeU32(nwrittenPtr, written);
+          return 0;
+        },
+        proc_exit: (code) => {
+          throw new WasmExit(code);
+        },
+        random_get: (ptr, length) => {
+          const bytes = readMemory(ptr, length);
+          if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+          else {
+            for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+          }
+          return 0;
+        },
+        clock_time_get: (id, precision, resultPtr) => {
+          void id;
+          void precision;
+          writeU64(resultPtr, BigInt(Date.now()) * 1_000_000n);
+          return 0;
         },
       },
     };
@@ -166,6 +248,10 @@ function parseSyscallRequest(text) {
 function errnoNumber(code) {
   const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EIO: 5 };
   return values[code] || 1;
+}
+
+function cStringBytes(values) {
+  return values.reduce((total, value) => total + new TextEncoder().encode(`${value}\0`).length, 0);
 }
 
 function unique(values) {
