@@ -2000,12 +2000,9 @@ async function renderTextEditor(os, content, node, windowApi) {
   const save = async () => {
     try {
       if (isLocal) {
-        await os.localMounts.writeFile(node.path, textarea.value);
-        node.content = textarea.value;
+        await saveTextDocument(os, node, textarea.value, { local: true });
       } else {
-        os.fs.atomicWriteFile(node.path, textarea.value);
-        node.content = os.fs.readFile(node.path);
-        await os.storage?.flush?.();
+        await saveTextDocument(os, node, textarea.value);
       }
       const nextStat = isLocal ? await os.localMounts.stat(node.path) : os.fs.stat(node.path);
       footer.textContent = `${node.path} · ${nextStat?.permissions || ""} · saved ${shortTime(nextStat?.modified)}`;
@@ -2022,6 +2019,19 @@ async function renderTextEditor(os, content, node, windowApi) {
       save();
     }
   });
+}
+
+export async function saveTextDocument(os, node, content, options = {}) {
+  if (!node?.path) throw new Error("TextEdit save requires a file path");
+  if (options.local || os.localMounts?.isMountedPath?.(node.path)) {
+    await os.localMounts.writeFile(node.path, content);
+    node.content = content;
+    return node;
+  }
+  os.fs.atomicWriteFile(node.path, content, "/", options.atomic || {});
+  node.content = os.fs.readFile(node.path);
+  await os.storage?.flush?.();
+  return node;
 }
 
 function renderBrowser(os, content, context = {}, windowApi) {

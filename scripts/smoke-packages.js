@@ -107,6 +107,7 @@ assert(activationFailOs.fs.list("/tmp/dindbos/package-staging").length === 0, "f
 assert(!activationFailOs.fs.exists("/var/lib/dindbos/packages/activation-fail.json"), "failed activation left package record");
 assert(!activationFailOs.fs.exists("/usr/share/applications/Activation Fail.app"), "failed activation left launcher");
 assert(!activationFailOs.apps.apps.has("activation-fail"), "failed activation registered app");
+assert(!activationFailOs.readRuntimeOperationLock("package-db"), "failed activation left package DB operation lock");
 
 const quotaOs = createDindbOSTestRuntime();
 const quotaReservations = [];
@@ -710,6 +711,11 @@ const packageFsckRepair = packages.checkIntegrity({ repair: true, dryRun: false 
 assert(packageFsckRepair.repairs.some((entry) => entry.kind === "remove-orphan-pkgfs" && entry.path === "/opt/orphan-pkg"), "package fsck repair did not report orphan pkgfs removal");
 assert(!os.fs.exists("/opt/orphan-pkg"), "package fsck repair did not remove orphan pkgfs root");
 assert(!packageFsckRepair.repairs.some((entry) => entry.path === apiLab.installPath), "package fsck repair tried to recreate/remove missing package root");
+const packageRepairFallback = await shell.executeAsync("fsck --repair");
+assert(packageRepairFallback.output.includes("package-root-missing"), `shell fsck repair did not report failed package repair fallback: ${packageRepairFallback.output}`);
+assert(os.fs.exists("/var/lib/dindbos/packages/api-lab.json"), "failed package root repair fallback removed package DB record");
+const packageRepairAudit = os.fs.readFile("/var/log/dindbos/fsck-audit.log");
+assert(packageRepairAudit.includes('"action":"repair-refused"') && packageRepairAudit.includes('"code":"package-root-missing"'), "failed package root repair fallback was not audited as refused");
 os.fs.root = beforePackageFsck;
 const apiWindowAgain = os.apps.launch("api-lab");
 await apiWindowAgain.rendered;

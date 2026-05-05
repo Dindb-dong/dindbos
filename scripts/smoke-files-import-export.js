@@ -14,6 +14,7 @@ import {
   recordFilesOperationHistory,
   resolveFilesConflict,
   resolveFilesExportName,
+  saveTextDocument,
   searchFileEntries,
   sortFilesEntries,
   updateFilesSelection,
@@ -77,6 +78,24 @@ assert(imported.includes(`${importRoot}/nested/payload.bin`), "imported paths mi
 assert(imported.includes(`${importRoot}/note.txt`), "imported paths missing text file");
 assertBytes(os.fs.readFileBytes(`${importRoot}/nested/payload.bin`), binary, "imported binary bytes changed");
 assert(os.fs.readFile(`${importRoot}/note.txt`) === text, "imported text changed");
+
+const textEditPath = "/home/guest/Documents/textedit-atomic.txt";
+os.fs.writeOrCreateFile(textEditPath, "textedit stable", "/", { mime: "text/plain", owner: "guest", group: "users", permissions: "-rw-------" });
+const textEditNode = os.fs.resolve(textEditPath);
+await assertRejects(
+  () => saveTextDocument(os, textEditNode, "textedit interrupted", {
+    atomic: {
+      beforeCommit() {
+        throw new Error("textedit save interrupted");
+      },
+    },
+  }),
+  "textedit save interrupted",
+);
+assert(os.fs.readFile(textEditPath) === "textedit stable", "interrupted TextEdit save changed existing file");
+assert(!os.fs.list("/home/guest/Documents").some((entry) => entry.name.includes(".textedit-atomic.txt.dindbos-tmp")), "interrupted TextEdit save leaked staged file");
+await saveTextDocument(os, textEditNode, "textedit committed");
+assert(os.fs.readFile(textEditPath) === "textedit committed", "TextEdit save helper did not commit");
 
 const quotaUploadOs = bootOs();
 const quotaUploadReservations = [];
