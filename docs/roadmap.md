@@ -131,12 +131,12 @@ Already present:
 - Browser.app uses local HTML provider and companion bridge.
 - TextEdit saves into shared VFS.
 - Viewer.app opens real file bytes through object URLs.
-- API Lab sample package installs from `/opt/dindbos/packages/api-lab/dindbos.app.json` and proves third-party access to sandboxed filesystem writes, package metadata reads, current-process reads, and process logging.
+- API Lab sample package installs from `/opt/dindbos/packages/api-lab/dindbos.app.json` and proves third-party access to the syscall SDK for sandboxed filesystem writes, package metadata reads, current-process reads, and process logging.
 - App sandbox exposes per-app `os.state` JSON persistence under `/var/lib/dindbos/app-state/<appId>.json`; state survives close, relaunch, update, and VFS reload while package uninstall cleanup removes the app state record.
-- `docs/app-apis.md` documents app-facing filesystem, process, storage, app state, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
+- `docs/app-apis.md` documents app-facing filesystem, syscall SDK, process, storage, app state, package, npm, NodeCompat, local mount, app launch, and Browser.app handoff APIs.
 - App capability and filesystem-scope failures throw explicit `capability denied` or `sandbox denied` errors; `npm run smoke:permissions` verifies these messages for process, package, local mount, and filesystem denials.
 - TextEdit, Viewer.app, and Browser.app use user-document read scopes for file-open paths instead of root filesystem read scope.
-- `npm run smoke:packages` launches API Lab through AppRegistry and verifies its rendered output, `/home/guest/DindbOS API Lab/report.txt` write, package metadata read, process log side effect, app state relaunch restore, app state VFS reload restore, and uninstall cleanup.
+- `npm run smoke:packages` launches API Lab through AppRegistry and verifies its rendered output, SDK-backed `/home/guest/DindbOS API Lab/report.txt` write, SDK-backed package metadata read, SDK-backed process log side effect, app state relaunch restore, app state VFS reload restore, and uninstall cleanup.
 - `npm run smoke:permissions` verifies app state namespace isolation and JSON-serializable value enforcement.
 - `npm run smoke:viewer` verifies TextEdit and Viewer.app reject root-owned files outside their app sandbox scopes.
 
@@ -531,7 +531,8 @@ Why it matters:
 
 Implementation tasks:
 
-- Publish JavaScript/TypeScript SDK wrappers around the syscall ABI.
+- Already present: JavaScript syscall SDK wrappers are exposed to package apps as `sdk`, with typed helper groups for clock, entropy, filesystem, descriptors, environment, apps, packages, storage, local mounts, and processes.
+- Add TypeScript declarations for the JavaScript SDK surface and documented compatibility promises for future SDK versions.
 - Already present: `docs/wasm-toolchains.md` gives first-pass C/Rust/Zig/TinyGo examples for toolchains that produce compatible WASI modules.
 - Already present: installable GUI app, CLI app, WASM CLI, and background worker package templates are seeded under `/opt/dindbos/templates`.
 - Add app testing helpers that run inside the DindbOS runtime instead of mocking private internals.
@@ -542,7 +543,8 @@ Verification:
 
 - Add example packages that install and run through the normal package system.
 - Already present: `npm run smoke:packages` installs and launches the GUI, CLI, WASM CLI, and background worker package templates through the normal package manager path.
-- Add smoke coverage that builds or loads SDK fixtures and verifies real VFS/process/app behavior beyond template install/launch.
+- Already present: `npm run smoke:packages` verifies API Lab uses the package `sdk` fixture through AppRegistry launch and performs real SDK-backed VFS writes, package metadata reads, process reads/logging, syscall tracing, app state restore, and uninstall cleanup.
+- Add smoke coverage that builds or loads broader SDK fixtures across app, CLI, worker, and WASM-adjacent callers.
 
 Completion criteria:
 

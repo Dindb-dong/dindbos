@@ -39,6 +39,24 @@ if (!write.ok) throw new Error(write.error.message);
 
 Sandboxed apps use the same filesystem scopes and capability checks through syscall calls as they do through the high-level facades below. The current ABI covers filesystem text operations, environment reads, app metadata, package metadata, storage diagnostics, local mount diagnostics, process inspection/logging, and app launch. Syscall traces are written under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`. See `docs/syscalls.md` for the current syscall table and errno-style failures.
 
+## JavaScript SDK
+
+Package apps also receive `sdk`, a small throwing wrapper around the same syscall ABI. It keeps package code on the stable syscall boundary while avoiding repeated `{ ok, value }` unwrapping in app code.
+
+```js
+export function mount({ content, pkg, sdk }) {
+  const info = sdk.packages.info(pkg.id);
+  sdk.fs.writeText("/home/guest/report.txt", `package=${info.id}\n`);
+  const report = sdk.fs.readText("/home/guest/report.txt");
+  sdk.processes.log(`wrote ${info.id} report`);
+  content.textContent = report;
+}
+```
+
+`sdk.syscall.raw(name, args)` returns the structured syscall result unchanged. `sdk.syscall.call(name, args)` and the typed helpers return `value` on success and throw `DindbOSSDKError` with `code`, `syscall`, and `result` fields on failure.
+
+Current helper groups cover `clock`, `entropy`, `fs`, `fd`, `env`, `apps`, `packages`, `storage`, `localMounts`, and `processes`. These helpers do not grant extra permission; package manifest capabilities and filesystem scopes are still enforced by the runtime.
+
 ## Filesystem
 
 Available as `os.fs`.
