@@ -129,6 +129,25 @@ export class DindbOS {
       lastPeerPhase: "",
       lastPeerAt: "",
     };
+    this.sessionHandoffs = new Map();
+    this.sessionHandoffStatus = {
+      localOffers: 0,
+      peerOffers: 0,
+      accepts: 0,
+      cancels: 0,
+      activeOfferId: "",
+      activeMode: "",
+      activePeerInstanceId: "",
+      lastLocalOfferId: "",
+      lastLocalMode: "",
+      lastLocalAction: "",
+      lastLocalAt: "",
+      lastPeerSource: "",
+      lastPeerOfferId: "",
+      lastPeerMode: "",
+      lastPeerAction: "",
+      lastPeerAt: "",
+    };
     this.sessionRecovery = {
       recovered: false,
       recoveredAt: "",
@@ -265,7 +284,159 @@ export class DindbOS {
     if (message.type === "storage-flush") this.recordSessionStorageFlush(message.source, message.payload, message.at);
     if (message.type === "app-state") this.recordSessionAppStateChange(message.source, message.payload, message.at);
     if (message.type === "package-operation") this.recordSessionPackageOperation(message.source, message.payload, message.at);
+    if (message.type === "session-handoff") this.recordSessionHandoff(message.source, message.payload, message.at);
     return message;
+  }
+
+  createSessionHandoffOffer(options = {}) {
+    const at = new Date().toISOString();
+    const ttlMs = Math.max(1_000, Number(options.ttlMs || 5 * 60_000));
+    const payload = {
+      action: "offer",
+      offerId: String(options.offerId || `handoff-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`),
+      mode: normalizeHandoffMode(options.mode),
+      targetInstanceId: String(options.targetInstanceId || ""),
+      offeredBy: this.instanceId,
+      acceptedBy: "",
+      user: this.session.user,
+      transport: String(options.transport || "broadcast-channel"),
+      url: String(options.url || ""),
+      status: "offered",
+      createdAt: at,
+      expiresAt: new Date(Date.now() + ttlMs).toISOString(),
+    };
+    const entry = this.recordSessionHandoff(this.instanceId, payload, at);
+    this.publishSessionEvent("session-handoff", payload);
+    this.writeSessionCoordinationStatus();
+    return entry;
+  }
+
+  acceptSessionHandoff(offerId, options = {}) {
+    const offer = this.sessionHandoffs.get(String(offerId || ""));
+    if (!offer || offer.status !== "offered") throw new Error(`session handoff offer not available: ${offerId}`);
+    if (offer.targetInstanceId && offer.targetInstanceId !== this.instanceId) {
+      throw new Error(`session handoff offer targeted to ${offer.targetInstanceId}`);
+    }
+    const at = new Date().toISOString();
+    const payload = {
+      action: "accept",
+      offerId: offer.offerId,
+      mode: normalizeHandoffMode(options.mode || offer.mode),
+      targetInstanceId: offer.offeredBy || offer.source,
+      offeredBy: offer.offeredBy || offer.source,
+      acceptedBy: this.instanceId,
+      user: this.session.user,
+      transport: String(options.transport || offer.transport || "broadcast-channel"),
+      url: String(options.url || offer.url || ""),
+      status: "active",
+      createdAt: offer.createdAt || "",
+      expiresAt: offer.expiresAt || "",
+      acceptedAt: at,
+    };
+    const entry = this.recordSessionHandoff(this.instanceId, payload, at);
+    this.publishSessionEvent("session-handoff", payload);
+    this.writeSessionCoordinationStatus();
+    return entry;
+  }
+
+  cancelSessionHandoff(offerId, reason = "cancelled") {
+    const existing = this.sessionHandoffs.get(String(offerId || ""));
+    if (!existing) throw new Error(`session handoff offer not available: ${offerId}`);
+    const at = new Date().toISOString();
+    const payload = {
+      action: "cancel",
+      offerId: existing.offerId,
+      mode: normalizeHandoffMode(existing.mode),
+      targetInstanceId: existing.acceptedBy || existing.targetInstanceId || "",
+      offeredBy: existing.offeredBy || existing.source || this.instanceId,
+      acceptedBy: existing.acceptedBy || "",
+      user: this.session.user,
+      transport: existing.transport || "broadcast-channel",
+      url: existing.url || "",
+      status: "cancelled",
+      reason: String(reason || "cancelled"),
+      createdAt: existing.createdAt || "",
+      expiresAt: existing.expiresAt || "",
+      cancelledAt: at,
+    };
+    const entry = this.recordSessionHandoff(this.instanceId, payload, at);
+    this.publishSessionEvent("session-handoff", payload);
+    this.writeSessionCoordinationStatus();
+    return entry;
+  }
+
+  recordSessionHandoff(source, payload = {}, at = "") {
+    const action = normalizeHandoffAction(payload.action);
+    const offerId = String(payload.offerId || "");
+    if (!offerId) return null;
+    const sourceId = String(source || "unknown");
+    const targetInstanceId = String(payload.targetInstanceId || "");
+    const acceptedBy = String(payload.acceptedBy || "");
+    const offeredBy = String(payload.offeredBy || (action === "offer" ? sourceId : ""));
+    if (
+      sourceId !== this.instanceId
+      && targetInstanceId
+      && targetInstanceId !== this.instanceId
+      && acceptedBy !== this.instanceId
+    ) {
+      return null;
+    }
+    const previous = this.sessionHandoffs.get(offerId) || {};
+    const entry = {
+      ...previous,
+      source: sourceId,
+      action,
+      offerId,
+      mode: normalizeHandoffMode(payload.mode || previous.mode),
+      targetInstanceId,
+      offeredBy: offeredBy || previous.offeredBy || sourceId,
+      acceptedBy: acceptedBy || previous.acceptedBy || "",
+      user: String(payload.user || previous.user || ""),
+      transport: String(payload.transport || previous.transport || "broadcast-channel"),
+      url: String(payload.url || previous.url || ""),
+      status: action === "offer" ? "offered" : action === "accept" ? "active" : "cancelled",
+      reason: String(payload.reason || previous.reason || ""),
+      createdAt: String(payload.createdAt || previous.createdAt || at || ""),
+      expiresAt: String(payload.expiresAt || previous.expiresAt || ""),
+      acceptedAt: String(payload.acceptedAt || previous.acceptedAt || ""),
+      cancelledAt: String(payload.cancelledAt || previous.cancelledAt || ""),
+      at: at || new Date().toISOString(),
+    };
+    this.sessionHandoffs.set(offerId, entry);
+    const local = sourceId === this.instanceId;
+    if (local) {
+      if (action === "offer") this.sessionHandoffStatus.localOffers += 1;
+      this.sessionHandoffStatus.lastLocalOfferId = offerId;
+      this.sessionHandoffStatus.lastLocalMode = entry.mode;
+      this.sessionHandoffStatus.lastLocalAction = action;
+      this.sessionHandoffStatus.lastLocalAt = entry.at;
+    } else {
+      if (action === "offer") this.sessionHandoffStatus.peerOffers += 1;
+      this.sessionHandoffStatus.lastPeerSource = sourceId;
+      this.sessionHandoffStatus.lastPeerOfferId = offerId;
+      this.sessionHandoffStatus.lastPeerMode = entry.mode;
+      this.sessionHandoffStatus.lastPeerAction = action;
+      this.sessionHandoffStatus.lastPeerAt = entry.at;
+    }
+    if (action === "accept") {
+      this.sessionHandoffStatus.accepts += 1;
+      this.sessionHandoffStatus.activeOfferId = offerId;
+      this.sessionHandoffStatus.activeMode = entry.mode;
+      this.sessionHandoffStatus.activePeerInstanceId = entry.acceptedBy === this.instanceId
+        ? entry.offeredBy
+        : entry.acceptedBy;
+    }
+    if (action === "cancel") {
+      this.sessionHandoffStatus.cancels += 1;
+      if (this.sessionHandoffStatus.activeOfferId === offerId) {
+        this.sessionHandoffStatus.activeOfferId = "";
+        this.sessionHandoffStatus.activeMode = "";
+        this.sessionHandoffStatus.activePeerInstanceId = "";
+      }
+    }
+    this.bus.emit("session:handoff", { ...entry });
+    this.writeSessionCoordinationStatus();
+    return { ...entry };
   }
 
   publishSessionPackageOperation(operation, details = {}) {
@@ -1079,6 +1250,10 @@ export class DindbOS {
         ...this.sessionPackageOperationStatus,
         peers: [...this.sessionPackageOperations.values()].map((entry) => ({ ...entry })),
       },
+      handoff: {
+        ...this.sessionHandoffStatus,
+        offers: [...this.sessionHandoffs.values()].slice(-10).map((entry) => ({ ...entry })),
+      },
       recovery: { ...this.sessionRecovery },
     };
   }
@@ -1692,6 +1867,16 @@ function boundedInteger(value, fallback, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(number)));
+}
+
+function normalizeHandoffMode(mode) {
+  const value = String(mode || "view").toLowerCase();
+  return ["view", "control"].includes(value) ? value : "view";
+}
+
+function normalizeHandoffAction(action) {
+  const value = String(action || "offer").toLowerCase();
+  return ["offer", "accept", "cancel"].includes(value) ? value : "offer";
 }
 
 function byteLength(value) {
