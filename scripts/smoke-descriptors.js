@@ -80,6 +80,18 @@ assert(result.ok, `fd.open /dev/urandom mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: result.value.fd, length: 8 }, context);
 assert(result.ok && result.value.data.length === 8 && result.value.bytes === 8, `fd.read /dev/urandom mismatch: ${JSON.stringify(result)}`);
 
+result = os.syscall("fd.open", { path: "/dev/clipboard", flags: "w" }, context);
+assert(result.ok, `fd.open /dev/clipboard write mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.write", { fd: result.value.fd, data: "clipboard text" }, context);
+assert(result.ok && result.value.bytes === 14, `fd.write /dev/clipboard mismatch: ${JSON.stringify(result)}`);
+assert(os.clipboard.readText() === "clipboard text", "/dev/clipboard did not update runtime clipboard");
+result = os.syscall("fd.open", { path: "/dev/clipboard", flags: "r" }, context);
+assert(result.ok, `fd.open /dev/clipboard read mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.read", { fd: result.value.fd, length: 9 }, context);
+assert(result.ok && result.value.data === "clipboard" && result.value.bytes === 9, `fd.read /dev/clipboard first chunk mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.read", { fd: result.value.fd, length: 64 }, context);
+assert(result.ok && result.value.data === " text", `fd.read /dev/clipboard second chunk mismatch: ${JSON.stringify(result)}`);
+
 result = os.syscall("fd.open", { path: "/dev/tty", flags: "r+" }, context);
 assert(result.ok, `fd.open /dev/tty mismatch: ${JSON.stringify(result)}`);
 const ttyFd = result.value.fd;
@@ -119,7 +131,7 @@ assert(!os.descriptors.tables.has(crashProcess.pid), "descriptor table remained 
 assert(os.fs.exists(`/var/log/dindbos/crash-${crashProcess.pid}.log`), "descriptor crash smoke did not write crash report");
 assert(!os.fs.exists(`/proc/${crashProcess.pid}/fd.json`), "crashed process fd procfs remained after cleanup");
 
-console.log("descriptors smoke ok open read write seek close devices tty ioctl crash-cleanup");
+console.log("descriptors smoke ok open read write seek close devices clipboard tty ioctl crash-cleanup");
 
 function memoryStorage() {
   return {
