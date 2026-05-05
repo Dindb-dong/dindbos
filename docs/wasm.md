@@ -27,10 +27,11 @@ argc() -> i32
 writeArg(index)
 writeEnv(ptr, len)
 syscall(ptr, len) -> i32
+checkDeadline() -> i32
 exit(code)
 ```
 
-`write`, `writeErr`, `writeEnv`, and `syscall` read bytes from exported module memory. `syscall(ptr, len)` expects a JSON request such as:
+`write`, `writeErr`, `writeEnv`, and `syscall` read bytes from exported module memory. `checkDeadline()` is a cooperative execution guard: modules that call it periodically will crash through the DindbOS process crash path when `timeoutMs` has expired or the run was started with an aborted signal. `syscall(ptr, len)` expects a JSON request such as:
 
 ```json
 {
@@ -85,6 +86,8 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 
 `runFile(path, cwd, { maxMemoryPages })` adds a first-pass memory guard. When the module exports memory and the current page count is greater than the configured limit, DindbOS stops the run before `_start`, marks the process as crashed, and records the page-limit reason in the crash report. The same guard is also passed to the worker output backend.
 
+`runFile(path, cwd, { timeoutMs, abortSignal })` can be enforced cooperatively by modules that import and call `dindbos.checkDeadline()`. The main runner and worker output backend both route timeout and abort failures through normal process crash handling.
+
 Direct `runFile` callers can broaden a process beyond the executable-directory default by passing `fileSystem: { read, write }` and `capabilities`. These scopes are copied into the spawned WASM process manifest before syscall checks run, so explicit VFS access behaves the same way as package-declared WASM access.
 
 ## Current Limits
@@ -93,7 +96,8 @@ Direct `runFile` callers can broaden a process beyond the executable-directory d
 - no full pseudo-terminal sessions yet
 - no broad WASI metadata edge-case coverage yet
 - worker isolation currently covers stdout/stderr-only DindbOS ABI and basic WASI modules, not syscall-heavy WASM
-- memory guard checks current exported pages before `_start`; grow-time enforcement and cooperative abort remain roadmap work
+- memory guard checks current exported pages before `_start`; grow-time enforcement remains roadmap work
+- timeout and abort guards are cooperative, so modules must call `checkDeadline()`
 - no compiler toolchain integration docs yet
 
 ## Verification
@@ -102,4 +106,4 @@ Direct `runFile` callers can broaden a process beyond the executable-directory d
 npm run smoke:wasm
 ```
 
-The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, explicit filesystem scope broadening for direct `runFile` calls, trap crash report capture, `maxMemoryPages` crash handling, basic WASI `fd_write`/`fd_read`/`fd_fdstat_get`/`fd_filestat_get`/`fd_readdir`/`path_create_directory`/`path_unlink_file`/`path_remove_directory`/`path_rename`/`path_symlink`/`path_readlink`/`path_link`/`path_filestat_get`/`path_open`/`fd_close`/`proc_exit`, worker-backed WASM stdout/status/process backend tracking and memory-limit denial, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, read-only `rightsBase` denial for descriptor writes, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
+The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, explicit filesystem scope broadening for direct `runFile` calls, trap crash report capture, `maxMemoryPages` crash handling, cooperative `checkDeadline()` timeout/abort handling, basic WASI `fd_write`/`fd_read`/`fd_fdstat_get`/`fd_filestat_get`/`fd_readdir`/`path_create_directory`/`path_unlink_file`/`path_remove_directory`/`path_rename`/`path_symlink`/`path_readlink`/`path_link`/`path_filestat_get`/`path_open`/`fd_close`/`proc_exit`, worker-backed WASM stdout/status/process backend tracking plus memory-limit and abort denial, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, read-only `rightsBase` denial for descriptor writes, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.

@@ -242,7 +242,8 @@ Implementation tasks:
 - Already present: direct WASM `runFile` calls can pass explicit filesystem and capability scopes beyond the executable-directory default.
 - Already present: WASM trap paths flow through process crash handling and return crash report paths for `/var/log/dindbos/crash-<pid>.log` diagnostics.
 - Already present: first-pass `maxMemoryPages` guards stop oversized WASM runs before `_start` in the main runner and worker output backend.
-- Add execution guards: cooperative timeout, grow-time memory enforcement, and abort handling.
+- Already present: WASM modules can opt into cooperative `checkDeadline()` timeout and abort handling in the main runner and worker output backend.
+- Add grow-time memory enforcement for modules that call `memory.grow` after `_start`.
 - Add developer docs for compiling small C/Rust/Zig examples to the supported WASM/WASI target.
 
 Verification:
@@ -253,6 +254,7 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies worker-backed WASM stdout, exit status, and process backend history for output-only modules.
 - Already present: `npm run smoke:wasm` verifies `maxMemoryPages` crash reporting in the main runner and worker memory-limit denial.
 - Already present: `npm run smoke:wasm` verifies explicit direct-run filesystem scopes can allow a WASM syscall write outside the executable directory while the default scope denies it.
+- Already present: `npm run smoke:wasm` verifies cooperative `checkDeadline()` timeout and abort handling in the main runner plus worker abort denial.
 - Already present: `npm run smoke:packages` verifies a WASM-backed package install, AppRegistry launch, stdout rendering, package-scoped syscall write, and package removal.
 
 Completion criteria:
