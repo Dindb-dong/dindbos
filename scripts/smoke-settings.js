@@ -14,6 +14,7 @@ const calls = {
   coordination: 0,
   sync: 0,
   syncMerge: 0,
+  syncConflicts: 0,
 };
 
 const os = {
@@ -155,6 +156,14 @@ const os = {
     calls.syncMerge += 1;
     return { planner: "offline-first", rules: [{ scope: "user-documents" }, { scope: "package-metadata" }] };
   },
+  listRemoteSyncConflicts() {
+    calls.syncConflicts += 1;
+    return [{
+      path: "/home/guest/Documents/.sync-conflicts/note.txt.2026.remote",
+      targetPath: "/home/guest/Documents/note.txt",
+      bytes: 12,
+    }];
+  },
   fs: {
     join(base, name) {
       return `${base}/${name}`;
@@ -176,6 +185,7 @@ assert(calls.recovery === 1, "settings snapshot did not read recovery status");
 assert(calls.coordination === 1, "settings snapshot did not read session coordination status");
 assert(calls.sync === 1, "settings snapshot did not read remote sync status");
 assert(calls.syncMerge === 1, "settings snapshot did not read remote sync merge policy");
+assert(calls.syncConflicts === 1, "settings snapshot did not read remote sync conflicts");
 
 assert(snapshot.user === "guest", "settings snapshot user mismatch");
 assert(snapshot.home === "/home/guest", "settings snapshot home mismatch");
@@ -193,6 +203,7 @@ assert(snapshot.sync.lastSuccessfulSnapshot.fileCount === 4, "settings snapshot 
 assert(snapshot.sync.lastSuccessfulSnapshot.cacheRecords === 1, "settings snapshot sync cache coverage mismatch");
 assert(snapshot.sync.lastSuccessfulSnapshot.settingsRecords === 2, "settings snapshot sync settings coverage mismatch");
 assert(snapshot.syncMerge.planner === "offline-first", "settings snapshot sync merge policy mismatch");
+assert(snapshot.syncConflicts.length === 1, "settings snapshot sync conflict count mismatch");
 
 const markup = settingsRuntimeMarkup(snapshot);
 
@@ -217,6 +228,8 @@ assert(markup.includes("<dt>Last Applied</dt><dd>") && markup.includes("· confl
 assert(markup.includes("<dt>Apply Run</dt><dd>interrupted · next=2/4</dd>"), "settings markup did not render remote sync apply run status");
 assert(markup.includes("<dt>Last Repair</dt><dd>") && markup.includes("· remaining=0</dd>"), "settings markup did not render remote sync repair status");
 assert(markup.includes("<dt>Merge Rules</dt><dd>6</dd>"), "settings markup did not render remote sync merge rules");
+assert(markup.includes('data-sync-action="use-conflict"') && markup.includes('data-sync-action="keep-local"') && markup.includes('data-sync-action="delete-conflict"'), "settings markup did not render sync repair actions");
+assert(markup.includes("/home/guest/Documents/note.txt"), "settings markup did not render sync conflict target");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");
