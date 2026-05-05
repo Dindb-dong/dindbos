@@ -18,35 +18,37 @@ export class ServiceManager {
 
   register(definition) {
     const service = normalizeService(definition);
-    this.definitions.set(service.id, service);
-    if (!this.records.has(service.id)) {
-      this.records.set(service.id, {
-        id: service.id,
-        name: service.name,
-        state: service.enabled ? "stopped" : "disabled",
-        enabled: service.enabled,
-        pid: 0,
-        schedule: service.schedule,
-        lifecyclePolicy: service.lifecyclePolicy,
-        packageId: service.packageId,
-        namespace: cloneJson(service.namespace || null),
-        startedAt: "",
-        stoppedAt: "",
-        lastRunAt: "",
-        runCount: 0,
-        lastError: "",
-      });
-    } else {
-      const record = this.records.get(service.id);
-      record.name = service.name;
-      record.enabled = service.enabled;
-      record.schedule = service.schedule;
-      record.lifecyclePolicy = service.lifecyclePolicy;
-      record.packageId = service.packageId;
-      record.namespace = cloneJson(service.namespace || null);
-    }
-    this.writeState();
-    return this.get(service.id);
+    return this.runServiceMutation(() => {
+      this.definitions.set(service.id, service);
+      if (!this.records.has(service.id)) {
+        this.records.set(service.id, {
+          id: service.id,
+          name: service.name,
+          state: service.enabled ? "stopped" : "disabled",
+          enabled: service.enabled,
+          pid: 0,
+          schedule: service.schedule,
+          lifecyclePolicy: service.lifecyclePolicy,
+          packageId: service.packageId,
+          namespace: cloneJson(service.namespace || null),
+          startedAt: "",
+          stoppedAt: "",
+          lastRunAt: "",
+          runCount: 0,
+          lastError: "",
+        });
+      } else {
+        const record = this.records.get(service.id);
+        record.name = service.name;
+        record.enabled = service.enabled;
+        record.schedule = service.schedule;
+        record.lifecyclePolicy = service.lifecyclePolicy;
+        record.packageId = service.packageId;
+        record.namespace = cloneJson(service.namespace || null);
+      }
+      this.writeState();
+      return this.get(service.id);
+    });
   }
 
   list() {
@@ -103,14 +105,16 @@ export class ServiceManager {
 
   unregister(serviceId, context = {}) {
     this.assertManage(context);
-    const record = this.requireRecord(serviceId);
-    if (record.pid) this.stop(serviceId, context);
-    this.definitions.delete(serviceId);
-    this.records.delete(serviceId);
-    this.logs.delete(serviceId);
-    this.log(serviceId, "unregistered");
-    this.writeState();
-    return { ...record, state: "unregistered", pid: 0 };
+    return this.runServiceMutation(() => {
+      const record = this.requireRecord(serviceId);
+      if (record.pid) this.stop(serviceId, context);
+      this.definitions.delete(serviceId);
+      this.records.delete(serviceId);
+      this.logs.delete(serviceId);
+      this.log(serviceId, "unregistered");
+      this.writeState();
+      return { ...record, state: "unregistered", pid: 0 };
+    });
   }
 
   async start(serviceId, context = {}) {
@@ -311,6 +315,32 @@ export class ServiceManager {
     this.os.bus?.emit?.(`service:${type}`, { type, service: { ...record } });
   }
 
+  runServiceMutation(callback) {
+    const before = this.snapshotServiceState();
+    try {
+      return callback();
+    } catch (error) {
+      this.restoreServiceState(before);
+      throw error;
+    }
+  }
+
+  snapshotServiceState() {
+    return {
+      root: this.os.fs.snapshot(),
+      definitions: new Map(this.definitions),
+      records: cloneMap(this.records),
+      logs: cloneMap(this.logs),
+    };
+  }
+
+  restoreServiceState(snapshot) {
+    this.os.fs.root = snapshot.root;
+    this.definitions = new Map(snapshot.definitions);
+    this.records = cloneMap(snapshot.records);
+    this.logs = cloneMap(snapshot.logs);
+  }
+
   writeState() {
     const system = this.os.permissions.systemPrincipal();
     ensureDirectory(this.os, "/var", system);
@@ -380,6 +410,10 @@ function cloneSchedule(schedule) {
 function cloneJson(value) {
   if (value === undefined || value === null) return null;
   return JSON.parse(JSON.stringify(value));
+}
+
+function cloneMap(map) {
+  return new Map([...map.entries()].map(([key, value]) => [key, cloneJson(value)]));
 }
 
 function ensureDirectory(os, path, principal) {

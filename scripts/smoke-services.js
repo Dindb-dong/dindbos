@@ -68,6 +68,34 @@ assert(events.includes("degraded:visible-sync:degraded"), "service lifecycle pol
 const deniedPrincipal = os.permissions.principal({ user: "guest", groups: ["users"] });
 assertThrows(() => os.services.stop("search-indexer", { principal: deniedPrincipal }), "service: manage denied");
 
+const serviceStatePath = "/var/run/dindbos/services.json";
+const serviceLogPath = "/var/log/dindbos/services.log";
+const serviceStateBeforeFailedRegister = os.fs.readFile(serviceStatePath);
+const originalAtomicWrite = os.fs.atomicWriteOrCreateFile.bind(os.fs);
+os.fs.atomicWriteOrCreateFile = (path, ...args) => {
+  if (path === serviceStatePath) throw new Error("service state write failed");
+  return originalAtomicWrite(path, ...args);
+};
+assertThrows(() => os.services.register({ id: "failed-register", name: "Failed Register" }), "service state write failed");
+os.fs.atomicWriteOrCreateFile = originalAtomicWrite;
+assert(!os.services.get("failed-register"), "failed service register left record behind");
+assert(os.fs.readFile(serviceStatePath) === serviceStateBeforeFailedRegister, "failed service register changed state file");
+
+os.services.register({ id: "cleanup-service", name: "Cleanup Service" });
+const serviceStateBeforeFailedUnregister = os.fs.readFile(serviceStatePath);
+const serviceLogBeforeFailedUnregister = os.fs.readFile(serviceLogPath);
+os.fs.atomicWriteOrCreateFile = (path, ...args) => {
+  if (path === serviceStatePath) throw new Error("service unregister write failed");
+  return originalAtomicWrite(path, ...args);
+};
+assertThrows(() => os.services.unregister("cleanup-service"), "service unregister write failed");
+os.fs.atomicWriteOrCreateFile = originalAtomicWrite;
+assert(os.services.get("cleanup-service"), "failed service unregister removed record");
+assert(os.fs.readFile(serviceStatePath) === serviceStateBeforeFailedUnregister, "failed service unregister changed state file");
+assert(os.fs.readFile(serviceLogPath) === serviceLogBeforeFailedUnregister, "failed service unregister changed service log");
+assert(os.services.unregister("cleanup-service").state === "unregistered", "service unregister did not return unregistered state");
+assert(!os.services.get("cleanup-service"), "service unregister left record behind");
+
 os.services.register({
   id: "failing-sync",
   name: "Failing Sync",
@@ -93,7 +121,7 @@ assert(os.services.get("failing-sync").state === "disabled", "service disable st
 
 await verifyBrowserServiceLifecycleHooks();
 
-console.log("services smoke ok lifecycle schedule suspend permission crash restart browser-hooks");
+console.log("services smoke ok lifecycle schedule suspend permission crash restart transactions browser-hooks");
 
 async function verifyBrowserServiceLifecycleHooks() {
   const originalWindow = globalThis.window;
