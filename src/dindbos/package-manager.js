@@ -1221,6 +1221,7 @@ async function mountPackageWasmEntrypoint(content, runtime, record, windowApi, m
       manifest: {
         version: activeRecord.version,
         entry: activeRecord.app.entryPath,
+        namespace: cloneJson(activeRecord.namespace || {}),
         capabilities: activeRecord.app.capabilities,
         fileSystem: activeRecord.app.fileSystem,
       },
