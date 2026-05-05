@@ -125,6 +125,18 @@ await recoveredPrimary.loadPersistentFileSystem();
 assert(recoveredPrimary.sessionCoordinationStatus().role === "primary", "stale lock recovery did not elect primary");
 assert(recoveredPrimary.sessionCoordinationStatus().staleRecovered === true, "stale lock recovery was not recorded");
 
+const channelFactory = createBroadcastChannelFactory();
+const eventStorage = createStorage(new Map());
+const tabA = new DindbOS({ root: null, storage: eventStorage, instanceId: "tab-a", broadcastChannelFactory: channelFactory });
+await tabA.loadPersistentFileSystem();
+const tabB = new DindbOS({ root: null, storage: eventStorage, instanceId: "tab-b", broadcastChannelFactory: channelFactory });
+await tabB.loadPersistentFileSystem();
+const fileEvents = [];
+tabB.bus.on("session:file-change", (event) => fileEvents.push(`${event.source}:${event.action}:${event.path}`));
+tabA.fs.writeOrCreateFile("/home/guest/Documents/cross-tab.txt", "event", "/", {}, tabA.permissions.systemPrincipal());
+assert(fileEvents.some((event) => event.includes("tab-a") && event.includes("/home/guest/Documents/cross-tab.txt")), "cross-tab file event was not delivered");
+assert(tabB.sessionCoordinationStatus().channel.received > 0, "session channel receive count was not recorded");
+
 console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination");
 
 function createStorage(values = new Map()) {
@@ -143,6 +155,32 @@ function createStorage(values = new Map()) {
     status: () => ({ backend: "memory" }),
     estimate: async () => ({ backend: "memory" }),
     resetFileSystem() {},
+  };
+}
+
+function createBroadcastChannelFactory() {
+  const channels = [];
+  return class TestBroadcastChannel {
+    constructor(name) {
+      this.name = name;
+      this.onmessage = null;
+      this.listener = null;
+      channels.push(this);
+    }
+
+    postMessage(message) {
+      channels
+        .filter((channel) => channel !== this && channel.name === this.name)
+        .forEach((channel) => {
+          const event = { data: message };
+          if (channel.listener) channel.listener(event);
+          if (channel.onmessage) channel.onmessage(event);
+        });
+    }
+
+    addEventListener(type, listener) {
+      if (type === "message") this.listener = listener;
+    }
   };
 }
 

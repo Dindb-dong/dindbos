@@ -3514,6 +3514,7 @@ function renderSettingsSessionCoordination(coordination) {
       <div><dt>Lock Owner</dt><dd>${escapeHtml(coordination?.lockOwner || "-")}</dd></div>
       <div><dt>Readonly</dt><dd>${Boolean(coordination?.readonly)}</dd></div>
       <div><dt>Stale Recovery</dt><dd>${Boolean(coordination?.staleRecovered)}</dd></div>
+      <div><dt>Channel</dt><dd>${coordination?.channel?.connected ? `connected · received=${Number(coordination.channel.received || 0)}` : "unavailable"}</dd></div>
     </dl>
   `;
 }

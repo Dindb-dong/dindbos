@@ -1094,18 +1094,21 @@ Why it matters:
 Implementation tasks:
 
 - Already present: runtime instances have stable `instanceId` values, storage-backed session locks, primary/secondary election, readonly secondary diagnostics, and stale-lock recovery for tabs sharing one browser profile.
-- Use BroadcastChannel or SharedWorker where available for local-tab coordination of file changes, package installs, app state, and storage flushes.
+- Already present: BroadcastChannel-backed session messages deliver cross-tab VFS file-change events and expose channel diagnostics in session coordination status.
+- Add BroadcastChannel or SharedWorker coordination for package installs, app state, and storage flushes.
 - Add conflict policy for two active sessions modifying the same VFS paths or package DB records.
 - Add optional remote sync backend for encrypted snapshots, package cache indexes, settings, and selected user files.
 - Add remote desktop/session handoff protocol for viewing or controlling a running DindbOS instance from another tab or device.
 - Already present: `/proc/sessions`, Settings, and `doctor` expose the local runtime instance id, primary/secondary role, lock owner, readonly fallback, and stale-lock recovery state.
+- Already present: Settings exposes session channel connection state and received message count.
 - Add richer Settings diagnostics for sync status, conflict queue, and last successful snapshot.
 - Add offline-first merge rules for user documents, app state, package metadata, and search indexes.
 
 Verification:
 
 - Already present: `npm run smoke:sessions` verifies primary election, secondary readonly fallback diagnostics, stale lock recovery, and `/proc/sessions`.
-- Add smoke coverage for cross-tab file event delivery, conflict detection, and reload-safe session recovery.
+- Already present: `npm run smoke:sessions` verifies cross-tab file event delivery over the session channel.
+- Add smoke coverage for conflict detection and reload-safe session recovery.
 - Add tests proving package install/update cannot run concurrently from two primary runtimes against the same storage root.
 
 Completion criteria:
@@ -1175,6 +1178,329 @@ Completion criteria:
 
 - Emulated workloads are visibly separate from native DindbOS apps and cannot escape their virtual devices or resource caps.
 - Compatibility claims are honest: supported, degraded, too slow, companion-required, or impossible.
+
+### Native-Like 21: Kernel Event Loop, Interrupts, And Timers
+
+Status: Later.
+
+Goal: make runtime events, timers, cancellation, wakeups, and browser lifecycle interruptions behave like a small kernel scheduler instead of scattered callbacks.
+
+Why it matters:
+
+- Native OSes coordinate timer interrupts, IO readiness, signals, sleeps, process wakeups, and shutdown interrupts through central kernel machinery.
+- Browsers expose timers, promises, event listeners, workers, message channels, BroadcastChannel, storage events, and page lifecycle events, but they do not behave like a unified OS interrupt model by default.
+- A DindbOS event loop layer would give apps, services, shell jobs, workers, WASM programs, and companions one coherent way to sleep, wake, cancel, and react to runtime interrupts.
+
+Implementation tasks:
+
+- Add a kernel event queue with typed events for timer, process, descriptor, pipe, device, network, storage, lifecycle, session, companion, and user-input interrupts.
+- Add monotonic timer handles, sleep syscalls, timeout syscalls, interval jobs, cancellation tokens, and ownership metadata.
+- Route existing page visibility, pagehide/pageshow, beforeunload, storage flush, service lifecycle, worker completion, descriptor readiness, and session BroadcastChannel events through the queue.
+- Add readiness notification for descriptors, pipes, virtual sockets, IPC endpoints, and pseudo-devices so processes do not poll private state.
+- Add priority and fairness rules for user-visible work, background services, maintenance tasks, and shutdown-critical flushes.
+- Add `/proc/interrupts`, `/proc/timers`, and `timerctl` or `events` shell diagnostics for active timers, pending events, dropped events, and last dispatch latency.
+- Add event backpressure and event-drop policy so runaway publishers cannot freeze the desktop.
+- Expose app-facing and WASM-facing sleep/wakeup primitives through the syscall ABI.
+
+Verification:
+
+- Add smoke coverage for sleep/wakeup, timer cancellation, descriptor readiness wakeup, service lifecycle interrupt dispatch, dropped-event accounting, and shutdown-critical event priority.
+- Add tests proving a crashed process releases its timers and cannot keep receiving events.
+- Add tests proving hidden-tab throttling is reported as degraded timing instead of pretending native timer precision exists.
+
+Completion criteria:
+
+- Long-running programs can wait on timers, IO, and lifecycle events through one OS primitive.
+- Runtime diagnostics can explain why a process woke up, why a timer was delayed, or why an event was dropped.
+
+### Native-Like 22: libc And WASI/POSIX Compatibility Shims
+
+Status: Later.
+
+Goal: make ordinary C/Rust/Zig/TinyGo programs easier to port by providing a documented libc-shaped compatibility layer over DindbOS syscalls.
+
+Why it matters:
+
+- WASM support alone is not enough; most native-style programs expect libc, errno, file descriptors, clocks, random bytes, environment, process exit, and directory APIs.
+- DindbOS can provide a browser-native target profile that maps those expectations onto the DindbOS syscall ABI and descriptor model.
+- This creates a practical route for real command-line tools to run without rewriting every package against custom JavaScript helpers.
+
+Implementation tasks:
+
+- Define a `dindbos-wasi` target profile that documents supported libc/WASI calls, errno mappings, path rules, rights flags, and unsupported features.
+- Expand WASI imports for clocks, random, args/env, descriptor metadata, directory traversal, path mutation, preopens, poll-like readiness, and process exit.
+- Add compatibility shims for common POSIX expectations: `isatty`, `getcwd`, `chdir`, `stat`, `lstat`, `fstat`, `openat`, `read`, `write`, `seek`, `close`, `rename`, `unlink`, `mkdir`, `rmdir`, `readdir`, and `errno`.
+- Add package metadata that declares the ABI target, required WASI calls, expected preopened directories, and fallback behavior.
+- Add a small DindbOS C header or generated bindings file that exposes DindbOS-specific syscalls such as app metadata, package metadata, permissions, and process logging.
+- Add compatibility reports when a WASM module imports unsupported WASI functions before runtime mutation occurs.
+- Document toolchain recipes for producing compatible binaries with clang, wasi-sdk, Rust, Zig, and TinyGo.
+
+Verification:
+
+- Add fixture programs compiled from C/Rust/Zig/TinyGo that read/write files, list directories, use stdin/stdout/stderr, inspect env, return exit codes, and hit permission denials.
+- Add smoke coverage for unsupported import refusal, errno mapping, preopen scope denial, and descriptor cleanup after WASM exit or trap.
+- Add docs smoke checks ensuring the toolchain examples match supported imports.
+
+Completion criteria:
+
+- A small portable CLI program can be compiled outside DindbOS and installed as a package without custom runtime glue.
+- Unsupported native assumptions fail at install or launch with explicit ABI diagnostics.
+
+### Native-Like 23: Full Terminal Emulator And PTY Multiplexer
+
+Status: Later.
+
+Goal: upgrade Terminal from command output UI into a real terminal device service with PTY sessions, ANSI control, multiplexing, and shell job state.
+
+Why it matters:
+
+- Native OS workflows depend on terminal behavior: PTYs, escape sequences, screen buffers, interactive input, resize events, alternate screens, and multiplexed sessions.
+- DindbOS already has shell and first-pass PTY behavior, but real CLI programs need more terminal semantics to feel native.
+- A PTY service also helps WASM, NodeCompat, package CLIs, service consoles, and remote session handoff share the same interactive IO model.
+
+Implementation tasks:
+
+- Add a terminal service that owns PTY sessions, scrollback, alternate screen buffers, cursor state, selection state, paste policy, and resize propagation.
+- Implement a practical ANSI/VT subset: colors, bold/dim/underline, cursor movement, clear screen/line, alternate buffer, bracketed paste, mouse reporting where feasible, and resize notifications.
+- Add PTY multiplexing so one Terminal app can attach/detach from shell sessions, service logs, package build jobs, or remote DindbOS sessions.
+- Add shell job control integration for foreground process groups, Ctrl-C, Ctrl-D, Ctrl-Z-style stop where supported, and terminal ownership.
+- Add `/dev/pts/<id>`, `/proc/tty`, `tty`, `stty`, and `screen`/`tmux`-like minimal attach/detach commands.
+- Add accessibility-friendly terminal output mirrors and copy/export scrollback commands.
+- Route Terminal, WASM, NodeCompat, and service consoles through the same descriptor-backed PTY path.
+
+Verification:
+
+- Add smoke coverage for ANSI rendering, alternate screen enter/exit, resize delivery, attach/detach, Ctrl-C interruption, descriptor cleanup, and scrollback export.
+- Add tests proving a crashed foreground process releases the PTY and returns control to the shell.
+- Add tests proving background processes cannot steal terminal input without becoming the foreground process group.
+
+Completion criteria:
+
+- Interactive CLI packages can run through PTY semantics rather than one-shot command output.
+- Terminal sessions are inspectable, attachable, and recoverable through OS APIs.
+
+### Native-Like 24: App Associations, Open With, And Document Services
+
+Status: Later.
+
+Goal: treat documents, MIME types, default apps, previews, recent files, and share/open flows as OS services.
+
+Why it matters:
+
+- Native OSes do not hard-code every file open path. They maintain file associations, document providers, preview services, recent documents, and app handoff rules.
+- DindbOS already has Files.app, TextEdit, Viewer.app, Browser.app, object URLs, and package app launchers, but the OS should own association policy.
+- This lets third-party apps become real document handlers without modifying core UI code.
+
+Implementation tasks:
+
+- Add a MIME/type registry under `/etc/dindbos/file-associations.json` with per-user defaults, package-provided handlers, priority, trust state, and fallback rules.
+- Add `open`, `open-with`, `xdg-open`-style shell behavior that resolves a path or URL through the association service.
+- Add package manifest fields for document types, URL schemes, import/export formats, preview providers, and edit/create capabilities.
+- Add a document broker that grants temporary file handles or scoped paths to the selected app without broad filesystem permission escalation.
+- Add recent documents, pinned documents, and privacy controls under per-user state.
+- Add thumbnail/preview provider lifecycle with cache invalidation and crash isolation.
+- Add share/export broker flows for browser share sheet, clipboard, download, local mount save, and companion-assisted native save where available.
+
+Verification:
+
+- Add smoke coverage for default app resolution, Open With override, denied handler scope, third-party handler install/remove, preview cache invalidation, and recent-file privacy isolation.
+- Add tests proving a document handler receives only the selected document scope unless its manifest grants broader access.
+
+Completion criteria:
+
+- New package apps can register as real document handlers and receive files through a reusable OS broker.
+- Opening a file from shell, Files.app, recent documents, or another app follows the same association rules.
+
+### Native-Like 25: Graphics, Audio, And Realtime Media Subsystems
+
+Status: Later.
+
+Goal: expose multimedia capabilities as permissioned OS subsystems instead of app-direct browser API calls.
+
+Why it matters:
+
+- Native OSes provide graphics, audio, camera, microphone, screen capture, codecs, and realtime scheduling through system services and drivers.
+- Browser APIs make many of these capabilities possible, but direct access from apps makes permission, diagnostics, suspension, and cleanup inconsistent.
+- DindbOS can broker WebGL/WebGPU, Canvas, WebCodecs, WebAudio, MediaDevices, Screen Capture, and MediaRecorder through explicit device and compositor policies.
+
+Implementation tasks:
+
+- Add graphics device records for DOM surfaces, Canvas2D, WebGL, WebGPU, OffscreenCanvas, and worker-rendered surfaces.
+- Add an audio service for output routing, capture routing, volume/mute state, app audio sessions, WebAudio nodes, and MediaStream cleanup.
+- Add camera, microphone, and screen-capture brokers with manifest capabilities, user prompts, active indicator state, and revocation.
+- Add media pipeline descriptors for codecs, stream tracks, recorder sessions, capture sessions, and output sinks.
+- Add per-process multimedia diagnostics under `/proc/media`, including active devices, permission state, frame/audio drop counters, and browser support limits.
+- Add suspend/resume policy for active media sessions when tabs become hidden, pages unload, or users revoke permissions.
+- Add companion-backed media devices only behind separate identity, permission, and audit boundaries.
+
+Verification:
+
+- Add smoke coverage with mockable adapters for permission denial, stream open/close, revocation cleanup, hidden-tab degradation, and `/proc/media` reporting.
+- Add browser integration tests where feasible for WebAudio output graph creation and Canvas/OffscreenCanvas worker rendering.
+
+Completion criteria:
+
+- Multimedia apps use DindbOS brokers for device access, diagnostics, lifecycle, and cleanup.
+- Users can inspect and revoke active media capabilities from Settings or Activity Monitor.
+
+### Native-Like 26: WebGPU Compute And Graphics Driver Boundary
+
+Status: Later.
+
+Goal: support GPU-backed workloads through a driver-style broker with permission, quotas, diagnostics, and graceful fallback.
+
+Why it matters:
+
+- Modern native OSes expose GPUs for rendering, compute, video, ML, and accelerated UI composition.
+- Browser WebGPU makes a limited but real GPU boundary possible inside DindbOS.
+- Without an OS broker, GPU-heavy apps can consume resources invisibly and fail with browser-specific errors that are hard to diagnose.
+
+Implementation tasks:
+
+- Add a GPU device broker that probes WebGPU/WebGL support, adapter limits, feature flags, power preference, and fallback paths.
+- Add manifest capabilities for GPU rendering, GPU compute, high-memory buffers, persistent shader cache, and background GPU work.
+- Add per-process GPU contexts with quotas for buffers, textures, command submissions, shader modules, and frame budget.
+- Add shader/module cache under `/var/cache/dindbos/gpu` with invalidation by adapter, feature set, package version, and runtime version.
+- Add crash/error diagnostics for device lost, validation error, out-of-memory, unsupported adapter, and hidden-tab throttling.
+- Expose GPU diagnostics in Activity Monitor, Settings, `/proc/gpu`, and `doctor gpu`.
+- Add fallback routing to CPU, Canvas2D, or disabled mode when WebGPU is unavailable.
+
+Verification:
+
+- Add smoke coverage using adapter mocks for support probe, denied permission, quota denial, shader cache hit/miss, device-lost handling, and fallback reporting.
+- Add browser integration tests for a minimal WebGPU or WebGL render path where CI/browser support allows.
+
+Completion criteria:
+
+- GPU use is permissioned, observable, quota-limited, and recoverable.
+- Apps can declare GPU needs without assuming every browser exposes WebGPU.
+
+### Native-Like 27: Distributed Filesystem Sync And Conflict Resolution
+
+Status: Later.
+
+Goal: sync selected DindbOS data across devices without corrupting local-first state.
+
+Why it matters:
+
+- Native OSes increasingly coordinate files, settings, app state, keychain records, and package metadata across devices.
+- Browser-native sync is technically possible through encrypted snapshots, remote object stores, WebRTC peer sync, or user-provided backends.
+- The hard part is not transport; it is conflict policy, integrity, privacy, and offline-first recovery.
+
+Implementation tasks:
+
+- Define sync roots for user home, app state, package records, settings, search indexes, and selected cache metadata.
+- Add encrypted object snapshots with content hashes, manifest hashes, clock/vector metadata, and schema version.
+- Add per-root merge policies: last-writer-wins for safe settings, three-way merge for text files, conflict copies for binary files, package DB transaction conflict refusal, and app-provided merge hooks for structured state.
+- Add sync providers for manual import/export, browser storage handoff, WebDAV-like HTTP endpoints, remote object storage, and WebRTC peer transfer where feasible.
+- Add conflict queue UI, shell commands, audit logs, and recovery checkpoints.
+- Add bandwidth/quota limits, resumable uploads/downloads, partial snapshot repair, and offline mode.
+- Keep keychain material excluded or encrypted through the keychain service, never ordinary sync files.
+
+Verification:
+
+- Add smoke coverage for snapshot create/apply, conflict copy creation, text three-way merge, package DB conflict refusal, interrupted sync resume, and encrypted metadata refusal without unlock.
+- Add tests proving sync cannot bypass per-user access control or package namespace boundaries.
+
+Completion criteria:
+
+- Two devices can exchange selected DindbOS state with explicit conflict outcomes and no silent overwrite of durable user data.
+- Sync status is visible, pauseable, repairable, and scoped by user policy.
+
+### Native-Like 28: System Policy, Profiles, And Managed Mode
+
+Status: Later.
+
+Goal: support administrator-defined runtime policy for schools, labs, demos, enterprises, and public kiosk deployments.
+
+Why it matters:
+
+- Native OSes can run under managed policy: allowed apps, blocked devices, update channels, network rules, logging, guest reset, and kiosk behavior.
+- DindbOS can do the same inside browser constraints through signed policy profiles and runtime enforcement.
+- Managed mode would make public demos and real deployments safer than a fully mutable playground.
+
+Implementation tasks:
+
+- Add signed policy profiles under `/etc/dindbos/policies`, with active profile state, issuer, signature, expiration, and allowed override scope.
+- Support policy rules for app install allowlists, package repository allowlists, network host allowlists, device grants, companion grants, storage quota, guest reset, desktop layout, service units, and disabled syscalls.
+- Add kiosk mode with pinned app, restricted shell, disabled external mounts, limited Browser.app navigation, and reset-on-close behavior.
+- Add policy inheritance across users, groups, packages, child processes, services, and remote sessions.
+- Add Settings and shell diagnostics for active policy, denied actions, and unmanaged fallback.
+- Add audit logs for policy changes, denied operations, and policy signature failures.
+
+Verification:
+
+- Add smoke coverage for signed policy load, invalid signature refusal, app install denial, network denial, kiosk shell restriction, guest reset, and policy inheritance to child processes.
+- Add tests proving user-level settings cannot override system policy unless the policy explicitly allows it.
+
+Completion criteria:
+
+- DindbOS can run as a controlled environment without hard-coded demo locks.
+- Policy denials are deterministic, visible, and enforced through the same runtime brokers as normal permissions.
+
+### Native-Like 29: Repository, Distribution, And Trust Infrastructure
+
+Status: Later.
+
+Goal: make package discovery, trust, signing, dependency resolution, and update channels behave like a small OS distribution.
+
+Why it matters:
+
+- Native OS value comes from a trusted software distribution path, not only local app files.
+- DindbOS already has package manifests and trust checks, but a real platform needs repositories, metadata, dependency policy, signatures, rollback, and compatibility matching.
+- This is technically feasible with signed JSON metadata, content-addressed package blobs, browser cache storage, and optional remote providers.
+
+Implementation tasks:
+
+- Define repository metadata for packages, versions, dependencies, compatibility tiers, API ranges, checksums, signatures, channels, advisories, and deprecations.
+- Add content-addressed package storage and checksum verification before activation.
+- Add dependency solver rules for exact versions, ranges, conflicts, optional dependencies, OS compatibility, and browser capability requirements.
+- Add repository trust roots, publisher trust, key rotation, revocation lists, and transparency-log-style audit records where feasible.
+- Add update channels: stable, beta, local dev, pinned version, and offline mirror.
+- Add `pkg search`, `pkg info`, `pkg verify`, `pkg update`, `pkg rollback`, `repo add/remove/list`, and Settings package repository UI.
+- Add security advisory handling that can warn, block, or force update based on policy.
+
+Verification:
+
+- Add smoke coverage for repository index fetch/cache, signature refusal, dependency conflict, compatibility mismatch, rollback, offline mirror install, and revoked key refusal.
+- Add tests proving failed resolution or failed verification happens before VFS/package DB mutation.
+
+Completion criteria:
+
+- Users can install and update packages from trusted repositories with explicit compatibility, dependency, and rollback behavior.
+- Package trust decisions are inspectable and enforceable by system policy.
+
+### Native-Like 30: Host Integration Boundary And Progressive Native Install
+
+Status: Later.
+
+Goal: progressively integrate with host OS features while keeping DindbOS honest about what is browser-only, PWA-installed, or companion-assisted.
+
+Why it matters:
+
+- A browser-native OS can feel much more native when installed as a PWA and when it uses user-approved host integrations.
+- Some features are browser-standard, some are origin-installed PWA capabilities, and some require companions. Mixing them together would create false claims.
+- A host integration boundary lets DindbOS expose native-adjacent features without weakening sandbox transparency.
+
+Implementation tasks:
+
+- Add a host capability registry for PWA install state, launch handling, file handling, protocol handling, share target, badging, notifications, storage persistence, shortcuts, and window controls overlay where supported.
+- Add install profile diagnostics: browser tab, installed PWA, browser-only unsupported, companion-assisted, and remote-provider mode.
+- Add manifest integration for file handlers, URL protocol handlers, share targets, app shortcuts, icons, and display modes.
+- Add user-visible prompts and Settings controls for each host integration grant.
+- Add fallback behavior when the same DindbOS build runs in Safari, Firefox, Chromium, mobile browsers, or locked-down enterprise browsers.
+- Add companion boundaries for host features browsers do not expose, such as deeper filesystem automation, native printing workflows, raw sockets, and build toolchains.
+- Add `doctor host` to explain which features are available, unavailable, permission-denied, PWA-only, or companion-required.
+
+Verification:
+
+- Add smoke coverage with capability mocks for PWA install state, file handler registration, protocol handler registration, notification denial, share target unsupported, and `doctor host` classification.
+- Add browser-specific manual verification scripts for installed PWA behavior where automation is limited.
+
+Completion criteria:
+
+- DindbOS can become progressively more native when installed or paired, while the runtime still reports browser-only limitations accurately.
+- Apps request host capabilities through DindbOS brokers instead of assuming direct host OS access.
 
 ## Status Legend
 
