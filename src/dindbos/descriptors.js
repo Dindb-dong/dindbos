@@ -24,7 +24,12 @@ export class DescriptorManager {
   }
 
   closeProcess(pid) {
-    this.tables.delete(Number(pid));
+    const normalizedPid = Number(pid);
+    this.tables.delete(normalizedPid);
+    const path = `/proc/${normalizedPid}/fd.json`;
+    if (this.os.fs.exists(path)) {
+      this.os.fs.remove(path, "/", {}, this.os.permissions.systemPrincipal());
+    }
   }
 
   standardStreams(pid) {
