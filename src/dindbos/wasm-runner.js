@@ -225,6 +225,16 @@ export class WasmRunner {
             return errnoNumber(error.code || "EIO");
           }
         },
+        path_rename: (oldDirfd, oldPathPtr, oldPathLength, newDirfd, newPathPtr, newPathLength) => {
+          try {
+            const source = this.scopedDirectoryTarget(process, context, Number(oldDirfd), readString(oldPathPtr, oldPathLength));
+            const destination = this.scopedDirectoryTarget(process, context, Number(newDirfd), readString(newPathPtr, newPathLength));
+            this.os.fs.move(source, destination, "/", context.principal);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || errnoCodeFromMessage(error.message) || "EIO");
+          }
+        },
         path_open: (dirfd, dirflags, pathPtr, pathLength, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) => {
           void dirflags;
           try {
@@ -396,6 +406,16 @@ function parseSyscallRequest(text) {
 function errnoNumber(code) {
   const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EBADF: 8, EEXIST: 20, EISDIR: 31, ENOTDIR: 54, EIO: 5 };
   return values[code] || 1;
+}
+
+function errnoCodeFromMessage(message = "") {
+  const text = String(message || "");
+  if (text.includes("permission denied") || text.includes("sandbox denied")) return "EACCES";
+  if (text.includes("no such file or directory") || text.includes("File not found")) return "ENOENT";
+  if (text.includes("file exists")) return "EEXIST";
+  if (text.includes("is a directory")) return "EISDIR";
+  if (text.includes("not a directory")) return "ENOTDIR";
+  return "";
 }
 
 const WASI_RIGHT_FD_READ = 1n << 1n;
