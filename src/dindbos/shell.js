@@ -53,6 +53,7 @@ const BUILTIN_MANUALS = {
   sudo: "sudo <command> - unsupported browser-native privilege boundary placeholder",
   sync: "sync [status|conflicts|resolve] - inspect and repair remote sync conflicts",
   syscall: "syscall <name> [json] - call the DindbOS syscall ABI and print structured JSON",
+  timerctl: "timerctl list|stat|cancel - inspect or cancel kernel timers",
   touch: "touch <path> - create or update a file",
   tree: "tree [path] - render a directory tree",
   umount: "umount [--forget] <path> - unmount a local folder",
@@ -83,6 +84,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "sudo",
   "sync",
   "syscall",
+  "timerctl",
   "fsck",
   "handlectl",
   "tree",
@@ -317,6 +319,7 @@ export class ShellSession {
     if (command === "storage") return this.storage(args);
     if (command === "sync") return this.sync(args);
     if (command === "syscall") return this.syscall(args);
+    if (command === "timerctl") return this.timerctl(args);
     if (command === "resetfs") return this.resetFileSystem();
     if (command === "su" || command === "sudo") return this.privilegeEscalation(command);
     if (command === "whoami") return this.env.USER;
@@ -1464,6 +1467,25 @@ export class ShellSession {
     return formatLsofRows(this.os.objects.listHandles(filters), this.os.objects);
   }
 
+  timerctl(args = []) {
+    const action = args[0] || "list";
+    if (action === "list") return formatTimerRows(this.os.timers.status());
+    if (action === "stat") {
+      const id = args[1];
+      if (!id) return "timerctl: usage: timerctl stat <timer|handle>";
+      const timer = this.os.timers.get(id);
+      return timer ? formatTimerDetail(timer) : `timerctl: no such timer: ${id}`;
+    }
+    if (action === "cancel") {
+      const id = args[1];
+      if (!id) return "timerctl: usage: timerctl cancel <timer|handle>";
+      this.os.assertAdminOperation?.("timerctl:cancel", { principal: this.principal, target: id });
+      const timer = this.os.timers.cancel(id, null, { reason: "timerctl-cancel", force: true });
+      return `canceled ${timer.id} status=${timer.status}`;
+    }
+    return "timerctl: usage: timerctl list|stat <timer|handle>|cancel <timer|handle>";
+  }
+
   resetFileSystem() {
     this.os.assertAdminOperation?.("system-settings:resetfs", { principal: this.principal, target: "storage.resetFileSystem" });
     if (typeof this.os.resetPersistentFileSystem === "function") this.os.resetPersistentFileSystem();
@@ -1979,6 +2001,35 @@ function formatLsofRows(handles = [], objects = null) {
   ].join("\n");
 }
 
+function formatTimerRows(timers = []) {
+  if (!timers.length) return "TIMER PID STATUS DELAY HANDLE";
+  return [
+    "TIMER PID STATUS DELAY HANDLE",
+    ...timers.map((timer) => [
+      String(timer.id).padEnd(12),
+      String(timer.ownerPid || 0).padEnd(5),
+      String(timer.status).padEnd(9),
+      `${timer.delayMs}ms`.padEnd(8),
+      timer.handleId || "-",
+    ].join(" ")),
+  ].join("\n");
+}
+
+function formatTimerDetail(timer) {
+  return [
+    `Timer:\t${timer.id}`,
+    `OwnerPid:\t${timer.ownerPid || 0}`,
+    `Status:\t${timer.status}`,
+    `Delay:\t${timer.delayMs}ms`,
+    `DueAt:\t${timer.dueAt || "-"}`,
+    `FiredAt:\t${timer.firedAt || "-"}`,
+    `CanceledAt:\t${timer.canceledAt || "-"}`,
+    `Object:\t${timer.objectId || "-"}`,
+    `Handle:\t${timer.handleId || "-"}`,
+    `Reason:\t${timer.reason || "-"}`,
+  ].join("\n");
+}
+
 function formatStat(stat) {
   if (!stat) return "stat: no such file or directory";
   return [
@@ -2011,6 +2062,8 @@ function formatStorage(status) {
     `persistScheduled=${status.persistScheduled || 0}`,
     `persistCoalesced=${status.persistCoalesced || 0}`,
     `persistFlushes=${status.persistFlushes || 0}`,
+    `storageTransactions=${status.storageTransactions?.length || 0}`,
+    `lastStorageTransaction=${status.storageTransactions?.at?.(-1)?.id || "-"}`,
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
   ].join("\n");
