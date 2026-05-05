@@ -124,6 +124,7 @@ export class KernelObjectRegistry {
     };
     this.handles.set(id, handle);
     this.writeProcfs();
+    this.writeProcessHandlesProcfs(handle.ownerPid);
     return cloneHandle(handle);
   }
 
@@ -150,6 +151,36 @@ export class KernelObjectRegistry {
     });
   }
 
+  transferHandle(id, targetPid, details = {}) {
+    const source = this.assertHandle(id, {
+      ownerPid: details.fromPid,
+      rights: details.requiredRights || [],
+      objectType: details.objectType,
+    });
+    if (!["duplicate", "transfer"].includes(source.transferPolicy)) {
+      throw kernelObjectError("EPERM", `handle: ${id}: transfer denied`);
+    }
+    const target = this.createHandle(source.objectId, {
+      ...source,
+      ...details,
+      id: details.id || "",
+      ownerPid: Number(targetPid || 0),
+      user: String(details.user ?? source.user ?? ""),
+      uid: Number(details.uid ?? source.uid ?? 0),
+      gid: Number(details.gid ?? source.gid ?? 0),
+      groups: details.groups || source.groups,
+      rights: details.rights || source.rights,
+      duplicatedFrom: source.id,
+      metadata: {
+        ...source.metadata,
+        ...(details.metadata || {}),
+        transferredFromPid: source.ownerPid,
+      },
+    });
+    const revoked = this.revokeHandle(source.id, details.reason || "handle-transfer");
+    return { source: revoked, target };
+  }
+
   updateHandle(id, patch = {}) {
     const handle = this.handles.get(String(id || ""));
     if (!handle) return null;
@@ -166,6 +197,7 @@ export class KernelObjectRegistry {
     if (patch.metadata !== undefined) handle.metadata = cloneJson(patch.metadata || {});
     handle.updatedAt = new Date().toISOString();
     this.writeProcfs();
+    this.writeProcessHandlesProcfs(handle.ownerPid);
     return cloneHandle(handle);
   }
 
@@ -212,7 +244,10 @@ export class KernelObjectRegistry {
     handle.revokedAt = new Date().toISOString();
     handle.revocationReason = String(reason || "handle-revoked");
     handle.updatedAt = handle.revokedAt;
-    if (options.write !== false) this.writeProcfs();
+    if (options.write !== false) {
+      this.writeProcfs();
+      this.writeProcessHandlesProcfs(handle.ownerPid);
+    }
     return cloneHandle(handle);
   }
 

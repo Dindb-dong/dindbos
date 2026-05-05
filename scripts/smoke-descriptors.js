@@ -182,6 +182,19 @@ const middleReadResult = os.descriptors.read(pipeMiddle, { fd: middleRead.fd, le
 os.descriptors.write(pipeMiddle, { fd: secondPipe.writeFd, data: `${middleReadResult.data} pipe` }, context);
 const readerReadResult = os.descriptors.read(pipeReader, { fd: readerRead.fd, length: 64 }, context);
 assert(readerReadResult.data === "cross process pipe", `cross-process pipe chain mismatch: ${JSON.stringify(readerReadResult)}`);
+const transferDescriptor = os.descriptors.open(pipeWriter, { path: "input.txt", flags: "r" }, {
+  ...context,
+  process: pipeWriter,
+});
+const transferred = os.objects.transferHandle(transferDescriptor.handleId, pipeReader.pid, {
+  fromPid: pipeWriter.pid,
+  metadata: { purpose: "cross-process-transfer-smoke" },
+});
+assert(transferred.source.status === "revoked" && transferred.source.revocationReason === "handle-transfer", "transferred source handle was not revoked");
+assert(transferred.target.ownerPid === pipeReader.pid && transferred.target.duplicatedFrom === transferDescriptor.handleId, "transferred target handle owner mismatch");
+assert(JSON.parse(os.fs.readFile(`/proc/${pipeReader.pid}/handles.json`)).some((entry) => entry.id === transferred.target.id && entry.status === "active"), "transferred handle missing from target procfs handle table");
+result = wrap(() => os.descriptors.read(pipeWriter, { fd: transferDescriptor.fd, length: 1 }, context));
+assert(!result.ok && result.error.code === "ESTALE", `transferred source handle remained usable: ${JSON.stringify(result)}`);
 os.processes.kill(pipeWriter.pid, "pipe-writer-exit");
 os.processes.kill(pipeMiddle.pid, "pipe-middle-exit");
 os.processes.kill(pipeReader.pid, "pipe-reader-exit");
@@ -241,4 +254,12 @@ function memoryStorage() {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function wrap(run) {
+  try {
+    return { ok: true, value: run() };
+  } catch (error) {
+    return { ok: false, error: { code: error.code || "ERROR", message: error.message } };
+  }
 }
