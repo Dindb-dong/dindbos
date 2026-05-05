@@ -958,7 +958,7 @@ Why it matters:
 
 Implementation tasks:
 
-- Add a mount table with mount id, root path, driver type, readonly flag, owner, durability, quota policy, and capability requirements.
+- Already present: DindbOS exposes a first-pass mount table with mount id, root path, driver type, readonly flag, owner, durability, quota policy, capability requirements, local mount entries, text `/proc/mounts`, JSON `/proc/mounts.json`, and shell `mount` output.
 - Split VFS behavior into drivers such as `memfs`, `opfsfs`, `cachefs`, `procfs`, `devfs`, `pkgfs`, `zipfs`, `localfs`, and future `netfs`.
 - Add mount and unmount syscalls plus shell commands with explicit permission checks.
 - Add overlay mounts for package development, safe mode, and staged updates.
@@ -968,6 +968,7 @@ Implementation tasks:
 
 Verification:
 
+- Already present: `npm run smoke:boot` verifies mount table entries for browser-backed user storage, package storage, cache storage, and procfs; `npm run smoke:shell` verifies `mount` output; `npm run smoke:local-mounts` verifies local mounts refresh mount table procfs.
 - Add smoke coverage for mount/unmount, readonly denial, overlay precedence, package image mount, zip mount listing, `/proc/mounts`, and driver error normalization.
 - Add cross-driver tests proving shell, app APIs, NodeCompat, and WASI see the same path behavior for mounted trees.
 

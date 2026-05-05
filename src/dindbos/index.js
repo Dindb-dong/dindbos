@@ -741,6 +741,7 @@ export class DindbOS {
       this.recoverBootPhase("vfs-mount", "local mount restore failed; continuing without persisted mounts", error);
     }
     this.ensureDiskPolicyRoots();
+    this.writeMountTableProcfs("disk-policy-roots");
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
     this.writeSessionStatus();
@@ -1750,6 +1751,7 @@ export class DindbOS {
       .map((area) => area.root)
       .sort((left, right) => left.length - right.length)
       .forEach((root) => this.ensureSystemDirectory(root, "root", system));
+    ["/proc", "/dev"].forEach((root) => this.ensureSystemDirectory(root, "root", system));
   }
 
   ensureSessionHome() {
@@ -2212,6 +2214,102 @@ export class DindbOS {
         exists: true,
         usedBytes: this.countBytes("/"),
       };
+  }
+
+  mountTable() {
+    const roots = [
+      {
+        id: "rootfs",
+        root: "/",
+        driver: "rootfs",
+        readonly: false,
+        owner: "root",
+        durability: "persistent",
+        quotaPolicy: "browser-storage",
+        capabilities: [],
+        source: "runtime",
+      },
+      ...this.diskPolicyAreas().map((area) => ({
+        id: `disk:${area.root}`,
+        root: area.root,
+        driver: mountDriverForDiskArea(area),
+        readonly: false,
+        owner: "root",
+        durability: area.durability,
+        quotaPolicy: area.bucket || this.storageBucketForArea(area),
+        capabilities: area.root === "/mnt" ? ["localMount.manage"] : [],
+        source: "disk-policy",
+      })),
+      {
+        id: "procfs",
+        root: "/proc",
+        driver: "procfs",
+        readonly: true,
+        owner: "root",
+        durability: "runtime",
+        quotaPolicy: "generated",
+        capabilities: [],
+        source: "runtime",
+      },
+      {
+        id: "devfs",
+        root: "/dev",
+        driver: "devfs",
+        readonly: false,
+        owner: "root",
+        durability: "runtime",
+        quotaPolicy: "generated",
+        capabilities: [],
+        source: "runtime",
+      },
+    ];
+    const localMounts = this.localMounts?.listMounts?.() || [];
+    localMounts.forEach((mount) => {
+      roots.push({
+        id: `local:${mount.path}`,
+        root: mount.path,
+        driver: "localfs",
+        readonly: mount.mode === "read",
+        owner: this.session.user || "guest",
+        durability: "user-granted",
+        quotaPolicy: "host-filesystem",
+        capabilities: ["localMount.read", "localMount.manage"],
+        source: mount.handleName || mount.name || "local-folder",
+      });
+    });
+    return roots
+      .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.root === entry.root && candidate.driver === entry.driver) === index)
+      .sort((left, right) => left.root.localeCompare(right.root));
+  }
+
+  mountLines() {
+    return this.mountTable().map((entry) => formatMountTableLine(entry));
+  }
+
+  writeMountTableProcfs(reason = "mount-table") {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/proc", "root", system);
+    const table = this.mountTable();
+    const status = {
+      service: "dindbos-mount-table",
+      reason: String(reason || "mount-table"),
+      count: table.length,
+      mounts: table,
+      updatedAt: new Date().toISOString(),
+    };
+    this.fs.writeOrCreateFile("/proc/mounts", `${table.map((entry) => formatMountTableLine(entry)).join("\n")}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "text/plain",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/mounts.json", `${JSON.stringify(status, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    return status;
   }
 
   countBytes(path) {
@@ -2716,6 +2814,30 @@ function normalizeSyncConflictAction(action) {
   const value = String(action || "use-conflict").toLowerCase();
   if (["use-conflict", "keep-local", "delete-conflict"].includes(value)) return value;
   return "use-conflict";
+}
+
+function mountDriverForDiskArea(area) {
+  if (area.root === "/opt") return "pkgfs";
+  if (area.root === "/var/cache") return "cachefs";
+  if (area.root === "/tmp") return "memfs";
+  if (area.root === "/mnt") return "mountfs";
+  if (area.root === "/var") return "statefs";
+  return "browserfs";
+}
+
+function formatMountTableLine(entry) {
+  const flags = entry.readonly ? "ro" : "rw";
+  const caps = Array.isArray(entry.capabilities) && entry.capabilities.length ? entry.capabilities.join(",") : "-";
+  return [
+    entry.id,
+    entry.root,
+    entry.driver,
+    flags,
+    `owner=${entry.owner || "root"}`,
+    `durability=${entry.durability || "runtime"}`,
+    `quota=${entry.quotaPolicy || "unknown"}`,
+    `caps=${caps}`,
+  ].join(" ");
 }
 
 async function encryptRemoteSyncPayload(payload, passphrase) {

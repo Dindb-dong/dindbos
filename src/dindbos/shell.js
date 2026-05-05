@@ -920,9 +920,8 @@ export class ShellSession {
 
   mount() {
     try {
-      const base = this.os.fs.readFile("/proc/mounts").trim().split("\n").filter(Boolean);
-      const localLines = this.os.localMounts?.mountLines?.() || [];
-      return [...base, ...localLines].join("\n");
+      if (typeof this.os.mountLines === "function") return this.os.mountLines().join("\n");
+      return this.os.fs.readFile("/proc/mounts").trim().split("\n").filter(Boolean).join("\n");
     } catch {
       return "rootfs / virtualfs rw 0 0";
     }
