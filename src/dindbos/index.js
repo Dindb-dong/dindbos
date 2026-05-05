@@ -77,6 +77,17 @@ export class DindbOS {
       reason: this.session.lockReason || "",
     };
     this.bus = new EventBus();
+    this.sessionChannelName = options.sessionChannelName || "dindbos:session-events";
+    this.sessionChannel = null;
+    this.sessionMessages = [];
+    this.sessionChannelStatus = {
+      supported: false,
+      connected: false,
+      lastSentAt: "",
+      lastReceivedAt: "",
+      received: 0,
+      sent: 0,
+    };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
@@ -113,6 +124,7 @@ export class DindbOS {
     };
     this.initialFileSystem = options.fileSystem;
     this.fs = this.createFileSystem(options.fileSystem);
+    this.installSessionChannel(options.broadcastChannelFactory);
     this.shell = new DesktopShell(this);
     this.windows = new WindowManager(this);
     this.processes = new ProcessManager(this);
@@ -142,8 +154,51 @@ export class DindbOS {
     return new VirtualFileSystem(rootNode, {
       home: this.session.home,
       policy: this.permissions,
-      onChange: (event) => this.schedulePersistFileSystem(event),
+      onChange: (event) => {
+        this.schedulePersistFileSystem(event);
+        this.publishSessionEvent("file-change", event);
+      },
     });
+  }
+
+  installSessionChannel(factory = null) {
+    const Channel = factory || globalThis.BroadcastChannel;
+    this.sessionChannelStatus.supported = typeof Channel === "function";
+    if (this.sessionChannel || typeof Channel !== "function") return;
+    this.sessionChannel = new Channel(this.sessionChannelName);
+    this.sessionChannel.unref?.();
+    this.sessionChannelStatus.connected = true;
+    const receive = (event) => this.handleSessionMessage(event?.data ?? event);
+    if (typeof this.sessionChannel.addEventListener === "function") {
+      this.sessionChannel.addEventListener("message", receive);
+    } else {
+      this.sessionChannel.onmessage = receive;
+    }
+  }
+
+  publishSessionEvent(type, payload = {}) {
+    if (!this.sessionChannel?.postMessage) return null;
+    const message = {
+      source: this.instanceId,
+      type,
+      at: new Date().toISOString(),
+      payload: payload && typeof payload === "object" ? { ...payload } : { value: payload },
+    };
+    this.sessionChannel.postMessage(message);
+    this.sessionChannelStatus.sent += 1;
+    this.sessionChannelStatus.lastSentAt = message.at;
+    return message;
+  }
+
+  handleSessionMessage(message) {
+    if (!message || typeof message !== "object" || message.source === this.instanceId) return null;
+    this.sessionMessages.push({ ...message });
+    this.sessionMessages = this.sessionMessages.slice(-100);
+    this.sessionChannelStatus.received += 1;
+    this.sessionChannelStatus.lastReceivedAt = message.at || new Date().toISOString();
+    this.bus.emit("session:message", { ...message });
+    if (message.type === "file-change") this.bus.emit("session:file-change", { ...message.payload, source: message.source, at: message.at });
+    return message;
   }
 
   async loadPersistentFileSystem(options = {}) {
@@ -684,6 +739,7 @@ export class DindbOS {
     return {
       ...this.sessionCoordination,
       canWrite: this.sessionCoordination.role !== "secondary",
+      channel: { ...this.sessionChannelStatus },
     };
   }
 
