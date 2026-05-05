@@ -200,7 +200,8 @@ Implementation cuts:
 - Already present: package install/update writes package image files into `/tmp/dindbos/package-staging` first, then activates the staged `pkgfs` root into `/opt/<package>` during the package-root activation phase.
 - Already present: VFS archive imports stage extracted entries under `/tmp/dindbos/archive-import-staging` and activate them only after the full archive plan is ready, rolling back existing files and staged entries if activation fails.
 - Already present: AppSandbox app-state records use the VFS atomic write-or-create primitive for per-user app state create/update/remove/clear writes.
-- Extend staged activation to broader registry/service transaction groups.
+- Already present: AppRegistry register/unregister mutations group the in-memory app map, manifest file, and launcher file under one VFS snapshot rollback boundary.
+- Extend staged activation to broader service transaction groups.
 - Add `fsync`-style barriers to Shell, SDK, WASM, and NodeCompat paths so programs can request durability before reporting success.
 - Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
 - Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts, bad link counts, partial journals, stale local mount metadata, package DB drift, and conservative salvage export.
@@ -215,6 +216,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package-root activation from staging, successful staging cleanup, failed activation staging cleanup, and no staging path persisted in the package DB record.
 - Already present: `npm run smoke:files` verifies VFS archive import activation rollback preserves existing files, removes staged entries, and successful activation preserves nested file bytes.
 - Already present: `npm run smoke:permissions` verifies app-state record create and replace writes use VFS atomic events.
+- Already present: `npm run smoke:app-registry` verifies failed app registry register/unregister mutations roll back app map, manifest, and launcher state, and successful unregister cleans up launcher files.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.

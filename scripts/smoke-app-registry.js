@@ -44,11 +44,46 @@ assert(os.crashed?.message === "boom registry smoke", "crashed app message misma
 assert(os.crashContent.innerHTML.includes("Process crashed"), "crash panel was not rendered");
 assert(os.crashWindowTitle === "Crashy - crashed", "crash window title was not updated");
 
-console.log("app registry smoke ok singleton non-singleton crash-isolation");
+assert(os.fs.exists("/usr/share/dindbos/manifests/settings.json"), "app registry did not write settings manifest");
+assert(os.fs.exists("/usr/share/applications/Settings.app"), "app registry did not write settings launcher");
+const originalCreateApp = os.fs.createApp.bind(os.fs);
+os.fs.createApp = (path, ...args) => {
+  if (path.endsWith("/Broken.app")) throw new Error("launcher failed");
+  return originalCreateApp(path, ...args);
+};
+assertThrows(() => registry.register({ id: "broken", name: "Broken", render: () => "" }), "launcher failed");
+os.fs.createApp = originalCreateApp;
+assert(!registry.has("broken"), "failed app registry transaction left app registered");
+assert(!os.fs.exists("/usr/share/dindbos/manifests/broken.json"), "failed app registry transaction left manifest file");
+
+registry.register({ id: "todo", name: "Todo", render: () => "" });
+assert(registry.has("todo"), "todo app did not register");
+assert(os.fs.exists("/usr/share/dindbos/manifests/todo.json"), "todo manifest missing before unregister transaction");
+assert(os.fs.exists("/usr/share/applications/Todo.app"), "todo launcher missing before unregister transaction");
+const originalRemove = os.fs.remove.bind(os.fs);
+os.fs.remove = (path, ...args) => {
+  if (path.endsWith("/Todo.app")) throw new Error("launcher remove failed");
+  return originalRemove(path, ...args);
+};
+assertThrows(() => registry.unregister("todo"), "launcher remove failed");
+os.fs.remove = originalRemove;
+assert(registry.has("todo"), "failed app unregister transaction removed app from registry");
+assert(os.fs.exists("/usr/share/dindbos/manifests/todo.json"), "failed app unregister transaction did not restore manifest");
+assert(os.fs.exists("/usr/share/applications/Todo.app"), "failed app unregister transaction did not restore launcher");
+assert(registry.unregister("todo") === true, "app unregister did not return true");
+assert(!registry.has("todo"), "app unregister left app registered");
+assert(!os.fs.exists("/usr/share/dindbos/manifests/todo.json"), "app unregister left manifest file");
+assert(!os.fs.exists("/usr/share/applications/Todo.app"), "app unregister left launcher file");
+
+console.log("app registry smoke ok singleton non-singleton crash-isolation transactions");
 
 function bootOs() {
   const permissions = new PermissionPolicy();
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
+  const system = permissions.systemPrincipal();
+  fs.createDirectory("/usr", "/", { owner: "root", group: "root" }, system);
+  fs.createDirectory("/usr/share", "/", { owner: "root", group: "root" }, system);
+  fs.createDirectory("/usr/share/applications", "/", { owner: "root", group: "root" }, system);
   const opened = new Map();
   const os = {
     fs,
@@ -94,4 +129,14 @@ function bootOs() {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function assertThrows(action, expectedMessage) {
+  try {
+    action();
+  } catch (error) {
+    if (error.message.includes(expectedMessage)) return;
+    throw new Error(`unexpected error: ${error.message}`);
+  }
+  throw new Error(`expected error containing ${expectedMessage}`);
 }
