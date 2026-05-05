@@ -930,11 +930,12 @@ Implementation tasks:
 - Add app-declared shortcut scopes so global OS shortcuts, focused-app shortcuts, and text-entry shortcuts do not conflict.
 - Add screenshot/capture APIs for app windows and full desktop surfaces with user-visible permission checks.
 - Add accessibility metadata per window and control, exposed through a runtime tree that apps can update without direct access to other apps.
-- Add compositor diagnostics under `/proc/compositor`, including focused pid, capture owner, surface size, paint mode, and last input event.
+- Already present: compositor diagnostics under `/proc/compositor` expose focused pid, active window, surface geometry, paint mode, viewport, capture owner placeholder, and last input event; `doctor` also reports the focused surface summary.
 
 Verification:
 
-- Add smoke coverage for focus transfer, shortcut precedence, pointer capture release on crash, IME event delivery, drag/drop routing, and surface cleanup.
+- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, stable surface geometry, last-input recording, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
+- Add smoke coverage for pointer capture release on crash, IME event delivery, drag/drop routing, and surface cleanup.
 - Add tests proving a crashed or suspended app cannot retain global input capture.
 - Add screenshot/capture tests for allowed own-window capture and denied cross-app capture.
 
