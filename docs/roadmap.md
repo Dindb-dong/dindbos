@@ -1002,14 +1002,14 @@ Implementation tasks:
 - Already present: ProcessManager inherits parent namespaces for child process launches, package WASM entries pass package namespace into their child process manifest, and `/proc/<pid>/status` plus `/proc/processes.json` expose process namespace metadata.
 - Already present: package CLI tools run as `nodecompat-cli` DindbOS processes with package namespace metadata, package filesystem scopes, declared dependency allowlists, process history, and shell `pkg run <package> [args...]` handoff.
 - Already present: package apps can launch worker executor CPU tasks through the app sandbox; `ProcessExecutor` records parent pid and inherited package namespace metadata for worker-backed tasks.
-- Add namespace inheritance for service units launched by a package.
+- Already present: package manifests can declare first-pass service units; PackageManager registers them as service records, ServiceManager starts them with package namespace metadata, and uninstall unregisters the service/process.
 - Already present: AppSandbox NodeCompat execution inherits package filesystem scopes and a first-pass declared npm dependency allowlist, so package code cannot `require()` undeclared package-local dependency trees through NodeCompat.
 - Add per-package dependency views so SDK resolution, WASM entries, services, and future package child processes cannot read undeclared dependency trees by default.
 - Already present: Process procfs writes namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics, including package root, synthetic state/cache/temp/dependency namespace mounts, and namespace limits.
 - Already present: AppSandbox exposes a first-pass IPC facade backed by an in-runtime broker; package namespaces can register declared IPC endpoints, cross-package sends are denied unless the sender namespace declares the endpoint, and process exit/crash unregisters owned endpoints.
 - Already present: package manifests support a normalized `sandbox` section for root policy, state policy, cache policy, temp policy, device grants, network hosts, IPC endpoints, and child-process limits; package records, app manifests, package public records, and namespace metadata expose the resolved policy.
 - Already present: package uninstall kills running package namespace processes, which closes their descriptors and unregisters owned IPC endpoints, then removes package root, app state, package record, launcher, and private state/cache/temp namespace roots.
-- Add namespace cleanup for cache eviction, package service units, and future non-process IPC endpoints.
+- Add namespace cleanup for cache eviction and future non-process IPC endpoints.
 - Add developer tooling that can run a package in strict namespace mode before publishing.
 
 Verification:
@@ -1023,7 +1023,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package uninstall cleans running package app processes, inherited child processes, IPC endpoints, and state/cache/temp namespace roots.
 - Already present: `npm run smoke:packages` verifies package CLI execution through `packages.runCli()` and shell `pkg run`, including inherited package namespace metadata, cross-package root denial, undeclared dependency denial, output/status capture, and process history.
 - Already present: `npm run smoke:packages` verifies package-launched worker executor tasks inherit parent pid, package namespace metadata, and worker executor history.
-- Add tests proving namespace restrictions apply identically to background services launched by packages.
+- Already present: `npm run smoke:packages` verifies package-declared service units register with package id, expose namespace in service manifest, start service processes with package namespace metadata, and unregister/stop on package uninstall.
 
 Completion criteria:
 
