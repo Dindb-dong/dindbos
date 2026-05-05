@@ -347,6 +347,31 @@ export class VirtualFileSystem {
     return this.withPath(node, node.path);
   }
 
+  chown(path, owner, group = "", cwd = "/", principal = this.systemPrincipal) {
+    const node = this.resolve(path, cwd);
+    if (!node) throw new Error(`chown: ${path}: no such file or directory`);
+    this.assertTraversalAccess(node.path, "/", principal);
+    if (!canChangeOwner(principal)) throw new Error(`chown: ${path}: permission denied`);
+    node.owner = sanitizeIdentity(owner, node.owner || "root");
+    if (group) node.group = sanitizeIdentity(group, node.group || "users");
+    node.modified = new Date().toISOString();
+    this.emitChange("chown", node.path);
+    return this.withPath(node, node.path);
+  }
+
+  chgrp(path, group, cwd = "/", principal = this.systemPrincipal) {
+    const node = this.resolve(path, cwd);
+    if (!node) throw new Error(`chgrp: ${path}: no such file or directory`);
+    this.assertTraversalAccess(node.path, "/", principal);
+    const nextGroup = sanitizeIdentity(group, "");
+    if (!nextGroup) throw new Error("chgrp: group is required");
+    if (!canChangeGroup(principal, node, nextGroup)) throw new Error(`chgrp: ${path}: permission denied`);
+    node.group = nextGroup;
+    node.modified = new Date().toISOString();
+    this.emitChange("chgrp", node.path);
+    return this.withPath(node, node.path);
+  }
+
   stat(path, cwd = "/", principal = this.systemPrincipal) {
     const node = this.resolve(path, cwd);
     if (!node) return null;
@@ -545,6 +570,21 @@ function normalizePermissions(value, node) {
   if (/^[0-7]{3,4}$/.test(value)) return `${typePrefix(node)}${octalToPermissions(value.slice(-3))}`;
   if (value.length === 9) return `${typePrefix(node)}${value}`;
   return value;
+}
+
+function canChangeOwner(principal = {}) {
+  return Boolean(principal.system || principal.user === "root" || (principal.groups || []).includes("admins"));
+}
+
+function canChangeGroup(principal = {}, node = {}, group = "") {
+  if (canChangeOwner(principal)) return true;
+  if (principal.user !== (node.owner || "root")) return false;
+  return (principal.groups || []).includes(group);
+}
+
+function sanitizeIdentity(value, fallback) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || fallback;
 }
 
 function typePrefix(node) {

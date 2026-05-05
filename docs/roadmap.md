@@ -426,7 +426,8 @@ Implementation tasks:
 - Already present: guest reset behavior clears `/home/guest`, guest app state, guest shell history, guest package preferences, and guest Runtime Cache API entries, then recreates the guest home workspace.
 - Already present: session lock/unlock state is exposed through `sessionStatus()`, `/var/run/dindbos/session.json`, `/proc/sessions`, shell/app launch denial, and session lock/unlock events.
 - Already present: process credentials snapshot uid, gid, effective uid/gid, supplementary groups, and session id at spawn time, then expose the same credential record through `/proc/<pid>/status` and `/proc/processes.json`.
-- Expand chmod/chown/chgrp behavior across VFS and local mount metadata where possible.
+- Already present: VFS metadata supports `chmod`, administrator-only `chown`, and owner/admin `chgrp`, exposed through Shell and AppSandbox file APIs; mount roots use the same VFS metadata model where browser-backed ownership changes are possible.
+- Expand host-local mount child metadata behavior only where browser File System Access APIs can safely represent it.
 - Already present: app sandbox state is separated by user and app id under `/var/lib/dindbos/app-state/<user>/<app>.json`, and package uninstall removes per-user app state records for the removed app.
 - Already present: shell command history is persisted per user under `/var/lib/dindbos/shell-history/<user>.json`, reloads into new shell sessions, and switches with `loginctl switch`.
 - Already present: package preferences are persisted per user under `/var/lib/dindbos/package-preferences/<user>.json` and are exposed through shell `pkg prefs`.
@@ -444,6 +445,7 @@ Verification:
 
 - Already present: `npm run smoke:sessions` verifies normalized session users/groups, per-user home creation, persistent user/group records, numeric uid/gid assignment, shell `id` output, session switching through `loginctl`, cross-user private file denial, session lock/unlock denial, process credential `/proc` reporting, and sandbox filesystem access through process supplementary groups.
 - Already present: `npm run smoke:sessions` verifies shell `loginctl logout` blocks normal shell work, `loginctl login` restores authenticated state, password/passkey placeholder methods fail explicitly, `loginctl policy` exposes the placeholder policy, and `loginctl reset-guest` clears guest files/state/cache.
+- Already present: `npm run smoke:sessions` verifies owner `chgrp` to a supplementary group, denial for non-member group changes, and administrator `chown owner:group` metadata changes.
 - Already present: `npm run smoke:sessions` verifies per-user shell history persistence, reload into a new shell, and no shell history leakage across `loginctl switch`.
 - Already present: `npm run smoke:sessions` verifies per-user package preference persistence and no package preference leakage across `loginctl switch`.
 - Already present: `npm run smoke:sessions` verifies Runtime Cache API entries do not leak across `loginctl switch` and restore with the original user.
