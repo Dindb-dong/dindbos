@@ -289,6 +289,21 @@ async function runLiveWindowStateSmoke() {
     assert(dropRoute.handled && dropRoute.targetWindowId === "browser", "compositor input router did not route drop event");
     const routedCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
     assert(routedCompositor.inputRouter.routed >= 2 && routedCompositor.inputRouter.lastRoute.type === "drop", "/proc/compositor did not expose input router state");
+    task.shortcuts = [
+      { key: "ctrl+s", scope: "focused", command: "save-document" },
+      { key: "ctrl+b", scope: "text-entry", command: "bold-text" },
+      { key: "ctrl+shift+p", scope: "global", command: "command-palette" },
+    ];
+    let shortcutPrevented = false;
+    const shortcutRoute = liveManager.routeShortcutEvent({ ctrlKey: true, key: "s", preventDefault: () => { shortcutPrevented = true; } });
+    assert(shortcutRoute.handled && shortcutRoute.command === "save-document" && shortcutPrevented, "focused shortcut scope did not route");
+    const deniedTextRoute = liveManager.routeShortcutEvent({ ctrlKey: true, key: "s", target: { tagName: "INPUT" } });
+    assert(!deniedTextRoute.handled && deniedTextRoute.deniedReason === "text-entry-reserved", "focused shortcut leaked into text entry");
+    const textRoute = liveManager.routeShortcutEvent({ ctrlKey: true, key: "b", target: { tagName: "TEXTAREA" }, preventDefault: () => {} });
+    assert(textRoute.handled && textRoute.scope === "text-entry", "text-entry shortcut scope did not route");
+    const globalRoute = liveManager.routeShortcutEvent({ ctrlKey: true, shiftKey: true, key: "p", target: { tagName: "INPUT" }, preventDefault: () => {} });
+    assert(globalRoute.handled && globalRoute.scope === "global", "global shortcut scope did not route from text entry");
+    assert(JSON.parse(liveOs.fs.readFile("/proc/compositor")).shortcutRouter.routed >= 3, "/proc/compositor did not expose shortcut router state");
     task.titlebar.listeners.pointerdown({
       pointerId: 7,
       clientX: 10,

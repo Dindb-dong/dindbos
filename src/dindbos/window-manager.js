@@ -19,6 +19,11 @@ export class WindowManager {
       denied: 0,
       lastRoute: null,
     };
+    this.shortcutRouter = {
+      routed: 0,
+      denied: 0,
+      lastShortcut: null,
+    };
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
     this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
     this.boundHandleGlobalPointerDown = (event) => this.routeInputEvent("pointerdown", event);
@@ -203,6 +208,8 @@ export class WindowManager {
 
   handleGlobalKeyDown(event) {
     this.routeInputEvent("keydown", event);
+    const shortcut = this.routeShortcutEvent(event);
+    if (shortcut.handled) return;
     if (event.altKey && event.key === "Tab") {
       event.preventDefault();
       this.cycleFocus(event.shiftKey ? -1 : 1);
@@ -305,6 +312,43 @@ export class WindowManager {
     return { ...route };
   }
 
+  routeShortcutEvent(event = {}) {
+    const key = shortcutKeyFromEvent(event);
+    const textEntry = isTextEntryEventTarget(event.target);
+    const activeTask = this.windows.get(this.activeWindowId);
+    const candidates = [...this.windows.values()]
+      .flatMap((task) => normalizeTaskShortcuts(task).map((shortcut) => ({ task, shortcut })))
+      .filter(({ task, shortcut }) => {
+        if (shortcut.key !== key) return false;
+        if (shortcut.scope === "global") return true;
+        if (shortcut.scope === "text-entry") return textEntry && task.id === this.activeWindowId;
+        return !textEntry && task.id === this.activeWindowId;
+      });
+    const match = candidates.sort((left, right) => shortcutScopeRank(right.shortcut.scope) - shortcutScopeRank(left.shortcut.scope))[0] || null;
+    const route = {
+      key,
+      scope: match?.shortcut.scope || "",
+      command: match?.shortcut.command || "",
+      targetWindowId: match?.task.id || this.activeWindowId || "",
+      targetPid: match?.task.pid || activeTask?.pid || 0,
+      targetAppId: match?.task.appId || activeTask?.appId || "",
+      textEntry,
+      handled: Boolean(match),
+      deniedReason: match ? "" : textEntry ? "text-entry-reserved" : "no-shortcut-scope",
+      at: new Date().toISOString(),
+    };
+    if (route.handled) {
+      this.shortcutRouter.routed += 1;
+      event.preventDefault?.();
+      this.os.bus?.emit?.("compositor:shortcut", { ...route });
+    } else {
+      this.shortcutRouter.denied += 1;
+    }
+    this.shortcutRouter.lastShortcut = route;
+    this.writeCompositorProcfs("shortcut");
+    return { ...route };
+  }
+
   recordPointerCapture(windowId, pid, kind, capture = {}) {
     const pointerId = Number(capture.pointerId || 0);
     this.lastCapture = {
@@ -385,6 +429,11 @@ export class WindowManager {
         routed: this.inputRouter.routed,
         denied: this.inputRouter.denied,
         lastRoute: this.inputRouter.lastRoute ? { ...this.inputRouter.lastRoute } : null,
+      },
+      shortcutRouter: {
+        routed: this.shortcutRouter.routed,
+        denied: this.shortcutRouter.denied,
+        lastShortcut: this.shortcutRouter.lastShortcut ? { ...this.shortcutRouter.lastShortcut } : null,
       },
       surfaces,
       updatedAt: new Date().toISOString(),
@@ -655,6 +704,47 @@ function normalizeInputRouteType(type) {
     return value;
   }
   return "input";
+}
+
+function normalizeTaskShortcuts(task) {
+  const shortcuts = Array.isArray(task.shortcuts) ? task.shortcuts : [];
+  return shortcuts.map((shortcut) => ({
+    key: normalizeShortcutKey(shortcut.key || ""),
+    scope: normalizeShortcutScope(shortcut.scope || "focused"),
+    command: String(shortcut.command || shortcut.key || "").trim(),
+  })).filter((shortcut) => shortcut.key);
+}
+
+function shortcutKeyFromEvent(event = {}) {
+  const parts = [];
+  if (event.ctrlKey) parts.push("ctrl");
+  if (event.metaKey) parts.push("meta");
+  if (event.altKey) parts.push("alt");
+  if (event.shiftKey) parts.push("shift");
+  parts.push(normalizeShortcutKey(event.key || ""));
+  return parts.filter(Boolean).join("+");
+}
+
+function normalizeShortcutKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function normalizeShortcutScope(value) {
+  const scope = String(value || "focused").toLowerCase();
+  return ["global", "focused", "text-entry"].includes(scope) ? scope : "focused";
+}
+
+function shortcutScopeRank(scope) {
+  if (scope === "text-entry") return 3;
+  if (scope === "focused") return 2;
+  if (scope === "global") return 1;
+  return 0;
+}
+
+function isTextEntryEventTarget(target) {
+  if (!target) return false;
+  const tag = String(target.tagName || target.nodeName || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable === true;
 }
 
 function cancelMinimizeAnimation(task) {
