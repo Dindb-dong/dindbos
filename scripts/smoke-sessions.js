@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { DindbOS, normalizeSession } from "../src/dindbos/index.js";
 import { installBuiltinApps } from "../src/dindbos/apps/builtins.js";
+import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { ShellSession } from "../src/dindbos/shell.js";
 import { portfolioData } from "../src/demo/portfolio-demo.js";
 
@@ -70,11 +71,16 @@ assert(persistedSession.coordination.role === "primary", "session status file mi
 assert(JSON.parse(os.fs.readFile("/proc/sessions")).role === "primary", "/proc/sessions did not record primary role");
 const initialUsers = os.listUsers();
 assert(initialUsers.some((user) => user.user === "ada-lovelace"), "active session user was not registered");
-assert(os.listGroups().some((group) => group.group === "research-team" && group.members.includes("ada-lovelace")), "active session group membership was not registered");
+const researchGroup = os.listGroups().find((group) => group.group === "research-team");
+assert(researchGroup && Number.isInteger(researchGroup.gid) && researchGroup.members.includes("ada-lovelace"), "active session group membership was not registered with gid");
+const adaCredentials = os.credentialsForUser("Ada Lovelace", ["users", "Research Team"]);
+assert(adaCredentials.uid >= 1000 && adaCredentials.gid === 100 && adaCredentials.groups.includes("research-team"), "session credentials were not normalized");
+assert(JSON.parse(os.fs.readFile("/etc/dindbos/groups.json")).groups["research-team"].gid === researchGroup.gid, "group database mirror did not persist gid");
 const operators = os.createGroup("Operators");
-assert(operators.group === "operators", "createGroup did not sanitize group name");
+assert(operators.group === "operators" && Number.isInteger(operators.gid), "createGroup did not sanitize group name with gid");
 const grace = os.createUser("Grace Hopper", { groups: ["users", "Operators"] });
 assert(grace.user === "grace-hopper", `createUser did not sanitize user: ${grace.user}`);
+assert(Number.isInteger(grace.uid), "createUser did not assign uid");
 assert(os.fs.stat("/home/grace-hopper/Documents").owner === "grace-hopper", "createUser did not create owned home workspace");
 assert(os.listGroups().find((group) => group.group === "operators").members.includes("grace-hopper"), "createUser did not add user to group membership");
 const release = os.addUserToGroup("Grace Hopper", "Release Team");
@@ -85,6 +91,25 @@ assert(!removed.groups.includes("operators"), "removeUserFromGroup did not remov
 const userDb = JSON.parse(os.fs.readFile("/etc/dindbos/users.json"));
 assert(userDb.users["grace-hopper"].home === "/home/grace-hopper", "user database did not persist created user");
 assertRejects(() => os.createUser("Grace Hopper"), "already exists");
+result = await shell.executeAsync("id");
+assert(result.output.includes("uid=") && result.output.includes("(ada-lovelace)") && result.output.includes("groups=100(users)"), `id did not expose numeric credentials: ${result.output}`);
+const system = os.permissions.systemPrincipal();
+os.ensureDirectoryPath("/home/grace-hopper/Team", { leafOwner: "grace-hopper", leafGroup: "release-team", principal: system });
+os.fs.writeOrCreateFile("/home/grace-hopper/Team/plan.txt", "release\n", "/", {
+  owner: "root",
+  group: "release-team",
+  permissions: "-rw-r-----",
+}, system);
+const credentialProcess = os.processes.spawn({
+  id: "credential-smoke",
+  name: "Credential Smoke",
+  manifest: { fileSystem: { read: ["/home/grace-hopper/Team"], write: [] } },
+}, { credentials: os.credentialsForUser("Grace Hopper"), cwd: "/home/grace-hopper" });
+assert(os.fs.readFile(`/proc/${credentialProcess.pid}/status`).includes("Uid:\t"), "process /proc status missing uid");
+assert(os.fs.readFile(`/proc/${credentialProcess.pid}/status`).includes("Groups:\tusers,release-team"), "process /proc status missing process groups");
+assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === credentialProcess.pid && entry.uid === credentialProcess.uid && entry.credentials.groups.includes("release-team")), "/proc processes JSON missing credentials");
+const credentialSandbox = new AppSandbox(os, credentialProcess);
+assert(credentialSandbox.fs.readFile("/home/grace-hopper/Team/plan.txt") === "release\n", "sandbox did not use process credential groups");
 
 const events = [];
 os.bus.on("session:lock", (event) => events.push(`lock:${event.state}:${event.reason}`));

@@ -407,7 +407,7 @@ Completion criteria:
 
 ### Convergence 6: Multi-User Sessions And Access Control
 
-Status: Later.
+Status: In progress.
 
 Goal: strengthen the current session/user model into a fuller multi-user environment.
 
@@ -418,9 +418,10 @@ Why it matters:
 
 Implementation tasks:
 
-- Add persistent user and group records under `/etc/dindbos/users.json` and `/etc/dindbos/groups.json`.
-- Add login, logout, lock, unlock, password/passkey placeholder policy, and guest reset behavior.
-- Track process credentials: uid, gid, supplementary groups, effective permissions, and session id.
+- Already present: persistent user records are normalized under `/etc/dindbos/users.json`, group records are mirrored under `/etc/dindbos/groups.json`, and both carry first-pass numeric uid/gid identity metadata.
+- Add full login, logout, password/passkey placeholder policy, and guest reset behavior.
+- Already present: session lock/unlock state is exposed through `sessionStatus()`, `/var/run/dindbos/session.json`, `/proc/sessions`, shell/app launch denial, and session lock/unlock events.
+- Already present: process credentials snapshot uid, gid, effective uid/gid, supplementary groups, and session id at spawn time, then expose the same credential record through `/proc/<pid>/status` and `/proc/processes.json`.
 - Expand chmod/chown/chgrp behavior across VFS and local mount metadata where possible.
 - Add per-user homes, app state, cache, package preferences, shell history, and desktop layout.
 - Add administrator-only operations for package trust, system settings, and companion permissions.
@@ -428,7 +429,8 @@ Implementation tasks:
 
 Verification:
 
-- Add smoke coverage for cross-user file denial, group access, admin-only command denial, session switch, and per-user app state separation.
+- Already present: `npm run smoke:sessions` verifies normalized session users/groups, per-user home creation, persistent user/group records, numeric uid/gid assignment, shell `id` output, session lock/unlock denial, process credential `/proc` reporting, and sandbox filesystem access through process supplementary groups.
+- Add smoke coverage for cross-user file denial, admin-only command denial, session switch, and per-user app state separation.
 
 Completion criteria:
 

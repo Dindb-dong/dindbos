@@ -292,7 +292,7 @@ export class ShellSession {
     if (command === "resetfs") return this.resetFileSystem();
     if (command === "su" || command === "sudo") return this.privilegeEscalation(command);
     if (command === "whoami") return this.env.USER;
-    if (command === "id") return `uid=${this.env.USER} gid=${(this.os.session.groups || ["users"]).join(",")}`;
+    if (command === "id") return this.id();
     if (command === "uname") return "DindbOS.js browser-runtime 0.2.0";
     if (command === "date") return new Date().toString();
     if (command === "doctor") return this.doctor(args);
@@ -356,6 +356,21 @@ export class ShellSession {
 
   privilegeEscalation(command) {
     return `${command}: unsupported in DindbOS browser runtime; session user is fixed to ${this.env.USER}`;
+  }
+
+  id() {
+    const credentials = this.os.credentialsForUser?.(this.env.USER, this.os.session.groups) || {
+      user: this.env.USER,
+      uid: this.env.USER,
+      gid: (this.os.session.groups || ["users"])[0],
+      groups: this.os.session.groups || ["users"],
+      supplementaryGids: [],
+    };
+    const groups = (credentials.groups || []).map((group, index) => {
+      const gid = credentials.supplementaryGids?.[index] ?? credentials.gid;
+      return `${gid}(${group})`;
+    });
+    return `uid=${credentials.uid}(${credentials.user}) gid=${credentials.gid}(${credentials.groups?.[0] || "users"}) groups=${groups.join(",")}`;
   }
 
   cd(path) {

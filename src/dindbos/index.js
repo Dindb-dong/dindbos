@@ -58,12 +58,15 @@ const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
 const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
 const REMOTE_SYNC_SNAPSHOT_KEY = "dindbos:remote-sync:last-snapshot";
 const REMOTE_SYNC_APPLY_STATUS_PATH = "/var/run/dindbos/remote-sync-apply.json";
+const WELL_KNOWN_GROUP_IDS = { root: 0, admins: 10, users: 100, packages: 101 };
+const WELL_KNOWN_USER_IDS = { root: 0, guest: 1000 };
 
 export class DindbOS {
   constructor(options = {}) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
     this.instanceId = String(options.instanceId || `runtime-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
     this.session = normalizeSession(options.session || {});
+    this.sessionId = String(options.sessionId || this.session.sessionId || `${this.session.user}:${this.instanceId}`);
     this.sessionLockTtlMs = Number(options.sessionLockTtlMs || 30_000);
     this.operationLockTtlMs = Number(options.operationLockTtlMs || 30_000);
     this.sessionCoordination = {
@@ -1827,15 +1830,20 @@ export class DindbOS {
 
   userGroupDatabase() {
     const path = "/etc/dindbos/users.json";
-    if (!this.fs.exists(path)) return { users: {}, groups: {} };
+    const groupsPath = "/etc/dindbos/groups.json";
+    if (!this.fs.exists(path)) {
+      const groups = this.fs.exists(groupsPath) ? safeJson(this.fs.readFile(groupsPath, "/", this.permissions.systemPrincipal()), {})?.groups : {};
+      return normalizeUserGroupDatabase({ users: {}, groups });
+    }
     try {
       const parsed = JSON.parse(this.fs.readFile(path, "/", this.permissions.systemPrincipal()));
-      return {
+      const groupsFile = this.fs.exists(groupsPath) ? safeJson(this.fs.readFile(groupsPath, "/", this.permissions.systemPrincipal()), {}) : {};
+      return normalizeUserGroupDatabase({
         users: parsed.users && typeof parsed.users === "object" ? parsed.users : {},
-        groups: parsed.groups && typeof parsed.groups === "object" ? parsed.groups : {},
-      };
+        groups: parsed.groups && typeof parsed.groups === "object" ? parsed.groups : groupsFile.groups,
+      });
     } catch {
-      return { users: {}, groups: {} };
+      return normalizeUserGroupDatabase({ users: {}, groups: {} });
     }
   }
 
@@ -1843,12 +1851,15 @@ export class DindbOS {
     const system = this.permissions.systemPrincipal();
     this.ensureSystemDirectory("/etc", "root", system);
     this.ensureSystemDirectory("/etc/dindbos", "root", system);
-    const normalized = {
-      users: Object.fromEntries(Object.entries(database.users || {}).sort(([left], [right]) => left.localeCompare(right))),
-      groups: Object.fromEntries(Object.entries(database.groups || {}).sort(([left], [right]) => left.localeCompare(right))),
-      updatedAt: new Date().toISOString(),
-    };
+    const normalized = normalizeUserGroupDatabase(database);
+    normalized.updatedAt = new Date().toISOString();
     this.fs.writeOrCreateFile("/etc/dindbos/users.json", `${JSON.stringify(normalized, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/etc/dindbos/groups.json", `${JSON.stringify({ groups: normalized.groups, updatedAt: normalized.updatedAt }, null, 2)}\n`, "/", {
       owner: "root",
       group: "root",
       permissions: "-rw-r--r--",
@@ -1876,8 +1887,8 @@ export class DindbOS {
     if (!group) throw new Error("group: invalid group name");
     const database = this.userGroupDatabase();
     database.groups[group] = database.groups[group] || { group, members: [], createdAt: new Date().toISOString() };
-    this.writeUserGroupDatabase(database);
-    return { ...database.groups[group], members: [...(database.groups[group].members || [])] };
+    const normalized = this.writeUserGroupDatabase(database);
+    return { ...normalized.groups[group], members: [...(normalized.groups[group].members || [])] };
   }
 
   createUser(name, options = {}) {
@@ -1896,9 +1907,9 @@ export class DindbOS {
       database.groups[group] = database.groups[group] || { group, members: [], createdAt: new Date().toISOString() };
       if (!database.groups[group].members.includes(user)) database.groups[group].members.push(user);
     });
-    this.writeUserGroupDatabase(database);
+    const normalized = this.writeUserGroupDatabase(database);
     this.ensureUserHome(user, groups[0] || "users", home);
-    return { ...database.users[user], groups: [...database.users[user].groups] };
+    return { ...normalized.users[user], groups: [...normalized.users[user].groups] };
   }
 
   addUserToGroup(userName, groupName) {
@@ -1910,10 +1921,10 @@ export class DindbOS {
     database.groups[group] = database.groups[group] || { group, members: [], createdAt: new Date().toISOString() };
     if (!database.users[user].groups.includes(group)) database.users[user].groups.push(group);
     if (!database.groups[group].members.includes(user)) database.groups[group].members.push(user);
-    this.writeUserGroupDatabase(database);
+    const normalized = this.writeUserGroupDatabase(database);
     return {
-      user: { ...database.users[user], groups: [...database.users[user].groups] },
-      group: { ...database.groups[group], members: [...database.groups[group].members] },
+      user: { ...normalized.users[user], groups: [...normalized.users[user].groups] },
+      group: { ...normalized.groups[group], members: [...normalized.groups[group].members] },
     };
   }
 
@@ -1926,13 +1937,40 @@ export class DindbOS {
     if (database.groups[group]) {
       database.groups[group].members = (database.groups[group].members || []).filter((candidate) => candidate !== user);
     }
-    this.writeUserGroupDatabase(database);
-    return { ...database.users[user], groups: [...database.users[user].groups] };
+    const normalized = this.writeUserGroupDatabase(database);
+    return { ...normalized.users[user], groups: [...normalized.users[user].groups] };
+  }
+
+  credentialsForUser(userName = this.session.user, groups = this.session.groups) {
+    const user = sanitizeUserName(userName || this.session.user);
+    const database = this.userGroupDatabase();
+    const record = database.users[user] || {
+      user,
+      uid: uidForUser(user, nextIdentityId(Object.values(database.users || {}).map((entry) => entry.uid), 1000)),
+      home: normalizeHomePath("", user),
+      groups: sanitizeGroups(groups),
+    };
+    const groupNames = sanitizeGroups(record.groups?.length ? record.groups : groups);
+    const primaryGroup = groupNames[0] || "users";
+    const group = database.groups[primaryGroup] || { group: primaryGroup, gid: gidForGroup(primaryGroup, 100) };
+    const supplementaryGids = [...new Set(groupNames.map((name) => gidForGroup(name, database.groups[name]?.gid ?? 100)))];
+    return {
+      user,
+      uid: Number(record.uid ?? uidForUser(user, 1000)),
+      gid: Number(group.gid ?? gidForGroup(primaryGroup, 100)),
+      euid: Number(record.uid ?? uidForUser(user, 1000)),
+      egid: Number(group.gid ?? gidForGroup(primaryGroup, 100)),
+      groups: groupNames,
+      supplementaryGids,
+      home: record.home || normalizeHomePath("", user),
+      sessionId: this.sessionId,
+    };
   }
 
   sessionStatus() {
     return {
       instanceId: this.instanceId,
+      sessionId: this.sessionId,
       user: this.session.user,
       groups: [...(this.session.groups || [])],
       home: this.session.home,
@@ -2807,6 +2845,72 @@ function sanitizeGroups(groups) {
 
 function sanitizeUserName(value) {
   return sanitizeIdentifier(value, "guest");
+}
+
+function normalizeUserGroupDatabase(database = {}) {
+  const rawGroups = { root: { group: "root", gid: 0, members: ["root"] }, users: { group: "users", gid: 100, members: [] }, ...(database.groups || {}) };
+  const groups = {};
+  let nextGid = nextIdentityId(Object.values(rawGroups).map((entry) => entry?.gid), 1000);
+  Object.entries(rawGroups).forEach(([key, value]) => {
+    const group = sanitizeIdentifier(value?.group || key, "");
+    if (!group) return;
+    const gid = Number.isInteger(Number(value?.gid)) ? Number(value.gid) : gidForGroup(group, nextGid++);
+    groups[group] = {
+      ...value,
+      group,
+      gid,
+      members: [...new Set((value?.members || []).map((member) => sanitizeUserName(member)).filter(Boolean))].sort(),
+      createdAt: value?.createdAt || "",
+    };
+  });
+
+  const rawUsers = { root: { user: "root", uid: 0, home: "/root", groups: ["root"] }, ...(database.users || {}) };
+  const users = {};
+  let nextUid = nextIdentityId(Object.values(rawUsers).map((entry) => entry?.uid), 1000);
+  Object.entries(rawUsers).forEach(([key, value]) => {
+    const user = sanitizeUserName(value?.user || key);
+    const userGroups = sanitizeGroups(value?.groups?.length ? value.groups : [user === "root" ? "root" : "users"]);
+    const uid = Number.isInteger(Number(value?.uid)) ? Number(value.uid) : uidForUser(user, nextUid++);
+    users[user] = {
+      ...value,
+      user,
+      uid,
+      home: normalizeHomePath(value?.home, user),
+      groups: userGroups,
+      createdAt: value?.createdAt || "",
+    };
+    userGroups.forEach((group) => {
+      groups[group] = groups[group] || { group, gid: gidForGroup(group, nextGid++), members: [], createdAt: "" };
+      if (!groups[group].members.includes(user)) groups[group].members.push(user);
+      groups[group].members.sort();
+    });
+  });
+
+  return {
+    users: Object.fromEntries(Object.entries(users).sort(([left], [right]) => left.localeCompare(right))),
+    groups: Object.fromEntries(Object.entries(groups).sort(([left], [right]) => left.localeCompare(right))),
+  };
+}
+
+function uidForUser(user, fallback) {
+  return WELL_KNOWN_USER_IDS[user] ?? fallback;
+}
+
+function gidForGroup(group, fallback) {
+  return WELL_KNOWN_GROUP_IDS[group] ?? fallback;
+}
+
+function nextIdentityId(values, floor) {
+  const used = values.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value >= floor);
+  return used.length ? Math.max(...used) + 1 : floor;
+}
+
+function safeJson(value, fallback) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
 function sanitizeIdentifier(value, fallback) {
