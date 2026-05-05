@@ -30,6 +30,16 @@ export class WindowManager {
       denied: 0,
       lastClipboard: null,
     };
+    this.pointerLock = {
+      activeWindowId: "",
+      pid: 0,
+      appId: "",
+      lockedAt: "",
+      releasedAt: "",
+      releaseReason: "",
+      denied: 0,
+      lastRequest: null,
+    };
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
     this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
     this.boundHandleGlobalPointerDown = (event) => this.routeInputEvent("pointerdown", event);
@@ -201,6 +211,7 @@ export class WindowManager {
     const task = this.windows.get(id);
     if (!task) return;
     cancelMinimizeAnimation(task);
+    this.releasePointerLock(id, "window-close");
     this.releaseWindowCapture(id, "window-close");
     this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, "closing", { windowId: id });
@@ -397,6 +408,61 @@ export class WindowManager {
     return { ...route };
   }
 
+  requestPointerLock(windowId = this.activeWindowId, options = {}) {
+    const targetWindowId = String(windowId || "");
+    const task = this.windows.get(targetWindowId);
+    const request = {
+      windowId: targetWindowId,
+      pid: task?.pid || 0,
+      appId: task?.appId || "",
+      handled: Boolean(task) && targetWindowId === this.activeWindowId,
+      deniedReason: "",
+      at: new Date().toISOString(),
+    };
+    if (!task) request.deniedReason = "window-not-found";
+    else if (targetWindowId !== this.activeWindowId) request.deniedReason = "window-not-focused";
+    if (!request.handled) {
+      this.pointerLock.denied += 1;
+      this.pointerLock.lastRequest = request;
+      this.writeCompositorProcfs("pointer-lock-denied");
+      return { ...request };
+    }
+    const target = options.target || task.content || task.frame;
+    target?.requestPointerLock?.();
+    this.pointerLock.activeWindowId = targetWindowId;
+    this.pointerLock.pid = task.pid;
+    this.pointerLock.appId = task.appId;
+    this.pointerLock.lockedAt = request.at;
+    this.pointerLock.releasedAt = "";
+    this.pointerLock.releaseReason = "";
+    this.pointerLock.lastRequest = request;
+    this.writeCompositorProcfs("pointer-lock");
+    this.os.bus?.emit?.("compositor:pointer-lock", { ...request, active: true });
+    return { ...request };
+  }
+
+  releasePointerLock(windowId = this.pointerLock.activeWindowId, reason = "release") {
+    const targetWindowId = String(windowId || "");
+    if (!this.pointerLock.activeWindowId || (targetWindowId && targetWindowId !== this.pointerLock.activeWindowId)) return null;
+    globalThis.document?.exitPointerLock?.();
+    const released = {
+      windowId: this.pointerLock.activeWindowId,
+      pid: this.pointerLock.pid,
+      appId: this.pointerLock.appId,
+      lockedAt: this.pointerLock.lockedAt,
+      releasedAt: new Date().toISOString(),
+      reason: String(reason || "release"),
+    };
+    this.pointerLock.activeWindowId = "";
+    this.pointerLock.pid = 0;
+    this.pointerLock.appId = "";
+    this.pointerLock.releasedAt = released.releasedAt;
+    this.pointerLock.releaseReason = released.reason;
+    this.writeCompositorProcfs("pointer-lock-release");
+    this.os.bus?.emit?.("compositor:pointer-lock", { ...released, active: false });
+    return released;
+  }
+
   recordPointerCapture(windowId, pid, kind, capture = {}) {
     const pointerId = Number(capture.pointerId || 0);
     this.lastCapture = {
@@ -488,6 +554,16 @@ export class WindowManager {
         pasted: this.clipboardRouter.pasted,
         denied: this.clipboardRouter.denied,
         lastClipboard: this.clipboardRouter.lastClipboard ? { ...this.clipboardRouter.lastClipboard } : null,
+      },
+      pointerLock: {
+        activeWindowId: this.pointerLock.activeWindowId,
+        pid: this.pointerLock.pid,
+        appId: this.pointerLock.appId,
+        lockedAt: this.pointerLock.lockedAt,
+        releasedAt: this.pointerLock.releasedAt,
+        releaseReason: this.pointerLock.releaseReason,
+        denied: this.pointerLock.denied,
+        lastRequest: this.pointerLock.lastRequest ? { ...this.pointerLock.lastRequest } : null,
       },
       surfaces,
       updatedAt: new Date().toISOString(),

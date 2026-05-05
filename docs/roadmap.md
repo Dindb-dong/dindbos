@@ -928,6 +928,7 @@ Implementation tasks:
 - Add optional `OffscreenCanvas` worker rendering for graphics-heavy apps where browser support allows it.
 - Already present: compositor input routing records pointer, keyboard, IME composition, drag/drop, paste/copy, target window, target pid, routed/denied counts, and last route through one brokered WindowManager API.
 - Already present: compositor clipboard routing connects copy/paste to the runtime clipboard service, records focused-window/text-entry policy decisions, denies missing focused-window paste, and exposes copied/pasted/denied counters in `/proc/compositor`.
+- Already present: compositor pointer-lock policy allows only the focused window to acquire lock, denies missing or unfocused windows, exits pointer lock during window close, and exposes active/denied/release diagnostics in `/proc/compositor`.
 - Already present: app-declared shortcut scopes route global, focused-app, and text-entry shortcuts separately so text fields do not receive focused-app shortcuts unless the app declares a text-entry scope.
 - Add screenshot/capture APIs for app windows and full desktop surfaces with user-visible permission checks.
 - Add accessibility metadata per window and control, exposed through a runtime tree that apps can update without direct access to other apps.
@@ -935,8 +936,8 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, shortcut scope routing, stable surface geometry, last-input recording, IME/drop routing, compositor clipboard copy/paste policy, pointer capture cleanup during window close, input/shortcut/clipboard router state, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
-- Add smoke coverage for broader surface cleanup and deeper pointer-lock policy.
+- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, shortcut scope routing, stable surface geometry, last-input recording, IME/drop routing, compositor clipboard copy/paste policy, pointer-lock policy, pointer capture cleanup during window close, input/shortcut/clipboard/pointer-lock router state, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
+- Add smoke coverage for broader surface cleanup.
 - Add tests proving a crashed or suspended app cannot retain global input capture.
 - Add screenshot/capture tests for allowed own-window capture and denied cross-app capture.
 
