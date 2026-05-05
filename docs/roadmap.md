@@ -1,6 +1,6 @@
 # DindbOS.js Roadmap
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 
 DindbOS.js should behave like a browser-native OS runtime, not an OS-themed portfolio page. The portfolio is the demo workload that proves the runtime.
 
@@ -282,8 +282,12 @@ Implementation cuts:
 - Already present: local folder mounts are registered as `mount` kernel objects with runtime mount handles; read/write/sync paths validate the mount handle and unmount revokes the object.
 - Already present: service definitions are registered as `service` kernel objects with control-plane handles; start/stop/restart/run/crash/manage operations validate service-control rights and keep object metadata in sync with service state.
 - Already present: WebSocket, WebRTC data channel, and raw companion socket sessions are registered as `socket` kernel objects with process-owned handles; send/close operations validate socket handles and close revokes the object.
-- Continue defining kernel object ids beyond processes, descriptors, windows, IPC endpoints, keychain grants, mounts, services, and sockets for files, devices, timers, package namespaces, and companion sessions.
-- Route additional high-value APIs through handles first: device opens, companion sessions, package namespace handles, timer handles, and direct file object handles.
+- Already present: package namespaces are registered as `package-namespace` kernel objects with root control handles and process-owned inherited namespace handles; package dependency reads validate active namespace handles and stale namespace handles deny access.
+- Already present: companion permissions are registered as `companion-session` kernel objects with root session handles; approved companion checks validate protocol, capability, and active handle state, and stale or revoked companion handles deny access.
+- Already present: descriptor-backed VFS files are additionally registered as `file` kernel objects with direct file handles; file read/write/seek/stat/sync validate active file handles and fd close/process cleanup revokes the backing file object.
+- Already present: `/dev/*` opens are additionally registered as `device` kernel objects with device handles; device read/write/ioctl validate active device handles and fd close/process cleanup revokes the backing device object.
+- Continue defining kernel object ids beyond processes, descriptors, files, devices, windows, IPC endpoints, keychain grants, mounts, services, sockets, package namespaces, and companion sessions for timers and future storage transactions.
+- Route additional high-value APIs through handles first: timer handles, trusted prompt handles, storage transaction handles, and broader app/container handles.
 - Add process-exit, process-crash, logout, session-lock, package-uninstall, permission-revoke, and companion-disconnect cleanup that revokes owned handles.
 - Expose Activity Monitor resource views for `/proc/objects`, `/proc/handles`, `lsof`, and per-process handle tables.
 - Keep a compatibility shim while migrating high-level APIs so current apps do not break during the transition.
@@ -301,7 +305,10 @@ Verification:
 - Already present: `npm run smoke:local-mounts` verifies mount object/handle ids, read/write/sync rights, stale mount-handle denial, and unmount revocation diagnostics.
 - Already present: `npm run smoke:services` verifies service object/handle ids, service metadata refresh, service control rights, stale service-handle denial, and crash/restart behavior without revoking the control object.
 - Already present: `npm run smoke:network` verifies socket object/handle ids for WebSocket, WebRTC data channel, and raw companion sockets, live traffic metadata refresh, stale socket-handle denial, and close revocation.
-- Add smoke coverage for duplicated handle cleanup and revoked device/companion/package-namespace handles.
+- Already present: `npm run smoke:packages` verifies package namespace object/control handle ids, inherited process namespace handles, procfs handle visibility, and stale package namespace handle denial for dependency access.
+- Already present: `npm run smoke:sessions` verifies companion session object/handle ids, raw companion capability rights, stale companion-handle denial, regrant recovery, and revoke cleanup.
+- Already present: `npm run smoke:descriptors` verifies direct file object/handle ids, file metadata refresh, stale file-handle denial, file close revocation, device object/handle ids, stale device-handle denial, and device close revocation.
+- Add smoke coverage for duplicated handle cleanup across file, device, companion, and package namespace handles.
 - Add fuzz-style invalid handle tests for unknown id, wrong object type, double close, use-after-close, cross-user use, and package namespace escape.
 
 Completion criteria:
@@ -3499,8 +3506,10 @@ Implementation tasks:
 - Already present: surface capture, pointer lock, and IPC send dispatch validate active resource handles before accessing the underlying compositor or endpoint object.
 - Already present: keychain grants, local mounts, service controls, and network sockets now carry kernel object ids, scoped handles, rights, revocation state, and object metadata for diagnostics.
 - Already present: keychain secret reads, mount read/write/sync calls, service control calls, and socket send/close calls validate active resource handles before reaching the underlying runtime service.
+- Already present: package namespaces, companion sessions, descriptor-backed files, and descriptor-backed device nodes now carry kernel object ids, handles, scoped rights, stale-handle denial, and close/revoke cleanup.
+- Already present: package dependency reads, companion approval checks, direct file IO, and `/dev/*` read/write/ioctl paths validate active handles before touching the backing runtime resource.
 - Define kernel object types, ids, owners, lifetimes, refcounts, capabilities, namespace membership, and audit labels for remaining non-descriptor resources.
-- Add non-descriptor handles for devices, timers, package namespace handles, and companion sessions.
+- Add non-descriptor handles for timers, storage transactions, trusted prompts, app containers, and future memory regions.
 - Route app, shell, WASM, NodeCompat, service, and worker calls beyond descriptor/window/IPC/keychain/mount/service/socket paths through handle resolution instead of direct object references where practical.
 - Add handle inheritance rules for child processes, package namespaces, service processes, pipelines, app containers, and remote admin sessions.
 - Add weak reference behavior and broaden duplicate/close-on-exec/transfer handling beyond descriptor handles.
@@ -3514,7 +3523,7 @@ Verification:
 - Already present: descriptor and shell smokes cover allowed handle use, stale handle denial, wrong-right denial, cross-process handle transfer, close-on-exit cleanup, inherited stdio handles, and shell diagnostics.
 - Already present: window-manager, package, and shell smokes cover window handles, IPC endpoint handles, stale handle denial, close/process cleanup, procfs exports, and `lsof`.
 - Already present: keychain, local-mount, service, and network smokes cover grant, mount, service-control, and socket handles plus stale-handle denial and close/revoke cleanup.
-- Add smoke coverage for inherited package namespace handles and revoked device/companion behavior.
+- Already present: package, session, and descriptor smokes cover inherited package namespace handles plus revoked package namespace, companion, file, and device behavior.
 - Add tests proving a sandboxed app cannot use an object id unless it owns a valid handle with the required capability.
 - Add fuzz-style tests for invalid handle ids, wrong object types, double close, duplicate close, and crash cleanup.
 
@@ -4777,8 +4786,10 @@ Goal: replace private object references with kernel-owned handles that can be gr
 Implementation tasks:
 
 - Add kernel object handles for files, directories, descriptors, pipes, PTYs, processes, windows, app containers, services, timers, IPC channels, sockets, devices, keychain grants, storage transactions, memory regions, companion sessions, and package namespaces.
+- Already present: first-pass handles exist for processes, descriptors, descriptor-backed files, descriptor-backed device nodes, windows, services, IPC channels, sockets, keychain grants, mounts, companion sessions, and package namespaces.
 - Add per-process handle tables with object type, rights, owner pid, user, group, package namespace, close-on-exec flag, expiry, inherited-from pid, transfer policy, and revoke reason.
 - Route filesystem opens, descriptor IO, app launch, IPC, device access, keychain access, network sessions, trusted prompts, and companion sessions through handle validation.
+- Already present: descriptor IO, direct file IO, `/dev/*` access, IPC owner dispatch, keychain grant reads, network socket send/close, service controls, package dependency reads, and companion approval checks validate active handles before using the backing object.
 - Add syscall results that return handles instead of raw internal records for long-lived resources.
 - Add cleanup on process exit, crash, kill, logout, session lock, package uninstall, permission revoke, service disable, companion disconnect, and recovery mode.
 - Expose `/proc/<pid>/handles.json`, `/proc/objects`, `handlectl list|stat|close|revoke|explain`, and Activity Monitor handle views.
@@ -4786,6 +4797,7 @@ Implementation tasks:
 Verification:
 
 - Add smoke coverage for valid handle use, wrong-right denial, stale handle denial, double close, inherited stdio, transferred IPC handle, revoked device handle, and process-exit cleanup.
+- Already present: current smokes cover valid descriptor/service/socket/keychain/mount/package/companion/file/device handle use, wrong descriptor rights, stale descriptor/file/device/window/IPC/keychain/mount/socket/package/companion handles, inherited stdio, transferred descriptor handles, revoked device handles, and process-exit cleanup.
 - Add fuzz-style invalid handle tests for unknown id, wrong object type, cross-user use, package namespace escape, use-after-close, and replayed handle messages.
 
 ### Forward Package 3: Native-Like Spawn, Exec, Job Control, And Process Images
@@ -4817,7 +4829,8 @@ Goal: make file IO, pipes, terminals, sockets, devices, and runtime streams shar
 
 Implementation tasks:
 
-- Extend descriptors beyond basic VFS files into directories, pipes, PTYs, sockets, device nodes, memory objects, local mount files, archive readers, package files, and companion streams.
+- Already present: descriptors cover VFS files, directories, pipes, PTYs, and first-pass `/dev` device nodes with object/handle-backed cleanup.
+- Extend descriptors beyond the current first pass into sockets, memory objects, local mount files, archive readers, package files, and companion streams.
 - Add descriptor rights, flags, append mode, nonblocking mode, readiness state, seekability, file type, owner pid, backpressure state, and cleanup lifecycle.
 - Add PTY master/slave pairs with raw/canonical modes, echo, resize, foreground process group, signal delivery, bracketed paste, scrollback retention, and privacy policy.
 - Route Terminal, shell pipelines, NodeCompat streams, WASI `fd_*` imports, app service logs, browser companion streams, and network sockets through descriptors.

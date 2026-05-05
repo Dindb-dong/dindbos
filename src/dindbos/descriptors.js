@@ -130,9 +130,15 @@ export class DescriptorManager {
     this.assertDescriptorHandle(process, descriptor, ["read"]);
     const length = readLength(args.length);
     let data = "";
-    if (descriptor.kind === "file") data = this.readFileDescriptor(descriptor, length);
+    if (descriptor.kind === "file") {
+      this.assertFileHandle(process, descriptor, ["read"]);
+      data = this.readFileDescriptor(descriptor, length);
+    }
     else if (descriptor.kind === "stream") data = readBufferedDescriptor(descriptor, length);
-    else if (descriptor.kind === "device") data = this.readDeviceDescriptor(process, descriptor, length);
+    else if (descriptor.kind === "device") {
+      this.assertDeviceHandle(process, descriptor, ["read"]);
+      data = this.readDeviceDescriptor(process, descriptor, length);
+    }
     else if (descriptor.kind === "pipe") data = readPipeDescriptor(descriptor, length);
     else throw descriptorError("EINVAL", `fd.read: ${descriptor.fd}: unsupported descriptor kind`);
     const readBytes = Number.isFinite(descriptor.readBytes) ? descriptor.readBytes : byteLength(data);
@@ -149,13 +155,19 @@ export class DescriptorManager {
     if (descriptor.rights && !descriptor.rights.write) throw descriptorError("EBADF", `fd.write: ${descriptor.fd}: descriptor lacks write rights`);
     const data = String(args.data ?? args.content ?? "");
     let bytes = 0;
-    if (descriptor.kind === "file") bytes = this.writeFileDescriptor(descriptor, data, context);
+    if (descriptor.kind === "file") {
+      this.assertFileHandle(process, descriptor, ["write"]);
+      bytes = this.writeFileDescriptor(descriptor, data, context);
+    }
     else if (descriptor.kind === "stream") {
       descriptor.buffer = `${descriptor.buffer || ""}${data}`;
       descriptor.offset = byteLength(descriptor.buffer);
       writePtyOutput(this.os, descriptor, data);
       bytes = byteLength(data);
-    } else if (descriptor.kind === "device") bytes = this.writeDeviceDescriptor(process, descriptor, data);
+    } else if (descriptor.kind === "device") {
+      this.assertDeviceHandle(process, descriptor, ["write"]);
+      bytes = this.writeDeviceDescriptor(process, descriptor, data);
+    }
     else if (descriptor.kind === "pipe") {
       descriptor.pipe.buffer = `${descriptor.pipe.buffer || ""}${data}`;
       descriptor.offset = byteLength(descriptor.pipe.buffer);
@@ -171,6 +183,7 @@ export class DescriptorManager {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (!["file", "stream"].includes(descriptor.kind)) throw descriptorError("ESPIPE", `fd.seek: ${descriptor.fd}: descriptor is not seekable`);
     this.assertDescriptorHandle(process, descriptor, ["seek"]);
+    if (descriptor.kind === "file") this.assertFileHandle(process, descriptor, ["seek"]);
     const offset = numberArg(args.offset, "offset");
     const whence = String(args.whence || "set");
     const size = descriptor.kind === "file" ? byteLength(safeRead(() => this.os.fs.readFile(descriptor.path, "/", descriptor.principal), "")) : byteLength(descriptor.buffer || "");
@@ -187,6 +200,7 @@ export class DescriptorManager {
   stat(process, args = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     this.assertDescriptorHandle(process, descriptor, ["stat"]);
+    if (descriptor.kind === "file") this.assertFileHandle(process, descriptor, ["stat"]);
     return publicDescriptor(descriptor);
   }
 
@@ -194,6 +208,7 @@ export class DescriptorManager {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (descriptor.kind !== "file") throw descriptorError("EINVAL", `fd.sync: ${descriptor.fd}: descriptor is not a file`);
     this.assertDescriptorHandle(process, descriptor, ["sync"]);
+    this.assertFileHandle(process, descriptor, ["sync"]);
     const flush = typeof this.os.flushPersistentFileSystem === "function"
       ? await this.os.flushPersistentFileSystem()
       : await this.os.storage?.flush?.();
@@ -230,6 +245,7 @@ export class DescriptorManager {
     if (!request) throw descriptorError("EINVAL", `fd.ioctl: ${descriptor.fd}: request is required`);
     if (!isTtyDescriptor(descriptor)) throw descriptorError("ENOTTY", `fd.ioctl: ${descriptor.fd}: descriptor is not a tty`);
     this.assertDescriptorHandle(process, descriptor, ["ioctl"]);
+    if (descriptor.kind === "device") this.assertDeviceHandle(process, descriptor, ["ioctl"]);
     if (request === "tty.getWindowSize") {
       return {
         fd: descriptor.fd,
@@ -319,6 +335,8 @@ export class DescriptorManager {
       metadata: descriptorHandleMetadata(descriptor),
     }) : null;
     descriptor.handleId = handle?.id || "";
+    this.registerFileKernelObject(process, descriptor);
+    this.registerDeviceKernelObject(process, descriptor);
     return object;
   }
 
@@ -335,12 +353,114 @@ export class DescriptorManager {
         metadata: descriptorHandleMetadata(descriptor),
       });
     }
+    this.syncFileKernelObject(process, descriptor);
+    this.syncDeviceKernelObject(process, descriptor);
     return object;
   }
 
   revokeDescriptorObject(descriptor, reason = "fd-close") {
+    this.revokeFileKernelObject(descriptor, reason);
+    this.revokeDeviceKernelObject(descriptor, reason);
     if (!descriptor?.objectId) return null;
     return this.os.objects?.revoke?.(descriptor.objectId, reason) || null;
+  }
+
+  registerFileKernelObject(process, descriptor) {
+    if (!process || descriptor?.kind !== "file" || descriptor.fileObjectId) return null;
+    const object = this.os.objects?.register?.("file", {
+      ref: `file:${descriptor.path}:pid:${process.pid}:fd:${descriptor.fd}`,
+      name: descriptor.path,
+      ownerPid: process.pid,
+      namespace: process.manifest?.namespace || null,
+      user: process.user || this.os.session?.user || "",
+      rights: fileRightsList(descriptor),
+      metadata: fileObjectMetadata(descriptor),
+    }) || null;
+    descriptor.fileObjectId = object?.id || "";
+    const handle = descriptor.fileObjectId ? this.os.objects?.createHandle?.(descriptor.fileObjectId, {
+      ownerPid: process.pid,
+      user: process.user || this.os.session?.user || "",
+      uid: process.uid || 0,
+      gid: process.gid || 0,
+      groups: process.groups || [],
+      namespace: process.manifest?.namespace || null,
+      rights: fileRightsList(descriptor),
+      closeOnExec: true,
+      transferPolicy: "duplicate",
+      metadata: fileHandleMetadata(descriptor),
+    }) : null;
+    descriptor.fileHandleId = handle?.id || "";
+    return object;
+  }
+
+  syncFileKernelObject(process, descriptor) {
+    if (descriptor?.kind !== "file" || !descriptor.fileObjectId) return null;
+    const object = this.os.objects?.update?.(descriptor.fileObjectId, {
+      name: descriptor.path,
+      rights: fileRightsList(descriptor),
+      metadata: fileObjectMetadata(descriptor),
+    }) || null;
+    if (descriptor.fileHandleId) {
+      this.os.objects?.updateHandle?.(descriptor.fileHandleId, {
+        rights: fileRightsList(descriptor),
+        metadata: fileHandleMetadata(descriptor),
+      });
+    }
+    return object;
+  }
+
+  revokeFileKernelObject(descriptor, reason = "fd-close") {
+    if (descriptor?.kind !== "file" || !descriptor.fileObjectId) return null;
+    return this.os.objects?.revoke?.(descriptor.fileObjectId, reason) || null;
+  }
+
+  registerDeviceKernelObject(process, descriptor) {
+    if (!process || descriptor?.kind !== "device" || descriptor.deviceObjectId) return null;
+    const object = this.os.objects?.register?.("device", {
+      ref: `device:${descriptor.path}:pid:${process.pid}:fd:${descriptor.fd}`,
+      name: descriptor.path,
+      ownerPid: process.pid,
+      namespace: process.manifest?.namespace || null,
+      user: process.user || this.os.session?.user || "",
+      rights: deviceRightsList(descriptor),
+      metadata: deviceObjectMetadata(descriptor),
+    }) || null;
+    descriptor.deviceObjectId = object?.id || "";
+    const handle = descriptor.deviceObjectId ? this.os.objects?.createHandle?.(descriptor.deviceObjectId, {
+      ownerPid: process.pid,
+      user: process.user || this.os.session?.user || "",
+      uid: process.uid || 0,
+      gid: process.gid || 0,
+      groups: process.groups || [],
+      namespace: process.manifest?.namespace || null,
+      rights: deviceRightsList(descriptor),
+      closeOnExec: true,
+      transferPolicy: "no-duplicate",
+      metadata: deviceHandleMetadata(descriptor),
+    }) : null;
+    descriptor.deviceHandleId = handle?.id || "";
+    return object;
+  }
+
+  syncDeviceKernelObject(process, descriptor) {
+    if (descriptor?.kind !== "device" || !descriptor.deviceObjectId) return null;
+    const object = this.os.objects?.update?.(descriptor.deviceObjectId, {
+      name: descriptor.path,
+      rights: deviceRightsList(descriptor),
+      metadata: deviceObjectMetadata(descriptor),
+    }) || null;
+    if (descriptor.deviceHandleId) {
+      this.os.objects?.updateHandle?.(descriptor.deviceHandleId, {
+        rights: deviceRightsList(descriptor),
+        metadata: deviceHandleMetadata(descriptor),
+      });
+    }
+    return object;
+  }
+
+  revokeDeviceKernelObject(descriptor, reason = "fd-close") {
+    if (descriptor?.kind !== "device" || !descriptor.deviceObjectId) return null;
+    return this.os.objects?.revoke?.(descriptor.deviceObjectId, reason) || null;
   }
 
   processFor(pid) {
@@ -353,6 +473,32 @@ export class DescriptorManager {
       return this.os.objects?.assertHandle?.(descriptor.handleId, {
         ownerPid: process.pid,
         objectType: "descriptor",
+        rights,
+      }) || null;
+    } catch (error) {
+      throw descriptorError(error.code || "EACCES", error.message);
+    }
+  }
+
+  assertFileHandle(process, descriptor, rights = []) {
+    if (descriptor?.kind !== "file" || !descriptor.fileHandleId) return null;
+    try {
+      return this.os.objects?.assertHandle?.(descriptor.fileHandleId, {
+        ownerPid: process.pid,
+        objectType: "file",
+        rights,
+      }) || null;
+    } catch (error) {
+      throw descriptorError(error.code || "EACCES", error.message);
+    }
+  }
+
+  assertDeviceHandle(process, descriptor, rights = []) {
+    if (descriptor?.kind !== "device" || !descriptor.deviceHandleId) return null;
+    try {
+      return this.os.objects?.assertHandle?.(descriptor.deviceHandleId, {
+        ownerPid: process.pid,
+        objectType: "device",
         rights,
       }) || null;
     } catch (error) {
@@ -552,6 +698,10 @@ function publicDescriptor(descriptor) {
     fd: descriptor.fd,
     objectId: descriptor.objectId || "",
     handleId: descriptor.handleId || "",
+    fileObjectId: descriptor.fileObjectId || "",
+    fileHandleId: descriptor.fileHandleId || "",
+    deviceObjectId: descriptor.deviceObjectId || "",
+    deviceHandleId: descriptor.deviceHandleId || "",
     kind: descriptor.kind,
     path: descriptor.path,
     name: descriptor.name || "",
@@ -611,6 +761,72 @@ function descriptorHandleMetadata(descriptor) {
     offset: Number(descriptor.offset || 0),
     objectId: descriptor.objectId || "",
     preopen: Boolean(descriptor.preopen),
+  };
+}
+
+function fileRightsList(descriptor) {
+  return [
+    descriptorRightsAllow(descriptor, "read") ? "read" : "",
+    descriptorRightsAllow(descriptor, "write") ? "write" : "",
+    "seek",
+    "stat",
+    "sync",
+    descriptor.fd >= 3 && !descriptor.preopen ? "close" : "",
+  ].filter(Boolean);
+}
+
+function fileObjectMetadata(descriptor) {
+  return {
+    fd: descriptor.fd,
+    path: descriptor.path,
+    readable: Boolean(descriptor.readable),
+    writable: Boolean(descriptor.writable),
+    offset: Number(descriptor.offset || 0),
+    flags: descriptor.flags || "",
+    descriptorObjectId: descriptor.objectId || "",
+  };
+}
+
+function fileHandleMetadata(descriptor) {
+  return {
+    fd: descriptor.fd,
+    path: descriptor.path,
+    descriptorHandleId: descriptor.handleId || "",
+    descriptorObjectId: descriptor.objectId || "",
+    offset: Number(descriptor.offset || 0),
+  };
+}
+
+function deviceRightsList(descriptor) {
+  return [
+    "open",
+    descriptorRightsAllow(descriptor, "read") ? "read" : "",
+    descriptorRightsAllow(descriptor, "write") ? "write" : "",
+    isTtyDescriptor(descriptor) ? "ioctl" : "",
+    "stat",
+    descriptor.fd >= 3 && !descriptor.preopen ? "close" : "",
+  ].filter(Boolean);
+}
+
+function deviceObjectMetadata(descriptor) {
+  return {
+    fd: descriptor.fd,
+    path: descriptor.path,
+    readable: Boolean(descriptor.readable),
+    writable: Boolean(descriptor.writable),
+    offset: Number(descriptor.offset || 0),
+    flags: descriptor.flags || "",
+    tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
+    descriptorObjectId: descriptor.objectId || "",
+  };
+}
+
+function deviceHandleMetadata(descriptor) {
+  return {
+    fd: descriptor.fd,
+    path: descriptor.path,
+    descriptorHandleId: descriptor.handleId || "",
+    descriptorObjectId: descriptor.objectId || "",
   };
 }
 

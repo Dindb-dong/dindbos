@@ -565,6 +565,7 @@ export class PackageManager {
   }
 
   assertDependencyPathAllowed(namespace = {}, path = "", access = "read") {
+    this.assertNamespaceHandle(namespace, ["read"]);
     const view = this.dependencyViewForNamespace(namespace);
     const dependency = dependencyPathPackage(this.os.fs.normalize(path, "/"), view.dependencyRoot);
     if (!dependency.inside || !dependency.packageName) return true;
@@ -573,6 +574,7 @@ export class PackageManager {
   }
 
   filterDependencyList(namespace = {}, path = "", entries = []) {
+    this.assertNamespaceHandle(namespace, ["read"]);
     const view = this.dependencyViewForNamespace(namespace);
     const normalized = this.os.fs.normalize(path, "/");
     if (!view.dependencyRoot) return entries;
@@ -1308,6 +1310,76 @@ export class PackageManager {
         if (this.os.processes?.get?.(process.pid)) this.os.processes.kill(process.pid, "package-uninstall");
       });
     this.os.unregisterIpcEndpointsForNamespace?.(namespace, "package-uninstall");
+    this.revokePackageNamespaceObject(record, "package-uninstall");
+  }
+
+  registerPackageNamespaceObject(record) {
+    if (!record?.namespace || !this.os.objects) return null;
+    const namespace = record.namespace;
+    if (namespace.objectId) {
+      const existing = this.os.objects.get(namespace.objectId);
+      if (existing?.status === "active") return this.syncPackageNamespaceObject(record);
+      namespace.objectId = "";
+      namespace.handleId = "";
+    }
+    const rights = packageNamespaceRights(namespace);
+    const object = this.os.objects.register("package-namespace", {
+      ref: `package:${record.id}:namespace`,
+      name: namespace.processGroup || `package:${record.id}`,
+      ownerPid: 0,
+      namespace,
+      user: "root",
+      rights,
+      metadata: packageNamespaceMetadata(record),
+    });
+    namespace.objectId = object?.id || "";
+    const handle = namespace.objectId ? this.os.objects.createHandle(namespace.objectId, {
+      ownerPid: 0,
+      user: "root",
+      groups: ["root"],
+      namespace,
+      rights,
+      closeOnExec: false,
+      transferPolicy: "duplicate",
+      metadata: packageNamespaceHandleMetadata(record),
+    }) : null;
+    namespace.handleId = handle?.id || "";
+    return object;
+  }
+
+  syncPackageNamespaceObject(record) {
+    if (!record?.namespace?.objectId || !this.os.objects) return null;
+    const rights = packageNamespaceRights(record.namespace);
+    const object = this.os.objects.update(record.namespace.objectId, {
+      namespace: record.namespace,
+      rights,
+      metadata: packageNamespaceMetadata(record),
+    });
+    if (record.namespace.handleId) {
+      this.os.objects.updateHandle(record.namespace.handleId, {
+        rights,
+        metadata: packageNamespaceHandleMetadata(record),
+      });
+    }
+    return object;
+  }
+
+  revokePackageNamespaceObject(record, reason = "package-namespace-revoked") {
+    if (!record?.namespace?.objectId || !this.os.objects) return null;
+    return this.os.objects.revoke(record.namespace.objectId, reason);
+  }
+
+  assertNamespaceHandle(namespace = {}, rights = []) {
+    const handleId = namespace?.processHandleId || namespace?.handleId || "";
+    if (!handleId || !this.os.objects) return null;
+    try {
+      return this.os.objects.assertHandle(handleId, {
+        objectType: "package-namespace",
+        rights,
+      });
+    } catch (error) {
+      throw new Error(`package namespace handle: ${error.message}`);
+    }
   }
 
   ensureDirectoryPath(path, options = {}) {
@@ -1435,6 +1507,16 @@ export class PackageManager {
   }
 
   registerPackageApp(record) {
+    const previousNamespaceObjectId = record.namespace?.objectId || "";
+    const previousNamespaceHandleId = record.namespace?.handleId || "";
+    this.registerPackageNamespaceObject(record);
+    if (
+      record.namespace
+      && (record.namespace.objectId !== previousNamespaceObjectId || record.namespace.handleId !== previousNamespaceHandleId)
+      && this.os.fs.exists(this.packageRecordPath(record.id))
+    ) {
+      this.writePackageRecord(record);
+    }
     this.os.registerApp({
       id: record.app.id,
       name: record.app.name,
@@ -1489,6 +1571,10 @@ export class PackageManager {
     try {
       this.runPackageActivationPhase(activation, record, "package-root", () => this.activatePackageRoot(record));
       this.runPackageActivationPhase(activation, record, "package-record", () => this.writePackageRecord(record));
+      this.runPackageActivationPhase(activation, record, "namespace-handle", () => {
+        this.registerPackageNamespaceObject(record);
+        this.writePackageRecord(record);
+      });
       this.runPackageActivationPhase(activation, record, "launcher", () => this.installLauncher(record));
       this.runPackageActivationPhase(activation, record, "app-registry", () => this.registerPackageApp(record));
       this.runPackageActivationPhase(activation, record, "services", () => this.registerPackageServices(record, previous));
@@ -1935,6 +2021,47 @@ function packageNamespace(packageId, appId, installPath, sandbox = {}, dependenc
     ipcEndpoints: [...(sandbox.ipcEndpoints || sandbox.ipc || [])],
     childProcessLimit: Number(sandbox.childProcessLimit || 0),
     dependencyAllowlist: Object.keys(dependencies.npm || {}),
+    objectId: "",
+    handleId: "",
+    processHandleId: "",
+  };
+}
+
+function packageNamespaceRights(namespace = {}) {
+  const rights = ["enter", "inspect", "read"];
+  if (namespace.statePolicy !== "readonly") rights.push("write-state");
+  if (namespace.cachePolicy) rights.push("cache");
+  if (namespace.tempPolicy) rights.push("temp");
+  if ((namespace.ipcEndpoints || []).length) rights.push("ipc");
+  return rights;
+}
+
+function packageNamespaceMetadata(record = {}) {
+  const namespace = record.namespace || {};
+  return {
+    packageId: record.id || namespace.packageId || "",
+    appId: record.app?.id || namespace.appId || "",
+    processGroup: namespace.processGroup || "",
+    packageRoot: namespace.packageRoot || record.installPath || "",
+    stateRoot: namespace.stateRoot || "",
+    cacheRoot: namespace.cacheRoot || "",
+    tempRoot: namespace.tempRoot || "",
+    dependencyRoot: namespace.dependencyRoot || "",
+    dependencyAllowlist: [...(namespace.dependencyAllowlist || [])],
+    deviceGrants: [...(namespace.deviceGrants || [])],
+    networkHosts: [...(namespace.networkHosts || [])],
+    ipcEndpoints: [...(namespace.ipcEndpoints || [])],
+    lifecycle: record.lifecycle?.operation || "",
+  };
+}
+
+function packageNamespaceHandleMetadata(record = {}) {
+  const namespace = record.namespace || {};
+  return {
+    packageId: record.id || namespace.packageId || "",
+    appId: record.app?.id || namespace.appId || "",
+    processGroup: namespace.processGroup || "",
+    packageRoot: namespace.packageRoot || record.installPath || "",
   };
 }
 

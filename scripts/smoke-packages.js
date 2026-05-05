@@ -32,6 +32,9 @@ assert(rollbackNamespace.stateRoot === "/var/lib/dindbos/package-state/rollback-
 assert(rollbackNamespace.cacheRoot === "/var/cache/dindbos/packages/rollback-demo", `package namespace cache root mismatch: ${JSON.stringify(rollbackNamespace)}`);
 assert(rollbackNamespace.tempRoot === "/tmp/dindbos/packages/rollback-demo", `package namespace temp root mismatch: ${JSON.stringify(rollbackNamespace)}`);
 assert(rollbackNamespace.processGroup === "package:rollback-demo", `package namespace process group mismatch: ${JSON.stringify(rollbackNamespace)}`);
+assert(rollbackNamespace.objectId && rollbackNamespace.handleId, "package namespace missing kernel object and control handle ids");
+assert(os.objects.get(rollbackNamespace.objectId)?.type === "package-namespace", "package namespace kernel object type mismatch");
+assert(os.objects.getHandle(rollbackNamespace.handleId)?.rights.includes("enter"), "package namespace control handle missing enter right");
 assert(os.fs.exists(rollbackNamespace.stateRoot), "package namespace state root missing");
 assert(os.fs.exists(rollbackNamespace.cacheRoot), "package namespace cache root missing");
 assert(os.fs.exists(rollbackNamespace.tempRoot), "package namespace temp root missing");
@@ -192,6 +195,8 @@ const namespaceProbeRecord = packages.info("namespace-probe");
 assert(packages.dependencyView("namespace-probe").allowedPaths.includes("/opt/namespace-probe/node_modules/declared-lib"), "package dependency view missing declared dependency path");
 const namespaceChild = os.processes.list().find((process) => process.parentPid === namespaceProbeWindow.pid && process.appId === "namespace-child");
 assert(namespaceChild?.manifest?.namespace?.processGroup === "package:namespace-probe", `child process did not inherit package namespace: ${JSON.stringify(namespaceChild)}`);
+assert(namespaceChild.manifest.namespace.objectId && namespaceChild.manifest.namespace.processHandleId, "child process did not inherit package namespace handle ids");
+assert(JSON.parse(os.fs.readFile(`/proc/${namespaceChild.pid}/handles.json`)).some((entry) => entry.id === namespaceChild.manifest.namespace.processHandleId && entry.objectType === "package-namespace"), "child package namespace handle missing from procfs handles");
 const wasmPolicyApp = os.wasm.processApp({
   path: "/opt/namespace-probe/tool.wasm",
   cwd: "/opt/namespace-probe",
@@ -216,6 +221,11 @@ assert(namespaceMounts.includes("/var/lib/dindbos/package-state/namespace-probe 
 assert(namespaceMounts.includes("namespace=package:namespace-probe"), "child /proc mounts missing namespace label");
 const namespaceLimits = JSON.parse(os.fs.readFile(`/proc/${namespaceChild.pid}/limits`));
 assert(namespaceLimits.processGroup === "package:namespace-probe", "child /proc limits missing process group");
+os.objects.revokeHandle(namespaceChild.manifest.namespace.processHandleId, "package-namespace-handle-smoke");
+await assertRejects(
+  () => packages.assertDependencyPathAllowed(namespaceChild.manifest.namespace, "/opt/namespace-probe/node_modules/declared-lib/index.js", "read"),
+  "stale handle",
+);
 const namespaceEndpoint = os.ipcEndpoints.get("namespace-target.echo");
 assert(namespaceEndpoint?.objectId && namespaceEndpoint?.handleId, "IPC endpoint did not receive kernel object and handle ids");
 assert(os.objects.get(namespaceEndpoint.objectId)?.type === "ipc", "IPC endpoint kernel object type mismatch");
