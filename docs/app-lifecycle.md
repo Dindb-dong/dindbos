@@ -27,6 +27,8 @@ Browser `pagehide` and hidden-tab `visibilitychange` events transition the OS th
 
 Page lifecycle exits write `/var/run/dindbos/recovery/last-shutdown.json` with pending persistence status, suspended services, worker-backed processes, and running processes. When the next boot sees an unrecovered dirty shutdown record, it writes `/var/run/dindbos/recovery/last-recovery.json`, acknowledges the prior shutdown record, and emits an `os:lifecycle` transition to `recovered` before normal boot continues.
 
+Process lifecycle callbacks are recorded per process. `suspending` runs `prepare-suspend`, `suspended` runs `suspend`, `resuming` runs `resume`, `shutting-down` runs `prepare-shutdown`, and `recovered` runs `recovery-inspection`. Callback results are emitted as `process:lifecycle` events and surfaced in `/proc/<pid>/status` plus `/proc/processes.json`.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed
@@ -101,7 +103,7 @@ State that must survive focus changes should be stored in the DOM, app state obj
 
 ### Suspend And Resume
 
-The runtime emits `app:suspend` when a window is minimized and `app:resume` when it is restored or maximized. Dedicated in-process suspend and resume hooks are not implemented yet.
+The runtime emits `app:suspend` when a window is minimized and `app:resume` when it is restored or maximized. OS-level page lifecycle transitions also invoke process lifecycle callbacks for prepare-suspend, suspend, resume, prepare-shutdown, and recovery inspection when an app or process provides `lifecycleCallbacks`.
 
 Apps should remain robust when the browser tab is backgrounded, throttled, restored, or reloaded. Durable state must be flushed through VFS/storage APIs rather than relying on timers continuing to run.
 

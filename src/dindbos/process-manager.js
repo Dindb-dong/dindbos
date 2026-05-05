@@ -36,6 +36,13 @@ export class ProcessManager {
       windowState: "starting",
       crashReportPath: "",
       crashIndexPath: "",
+      lifecycleCallbacks: context.lifecycleCallbacks || app.lifecycleCallbacks || null,
+      lifecycleCallbackRuns: [],
+      lifecycleLastCallback: "",
+      lifecycleLastReason: "",
+      lifecycleLastAt: "",
+      lifecycleLastResult: "",
+      lifecycleLastError: "",
     };
     this.processes.set(process.pid, process);
     this.history.push({ ...process });
@@ -190,6 +197,57 @@ export class ProcessManager {
     });
   }
 
+  applyLifecycleTransition(osState, reason = "") {
+    const callback = processLifecycleCallbackForState(osState);
+    if (!callback) return [];
+    const results = [];
+    this.processes.forEach((process) => {
+      if (process.endedAt || process.state === "crashed") return;
+      const result = this.runLifecycleCallback(process, callback, reason, osState);
+      results.push(result);
+    });
+    if (results.length) this.syncProcfs();
+    return results;
+  }
+
+  runLifecycleCallback(process, callback, reason, osState) {
+    const at = new Date().toISOString();
+    const entry = {
+      at,
+      callback: callback.id,
+      reason: String(reason || ""),
+      osState,
+      status: "recorded",
+      result: "",
+      error: "",
+    };
+    const handler = lifecycleHandlerFor(process.lifecycleCallbacks, callback);
+    if (handler) {
+      try {
+        const value = handler({
+          process: this.withRuntimeMetrics(process),
+          reason: entry.reason,
+          osState,
+          callback: callback.id,
+        });
+        entry.status = "handled";
+        entry.result = value === undefined ? "" : String(value);
+      } catch (error) {
+        entry.status = "error";
+        entry.error = error?.message || String(error);
+      }
+    }
+    process.lifecycleCallbackRuns = [...(process.lifecycleCallbackRuns || []), entry].slice(-20);
+    process.lifecycleLastCallback = entry.callback;
+    process.lifecycleLastReason = entry.reason;
+    process.lifecycleLastAt = at;
+    process.lifecycleLastResult = entry.result;
+    process.lifecycleLastError = entry.error;
+    this.log(process.pid, `lifecycle ${entry.callback} ${entry.reason}${entry.error ? ` ${entry.error}` : ""}`, entry.error ? "error" : "info");
+    this.os.bus.emit("process:lifecycle", { ...entry, pid: process.pid, appId: process.appId });
+    return { ...entry, pid: process.pid, appId: process.appId };
+  }
+
   restart(pid) {
     const process = this.get(pid);
     if (!process) throw new Error(`restart: ${pid}: no such process`);
@@ -245,6 +303,12 @@ export class ProcessManager {
       activityLastSampleAt: process.activityLastSampleAt,
       crashReportPath: process.crashReportPath || "",
       crashIndexPath: process.crashIndexPath || "",
+      lifecycleLastCallback: process.lifecycleLastCallback || "",
+      lifecycleLastReason: process.lifecycleLastReason || "",
+      lifecycleLastAt: process.lifecycleLastAt || "",
+      lifecycleLastResult: process.lifecycleLastResult || "",
+      lifecycleLastError: process.lifecycleLastError || "",
+      lifecycleCallbackRuns: process.lifecycleCallbackRuns || [],
     })), null, 2);
     this.os.fs.writeOrCreateFile("/proc/processes.json", `${payload}\n`, "/", {
       mime: "application/json",
@@ -343,13 +407,14 @@ export class ProcessManager {
   }
 
   withRuntimeMetrics(process) {
+    const { lifecycleCallbacks, ...publicProcess } = process;
     const uptimeMs = process.endedAt
       ? new Date(process.endedAt).getTime() - new Date(process.startedAt).getTime()
       : Date.now() - new Date(process.startedAt).getTime();
     const runtimeBytes = estimateRuntimeBytes(process, this.logs.get(process.pid) || []);
     const activity = processActivity(process);
     return {
-      ...process,
+      ...publicProcess,
       uptimeMs: Math.max(0, uptimeMs),
       runtimeBytes,
       logLines: this.logs.get(process.pid)?.length || 0,
@@ -417,7 +482,29 @@ function formatProcessStatus(process) {
     `ActivitySamples:\t${process.activitySamples}`,
     `ActivityLastSample:\t${process.activityLastSampleAt || "-"}`,
     `CrashReport:\t${process.crashReportPath || "-"}`,
+    `LifecycleLastCallback:\t${process.lifecycleLastCallback || "-"}`,
+    `LifecycleLastReason:\t${process.lifecycleLastReason || "-"}`,
+    `LifecycleLastAt:\t${process.lifecycleLastAt || "-"}`,
+    `LifecycleLastResult:\t${process.lifecycleLastResult || "-"}`,
+    `LifecycleLastError:\t${process.lifecycleLastError || "-"}`,
   ].join("\n");
+}
+
+function processLifecycleCallbackForState(osState) {
+  const map = {
+    suspending: { id: "prepare-suspend", camel: "prepareSuspend" },
+    suspended: { id: "suspend", camel: "suspend" },
+    resuming: { id: "resume", camel: "resume" },
+    "shutting-down": { id: "prepare-shutdown", camel: "prepareShutdown" },
+    recovered: { id: "recovery-inspection", camel: "recoveryInspection" },
+  };
+  return map[osState] || null;
+}
+
+function lifecycleHandlerFor(callbacks, callback) {
+  if (!callbacks || typeof callbacks !== "object") return null;
+  const handler = callbacks[callback.id] || callbacks[callback.camel];
+  return typeof handler === "function" ? handler : null;
 }
 
 function processActivity(process) {

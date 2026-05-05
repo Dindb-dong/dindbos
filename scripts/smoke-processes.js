@@ -11,9 +11,11 @@ const os = bootOs();
 const launched = [];
 let closedWindow = null;
 const lifecycleEvents = [];
+const processLifecycleEvents = [];
 ["launch", "ready", "focus", "suspend", "resume", "crash", "close"].forEach((type) => {
   os.bus.on(`app:${type}`, (event) => lifecycleEvents.push(`${type}:${event.appId}:${event.reason || event.error || ""}`));
 });
+os.bus.on("process:lifecycle", (event) => processLifecycleEvents.push(`${event.callback}:${event.appId}:${event.reason}:${event.status}`));
 
 os.launch = (appId) => {
   launched.push(appId);
@@ -67,6 +69,34 @@ assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.
 const beforeLog = os.processes.readLog(process.pid);
 os.processes.log(process.pid);
 assert(os.processes.readLog(process.pid) === beforeLog, "log read unexpectedly mutated process log");
+
+const callbackRuns = [];
+const lifecycleApp = {
+  id: "lifecycle-app",
+  name: "Lifecycle App",
+  manifest: { capabilities: [] },
+  lifecycleCallbacks: {
+    prepareSuspend: ({ reason }) => {
+      callbackRuns.push(`prepare:${reason}`);
+      return "prepared";
+    },
+    suspend: ({ reason }) => callbackRuns.push(`suspend:${reason}`),
+    resume: ({ reason }) => callbackRuns.push(`resume:${reason}`),
+    prepareShutdown: ({ reason }) => callbackRuns.push(`shutdown:${reason}`),
+    recoveryInspection: ({ reason }) => callbackRuns.push(`recovery:${reason}`),
+  },
+};
+const lifecycleProcess = os.processes.spawn(lifecycleApp, { source: "lifecycle-smoke" });
+os.processes.applyLifecycleTransition("suspending", "smoke-hidden");
+os.processes.applyLifecycleTransition("suspended", "smoke-hidden");
+os.processes.applyLifecycleTransition("resuming", "smoke-visible");
+os.processes.applyLifecycleTransition("shutting-down", "smoke-unload");
+os.processes.applyLifecycleTransition("recovered", "smoke-recovery");
+assert(callbackRuns.join(",") === "prepare:smoke-hidden,suspend:smoke-hidden,resume:smoke-visible,shutdown:smoke-unload,recovery:smoke-recovery", "process lifecycle callbacks did not run in order");
+assert(processLifecycleEvents.includes("prepare-suspend:lifecycle-app:smoke-hidden:handled"), "process lifecycle event missing prepare-suspend");
+assert(os.processes.get(lifecycleProcess.pid).lifecycleLastCallback === "recovery-inspection", "process lifecycle last callback mismatch");
+assert(os.fs.readFile(`/proc/${lifecycleProcess.pid}/status`).includes("LifecycleLastCallback:\trecovery-inspection"), "process /proc status missing lifecycle callback");
+assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === lifecycleProcess.pid && entry.lifecycleLastCallback === "recovery-inspection"), "/proc processes JSON missing lifecycle callback");
 
 const crashApp = { id: "crashy", name: "Crashy", manifest: { capabilities: [] } };
 const crashed = os.processes.spawn(crashApp, { source: "crash-smoke" });

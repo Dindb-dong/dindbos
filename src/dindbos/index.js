@@ -273,6 +273,7 @@ export class DindbOS {
     this.lifecycleState = entry;
     this.lifecycleTransitions.push(entry);
     this.lifecycleTransitions = this.lifecycleTransitions.slice(-50);
+    this.processes?.applyLifecycleTransition?.(state, entry.reason);
     this.bus.emit("os:lifecycle", this.lifecycleStatus());
     this.writeLifecycleDiagnostics();
     return this.lifecycleStatus();
