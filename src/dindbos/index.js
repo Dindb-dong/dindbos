@@ -197,7 +197,8 @@ export class DindbOS {
     this.overlayMounts = new Map();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
-    this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
+    this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1", user: this.session.user });
+    this.cache.setUser?.(this.session.user);
     this.clipboard = options.clipboard || createRuntimeClipboard(options.clipboardText || "");
     this.pty = options.pty || createRuntimePtyManager();
     this.browserProvider = {
@@ -2389,6 +2390,7 @@ export class DindbOS {
     });
     this.sessionId = String(options.sessionId || `${this.session.user}:${this.instanceId}:${Date.now().toString(36)}`);
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
+    this.cache.setUser?.(this.session.user);
     Object.assign(this.sessionAuth, {
       state: "authenticated",
       locked: false,
