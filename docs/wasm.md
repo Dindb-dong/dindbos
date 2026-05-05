@@ -14,6 +14,8 @@ wasm /home/guest/bin/hello.wasm max
 
 Executable `.wasm` files can be launched directly through the shell when the execute bit is set. The `wasm` command is the explicit form.
 
+Package apps can also use WASM entry points by declaring `"runtime": "wasm"` or an `.wasm` `app.entry` in `dindbos.app.json`. AppRegistry launches the package window, then the package manager runs the WASM entry through the same runner with the package's declared filesystem and capability scopes.
+
 ## Imports
 
 Current modules can import from `dindbos`:
@@ -53,7 +55,6 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 - no full WASI import surface yet
 - no descriptor table, stdin pipes, or TTY device yet
 - no worker isolation yet
-- no package manifest WASM entry point yet
 - no compiler toolchain integration docs yet
 
 ## Verification
@@ -62,4 +63,4 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 npm run smoke:wasm
 ```
 
-The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, nonzero exit status, and process tracking for `.wasm` files.
+The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.

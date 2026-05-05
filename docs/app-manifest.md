@@ -16,6 +16,7 @@ Packages are installed from `dindbos.app.json`.
     "width": 560,
     "height": 380,
     "entry": "app.js",
+    "runtime": "javascript",
     "content": "# Hello Notes"
   },
   "dependencies": {
@@ -84,7 +85,7 @@ Packages can declare a required compatibility tier with `compatibility.tier`, `c
 
 Tier C WASI/WASM programs, Tier D worker-isolated long-running programs, and Tier E broader companion-assisted native-adjacent capabilities are roadmap targets. Package installs that require those unsupported tiers fail before package files, launchers, records, or app registrations are written. `doctor compat` prints the current tier support and unsupported native boundaries.
 
-When `app.entry` is present, DindbOS reads that file from `/opt/<package>` and imports it as an ES module. The module should export `mount()` or a default function:
+When `app.entry` is present, DindbOS reads that file from `/opt/<package>`. JavaScript entries are the default and can also declare `"runtime": "javascript"`. The module should export `mount()` or a default function:
 
 ```js
 export async function mount({ content, os, pkg, imports }) {
@@ -94,6 +95,8 @@ export async function mount({ content, os, pkg, imports }) {
 ```
 
 Remote file entries can include `integrity` as `sha256-<base64 digest>`. npm dependencies are browser ESM module URLs, currently resolved through `https://esm.sh`, and are loaded by package apps through `imports.npm()`.
+
+WASM package apps can declare `"runtime": "wasm"` or use a `.wasm` entry. DindbOS runs the entry through the browser-native WASM runner, renders stdout/stderr/status into the package window, and applies the package's declared filesystem and capability scopes to the child WASM process. This is the DindbOS ABI runner, not full WASI tier C compatibility yet.
 
 ## Manifest Examples
 
@@ -187,6 +190,38 @@ Remote file entries can include `integrity` as `sha256-<base64 digest>`. npm dep
       "path": "app.js",
       "mime": "text/javascript",
       "content": "export function mount({ content, pkg }) { content.innerHTML = `<h1>${pkg.name}</h1>`; }"
+    }
+  ]
+}
+```
+
+### WASM Package App
+
+```json
+{
+  "id": "wasm-tool",
+  "name": "WASM Tool",
+  "version": "0.1.0",
+  "app": {
+    "id": "wasm-tool",
+    "name": "WASM Tool",
+    "title": "WASM Tool.app",
+    "entry": "tool.wasm",
+    "runtime": "wasm"
+  },
+  "permissions": {
+    "capabilities": [],
+    "fileSystem": {
+      "read": ["/opt/wasm-tool"],
+      "write": ["/home/guest"]
+    }
+  },
+  "files": [
+    {
+      "path": "tool.wasm",
+      "mime": "application/wasm",
+      "base64": "AGFzbQEAAA==",
+      "permissions": "-rwxr-xr-x"
     }
   ]
 }
