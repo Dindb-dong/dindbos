@@ -90,6 +90,28 @@ export class KeychainManager {
     return { ...publicRecord(record), value: vault.values.get(id) || "" };
   }
 
+  exportSecret(name, context = {}) {
+    const vault = this.vaultFor(context);
+    const id = normalizeName(name);
+    this.assertUnlocked(vault, "export", context, id);
+    const record = this.requireRecord(vault, id, context, "export");
+    if (!this.canReadRecord(vault, record, context)) {
+      this.audit(vault, "export", id, requesterId(context), "denied", "no-grant");
+      throw new Error(`keychain: ${id}: access denied`);
+    }
+    if (!record.exportable) {
+      this.audit(vault, "export", id, requesterId(context), "denied", "not-exportable");
+      throw new Error(`keychain: ${id}: export denied by policy`);
+    }
+    this.audit(vault, "export", id, requesterId(context), "allowed");
+    return {
+      kind: "dindbos-keychain-export-v1",
+      exportedAt: new Date().toISOString(),
+      record: publicRecord(record),
+      value: vault.values.get(id) || "",
+    };
+  }
+
   deleteSecret(name, context = {}) {
     const vault = this.vaultFor(context);
     const id = normalizeName(name);

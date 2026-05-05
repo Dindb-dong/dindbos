@@ -14,7 +14,7 @@ const BUILTIN_MANUALS = {
   find: "find [path] [name] - search files by name",
   grep: "grep <text> <file> - search lines in a text file",
   kill: "kill <pid> - terminate a process",
-  keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|signing - manage DindbOS secrets",
+  keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|signing - manage DindbOS secrets",
   ls: "ls [-la] [path] - list directory contents",
   man: "man <command> - show command help",
   manifest: "manifest [app] - show app manifests",
@@ -674,6 +674,10 @@ export class ShellSession {
       if (!name) return "keychain: usage: keychain get <name>";
       return this.os.keychain.getSecret(name, context).value;
     }
+    if (action === "export") {
+      if (!name) return "keychain: usage: keychain export <name>";
+      return JSON.stringify(this.os.keychain.exportSecret(name, context));
+    }
     if (action === "set") {
       const value = rest.join(" ");
       if (!name || !value) return "keychain: usage: keychain set <name> <value>";
@@ -711,7 +715,7 @@ export class ShellSession {
         : "keychain: no audit records";
     }
     if (action === "signing") return this.keychainSigning(name, rest, context);
-    return "keychain: usage: keychain list|get|set|delete|lock|unlock|grant|revoke|audit|signing";
+    return "keychain: usage: keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|signing";
   }
 
   keychainSigning(action, args, context) {

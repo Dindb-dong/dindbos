@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { AppSandbox } from "../src/dindbos/app-sandbox.js";
+import { collectExportEntries } from "../src/dindbos/apps/builtins.js";
 import { ShellSession } from "../src/dindbos/shell.js";
 import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
 
@@ -54,9 +55,24 @@ os.packages.install({
 assert(os.packages.info("secret-package").secrets[0].keychainName === "registry.token", "package record did not expose secret reference metadata");
 assert(os.apps.getManifest("secret-package").secrets[0].name === "registry", "app manifest did not expose package secret reference");
 assert(!os.fs.readFile("/var/lib/dindbos/packages/secret-package.json").includes("s3cr3t-token"), "package record exposed raw keychain secret value");
+await assertArchiveDoesNotExposeSecret("/var/lib/dindbos/packages", "s3cr3t-token", "package DB export exposed raw keychain secret value");
+await assertArchiveDoesNotExposeSecret("/var/lib/dindbos/keychain", "s3cr3t-token", "keychain metadata export exposed raw keychain secret value");
+await assertArchiveDoesNotExposeSecret("/var/log/dindbos", "s3cr3t-token", "audit log export exposed raw keychain secret value");
 const secretWindow = os.apps.launch("secret-package");
 await secretWindow.rendered;
 assert(secretWindow.content.innerHTML.includes("registry:repository-token:registry.token:s3cr3t-token:undeclared-denied"), `package secret reference render mismatch: ${secretWindow.content.innerHTML}`);
+
+await assertRejects(() => os.keychain.exportSecret("registry.token", { appId: "shell", principal: os.permissions.principal(os.session) }), "export denied by policy");
+result = await shell.executeAsync("keychain export registry.token");
+assert(result.status === 1 && result.output.includes("export denied by policy"), `non-exportable shell export mismatch: ${JSON.stringify(result)}`);
+os.keychain.setSecret("portable.token", "portable-secret", { ownerAppId: "shell", exportable: true }, { appId: "shell", principal: os.permissions.principal(os.session) });
+const explicitExport = os.keychain.exportSecret("portable.token", { appId: "shell", principal: os.permissions.principal(os.session) });
+assert(explicitExport.kind === "dindbos-keychain-export-v1" && explicitExport.value === "portable-secret", "explicit keychain export payload mismatch");
+result = await shell.executeAsync("keychain export portable.token");
+const shellExport = JSON.parse(result.output);
+assert(result.status === 0 && shellExport.value === "portable-secret" && shellExport.record.exportable === true, `shell keychain export mismatch: ${JSON.stringify(result)}`);
+await assertArchiveDoesNotExposeSecret("/var/lib/dindbos/packages", "portable-secret", "package DB export exposed explicitly exportable keychain secret value");
+await assertArchiveDoesNotExposeSecret("/var/lib/dindbos/keychain", "portable-secret", "keychain metadata export exposed explicitly exportable secret value");
 
 const appProcess = processFor("credential-app", ["keychain.read", "keychain.write"]);
 const appSandbox = new AppSandbox(os, appProcess);
@@ -86,7 +102,7 @@ assert(audit.some((entry) => entry.action === "get" && entry.result === "denied"
 assert(audit.some((entry) => entry.action === "grant" && entry.result === "allowed"), "keychain audit missing grant");
 assert(audit.some((entry) => entry.action === "revoke" && entry.result === "allowed"), "keychain audit missing revoke");
 
-console.log("keychain smoke ok vault grants signing audit");
+console.log("keychain smoke ok vault grants signing audit export-policy");
 
 function processFor(appId, capabilities) {
   return {
@@ -109,6 +125,19 @@ async function assertRejects(action, expected) {
     throw new Error(`expected rejection containing ${expected}, got ${error.message}`);
   }
   throw new Error(`expected rejection containing ${expected}`);
+}
+
+async function assertArchiveDoesNotExposeSecret(path, secret, message) {
+  const entries = await collectExportEntries(os, path);
+  const serialized = JSON.stringify(entries);
+  const decodedPayload = entries.map((entry) => {
+    try {
+      return Buffer.from(entry.data || "", "base64").toString("utf8");
+    } catch {
+      return "";
+    }
+  }).join("\n");
+  assert(!serialized.includes(secret) && !decodedPayload.includes(secret), message);
 }
 
 function assert(condition, message) {
