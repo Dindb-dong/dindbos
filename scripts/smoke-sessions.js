@@ -300,8 +300,15 @@ assert(syncTarget.fs.exists("/var/cache/dindbos/package-index.json"), "remote sy
 assert(syncTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync apply did not restore settings metadata");
 assert(syncTarget.remoteSyncStatus().lastAppliedSnapshot.conflicts >= 1, "remote sync status did not record apply conflicts");
 assert(syncTarget.remoteSyncStatus().lastAppliedSnapshot.refused >= 1, "remote sync status did not record refused apply records");
+const pendingSyncConflicts = syncTarget.listRemoteSyncConflicts();
+assert(pendingSyncConflicts.length >= 1, "remote sync conflict repair list did not find conflict copies");
+const repairedConflict = syncTarget.resolveRemoteSyncConflict(pendingSyncConflicts[0].path, { action: "use-conflict" });
+assert(repairedConflict.action === "use-conflict", "remote sync conflict repair action mismatch");
+assert(syncTarget.fs.readFile(repairedConflict.targetPath).includes("peer edit"), "remote sync conflict repair did not apply conflict bytes");
+assert(!syncTarget.fs.exists(repairedConflict.path), "remote sync conflict repair did not remove conflict copy");
+assert(syncTarget.remoteSyncStatus().lastRepair.remainingConflicts === syncTarget.listRemoteSyncConflicts().length, "remote sync status did not record repair result");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair");
 
 function createStorage(values = new Map()) {
   return {

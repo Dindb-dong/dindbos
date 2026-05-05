@@ -124,6 +124,8 @@ It reports the active session, current working directory, storage backend and di
 
 `syscall <name> [json]` calls the DindbOS syscall ABI and prints the structured JSON result. See `docs/syscalls.md` for the supported syscall names, errno-style failures, and trace files under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`.
 
+`sync status`, `sync conflicts`, and `sync resolve <use-conflict|keep-local|delete-conflict> <conflict-path>` expose the remote sync repair boundary. Conflict copies live under `.sync-conflicts`; resolving with `use-conflict` applies the preserved remote bytes to the target file, while `keep-local` or `delete-conflict` removes the conflict copy without replacing the local file.
+
 ## Verification
 
 ```bash
