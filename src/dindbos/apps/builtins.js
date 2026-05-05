@@ -3436,6 +3436,7 @@ export async function settingsRuntimeSnapshot(os) {
   const recovery = safeRead(() => os.recoveryStatus?.(), null);
   const coordination = safeRead(() => os.sessionCoordinationStatus?.(), safeRead(() => os.sessionStatus?.().coordination, null));
   const sync = safeRead(() => os.remoteSyncStatus?.(), null);
+  const syncMerge = safeRead(() => os.remoteSyncMergePolicy?.(), null);
   return {
     user,
     home,
@@ -3450,6 +3451,7 @@ export async function settingsRuntimeSnapshot(os) {
     recovery,
     coordination,
     sync,
+    syncMerge,
   };
 }
 
@@ -3522,6 +3524,7 @@ function renderSettingsRemoteSync(sync) {
       <div><dt>Backend</dt><dd>${escapeHtml(sync?.backend || "unavailable")}</dd></div>
       <div><dt>Encrypted</dt><dd>${Boolean(sync?.encrypted)}</dd></div>
       <div><dt>Last Snapshot</dt><dd>${snapshot ? `${escapeHtml(shortTime(snapshot.createdAt))} · files=${Number(snapshot.fileCount || 0)} · cache=${Number(snapshot.cacheRecords || 0)} · settings=${Number(snapshot.settingsRecords || 0)}` : "none"}</dd></div>
+      <div><dt>Merge Rules</dt><dd>${Number(sync?.mergeRuleCount || 0)}</dd></div>
       <div><dt>Last Error</dt><dd>${escapeHtml(sync?.lastError || "-")}</dd></div>
     </dl>
   `;

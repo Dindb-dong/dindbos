@@ -666,6 +666,7 @@ export class ShellSession {
     const lifecycle = safeRead(() => this.os.lifecycleStatus?.(), null);
     const recovery = safeRead(() => this.os.recoveryStatus?.(), null);
     const sync = safeRead(() => this.os.remoteSyncStatus?.(), null);
+    const syncMerge = safeRead(() => this.os.remoteSyncMergePolicy?.(), null);
     const handoff = sessionStatus?.coordination?.handoff;
     const groups = this.os.session.groups || ["users"];
     const localMountSupported = Boolean(safeRead(() => this.os.localMounts?.supported?.(), false));
@@ -685,6 +686,7 @@ export class ShellSession {
       `lifecycle state=${lifecycle?.state || "unknown"} reason=${lifecycle?.reason || "-"} updated=${lifecycle?.updatedAt || "-"}`,
       `recovery lastShutdown=${recovery?.lastShutdown?.recordedAt || "-"} lastRecovery=${recovery?.lastRecovery?.recoveredAt || "-"} closedPagePersistent=${Boolean(recovery?.closedPagePersistence)}`,
       `sync backend=${sync?.backend || "unavailable"} encrypted=${Boolean(sync?.encrypted)} lastSnapshot=${sync?.lastSuccessfulSnapshot?.createdAt || "-"} files=${Number(sync?.lastSuccessfulSnapshot?.fileCount || 0)} cache=${Number(sync?.lastSuccessfulSnapshot?.cacheRecords || 0)} settings=${Number(sync?.lastSuccessfulSnapshot?.settingsRecords || 0)}`,
+      `syncMerge planner=${syncMerge?.planner || "unavailable"} rules=${Array.isArray(syncMerge?.rules) ? syncMerge.rules.length : 0}`,
       "troubleshooting docs=docs/support.md command=storage|mount-local --list|ps|pkg list",
     ].join("\n");
   }

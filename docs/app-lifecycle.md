@@ -41,6 +41,8 @@ Remote session handoff starts as a BroadcastChannel-backed negotiation protocol.
 
 Remote sync starts as an optional storage-backed snapshot backend. `os.createRemoteSyncSnapshot({ passphrase, paths })` collects selected VFS paths, encrypts the payload with WebCrypto AES-GCM/PBKDF2, stores the encrypted snapshot record in runtime storage, and exposes the last successful snapshot through `os.remoteSyncStatus()`, Settings, and `doctor`. Without explicit `paths`, the default snapshot roots cover the active user home, app state, package records, package cache metadata under `/var/cache`, and settings under `/etc/dindbos`; snapshot summaries report file, package, app-state, cache, and settings record counts.
 
+Offline sync merge rules are exposed before full snapshot apply. `os.remoteSyncMergePolicy()` reports the first-pass roots and policies, and `os.planRemoteSyncMerge(changes)` classifies proposed changes as `use-local`, `use-remote`, `three-way-merge`, `last-writer-wins`, `conflict-copy`, `refuse`, or `rebuild`. User text documents can merge when both sides appended safely, binary or overlapping document edits preserve conflict copies, app-state conflicts preserve both sides until app merge hooks exist, package metadata conflicts are refused until package transactions validate them, search indexes rebuild as derived state, and safe settings use timestamp order.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed
