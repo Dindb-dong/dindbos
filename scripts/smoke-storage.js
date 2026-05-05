@@ -95,6 +95,15 @@ assert(reloaded.exists("/home/guest/Documents/.atomic-created.txt.dindbos-tmp"),
 const stagedFsckRepair = reloaded.checkIntegrity({ repair: true, dryRun: false });
 assert(stagedFsckRepair.repairs.some((entry) => entry.kind === "remove-orphaned-atomic-staging" && !entry.dryRun), "fsck repair did not report orphaned staging removal");
 assert(!reloaded.exists("/home/guest/Documents/.atomic-created.txt.dindbos-tmp"), "fsck repair did not remove orphaned staging node");
+reloaded.createDirectory("/var", "/", { owner: "root", group: "root" });
+reloaded.createDirectory("/var/recovery", "/", { owner: "root", group: "root" });
+reloaded.writeOrCreateFile("/var/recovery/skip.txt", "do not recurse", "/", { mime: "text/plain" });
+const salvage = reloaded.salvageExport({ root: "/" });
+assert(salvage.kind === "dindbos-fsck-salvage-v1", "salvage export kind mismatch");
+assert(salvage.entries.some((entry) => entry.path === textPath && entry.type === "file"), "salvage export missing text file");
+assert(salvage.entries.some((entry) => entry.path === binaryPath && entry.encoding === "base64"), "salvage export missing binary file bytes");
+assert(!salvage.entries.some((entry) => entry.path === "/var/recovery/skip.txt"), "salvage export recursed into recovery output");
+assert(salvage.skipped.some((entry) => entry.path === "/var/recovery" && entry.reason === "recovery-output"), "salvage export did not record skipped recovery output");
 
 console.log(`storage smoke ok textBytes=${text.length} binaryBytes=${bytes.byteLength}`);
 

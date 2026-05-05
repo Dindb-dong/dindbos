@@ -3,6 +3,8 @@ import { compatibilitySnapshot } from "./compat.js?v=20260422-browserd";
 const SHELL_HISTORY_DIR = "/var/lib/dindbos/shell-history";
 const MAX_SHELL_HISTORY = 200;
 
+const RECOVERY_ROOT = "/var/recovery/fsck";
+
 const BUILTIN_MANUALS = {
   cat: "cat <file> - print file contents",
   cd: "cd [path] - change current directory",
@@ -20,7 +22,7 @@ const BUILTIN_MANUALS = {
   env: "env - list shell environment",
   export: "export KEY=value - set shell environment variable",
   find: "find [path] [name] - search files by name",
-  fsck: "fsck [--dry-run|--repair] - check VFS integrity and optionally repair safe metadata",
+  fsck: "fsck [--dry-run|--repair|--salvage] - check VFS integrity, repair safe metadata, or export readable recovery data",
   grep: "grep <text> <file> - search lines in a text file",
   kill: "kill <pid> - terminate a process",
   keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing - manage DindbOS secrets",
@@ -1089,12 +1091,38 @@ export class ShellSession {
     const repair = args.includes("--repair") || args.includes("--dry-run");
     const dryRun = args.includes("--dry-run") || !args.includes("--repair");
     const explain = args.includes("--explain") || args[0] === "explain";
+    const salvage = args.includes("--salvage");
     let result = this.os.fs.checkIntegrity({ repair, dryRun });
     result = mergeFsckResults(result, safeRead(() => this.os.packages?.checkIntegrity?.({ repair, dryRun }), null));
     result = mergeFsckResults(result, await safeAsync(() => this.os.storage?.checkIntegrity?.({ repair, dryRun }), null));
     result = mergeFsckResults(result, await safeAsync(() => this.os.localMounts?.checkIntegrity?.({ repair, dryRun }), null));
+    if (salvage) result = { ...result, salvage: this.writeFsckSalvageExport() };
     this.recordFsckLog(result);
     return formatFsck(result, { explain });
+  }
+
+  writeFsckSalvageExport() {
+    const principal = this.os.permissions?.systemPrincipal?.() || this.principal;
+    ["/var", "/var/recovery", RECOVERY_ROOT].forEach((path) => {
+      if (!this.os.fs.exists(path)) this.os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, principal);
+    });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const directory = this.os.fs.join(RECOVERY_ROOT, stamp);
+    this.os.fs.createDirectory(directory, "/", { owner: "root", group: "root", permissions: "drwx------" }, principal);
+    const archive = this.os.fs.salvageExport({ root: "/" });
+    const path = this.os.fs.join(directory, "salvage.dindbos-fsck-export.json");
+    this.os.fs.writeOrCreateFile(path, `${JSON.stringify(archive, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-------",
+      mime: "application/json",
+    }, principal);
+    return {
+      path,
+      directory,
+      entries: archive.entryCount,
+      skipped: archive.skippedCount,
+    };
   }
 
   recordFsckLog(result = {}) {
@@ -1116,6 +1144,7 @@ export class ShellSession {
       `localMounts=${Number(result.checkedLocalMounts || 0)}`,
       `problems=${Number(result.problemCount || 0)}`,
       `repairs=${Number(result.repairCount || 0)}`,
+      `salvage=${result.salvage?.path || "-"}`,
       `auditRecords=${auditRecords.length}`,
       `codes=${[...(result.problems || [])].map((entry) => entry.code).join(",") || "-"}`,
     ].join(" ");
@@ -1896,6 +1925,7 @@ function formatFsck(result = {}, options = {}) {
   (result.repairs || []).slice(0, 20).forEach((entry) => {
     lines.push(`repair ${entry.kind} ${entry.path} ${entry.from} -> ${entry.to} dryRun=${Boolean(entry.dryRun)}`);
   });
+  if (result.salvage?.path) lines.push(`salvage ${result.salvage.path} entries=${Number(result.salvage.entries || 0)} skipped=${Number(result.salvage.skipped || 0)}`);
   if (options.explain && !(result.problems || []).length) lines.push("explain ok: no integrity problems detected");
   return lines.join("\n");
 }

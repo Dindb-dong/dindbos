@@ -1,4 +1,4 @@
-import { cloneFileContent, fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent, normalizeFileContentAsync } from "./file-data.js?v=20260422-browserd";
+import { bytesToBase64, cloneFileContent, fileContentByteLength, fileContentToBytes, fileContentToText, normalizeFileContent, normalizeFileContentAsync } from "./file-data.js?v=20260422-browserd";
 
 export class VirtualFileSystem {
   constructor(rootNode, options = {}) {
@@ -681,6 +681,72 @@ export class VirtualFileSystem {
       repairCount: repairs.length,
       problems,
       repairs,
+    };
+  }
+
+  salvageExport(options = {}) {
+    const rootPath = this.normalize(options.root || "/");
+    const rootNode = this.resolve(rootPath);
+    const entries = [];
+    const skipped = [];
+    const startedAt = new Date().toISOString();
+    const walk = (node, path) => {
+      if (!node || typeof node !== "object") {
+        skipped.push({ path, reason: "invalid-node" });
+        return;
+      }
+      if (path === "/var/recovery" || path.startsWith("/var/recovery/")) {
+        skipped.push({ path, reason: "recovery-output" });
+        return;
+      }
+      if (node.transient) {
+        skipped.push({ path, reason: "transient" });
+        return;
+      }
+      if (node.type === "file") {
+        const bytes = fileContentToBytes(node.content);
+        entries.push({
+          path,
+          type: "file",
+          mime: node.mime || mimeFromName(node.name || path),
+          size: bytes.byteLength,
+          owner: node.owner || "",
+          group: node.group || "",
+          permissions: node.permissions || "",
+          modified: node.modified || "",
+          encoding: "base64",
+          data: bytesToBase64(bytes),
+        });
+        return;
+      }
+      if (isDirectoryLike(node)) {
+        entries.push({
+          path,
+          type: node.type === "mount" ? "mount" : "directory",
+          owner: node.owner || "",
+          group: node.group || "",
+          permissions: node.permissions || "",
+          modified: node.modified || "",
+        });
+        if (!Array.isArray(node.children)) {
+          skipped.push({ path, reason: "invalid-children" });
+          return;
+        }
+        node.children.forEach((child) => walk(child, this.join(path, child?.name || "<unnamed>")));
+        return;
+      }
+      skipped.push({ path, reason: `unsupported-${node.type || "unknown"}` });
+    };
+    if (!rootNode) skipped.push({ path: rootPath, reason: "missing-root" });
+    else walk(rootNode, rootPath);
+    return {
+      kind: "dindbos-fsck-salvage-v1",
+      exportedAt: startedAt,
+      root: rootPath,
+      entries,
+      skipped,
+      entryCount: entries.length,
+      skippedCount: skipped.length,
     };
   }
 
