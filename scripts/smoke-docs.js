@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 
 const guide = readFileSync("docs/developer-guide.md", "utf8");
+const services = readFileSync("docs/services.md", "utf8");
 
 [
   "## Runtime Contract",
@@ -30,7 +31,19 @@ const guide = readFileSync("docs/developer-guide.md", "utf8");
   assert(guide.includes(term), `developer guide missing ${term}`);
 });
 
-console.log("docs smoke ok developer guide coverage");
+[
+  "## Service Manifest",
+  "## States",
+  "## Process Boundary",
+  "## Permission Boundary",
+  "## Browser Lifecycle Limits",
+  "/var/run/dindbos/services.json",
+  "service: manage denied",
+].forEach((term) => {
+  assert(services.includes(term), `services doc missing ${term}`);
+});
+
+console.log("docs smoke ok developer guide service coverage");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
