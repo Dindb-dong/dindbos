@@ -699,6 +699,7 @@ export class ShellSession {
     const syncMerge = safeRead(() => this.os.remoteSyncMergePolicy?.(), null);
     const handoff = sessionStatus?.coordination?.handoff;
     const handoffRelay = handoff?.relay || {};
+    const compositor = safeRead(() => this.os.windows?.compositorStatus?.(), null);
     const groups = this.os.session.groups || ["users"];
     const localMountSupported = Boolean(safeRead(() => this.os.localMounts?.supported?.(), false));
     const mounted = Array.isArray(mounts) ? mounts.filter((mount) => mount.status !== "forgotten").length : 0;
@@ -714,6 +715,7 @@ export class ShellSession {
       `localMounts supported=${localMountSupported} mounted=${mounted} persisted=${persistedMounts} errors=${mountErrors} helper=${helper?.status || "unavailable"} rename=${helper?.renameSupported || false}`,
       `packages installed=${Array.isArray(packages) ? packages.length : 0}`,
       `processes running=${Array.isArray(processes) ? processes.length : 0}`,
+      `compositor focused=${compositor?.activeWindowId || "-"} pid=${Number(compositor?.focusedPid || 0)} surfaces=${Number(compositor?.surfaceCount || 0)} lastInput=${compositor?.lastInputEvent?.type || "-"}`,
       `lifecycle state=${lifecycle?.state || "unknown"} reason=${lifecycle?.reason || "-"} updated=${lifecycle?.updatedAt || "-"}`,
       `recovery lastShutdown=${recovery?.lastShutdown?.recordedAt || "-"} lastRecovery=${recovery?.lastRecovery?.recoveredAt || "-"} closedPagePersistent=${Boolean(recovery?.closedPagePersistence)}`,
       `sync backend=${sync?.backend || "unavailable"} encrypted=${Boolean(sync?.encrypted)} lastSnapshot=${sync?.lastSuccessfulSnapshot?.createdAt || "-"} files=${Number(sync?.lastSuccessfulSnapshot?.fileCount || 0)} cache=${Number(sync?.lastSuccessfulSnapshot?.cacheRecords || 0)} settings=${Number(sync?.lastSuccessfulSnapshot?.settingsRecords || 0)} lastApplied=${sync?.lastAppliedSnapshot?.appliedAt || "-"} conflicts=${Number(sync?.lastAppliedSnapshot?.conflicts || 0)} refused=${Number(sync?.lastAppliedSnapshot?.refused || 0)} lastRetry=${sync?.lastRetry?.retriedAt || "-"} retryApplied=${Number(sync?.lastRetry?.applied || 0)} retryRefused=${Number(sync?.lastRetry?.refused || 0)}`,

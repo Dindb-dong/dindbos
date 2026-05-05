@@ -12,8 +12,11 @@ export class WindowManager {
     this.z = 20;
     this.cascade = 0;
     this.activeWindowId = "";
+    this.lastInputEvent = null;
+    this.lastCapture = null;
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
     this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
+    this.boundHandleGlobalPointerDown = (event) => this.recordInputEvent("pointerdown", event);
   }
 
   mount(layer, taskStrip) {
@@ -21,6 +24,8 @@ export class WindowManager {
     this.taskStrip = taskStrip;
     globalThis.window?.addEventListener?.("resize", this.boundKeepWindowsInViewport);
     globalThis.window?.addEventListener?.("keydown", this.boundHandleGlobalKeyDown);
+    globalThis.window?.addEventListener?.("pointerdown", this.boundHandleGlobalPointerDown);
+    this.writeCompositorProcfs("mount");
   }
 
   has(id) {
@@ -101,6 +106,7 @@ export class WindowManager {
     this.os.processes.markReady?.(config.pid);
     this.focus(config.id);
     this.renderTasks();
+    this.writeCompositorProcfs("open");
     return api;
   }
 
@@ -115,6 +121,7 @@ export class WindowManager {
     this.windows.forEach((item) => item.frame.classList.toggle("is-active", item === task));
     this.os.processes.updateWindowState?.(task.pid, "focused", { windowId: id });
     this.renderTasks();
+    this.writeCompositorProcfs("focus");
   }
 
   minimize(id) {
@@ -133,6 +140,7 @@ export class WindowManager {
     }, MINIMIZE_ANIMATION_MS);
     this.os.processes.updateWindowState?.(task.pid, "minimized", { windowId: id });
     this.renderTasks();
+    this.writeCompositorProcfs("minimize");
   }
 
   restore(id) {
@@ -151,6 +159,7 @@ export class WindowManager {
     this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, task.maximized ? "maximized" : "restored", { windowId: id });
     this.focus(id);
+    this.writeCompositorProcfs(task.maximized ? "maximize" : "restore");
   }
 
   close(id, options = {}) {
@@ -164,9 +173,11 @@ export class WindowManager {
     if (this.activeWindowId === id) this.activeWindowId = newestWindowId(this.windows);
     if (!options.skipOnClose) task.onClose?.();
     this.renderTasks();
+    this.writeCompositorProcfs("close");
   }
 
   handleGlobalKeyDown(event) {
+    this.recordInputEvent("keydown", event);
     if (event.altKey && event.key === "Tab") {
       event.preventDefault();
       this.cycleFocus(event.shiftKey ? -1 : 1);
@@ -225,6 +236,80 @@ export class WindowManager {
         height: `${next.height}px`,
       });
     });
+    this.writeCompositorProcfs("viewport");
+  }
+
+  recordInputEvent(type, event = {}) {
+    this.lastInputEvent = {
+      type,
+      windowId: this.activeWindowId || "",
+      key: String(event.key || ""),
+      pointerType: String(event.pointerType || ""),
+      button: event.button === undefined ? "" : String(event.button),
+      x: Number.isFinite(Number(event.clientX)) ? Number(event.clientX) : null,
+      y: Number.isFinite(Number(event.clientY)) ? Number(event.clientY) : null,
+      altKey: Boolean(event.altKey),
+      ctrlKey: Boolean(event.ctrlKey),
+      metaKey: Boolean(event.metaKey),
+      shiftKey: Boolean(event.shiftKey),
+      at: new Date().toISOString(),
+    };
+    this.writeCompositorProcfs("input");
+    return { ...this.lastInputEvent };
+  }
+
+  compositorStatus() {
+    const surfaces = [...this.windows.values()].map((task) => {
+      const rect = surfaceRectForTask(task);
+      return {
+        windowId: task.id,
+        appId: task.appId,
+        pid: task.pid,
+        title: task.title,
+        focused: task.id === this.activeWindowId,
+        minimized: Boolean(task.minimized),
+        maximized: Boolean(task.maximized),
+        hidden: Boolean(task.frame.hidden),
+        zIndex: Number(task.frame.style.zIndex || 0),
+        paintMode: "dom",
+        rect,
+      };
+    });
+    const focused = surfaces.find((surface) => surface.focused) || null;
+    return {
+      service: "dindbos-compositor",
+      activeWindowId: this.activeWindowId,
+      focusedPid: focused?.pid || 0,
+      focusedAppId: focused?.appId || "",
+      surfaceCount: surfaces.length,
+      captureOwner: this.lastCapture?.windowId || "",
+      paintMode: "dom",
+      viewport: {
+        width: globalThis.window?.innerWidth || 0,
+        height: globalThis.window?.innerHeight || 0,
+      },
+      lastInputEvent: this.lastInputEvent ? { ...this.lastInputEvent } : null,
+      surfaces,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  writeCompositorProcfs(reason = "update") {
+    if (!this.os?.fs?.writeOrCreateFile) return null;
+    const system = this.os.permissions?.systemPrincipal?.();
+    try {
+      if (!this.os.fs.exists("/proc")) this.os.fs.createDirectory("/proc", "/", { owner: "root", group: "root" }, system);
+      const status = { ...this.compositorStatus(), reason };
+      this.os.fs.writeOrCreateFile("/proc/compositor", `${JSON.stringify(status, null, 2)}\n`, "/", {
+        owner: "root",
+        group: "root",
+        permissions: "-r--r--r--",
+        mime: "application/json",
+      }, system);
+      return status;
+    } catch {
+      return null;
+    }
   }
 
   nextPosition(width, height) {
@@ -485,6 +570,16 @@ function windowPlacementForTask(task) {
     width: Number.parseFloat(task.frame.style.width) || task.width || MIN_WIDTH,
     height: Number.parseFloat(task.frame.style.height) || task.height || MIN_HEIGHT,
     maximized: Boolean(task.maximized),
+  };
+}
+
+function surfaceRectForTask(task) {
+  const rect = typeof task.frame.getBoundingClientRect === "function" ? task.frame.getBoundingClientRect() : {};
+  return {
+    left: Math.round(Number.parseFloat(task.frame.style.left) || rect.left || 0),
+    top: Math.round(Number.parseFloat(task.frame.style.top) || rect.top || 0),
+    width: Math.round(Number.parseFloat(task.frame.style.width) || rect.width || task.width || MIN_WIDTH),
+    height: Math.round(Number.parseFloat(task.frame.style.height) || rect.height || task.height || MIN_HEIGHT),
   };
 }
 

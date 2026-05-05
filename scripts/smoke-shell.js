@@ -134,6 +134,7 @@ assert(result.output.includes("localMounts supported=false mounted=0"), `doctor 
 assert(result.output.includes("helper=unavailable rename=false"), `doctor helper output missing: ${result.output}`);
 assert(result.output.includes("packages installed=1"), `doctor package output missing: ${result.output}`);
 assert(result.output.includes("processes running=0"), `doctor process output missing: ${result.output}`);
+assert(result.output.includes("compositor focused=settings pid=100 surfaces=2 lastInput=keydown"), `doctor compositor output missing: ${result.output}`);
 assert(result.output.includes("lifecycle state=active"), `doctor lifecycle output missing: ${result.output}`);
 assert(result.output.includes("closedPagePersistent=false"), `doctor recovery output missing: ${result.output}`);
 assert(result.output.includes("sync backend=storage-value encrypted=true lastSnapshot=2026-05-05T00:02:00.000Z files=2 cache=1 settings=1 lastApplied=2026-05-05T00:03:00.000Z conflicts=1 refused=2 lastRetry=2026-05-05T00:04:00.000Z retryApplied=1 retryRefused=0"), `doctor sync output missing: ${result.output}`);
@@ -400,6 +401,12 @@ function bootOs() {
   os.windows = {
     has: () => false,
     close: () => null,
+    compositorStatus: () => ({
+      activeWindowId: "settings",
+      focusedPid: 100,
+      surfaceCount: 2,
+      lastInputEvent: { type: "keydown" },
+    }),
   };
   os.processes = new ProcessManager(os);
   os.descriptors = new DescriptorManager(os);

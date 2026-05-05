@@ -221,20 +221,20 @@ class FakeElement {
 
 await runLiveWindowStateSmoke();
 
-console.log("window manager smoke ok viewport snap shortcuts");
+console.log("window manager smoke ok viewport snap shortcuts compositor");
 
 async function runLiveWindowStateSmoke() {
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
   try {
     installFakeDom();
-    const liveManager = new WindowManager({
-      processes: {
-        markReady: () => {},
-        updateWindowState: () => {},
-      },
-      fs: null,
-    });
+    const liveOs = bootOs();
+    liveOs.processes = {
+      markReady: () => {},
+      updateWindowState: () => {},
+    };
+    const liveManager = new WindowManager(liveOs);
+    liveOs.windows = liveManager;
     const layer = new FakeElement("div");
     const taskStrip = new FakeElement("nav");
     liveManager.mount(layer, taskStrip);
@@ -261,6 +261,13 @@ async function runLiveWindowStateSmoke() {
     assert(api.getState("browser").address === "https://example.com", "window API state was not preserved after minimize/focus");
     assert(task.frame.hidden === false, "focus did not reveal minimized window");
     assert(!task.frame.classList.contains("is-minimizing"), "focus did not cancel minimizing animation state");
+    const input = liveManager.recordInputEvent("pointerdown", { clientX: 22, clientY: 44, pointerType: "mouse", button: 0 });
+    assert(input.windowId === "browser", "compositor input did not bind to focused window");
+    const compositor = liveManager.compositorStatus();
+    assert(compositor.activeWindowId === "browser" && compositor.focusedPid === 42, "compositor status did not expose focused surface");
+    assert(compositor.surfaceCount === 1 && compositor.surfaces[0].rect.width === 640, "compositor status did not expose surface geometry");
+    const procCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
+    assert(procCompositor.lastInputEvent.type === "pointerdown", "/proc/compositor did not expose last input event");
     liveManager.activate("browser");
     assert(api.getState("browser").title === "Example Domain", "window API state was not preserved after activate");
   } finally {
