@@ -128,6 +128,23 @@ assert(result.ok && os.pty.getSession(pty.id).output === "pty out stream out", `
 os.processes.kill(ptyProcess.pid, "pty-smoke-exit");
 assert(!os.descriptors.tables.has(ptyProcess.pid), "pty descriptor table remained after process kill");
 
+const pipeWriter = os.processes.spawn(app, { cwd: "/home/guest" });
+const pipeMiddle = os.processes.spawn(app, { cwd: "/home/guest" });
+const pipeReader = os.processes.spawn(app, { cwd: "/home/guest" });
+const firstPipe = os.descriptors.pipe(pipeWriter);
+const middleRead = os.descriptors.attachPipe(pipeMiddle, { pipeId: firstPipe.pipeId, mode: "read" });
+const secondPipe = os.descriptors.pipe(pipeMiddle);
+const readerRead = os.descriptors.attachPipe(pipeReader, { pipeId: secondPipe.pipeId, mode: "read" });
+os.descriptors.write(pipeWriter, { fd: firstPipe.writeFd, data: "cross process" }, context);
+const middleReadResult = os.descriptors.read(pipeMiddle, { fd: middleRead.fd, length: 64 }, context);
+os.descriptors.write(pipeMiddle, { fd: secondPipe.writeFd, data: `${middleReadResult.data} pipe` }, context);
+const readerReadResult = os.descriptors.read(pipeReader, { fd: readerRead.fd, length: 64 }, context);
+assert(readerReadResult.data === "cross process pipe", `cross-process pipe chain mismatch: ${JSON.stringify(readerReadResult)}`);
+os.processes.kill(pipeWriter.pid, "pipe-writer-exit");
+os.processes.kill(pipeMiddle.pid, "pipe-middle-exit");
+os.processes.kill(pipeReader.pid, "pipe-reader-exit");
+assert(!os.descriptors.pipes.has(firstPipe.pipeId) && !os.descriptors.pipes.has(secondPipe.pipeId), "cross-process pipe registry retained closed pipes");
+
 result = os.syscall("fd.open", { path: "/root/secret.txt", flags: "r" }, context);
 assert(!result.ok && result.error.code === "EACCES", `fd.open denied path did not return EACCES: ${JSON.stringify(result)}`);
 
@@ -148,7 +165,7 @@ assert(!os.descriptors.tables.has(crashProcess.pid), "descriptor table remained 
 assert(os.fs.exists(`/var/log/dindbos/crash-${crashProcess.pid}.log`), "descriptor crash smoke did not write crash report");
 assert(!os.fs.exists(`/proc/${crashProcess.pid}/fd.json`), "crashed process fd procfs remained after cleanup");
 
-console.log("descriptors smoke ok open read write seek close devices clipboard tty pty ioctl crash-cleanup");
+console.log("descriptors smoke ok open read write seek close devices clipboard tty pty pipes ioctl crash-cleanup");
 
 function memoryStorage() {
   return {
