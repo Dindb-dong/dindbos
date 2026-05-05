@@ -3416,6 +3416,9 @@ async function renderSettingsContent(os, content) {
         if (button.dataset.settingsAction === "forget") await os.localMounts.forgetMount(button.dataset.mountPath);
         if (button.dataset.settingsAction === "service-restart") await os.services.restart(button.dataset.serviceId);
         if (button.dataset.settingsAction === "service-disable") await os.services.disable(button.dataset.serviceId);
+        if (button.dataset.settingsAction === "sync-resolve") {
+          await os.resolveRemoteSyncConflict(button.dataset.conflictPath, { action: button.dataset.syncAction });
+        }
       } finally {
         renderSettings(os, content);
       }
@@ -3437,6 +3440,7 @@ export async function settingsRuntimeSnapshot(os) {
   const coordination = safeRead(() => os.sessionCoordinationStatus?.(), safeRead(() => os.sessionStatus?.().coordination, null));
   const sync = safeRead(() => os.remoteSyncStatus?.(), null);
   const syncMerge = safeRead(() => os.remoteSyncMergePolicy?.(), null);
+  const syncConflicts = safeRead(() => os.listRemoteSyncConflicts?.(), []);
   return {
     user,
     home,
@@ -3452,6 +3456,7 @@ export async function settingsRuntimeSnapshot(os) {
     coordination,
     sync,
     syncMerge,
+    syncConflicts,
   };
 }
 
@@ -3504,7 +3509,7 @@ export function settingsRuntimeMarkup(snapshot) {
         <header>
           <h3>Remote Sync</h3>
         </header>
-        ${renderSettingsRemoteSync(snapshot.sync)}
+        ${renderSettingsRemoteSync(snapshot.sync, snapshot.syncConflicts)}
       </section>
       <section class="settings-panel">
         <header>
@@ -3517,7 +3522,7 @@ export function settingsRuntimeMarkup(snapshot) {
   `;
 }
 
-function renderSettingsRemoteSync(sync) {
+function renderSettingsRemoteSync(sync, conflicts = []) {
   const snapshot = sync?.lastSuccessfulSnapshot;
   const applied = sync?.lastAppliedSnapshot;
   const repair = sync?.lastRepair;
@@ -3533,6 +3538,28 @@ function renderSettingsRemoteSync(sync) {
       <div><dt>Merge Rules</dt><dd>${Number(sync?.mergeRuleCount || 0)}</dd></div>
       <div><dt>Last Error</dt><dd>${escapeHtml(sync?.lastError || "-")}</dd></div>
     </dl>
+    ${renderSettingsSyncConflicts(conflicts)}
+  `;
+}
+
+function renderSettingsSyncConflicts(conflicts = []) {
+  if (!conflicts.length) return `<p class="settings-muted">No remote sync conflicts are pending.</p>`;
+  return `
+    <div class="settings-mount-list">
+      ${conflicts.map((conflict) => `
+        <article class="settings-mount-card" data-sync-conflict="${escapeAttr(conflict.path)}">
+          <div>
+            <strong>${escapeHtml(conflict.targetPath || conflict.path)}</strong>
+            <small>${escapeHtml(conflict.path)} · bytes=${Number(conflict.bytes || 0)}</small>
+          </div>
+          <div>
+            <button type="button" data-settings-action="sync-resolve" data-sync-action="use-conflict" data-conflict-path="${escapeAttr(conflict.path)}">Use remote</button>
+            <button type="button" data-settings-action="sync-resolve" data-sync-action="keep-local" data-conflict-path="${escapeAttr(conflict.path)}">Keep local</button>
+            <button type="button" data-settings-action="sync-resolve" data-sync-action="delete-conflict" data-conflict-path="${escapeAttr(conflict.path)}">Delete copy</button>
+          </div>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 

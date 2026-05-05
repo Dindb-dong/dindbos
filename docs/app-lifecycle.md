@@ -47,7 +47,7 @@ Offline sync merge rules are exposed before full snapshot apply. `os.remoteSyncM
 
 Interrupted applies are checkpointed under `/var/run/dindbos/remote-sync-apply.json`. `os.resumeRemoteSyncApply({ passphrase, snapshot })` reads the last interrupted checkpoint, resumes at the recorded `nextIndex`, and updates `os.remoteSyncStatus().lastApplyRun` as `running`, `interrupted`, or `complete`.
 
-Conflict repair is explicit. `os.listRemoteSyncConflicts()` scans `.sync-conflicts` folders and returns target paths, while `os.resolveRemoteSyncConflict(path, { action })` supports `use-conflict`, `keep-local`, and `delete-conflict`. The shell exposes the same boundary through `sync status`, `sync conflicts`, and `sync resolve <action> <conflict-path>`.
+Conflict repair is explicit. `os.listRemoteSyncConflicts()` scans `.sync-conflicts` folders and returns target paths, while `os.resolveRemoteSyncConflict(path, { action })` supports `use-conflict`, `keep-local`, and `delete-conflict`. Settings renders the same pending conflicts with repair buttons, and the shell exposes the boundary through `sync status`, `sync conflicts`, and `sync resolve <action> <conflict-path>`.
 
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
