@@ -37,6 +37,7 @@ Current implementation:
 - Local mount writes compare the target file against the last synced metadata before writing. If the external file changed on disk after the last sync, DindbOS blocks the write, preserves the external file, and reports a `sync-conflict` operation through local mount status.
 - Local mount directory copy conflicts are explicit: low-level runtime calls default to `error`, while callers can choose `replace`, `merge`, `skip`, `rename`, or `prompt` with a conflict resolver. `merge` is non-destructive and preserves existing conflicting children; `replace` removes the target tree first.
 - Files.app copy, move, import, and export traversals use cooperative scheduling with progress and cancellation checks so large trees are chunked instead of running as one uninterrupted browser task.
+- Shell `fsck` writes summary records to `/var/log/dindbos/fsck.log` and structured repair/refusal audit records to `/var/log/dindbos/fsck-audit.log`.
 - Viewer.app caches document and image preview bytes through the runtime Cache API store with memory fallback, using path, MIME type, size, and modified time in the cache key.
 - `os.diskPolicyAreas()`, `os.diskPolicyForPath(path)`, and `df` expose policy areas for `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache`.
 - `os.storageBucketPolicy()` reports whether `navigator.storageBuckets` exists and records the current decision. Today DindbOS keeps the proven OPFS/IndexedDB/Cache split, while `/tmp`, `/var/cache`, and durable areas are separated by disk policy and reported bucket intent.
