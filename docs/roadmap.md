@@ -310,6 +310,7 @@ Implementation tasks:
 - Already present: WASI `path_open` maps first-pass `rightsBase` read/write rights onto descriptor read/write checks.
 - Already present: WASI `fd_readdir` can enumerate directory descriptors such as the preopened cwd.
 - Already present: shell pipelines pass segment output through transient pipe descriptors owned by a short-lived `shell:pipeline` process while preserving existing shell pipeline output semantics.
+- Already present: runtime pipe objects can be attached across process descriptor tables, allowing descriptor-backed multi-process pipe chaining.
 - Already present: `fd.ioctl` exposes first-pass TTY control requests for window size and `isatty` checks, returning `ENOTTY` for non-TTY descriptors.
 - Already present: `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom` can be opened through descriptor syscalls.
 - Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
@@ -330,7 +331,8 @@ Verification:
 - Already present: `npm run smoke:descriptors` verifies `/dev/zero`, `/dev/random`, and `/dev/urandom` report the actual pseudo-device byte count from `fd.read.bytes`.
 - Already present: `npm run smoke:wasm` verifies read-only WASI `rightsBase` denies descriptor writes with `EBADF`.
 - Already present: `npm run smoke:wasm` verifies WASI `fd_readdir` returns directory records from the preopened cwd descriptor.
-- Add smoke coverage for multi-process pipe chaining and broader WASI directory mutation operations.
+- Already present: `npm run smoke:descriptors` verifies writer, middle, and reader processes can chain bytes through attached pipe descriptors and that closed pipes are removed from the pipe registry.
+- Add smoke coverage for broader WASI directory mutation operations.
 
 Completion criteria:
 
