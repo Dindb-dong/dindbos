@@ -425,13 +425,15 @@ Implementation tasks:
 - Already present: process credentials snapshot uid, gid, effective uid/gid, supplementary groups, and session id at spawn time, then expose the same credential record through `/proc/<pid>/status` and `/proc/processes.json`.
 - Expand chmod/chown/chgrp behavior across VFS and local mount metadata where possible.
 - Already present: app sandbox state is separated by user and app id under `/var/lib/dindbos/app-state/<user>/<app>.json`, and package uninstall removes per-user app state records for the removed app.
-- Add per-user cache, package preferences, shell history, and desktop layout.
+- Already present: shell command history is persisted per user under `/var/lib/dindbos/shell-history/<user>.json`, reloads into new shell sessions, and switches with `loginctl switch`.
+- Add per-user cache, package preferences, and desktop layout.
 - Add administrator-only operations for package trust, system settings, and companion permissions.
 - Add audit logs for permission escalation, denied access, package trust changes, and companion pairing.
 
 Verification:
 
 - Already present: `npm run smoke:sessions` verifies normalized session users/groups, per-user home creation, persistent user/group records, numeric uid/gid assignment, shell `id` output, session switching through `loginctl`, cross-user private file denial, session lock/unlock denial, process credential `/proc` reporting, and sandbox filesystem access through process supplementary groups.
+- Already present: `npm run smoke:sessions` verifies per-user shell history persistence, reload into a new shell, and no shell history leakage across `loginctl switch`.
 - Already present: `npm run smoke:permissions` verifies app state does not leak across users for the same app id, and `npm run smoke:packages` verifies package uninstall cleans the app's per-user state record.
 - Add smoke coverage for admin-only command denial.
 

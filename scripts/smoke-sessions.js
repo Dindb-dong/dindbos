@@ -51,6 +51,11 @@ result = await shell.executeAsync("mkdir Projects");
 assert(result.status === 0, `session shell mkdir failed: ${result.output}`);
 const projects = os.fs.stat("/home/ada-lovelace/Projects");
 assert(projects.owner === "ada-lovelace", `created directory owner mismatch: ${projects.owner}`);
+const adaHistoryPath = "/var/lib/dindbos/shell-history/ada-lovelace.json";
+assert(os.fs.exists(adaHistoryPath), "per-user shell history file was not created");
+assert(JSON.parse(os.fs.readFile(adaHistoryPath)).entries.includes("mkdir Projects"), "per-user shell history did not persist command");
+const reloadedShell = new ShellSession(os);
+assert(reloadedShell.history.includes("mkdir Projects"), "new shell session did not load per-user history");
 
 const textManifest = os.apps.getManifest("text");
 assert(textManifest.fileSystem.read.includes("/home/ada-lovelace"), "TextEdit read scope did not use generated home");
@@ -117,12 +122,16 @@ assert(result.status === 0 && result.output.includes("grace-hopper"), `loginctl 
 result = await shell.executeAsync("loginctl switch grace-hopper");
 assert(result.status === 0 && result.output.includes("switched to grace-hopper"), `loginctl switch failed: ${result.output}`);
 assert(shell.env.USER === "grace-hopper" && shell.cwd === "/home/grace-hopper", "shell did not adopt switched session user");
+assert(!shell.history.includes("mkdir Projects"), "switched session leaked previous user's shell history");
 result = await shell.executeAsync("whoami");
 assert(result.status === 0 && result.output === "grace-hopper", `switched whoami mismatch: ${result.output}`);
 result = await shell.executeAsync("cat Team/plan.txt");
 assert(result.status === 0 && result.output === "release\n", `switched user could not read group file: ${result.output}`);
 result = await shell.executeAsync("loginctl switch ada-lovelace");
 assert(result.status === 0 && shell.env.USER === "ada-lovelace", "loginctl switch did not return to original session user");
+const graceHistory = JSON.parse(os.fs.readFile("/var/lib/dindbos/shell-history/grace-hopper.json"));
+assert(graceHistory.entries.includes("whoami") && graceHistory.entries.includes("cat Team/plan.txt"), "switched user's shell history was not persisted");
+assert(!JSON.parse(os.fs.readFile(adaHistoryPath)).entries.includes("cat Team/plan.txt"), "shell history leaked across users");
 
 const events = [];
 os.bus.on("session:lock", (event) => events.push(`lock:${event.state}:${event.reason}`));

@@ -1,5 +1,8 @@
 import { compatibilitySnapshot } from "./compat.js?v=20260422-browserd";
 
+const SHELL_HISTORY_DIR = "/var/lib/dindbos/shell-history";
+const MAX_SHELL_HISTORY = 200;
+
 const BUILTIN_MANUALS = {
   cat: "cat <file> - print file contents",
   cd: "cd [path] - change current directory",
@@ -91,6 +94,7 @@ export class ShellSession {
       PWD: this.cwd,
     };
     this.principal = os.permissions?.principal?.({ user: this.env.USER, groups: os.session.groups }) || os.permissions?.systemPrincipal?.() || null;
+    this.loadHistory();
   }
 
   prompt() {
@@ -114,8 +118,7 @@ export class ShellSession {
     if (!line) return { output: "", clear: false, reload: false };
     const locked = this.lockedSessionResult(line);
     if (locked) return locked;
-    this.history.push(line);
-    this.historyIndex = this.history.length;
+    this.recordHistory(line);
     const expanded = expandVariables(line, this.env);
     const commands = splitCommandList(expanded);
     const output = [];
@@ -142,8 +145,7 @@ export class ShellSession {
     if (!line) return { output: "", clear: false, reload: false };
     const locked = this.lockedSessionResult(line);
     if (locked) return locked;
-    this.history.push(line);
-    this.historyIndex = this.history.length;
+    this.recordHistory(line);
     const expanded = expandVariables(line, this.env);
     const commands = splitCommandList(expanded);
     const output = [];
@@ -424,6 +426,54 @@ export class ShellSession {
     this.cwd = this.env.HOME;
     this.env.PWD = this.cwd;
     this.principal = this.os.permissions?.principal?.({ user: this.env.USER, groups: status.groups || ["users"] }) || this.principal;
+    this.loadHistory();
+  }
+
+  recordHistory(line) {
+    this.history.push(line);
+    this.history = this.history.slice(-MAX_SHELL_HISTORY);
+    this.historyIndex = this.history.length;
+    this.writeHistory();
+  }
+
+  loadHistory() {
+    const path = this.historyPath();
+    const system = this.os.permissions?.systemPrincipal?.();
+    if (!system || !this.os.fs?.exists?.(path)) {
+      this.history = [];
+      this.historyIndex = 0;
+      return;
+    }
+    try {
+      const parsed = JSON.parse(this.os.fs.readFile(path, "/", system));
+      this.history = Array.isArray(parsed.entries) ? parsed.entries.map(String).slice(-MAX_SHELL_HISTORY) : [];
+    } catch {
+      this.history = [];
+    }
+    this.historyIndex = this.history.length;
+  }
+
+  writeHistory() {
+    const system = this.os.permissions?.systemPrincipal?.();
+    if (!system || !this.os.fs) return;
+    ensureShellHistoryDirectory(this.os, this.env.USER);
+    const payload = {
+      version: 1,
+      user: this.env.USER,
+      updatedAt: new Date().toISOString(),
+      entries: this.history.slice(-MAX_SHELL_HISTORY),
+    };
+    this.os.fs.writeOrCreateFile(this.historyPath(), `${JSON.stringify(payload, null, 2)}\n`, "/", {
+      owner: this.env.USER,
+      group: "users",
+      permissions: "-rw-------",
+      mime: "application/json",
+    }, system);
+  }
+
+  historyPath(user = this.env.USER) {
+    const safeUser = encodeURIComponent(String(user || "guest"));
+    return `${SHELL_HISTORY_DIR}/${safeUser && safeUser !== "." && safeUser !== ".." ? safeUser : "guest"}.json`;
   }
 
   cd(path) {
@@ -1537,6 +1587,22 @@ function formatLocalLsEntry(node) {
 
 function filterGrep(content, needle) {
   return String(content).split("\n").filter((line) => line.toLowerCase().includes(needle.toLowerCase())).join("\n");
+}
+
+function ensureShellHistoryDirectory(os, user = "guest") {
+  const system = os.permissions.systemPrincipal();
+  ["/var", "/var/lib", "/var/lib/dindbos", SHELL_HISTORY_DIR].forEach((path) => {
+    if (!os.fs.exists(path)) os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, system);
+  });
+  const path = `${SHELL_HISTORY_DIR}/${encodeURIComponent(String(user || "guest"))}.json`;
+  if (!os.fs.exists(path)) {
+    os.fs.writeOrCreateFile(path, `${JSON.stringify({ version: 1, user, updatedAt: "", entries: [] }, null, 2)}\n`, "/", {
+      owner: user || "guest",
+      group: "users",
+      permissions: "-rw-------",
+      mime: "application/json",
+    }, system);
+  }
 }
 
 function shellStatus(command, output) {
