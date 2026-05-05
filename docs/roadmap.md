@@ -269,6 +269,9 @@ Why next:
 
 Implementation cuts:
 
+- Already present: `KernelObjectRegistry` assigns kernel object ids for processes and descriptors, tracks owner pid, namespace, user, rights, status, revocation reason, expiry metadata, and exposes `/proc/objects` plus `/proc/objects.json`.
+- Already present: `ProcessManager` registers each process as a kernel object, writes the object id into `/proc/<pid>/status` and `/proc/processes.json`, refreshes process-object metadata as windows/executors/activity change, and revokes process-owned objects on exit or crash.
+- Already present: `DescriptorManager` registers stdio, opened files, devices, pipes, PTYs, and preopen directories as descriptor kernel objects, writes descriptor object ids into `/proc/<pid>/fd.json`, updates offset/TTY metadata after IO, and revokes descriptor objects on fd close, process exit, and process crash.
 - Define kernel object ids for processes, descriptors, files, mounts, windows, services, devices, sockets, IPC endpoints, timers, keychain grants, package namespaces, and companion sessions.
 - Add per-process handle tables with rights, owner pid, namespace, user credentials, expiry, close-on-exec behavior, duplicate/transfer policy, and revocation reason.
 - Route high-value APIs through handles first: open files, descriptor IO, window capture, IPC endpoints, device opens, keychain grants, companion sessions, and network sockets.
@@ -278,6 +281,8 @@ Implementation cuts:
 
 Verification:
 
+- Already present: `npm run smoke:processes` verifies process object ids, `/proc/objects.json` ownership/status, child-pid metadata refresh, and process-object revocation after crash and restart cleanup.
+- Already present: `npm run smoke:descriptors` verifies descriptor object ids in fd listings, active descriptor objects in `/proc/objects.json`, offset metadata refresh after read/write, fd-close revocation, process-exit revocation, and process-crash revocation.
 - Add smoke coverage for valid handle use, stale handle denial, wrong-right denial, duplicated handle cleanup, cross-process transfer, inherited stdio handles, and revoked keychain/device/companion handles.
 - Add fuzz-style invalid handle tests for unknown id, wrong object type, double close, use-after-close, cross-user use, and package namespace escape.
 
@@ -3468,6 +3473,8 @@ Why it matters:
 
 Implementation tasks:
 
+- Already present: first-pass `KernelObjectRegistry` stores process and descriptor kernel object ids with owner pid, namespace, user, rights, status, revocation reason, expiry metadata, and procfs exports.
+- Already present: process objects and descriptor objects are registered through the existing process/descriptor managers and revoked during fd close, process exit, and process crash cleanup.
 - Define kernel object types, ids, owners, lifetimes, refcounts, capabilities, namespace membership, and audit labels.
 - Add a handle table per process that can contain file descriptors, windows, IPC channels, devices, sockets, timers, service controls, mount handles, and keychain grants.
 - Route app, shell, WASM, NodeCompat, service, and worker calls through handle resolution instead of direct object references where practical.
@@ -3478,6 +3485,7 @@ Implementation tasks:
 
 Verification:
 
+- Already present: process and descriptor smokes cover object id exposure, `/proc/objects.json` diagnostics, live metadata refresh, and revoke reasons for close, exit, crash, and restart cleanup.
 - Add smoke coverage for allowed handle use, stale handle denial, cross-process handle transfer, close-on-exit cleanup, inherited package namespace handles, and revoked grant behavior.
 - Add tests proving a sandboxed app cannot use an object id unless it owns a valid handle with the required capability.
 - Add fuzz-style tests for invalid handle ids, wrong object types, double close, duplicate close, and crash cleanup.
