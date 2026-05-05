@@ -4,6 +4,9 @@ import { createDindbOSSDK } from "./sdk.js?v=20260422-browserd";
 
 const APPLICATION_DIR = "/usr/share/applications";
 const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
+const PACKAGE_STATE_ROOT = "/var/lib/dindbos/package-state";
+const PACKAGE_CACHE_ROOT = "/var/cache/dindbos/packages";
+const PACKAGE_TEMP_ROOT = "/tmp/dindbos/packages";
 const PACKAGE_SOURCE_DIR = "/opt/dindbos/packages";
 const PACKAGE_TEMPLATE_DIR = "/opt/dindbos/templates";
 const PACKAGE_INSTALL_ROOT = "/opt";
@@ -558,11 +561,13 @@ export class PackageManager {
         launcher: this.launcherPath(record),
         recordPath: this.packageRecordPath(record.id),
         appStatePath: removeAppState(this.os, record.app.id),
+        namespace: record.namespace || {},
       };
       try {
         const launcher = this.launcherPath(record);
         if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
         if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
+        this.removeNamespaceRoots(record);
         if (this.os.fs.exists(this.packageRecordPath(record.id))) {
           this.os.fs.remove(this.packageRecordPath(record.id), "/", {}, this.system);
         }
@@ -726,6 +731,7 @@ export class PackageManager {
       originalManifest: manifest,
       files: [],
       dependencies,
+      namespace: packageNamespace(id, appId, installPath, manifest.sandbox || manifest.namespace || {}),
       app: {
         id: appId,
         name: String(app.name || name),
@@ -757,7 +763,14 @@ export class PackageManager {
       "/var/lib",
       "/var/lib/dindbos",
       PACKAGE_DB_DIR,
+      PACKAGE_STATE_ROOT,
       PACKAGE_INSTALL_ROOT,
+      "/var/cache",
+      "/var/cache/dindbos",
+      PACKAGE_CACHE_ROOT,
+      "/tmp",
+      "/tmp/dindbos",
+      PACKAGE_TEMP_ROOT,
       "/opt/dindbos",
       PACKAGE_SOURCE_DIR,
       PACKAGE_TEMPLATE_DIR,
@@ -938,6 +951,35 @@ export class PackageManager {
       this.system,
     );
     this.writeNpmDependencyRecords(record);
+    this.ensureNamespaceRoots(record);
+  }
+
+  ensureNamespaceRoots(record) {
+    const namespace = record.namespace || {};
+    [namespace.stateRoot, namespace.cacheRoot, namespace.tempRoot].filter(Boolean).forEach((path) => {
+      this.ensureDirectoryPath(path, { owner: record.id, group: "packages", permissions: "drwx------" });
+    });
+  }
+
+  removeNamespaceRoots(record) {
+    const namespace = record.namespace || {};
+    [namespace.tempRoot, namespace.cacheRoot, namespace.stateRoot].filter(Boolean).forEach((path) => {
+      if (this.os.fs.exists(path)) this.os.fs.remove(path, "/", { recursive: true }, this.system);
+    });
+  }
+
+  ensureDirectoryPath(path, options = {}) {
+    let cursor = "/";
+    this.os.fs.normalize(path).split("/").filter(Boolean).forEach((part) => {
+      cursor = this.os.fs.join(cursor, part);
+      if (!this.os.fs.exists(cursor)) {
+        this.os.fs.createDirectory(cursor, "/", {
+          owner: options.owner || "root",
+          group: options.group || "root",
+          permissions: options.permissions || "drwxr-xr-x",
+        }, this.system);
+      }
+    });
   }
 
   writeNpmDependencyRecords(record) {
@@ -1057,6 +1099,7 @@ export class PackageManager {
         description: record.description,
         compatibility: record.compatibility,
         api: record.api,
+        namespace: cloneJson(record.namespace || {}),
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
       },
@@ -1266,7 +1309,28 @@ function packagePublicRecord(record) {
     files: [...(record.files || [])],
     lifecycle: cloneJson(record.lifecycle || {}),
     trust: cloneJson(record.trust || {}),
+    namespace: cloneJson(record.namespace || {}),
   });
+}
+
+function packageNamespace(packageId, appId, installPath, sandbox = {}) {
+  return {
+    packageRoot: installPath,
+    stateRoot: `${PACKAGE_STATE_ROOT}/${packageId}`,
+    cacheRoot: `${PACKAGE_CACHE_ROOT}/${packageId}`,
+    tempRoot: `${PACKAGE_TEMP_ROOT}/${packageId}`,
+    processGroup: `package:${packageId}`,
+    appId,
+    dependencyRoot: `${installPath}/node_modules`,
+    rootPolicy: sandbox.rootPolicy || "readonly-package-image",
+    statePolicy: sandbox.statePolicy || "private",
+    cachePolicy: sandbox.cachePolicy || "private-evictable",
+    tempPolicy: sandbox.tempPolicy || "private-runtime",
+    deviceGrants: [...(sandbox.deviceGrants || sandbox.devices || [])],
+    networkHosts: [...(sandbox.networkHosts || sandbox.network || [])],
+    ipcEndpoints: [...(sandbox.ipcEndpoints || sandbox.ipc || [])],
+    childProcessLimit: Number(sandbox.childProcessLimit || 0),
+  };
 }
 
 function inferPackageRuntime(entry) {
