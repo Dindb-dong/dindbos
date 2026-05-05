@@ -324,6 +324,7 @@ Implementation tasks:
 - Already present: WASI `path_rename` can rename files and directories between scoped directory descriptors.
 - Already present: WASI `path_symlink` and `path_readlink` can create and inspect scoped symlink metadata through the shared VFS.
 - Already present: WASI `path_link` creates VFS hard-link-like file aliases with shared write behavior and link-count metadata.
+- Already present: WASI `fd_filestat_get` and `path_filestat_get` expose first-pass type, size, link count, timestamp, and stable inode metadata from descriptors and scoped paths.
 - Already present: shell pipelines pass segment output through transient pipe descriptors owned by a short-lived `shell:pipeline` process while preserving existing shell pipeline output semantics.
 - Already present: runtime pipe objects can be attached across process descriptor tables, allowing descriptor-backed multi-process pipe chaining.
 - Already present: `fd.ioctl` exposes first-pass TTY control requests for window size and `isatty` checks, returning `ENOTTY` for non-TTY descriptors.
@@ -352,6 +353,7 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies WASI `path_rename` renames scoped files and directories while preserving file bytes.
 - Already present: `npm run smoke:wasm` verifies WASI `path_symlink` creates a link, `path_readlink` returns the link target, and VFS reads through the symlink.
 - Already present: `npm run smoke:wasm` verifies WASI `path_link` creates a hard-link-like alias, preserves bytes, shares writes, survives source removal, and updates link counts.
+- Already present: `npm run smoke:wasm` verifies WASI `path_filestat_get` and `fd_filestat_get` report file type and size for a scoped VFS file.
 - Add smoke coverage for broader WASI metadata edge cases as more WASI calls are mapped.
 
 Completion criteria:
