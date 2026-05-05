@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { EventBus } from "../src/dindbos/event-bus.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
+import { ProcessExecutor } from "../src/dindbos/process-executor.js";
 import { ProcessManager } from "../src/dindbos/process-manager.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 import { filterAndSortActivityProcesses } from "../src/dindbos/apps/builtins.js";
@@ -41,6 +42,7 @@ assert(os.fs.exists(`/proc/${process.pid}/status`), "/proc status was not writte
 assert(os.fs.readFile(`/proc/${process.pid}/status`).includes("Activity Monitor"), "/proc status missing process name");
 assert(os.fs.readFile(`/proc/${process.pid}/status`).includes("RuntimeBytes:"), "/proc status missing runtime byte estimate");
 assert(os.fs.readFile(`/proc/${process.pid}/status`).includes("ActivityScore:"), "/proc status missing activity score");
+assert(os.fs.readFile(`/proc/${process.pid}/status`).includes("ExecutionBackend:\tmain-thread"), "/proc status missing main-thread backend");
 assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === process.pid && entry.activityScore > 0), "/proc processes JSON missing activity score");
 assert(os.processes.log(process.pid).includes("ready"), "log read did not include ready entry");
 assert(lifecycleEvents.includes("launch:activity-monitor:"), "app:launch lifecycle event missing");
@@ -105,6 +107,45 @@ const activitySorted = filterAndSortActivityProcesses([
 ], { sort: "activity", direction: "desc" });
 assert(activitySorted.map((item) => item.pid).join(",") === "2,1", "activity score sort mismatch");
 
+const workerStartedAt = Date.now();
+const workerRun = os.executor.runCpuTask({ appId: "worker:busy", name: "Busy Worker", durationMs: 150 });
+await delay(20);
+const workerProcess = os.processes.list().find((entry) => entry.appId === "worker:busy");
+assert(workerProcess?.executionBackend === "worker", "worker task did not use worker backend");
+assert(workerProcess?.executorState === "running", "worker task did not report running executor state");
+assert(Date.now() - workerStartedAt < 100, "worker task blocked the main smoke thread before shell-equivalent work");
+const responsive = os.processes.spawn({ id: "responsive-shell", name: "Responsive Shell", manifest: { capabilities: [] } }, { runtime: "shell" });
+assert(os.processes.get(responsive.pid)?.appId === "responsive-shell", "main runtime could not spawn while worker was busy");
+assert(os.fs.readFile(`/proc/${workerProcess.pid}/status`).includes("ExecutionBackend:\tworker"), "worker /proc status missing backend");
+assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === workerProcess.pid && entry.executionBackend === "worker"), "/proc processes JSON missing worker backend");
+const workerResult = await workerRun;
+assert(workerResult.status === 0 && workerResult.backend === "worker", "worker task did not finish successfully");
+assert(!os.processes.get(workerResult.pid), "worker process remained after completion");
+os.processes.kill(responsive.pid, "responsive-smoke-exit");
+
+let timeoutError = null;
+try {
+  await os.executor.runCpuTask({ appId: "worker:timeout", name: "Timeout Worker", durationMs: 200, timeoutMs: 20 });
+} catch (error) {
+  timeoutError = error;
+}
+assert(timeoutError?.code === "ETIMEOUT", "worker timeout did not reject with ETIMEOUT");
+const timedOut = os.processes.list().find((entry) => entry.appId === "worker:timeout");
+assert(timedOut?.state === "crashed", "worker timeout did not mark process crashed");
+assert(os.fs.exists(`/var/log/dindbos/crash-${timedOut.pid}.log`), "worker timeout did not write crash report");
+
+const killRun = os.executor.runCpuTask({ appId: "worker:kill", name: "Kill Worker", durationMs: 500 });
+await delay(20);
+const killTarget = os.processes.list().find((entry) => entry.appId === "worker:kill");
+assert(killTarget?.executionBackend === "worker", "kill worker task did not start");
+os.processes.kill(killTarget.pid, "worker-smoke-kill");
+const killResult = await killRun.then(
+  () => null,
+  (error) => error,
+);
+assert(killResult?.code === "ETERMINATED", "worker kill did not terminate worker execution");
+assert(!os.processes.get(killTarget.pid), "worker kill left process running");
+
 console.log(`process smoke ok pid=${process.pid} relaunched=${launched[0]}`);
 
 function bootOs() {
@@ -118,7 +159,12 @@ function bootOs() {
     windows: null,
   };
   os.processes = new ProcessManager(os);
+  os.executor = new ProcessExecutor(os);
   return os;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function assert(condition, message) {
