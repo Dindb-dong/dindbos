@@ -171,6 +171,15 @@ assert(os.fs.exists(trapRun.crashReportPath), "wasm trap crash report was not wr
 assert(os.fs.readFile(trapRun.crashReportPath).includes("unreachable"), "wasm trap crash report missing trap message");
 assert(os.fs.readFile("/var/log/dindbos/crashes.log").includes(`pid=${trapRun.pid} app=wasm:trap.wasm`), "wasm trap crash index missing pid/app");
 
+const memoryLimitRun = await os.wasm.runFile("/home/guest/bin/hello.wasm", "/home/guest/bin", {
+  maxMemoryPages: 0,
+  principal: os.permissions.principal(os.session),
+});
+assert(memoryLimitRun.status === 1, `wasm memory limit status mismatch: ${memoryLimitRun.status}`);
+assert(memoryLimitRun.crashed === true, "wasm memory limit did not report crashed=true");
+assert(memoryLimitRun.stderr.includes("memory pages 1 exceed limit 0"), "wasm memory limit stderr missing page detail");
+assert(os.fs.readFile(memoryLimitRun.crashReportPath).includes("memory pages 1 exceed limit 0"), "wasm memory limit crash report missing page detail");
+
 const wasiRun = await os.wasm.runFile("/home/guest/bin/wasi-hello.wasm", "/home/guest/bin", {
   argv: ["wasi-hello.wasm"],
   principal: os.permissions.principal(os.session),
@@ -193,6 +202,19 @@ const workerExitRun = await os.wasm.runFile("/home/guest/bin/exit7.wasm", "/home
   principal: os.permissions.principal(os.session),
 });
 assert(workerExitRun.status === 7, `worker wasm exit status mismatch: ${workerExitRun.status}`);
+
+let workerMemoryLimitError = null;
+try {
+  await os.wasm.runFile("/home/guest/bin/hello.wasm", "/home/guest/bin", {
+    executionBackend: "worker",
+    maxMemoryPages: 0,
+    principal: os.permissions.principal(os.session),
+  });
+} catch (error) {
+  workerMemoryLimitError = error;
+}
+assert(workerMemoryLimitError?.code === "EIO", `worker wasm memory limit error code mismatch: ${workerMemoryLimitError?.code}`);
+assert(String(workerMemoryLimitError?.message || "").includes("memory pages 1 exceed limit 0"), "worker wasm memory limit error missing page detail");
 
 const wasiCatRun = await os.wasm.runFile("/home/guest/bin/wasi-cat.wasm", "/home/guest/bin", {
   argv: ["wasi-cat.wasm"],
@@ -281,7 +303,7 @@ os.fs.remove("/home/guest/bin/wasi-hardlink-source.txt", "/", {}, os.permissions
 assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "changed through link\n", "wasi hard link did not survive source removal");
 assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 1, "wasi hard link count did not update after source removal");
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi worker stdin path-open rights readdir mkdir remove rename symlink hardlink process");
+console.log("wasm smoke ok shell argv env syscall exit permission crash memory wasi worker stdin path-open rights readdir mkdir remove rename symlink hardlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
