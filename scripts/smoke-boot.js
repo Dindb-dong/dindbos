@@ -98,6 +98,25 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.list("/mnt/zip-smoke/docs").some((entry) => entry.name === "guide.txt"), "zipfs nested listing missing guide.txt");
   assert(os.fs.readFile("/mnt/zip-smoke/docs/guide.txt") === "zip-nested", "zipfs nested file content mismatch");
   assert(os.mountTable().some((entry) => entry.root === "/mnt/zip-smoke" && entry.driver === "zipfs" && entry.entries === 2), "mount table missing zipfs entry count");
+  const mountStats = [
+    os.fs.stat("/mnt/readonly-smoke"),
+    os.fs.stat("/mnt/overlay-smoke/shared.txt"),
+    os.fs.stat("/mnt/zip-smoke/docs/guide.txt"),
+    os.fs.stat("/opt/hello-notes/app.js"),
+  ];
+  mountStats.forEach((stat) => {
+    assert(stat.path && stat.name && stat.type && stat.resolvedType && stat.mime && stat.permissions && stat.owner && stat.group, `mounted driver stat shape incomplete: ${JSON.stringify(stat)}`);
+    assert(Number.isFinite(stat.size), `mounted driver stat size missing: ${JSON.stringify(stat)}`);
+    assert(Number.isFinite(stat.linkCount), `mounted driver stat linkCount missing: ${JSON.stringify(stat)}`);
+  });
+  assert(mountStats[0].type === "mount" && mountStats[0].resolvedType === "directory", `memfs mount stat mismatch: ${JSON.stringify(mountStats[0])}`);
+  assert(mountStats[1].type === "file" && mountStats[1].size === "upper-shared".length, `overlayfs file stat mismatch: ${JSON.stringify(mountStats[1])}`);
+  assert(mountStats[2].type === "file" && mountStats[2].mime === "text/plain", `zipfs file stat mismatch: ${JSON.stringify(mountStats[2])}`);
+  assert(mountStats[3].type === "file" && mountStats[3].path === "/opt/hello-notes/app.js", `pkgfs file stat mismatch: ${JSON.stringify(mountStats[3])}`);
+  os.fs.writeOrCreateFileBytes("/home/guest/compressed.zip", storedZip([["compressed.txt", "compressed", 8]]), "/", { mime: "application/zip", owner: "guest", group: "users" }, system);
+  const compressedZip = os.syscall("mount.mount", { path: "/mnt/compressed-smoke", driver: "zipfs", archive: "/home/guest/compressed.zip" });
+  assert(compressedZip.ok === false && compressedZip.error.code === "ENOTSUP", `zipfs compression error was not normalized to ENOTSUP: ${JSON.stringify(compressedZip)}`);
+  assert(compressedZip.error.message.includes("compression method 8"), `zipfs compression error message mismatch: ${JSON.stringify(compressedZip)}`);
   assert(os.diskPolicyForPath("/tmp/payload.bin").bucket === "session", "/tmp did not report session bucket policy");
   assert(os.diskPolicyForPath("/var/cache/npm").bucket === "cache", "/var/cache did not report cache bucket policy");
   const bucketPolicy = os.storageBucketPolicy();
@@ -277,14 +296,14 @@ function storedZip(entries) {
   const chunks = [];
   const central = [];
   let offset = 0;
-  entries.forEach(([name, content]) => {
+  entries.forEach(([name, content, method = 0]) => {
     const nameBytes = encoder.encode(name);
     const contentBytes = encoder.encode(content);
     const local = concatBytes(
       u32(0x04034b50),
       u16(20),
       u16(0),
-      u16(0),
+      u16(method),
       u16(0),
       u16(0),
       u32(0),
@@ -301,7 +320,7 @@ function storedZip(entries) {
       u16(20),
       u16(20),
       u16(0),
-      u16(0),
+      u16(method),
       u16(0),
       u16(0),
       u32(0),

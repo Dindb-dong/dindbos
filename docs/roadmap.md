@@ -964,7 +964,7 @@ Implementation tasks:
 - Already present: first-pass readonly `overlayfs` snapshot mounts combine lower and upper VFS trees with upper-over-lower precedence for package development, safe mode, and staged update workflows.
 - Already present: installed package roots are readonly `pkgfs` image mounts under `/opt/<package-id>`, visible through package image mount records and the shared mount table before app registration.
 - Already present: first-pass readonly `zipfs` mounts list and read stored-method ZIP archive entries from a VFS archive file.
-- Add driver-level metadata normalization so stat, lstat, symlink, hard-link-like aliases, timestamps, and errors are stable across drivers where possible.
+- Already present: first-pass driver-level metadata normalization keeps `stat` shape and common error codes stable across `memfs`, `overlayfs`, `zipfs`, and `pkgfs` paths where those drivers expose mounted VFS nodes.
 - Already present: `/proc/mounts`, JSON mount records, `mount`, and `df` diagnostics show driver, durability, used bytes, quota policy, and browser support limitations from the shared mount table.
 
 Verification:
@@ -976,7 +976,7 @@ Verification:
 - Already present: `npm run smoke:boot` verifies `/proc/mounts` includes used-byte and support diagnostics; `npm run smoke:shell` verifies `mount` and `df` render the same diagnostic fields.
 - Already present: `npm run smoke:boot` verifies `overlayfs` lower-only files, upper-only files, upper-over-lower precedence, and shared mount table overlay metadata.
 - Already present: `npm run smoke:boot` verifies `zipfs` root listing, nested listing, nested file reads, and shared mount table ZIP entry counts.
-- Add smoke coverage for cross-driver metadata/error normalization.
+- Already present: `npm run smoke:boot` verifies cross-driver `stat` shape for `memfs`, `overlayfs`, `zipfs`, and `pkgfs`, plus `zipfs` unsupported compression normalization to `ENOTSUP`.
 - Add cross-driver tests proving shell, app APIs, NodeCompat, and WASI see the same path behavior for mounted trees.
 
 Completion criteria:
