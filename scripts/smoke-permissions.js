@@ -59,13 +59,16 @@ assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `san
 syscallResult = sandbox.syscall("mount.mount", { path: "/mnt/sandbox", driver: "memfs" });
 assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied mount mismatch: ${JSON.stringify(syscallResult)}`);
 sandbox.state.set("prefs", { theme: "dark", count: 1 });
-assert(sandbox.state.path() === "/var/lib/dindbos/app-state/limited.json", "app state path was not namespaced by app id");
+assert(sandbox.state.path() === "/var/lib/dindbos/app-state/guest/limited.json", "app state path was not namespaced by user and app id");
 assert(sandbox.state.get("prefs").theme === "dark", "app state did not read back its own value");
 assert(sandbox.state.keys().includes("prefs"), "app state keys did not include saved key");
 const sameAppSandbox = new AppSandbox(os, { ...process, pid: 101 });
 assert(sameAppSandbox.state.get("prefs").count === 1, "app state did not persist across same-app sandbox instances");
 const otherAppSandbox = new AppSandbox(os, { ...process, pid: 102, appId: "other" });
 assert(otherAppSandbox.state.get("prefs", "missing") === "missing", "app state leaked across app ids");
+const otherUserSandbox = new AppSandbox(os, { ...process, pid: 104, user: "ada-lovelace" });
+assert(otherUserSandbox.state.path() === "/var/lib/dindbos/app-state/ada-lovelace/limited.json", "app state path was not namespaced by user");
+assert(otherUserSandbox.state.get("prefs", "missing") === "missing", "app state leaked across users");
 assert(sandbox.state.remove("prefs") === true, "app state remove did not report existing key");
 assert(!sandbox.state.keys().includes("prefs"), "app state key remained after remove");
 const broadSandbox = new AppSandbox(os, {
