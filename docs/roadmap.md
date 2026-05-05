@@ -1922,6 +1922,276 @@ Completion criteria:
 - Automation becomes a reusable OS service that respects permissions, user intent, and auditability.
 - Apps can request automation through DindbOS without embedding unbounded provider access.
 
+### Native-Like 43: Notification Center, Attention, And Alarm Broker
+
+Status: Later.
+
+Goal: provide system-owned notifications, alerts, alarms, badges, reminders, quiet hours, and attention policy instead of app-local toast UI.
+
+Why it matters:
+
+- Native OSes own user attention. Apps request notifications, but the OS decides visibility, grouping, priority, privacy, sound, badges, and quiet-hour behavior.
+- Browsers expose Notifications, Badging, Service Workers, and limited background wakeups, but support varies by browser, install state, user permission, and page lifecycle.
+- DindbOS needs one broker that can route foreground in-OS notifications, installed-PWA notifications, scheduled reminders, service alerts, package update warnings, companion health failures, and denied background behavior honestly.
+
+Implementation tasks:
+
+- Add a notification service with notification id, app id, pid, user, title, body, severity, category, timestamp, actions, privacy level, expiry, and source capability.
+- Add manifest capabilities for `notify.foreground`, `notify.system`, `notify.badge`, `notify.alarm`, and `notify.background`.
+- Add notification channels for package updates, storage pressure, keychain access, companion pairing, network denial, service degradation, crash reports, and app-generated notices.
+- Add user policy for allow, deny, quiet hours, lock-screen visibility, sound, vibration where supported, badge count, grouping, and rate limits.
+- Add a Notification Center app or Settings panel backed by the runtime service, not by app-owned DOM state.
+- Route browser Notification API usage through DindbOS so app packages cannot call raw browser notification APIs directly.
+- Add scheduled alarms and reminders with clear distinction between active-tab timers, installed-PWA Service Worker support, Periodic Background Sync support, and unsupported closed-page behavior.
+- Add `/proc/notifications`, `/var/log/dindbos/notifications.log`, `notify`, `alarm`, and `doctor notifications` diagnostics.
+
+Verification:
+
+- Add smoke coverage for foreground notification creation, denied notification permission, quiet-hours suppression, badge count update, notification action routing, expired notification cleanup, and notification audit logs.
+- Add capability-mock tests for browser Notification supported, permission denied, PWA-only background notification, unavailable background alarm, and companion-required wakeup.
+- Add tests proving a package without notification permission cannot post system notifications or spoof another app id.
+
+Completion criteria:
+
+- Apps, services, package manager, Settings, and companions use one notification broker.
+- DindbOS can explain whether a notification was shown in the desktop, sent to the host browser, delayed, suppressed, or impossible in the current browser mode.
+
+### Native-Like 44: Human Input, IME, Keyboard Layout, And Gesture Service
+
+Status: Later.
+
+Goal: turn keyboard, pointer, touch, gamepad, IME, focus traversal, gestures, and accessibility actions into a coherent input subsystem.
+
+Why it matters:
+
+- Native OSes separate physical input devices, layout translation, focus routing, shortcuts, text composition, pointer capture, gestures, and accessibility actions.
+- DindbOS already routes first-pass compositor input, but native-like behavior requires deeper handling of text input, layouts, pointer devices, game controllers, touch gestures, and command routing.
+- This is necessary for serious editors, terminals, games, remote sessions, accessibility tools, and sandboxed app containers.
+
+Implementation tasks:
+
+- Add an input service that tracks device type, pointer id, keyboard layout, modifier state, IME composition state, focus owner, capture owner, gesture recognizer, and active accessibility action.
+- Add keyboard layout maps, user remapping, reserved OS shortcuts, app shortcut scopes, text-entry scopes, and conflict diagnostics.
+- Add IME lifecycle APIs for composition start/update/commit/cancel, candidate hints where browser APIs expose them, and fallback reporting where they do not.
+- Add pointer/touch gesture recognition for tap, double-click, long-press, drag, pinch, wheel, inertial scroll, context menu, and system-reserved gestures.
+- Add gamepad device routing through the device registry with per-app grants, polling policy, visibility throttling, and disconnect cleanup.
+- Add high-frequency input throttling and backpressure so a malicious or broken app cannot freeze the compositor with input events.
+- Add `/proc/input`, `/proc/keymap`, `inputctl`, `keymap`, and Settings controls for remapping, shortcut conflicts, and active devices.
+- Integrate remote session control events and accessibility automation events through the same input routing policy.
+
+Verification:
+
+- Add smoke coverage for shortcut conflict detection, text-entry shortcut bypass, IME composition routing, pointer capture release, gesture routing, gamepad permission denial, and input diagnostics.
+- Add tests proving crashed, suspended, background, or sandboxed apps cannot retain input capture or receive reserved OS shortcuts.
+- Add browser integration tests for representative keyboard, pointer, wheel, touch, and composition events where automation is reliable.
+
+Completion criteria:
+
+- Input reaches apps through one OS boundary regardless of DOM-backed, worker-rendered, sandboxed iframe, remote, or accessibility-driven surfaces.
+- Users can inspect and change input policy without editing app code.
+
+### Native-Like 45: Multi-Display, Virtual Desktop, And Workspace Manager
+
+Status: Later.
+
+Goal: support multi-monitor-like layouts, virtual desktops, workspaces, display scaling, orientation, and window placement policy inside browser constraints.
+
+Why it matters:
+
+- Native OSes manage displays, spaces, workspaces, DPI, scaling, fullscreen, presentation mode, and window restoration.
+- Browsers expose only limited screen and viewport data, but installed PWAs, Window Management APIs, fullscreen APIs, CSS viewport primitives, and companion/remote sessions can provide progressively richer display behavior.
+- A workspace manager keeps desktop state coherent across mobile, tablet, installed PWA, browser tab, remote handoff, and companion-assisted displays.
+
+Implementation tasks:
+
+- Add a display service with display id, viewport bounds, scale factor, orientation, safe areas, fullscreen state, window-controls overlay state, and capability source.
+- Add workspace records for virtual desktops, pinned apps, window groups, saved layouts, focus history, snap zones, and per-workspace wallpaper/theme state.
+- Add APIs for move window to workspace, show all windows, restore layout, presentation mode, fullscreen app mode, and external-display intent.
+- Probe Window Management API and Multi-Screen Window Placement API support where available, with fallback to single-viewport virtual displays.
+- Add mobile and tablet policies for app stacking, split view, touch resizing, safe-area insets, virtual keyboard occlusion, and orientation changes.
+- Add remote and companion-backed display providers as explicit Tier E capabilities with user approval and diagnostics.
+- Add `/proc/displays`, `/proc/workspaces`, `displayctl`, `spacectl`, and Settings UI for display/workspace state.
+- Persist per-user workspace layout under user state while keeping package windows scoped to their app lifecycle.
+
+Verification:
+
+- Add smoke coverage for workspace create/switch/delete, window move between workspaces, layout restore, fullscreen state, mobile split policy, and `/proc/displays` reporting.
+- Add capability-mock tests for multi-screen supported, unsupported, permission denied, PWA installed, and remote display provider states.
+- Add tests proving hidden workspaces do not keep receiving focused keyboard input.
+
+Completion criteria:
+
+- Window placement and workspace state behave as OS state, not as one desktop component's private layout memory.
+- DindbOS reports which display behaviors are browser-only, PWA-enhanced, remote-provider-backed, companion-assisted, or unsupported.
+
+### Native-Like 46: Continuous Backup, Snapshot History, And Disaster Recovery
+
+Status: Later.
+
+Goal: add Time-Machine-like user backup, version history, restore, and disaster recovery on top of VFS snapshots and portable images.
+
+Why it matters:
+
+- Native OSes let users recover from accidental deletion, bad package updates, corrupted settings, and failed migrations.
+- DindbOS already plans portable images, sync, storage repair, and transactional updates, but users also need continuous backup history with clear retention and restore semantics.
+- Browser storage can support this through content-addressed snapshots, OPFS/IndexedDB metadata, remote encrypted objects, and optional export/download flows.
+
+Implementation tasks:
+
+- Add a backup service with backup sets, protected roots, excluded roots, content hashes, retention policy, encryption policy, schedule policy, and last successful checkpoint.
+- Add incremental snapshots for selected user files, app state, package records, settings, and registry state without duplicating unchanged bytes.
+- Add restore modes: single file, folder, app state, package record, user profile, full system, and dry-run restore report.
+- Add retention rules by count, age, storage quota, user pinning, and managed policy.
+- Add backup destinations for local browser storage, exported archive file, local mount folder, remote encrypted object provider, and companion-assisted native folder.
+- Add corruption and ransomware-style mass-change heuristics that warn before overwriting too much recent backup state.
+- Add `/var/backups/dindbos`, `/proc/backups`, `backup`, `restore`, `snapshot`, and Settings backup history UI.
+- Integrate with keychain so encrypted backups exclude raw key material unless the user explicitly exports a recovery package.
+
+Verification:
+
+- Add smoke coverage for incremental backup, restore single file, restore app state, quota-limited retention, corrupt backup refusal, encrypted backup locked denial, and dry-run restore report.
+- Add tests proving package DB, app registry, and user files remain consistent after partial restore or failed restore.
+- Add tests proving backups respect user boundaries and do not leak another user's home or keychain records.
+
+Completion criteria:
+
+- Users can recover previous file and system states without relying on manual JSON export.
+- Backup status, failures, retention, encryption, and restore impact are visible before mutation.
+
+### Native-Like 47: Privacy Ledger, Consent Broker, And Data Access Reports
+
+Status: Later.
+
+Goal: make every sensitive access request visible, revocable, auditable, and explainable to users.
+
+Why it matters:
+
+- Native OSes increasingly provide privacy reports for files, camera, microphone, location, contacts, clipboard, screen capture, network, automation, and background access.
+- DindbOS has permission checks, but native-like trust requires a user-facing record of who accessed what, when, why, and under which grant.
+- This is especially important as DindbOS adds keychain, devices, network, AI automation, remote admin, companions, and sandboxed third-party apps.
+
+Implementation tasks:
+
+- Add a consent broker that mediates temporary grants, persistent grants, one-shot grants, denied grants, expiry, revocation, and user prompts.
+- Add a privacy ledger that records app id, pid, user, capability, target resource, decision, grant duration, source policy, timestamp, and redaction state.
+- Track sensitive categories: files outside app root, local mounts, clipboard, screen/window capture, camera, microphone, notifications, network hosts, keychain, automation, remote admin, companion access, and AI provider file reads.
+- Add user-facing privacy reports in Settings with filters by app, capability, time range, user, and denied operation.
+- Add package manifest purpose strings so the consent prompt can explain why a capability is requested.
+- Add `privacy report`, `privacy grants`, `privacy revoke`, and `/var/log/dindbos/privacy.log`.
+- Add managed-policy hooks for preapproved, forbidden, prompt-required, and audit-only access.
+- Add retention and export policy so audit logs are useful without becoming an unbounded sensitive-data store.
+
+Verification:
+
+- Add smoke coverage for temporary file grant, revoked clipboard grant, denied screen capture, persistent notification grant, audit log redaction, and Settings privacy report rendering.
+- Add tests proving apps cannot forge another app's privacy records or erase denied access logs without administrative policy.
+- Add tests proving keychain, AI automation, remote admin, and companion calls all emit privacy ledger records through the same broker.
+
+Completion criteria:
+
+- Users can answer "which app touched this sensitive thing?" without source-level debugging.
+- Sensitive grants are promptable, revocable, logged, scoped, and enforced by runtime brokers.
+
+### Native-Like 48: Time, Locale, Calendar, And Cron-Like Scheduler
+
+Status: Later.
+
+Goal: provide system time, time zones, locale, calendars, timers, and scheduled jobs through OS services rather than raw app calls.
+
+Why it matters:
+
+- Native OSes centralize clock settings, locale, time zone, date formatting, calendar alarms, scheduled tasks, and time synchronization.
+- Browser apps can read time directly, but DindbOS should expose a consistent runtime clock, monotonic timers, user locale policy, and honest scheduling limits.
+- This supports shell scripts, package tasks, services, reminders, backups, update checks, indexing, and tests.
+
+Implementation tasks:
+
+- Add a clock service with wall time, monotonic time, timezone, locale, calendar format, first day of week, hour cycle, and drift diagnostics.
+- Add scheduler records for one-shot timers, interval jobs, cron-like schedules, service maintenance tasks, backup jobs, package update checks, and user reminders.
+- Add browser capability policy for active-tab timers, hidden-tab throttling, Service Worker alarms where supported, Periodic Background Sync where supported, and companion-assisted wakeups.
+- Add `cron.d`-style service schedules under `/etc/dindbos/schedules`, per-user schedules under user state, and runtime state under `/var/run/dindbos/schedules`.
+- Add missed-run handling: skip, run-on-next-active, coalesce, catch-up once, or require user approval.
+- Add locale APIs for number, date, relative time, collation, plural rules, and text direction through `Intl` with explicit unsupported markers.
+- Add `date`, `timedatectl`, `locale`, `crontab`, `run-parts`, `/proc/timers`, and `/proc/schedules`.
+- Add deterministic test clock injection for smoke tests and package test runtimes without affecting production wall time.
+
+Verification:
+
+- Add smoke coverage for timezone formatting, locale formatting, one-shot schedule, interval schedule, missed-run policy, hidden-tab degradation report, and deterministic test clock.
+- Add tests proving scheduled jobs run with declared user/process credentials and cannot exceed their filesystem/network/device permissions.
+- Add tests proving closed-page background claims fail honestly when the browser cannot provide wakeups.
+
+Completion criteria:
+
+- Time and scheduled work are consistent OS primitives visible to shell, services, Settings, packages, and tests.
+- DindbOS reports timer precision, throttling, and closed-page limitations instead of pretending to own native wakeups.
+
+### Native-Like 49: System Update Channels, Migration Lab, And Rollout Rings
+
+Status: Later.
+
+Goal: make runtime schema changes, package platform changes, migrations, and staged rollouts testable before they touch user data.
+
+Why it matters:
+
+- Native OS updates do not only replace files; they migrate databases, drivers, services, policies, and user state.
+- DindbOS will have VFS schemas, registry schemas, package DB schemas, keychain vaults, sync metadata, service units, and module ABIs that can break if migrations are casual.
+- A migration lab lets new runtime builds test real user snapshots in dry-run mode before activation.
+
+Implementation tasks:
+
+- Add runtime update channels such as stable, beta, dev, local, pinned, and managed-ring with explicit compatibility expectations.
+- Add migration manifests with id, from version, to version, affected stores, dry-run support, rollback support, checksum, and required browser capabilities.
+- Add dry-run migration against cloned VFS/registry/keychain metadata snapshots before mutating active state.
+- Add rollout rings for local user, demo profile, managed group, beta users, and full release.
+- Add migration failure bundles that include affected records, logs, schema versions, rollback status, and suggested recovery mode.
+- Add `updatectl channel`, `updatectl check`, `updatectl dry-run`, `updatectl apply`, `updatectl rollback`, and `doctor migrations`.
+- Add policy hooks so managed deployments can pin versions, delay updates, require signed migrations, or force safe-mode repair.
+- Add compatibility gates so packages requiring a newer API cannot activate until the runtime migration succeeds.
+
+Verification:
+
+- Add smoke coverage for dry-run migration success, dry-run failure without mutation, apply success, apply rollback, pinned-channel refusal, signed migration check, and package API gate.
+- Add tests proving failed migrations leave user files, package records, app registry, service registry, and keychain metadata internally consistent.
+
+Completion criteria:
+
+- Runtime evolution is safe enough to carry user data forward without treating every update as a fresh demo install.
+- Users and admins can see what changed, what migrated, what failed, and how to recover.
+
+### Native-Like 50: Compatibility Test Lab And Hardware/Browser Matrix
+
+Status: Later.
+
+Goal: continuously verify DindbOS behavior across browsers, install modes, storage backends, device capabilities, and companion configurations.
+
+Why it matters:
+
+- Native OSes maintain hardware compatibility lists, driver matrices, certification suites, and regression labs.
+- Browser-native OS work depends heavily on browser APIs, origin policy, PWA install state, storage quotas, worker behavior, WebGPU, WebRTC, local mounts, notifications, and companion availability.
+- A test lab prevents native-like claims from drifting beyond what specific browser environments can actually support.
+
+Implementation tasks:
+
+- Define a capability matrix for Chromium, Safari, Firefox, mobile browsers, installed PWA, cross-origin isolated deployment, local companion, hosted provider, and managed enterprise browsers.
+- Add test profiles for browser-only, PWA-installed, OPFS-supported, IndexedDB fallback, local mount supported, notification denied, WebGPU supported, SharedArrayBuffer supported, and companion-assisted.
+- Add a certification runner that executes focused smoke suites against each profile and writes machine-readable support reports.
+- Add `doctor matrix` and `compat report` commands that compare current runtime capability probes against the documented support matrix.
+- Add fixture apps and packages for every major subsystem: VFS, descriptors, WASM, NodeCompat, compositor, network, devices, keychain, notifications, sync, and companion bridges.
+- Add failure classification: unsupported, permission denied, browser bug, degraded, flaky, companion missing, policy denied, and runtime regression.
+- Add docs generation that updates the public compatibility table from verified matrix results, not from aspirational roadmap text.
+- Add CI hooks for automated profiles and manual verification scripts for APIs that cannot be reliably automated.
+
+Verification:
+
+- Add smoke coverage for capability report generation, unsupported feature classification, matrix docs consistency, fixture package install/run, and browser profile selection.
+- Add tests proving a feature cannot be marked supported unless the matching probe and verification command pass.
+
+Completion criteria:
+
+- DindbOS can state exactly which native-like features work in which browser/install/companion mode.
+- Future roadmap claims are grounded in repeatable verification rather than memory or visual inspection.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
