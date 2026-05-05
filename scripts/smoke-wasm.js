@@ -178,6 +178,22 @@ const wasiRun = await os.wasm.runFile("/home/guest/bin/wasi-hello.wasm", "/home/
 assert(wasiRun.status === 0, `wasi fd_write status mismatch: ${wasiRun.status} ${wasiRun.stderr}`);
 assert(wasiRun.stdout === "wasi hello\n", `wasi fd_write stdout mismatch: ${JSON.stringify(wasiRun.stdout)}`);
 
+const workerWasiRun = await os.wasm.runFile("/home/guest/bin/wasi-hello.wasm", "/home/guest/bin", {
+  argv: ["wasi-hello.wasm"],
+  executionBackend: "worker",
+  principal: os.permissions.principal(os.session),
+});
+assert(workerWasiRun.status === 0, `worker wasi fd_write status mismatch: ${workerWasiRun.status} ${workerWasiRun.stderr}`);
+assert(workerWasiRun.backend === "worker", `worker wasi backend mismatch: ${workerWasiRun.backend}`);
+assert(workerWasiRun.stdout === "wasi hello\n", `worker wasi fd_write stdout mismatch: ${JSON.stringify(workerWasiRun.stdout)}`);
+assert(os.processes.history.some((process) => process.appId === "wasm:wasi-hello.wasm" && process.executionBackend === "worker"), "worker wasm run was not tracked with worker backend");
+
+const workerExitRun = await os.wasm.runFile("/home/guest/bin/exit7.wasm", "/home/guest/bin", {
+  executionBackend: "worker",
+  principal: os.permissions.principal(os.session),
+});
+assert(workerExitRun.status === 7, `worker wasm exit status mismatch: ${workerExitRun.status}`);
+
 const wasiCatRun = await os.wasm.runFile("/home/guest/bin/wasi-cat.wasm", "/home/guest/bin", {
   argv: ["wasi-cat.wasm"],
   stdin: "stdin echo\n",
@@ -265,7 +281,7 @@ os.fs.remove("/home/guest/bin/wasi-hardlink-source.txt", "/", {}, os.permissions
 assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "changed through link\n", "wasi hard link did not survive source removal");
 assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 1, "wasi hard link count did not update after source removal");
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir mkdir remove rename symlink hardlink process");
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi worker stdin path-open rights readdir mkdir remove rename symlink hardlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
