@@ -176,6 +176,278 @@ This section tracks work that is technically possible inside the browser, even w
 
 The principle is strict: each item must create a reusable OS primitive. A terminal demo, a fake process row, or a one-off app shortcut does not count. The work counts only when apps, shell commands, packages, and tests can all use the same runtime boundary.
 
+### Native-Core Implementation Queue
+
+Status: Next.
+
+Goal: turn the broad native-like backlog into concrete engineering cuts that can be implemented in sequence. These are all technically feasible inside a browser-native architecture, even when they require Web Workers, WASM, OPFS, WebCrypto/WebAuthn, Service Workers, cross-origin isolation, or narrow local companions.
+
+The order matters. DindbOS gets closer to a native OS when the lower kernel boundary hardens first, then userland, storage, security, and host-adjacent capabilities build on that boundary.
+
+#### Queue 1: Atomic Storage And Repairable Disk Semantics
+
+Why first:
+
+- Native OS credibility depends on not corrupting files, package records, registry records, or app state during quota failure, refresh, interrupted writes, or tab lifecycle interruption.
+- Browser storage is fallible and quota-shaped, so DindbOS needs a disk layer that can explain every clean, dirty, failed, repaired, or refused state.
+
+Implementation cuts:
+
+- Extend the existing write journal into replayable transaction records for package installs, editor saves, archive imports, remote sync apply, registry mutations, and image import.
+- Add atomic write-then-rename behavior for user documents, package files, package DB records, app registry entries, and service records.
+- Add staged directories for package install/update so activation happens only after all files, integrity checks, quota reservations, launcher writes, and app registration are ready.
+- Add `fsync`-style barriers to Shell, SDK, WASM, and NodeCompat paths so programs can request durability before reporting success.
+- Add `fsck.dindbos check|repair|dry-run|explain` for orphaned nodes, broken package mounts, bad link counts, partial journals, stale local mount metadata, and package DB drift.
+- Add storage-class quota arbitration for user data, package roots, package state, cache, temp, snapshots, logs, backups, sync staging, and recovery data.
+- Add conservative repair rules: never weaken ownership, permissions, security labels, quarantine state, or encrypted-volume locks during repair.
+
+Verification:
+
+- Add smoke coverage for interrupted package activation, interrupted editor save, quota denial before mutation, journal replay, dry-run repair, real repair audit records, and failed repair fallback.
+- Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
+- Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
+
+Completion criteria:
+
+- DindbOS can recover from common storage failures without factory reset.
+- A saved file, installed package, or registry mutation is either fully committed, explicitly rolled back, or visibly repairable.
+
+#### Queue 2: Kernel Object Registry And Handle Boundary
+
+Why next:
+
+- Native kernels do not pass private mutable kernel objects directly to user programs.
+- A common handle model is the foundation for app containers, worker syscalls, WASM compatibility, IPC, devices, sockets, and companion access.
+
+Implementation cuts:
+
+- Define kernel object ids for processes, descriptors, files, mounts, windows, services, devices, sockets, IPC endpoints, timers, keychain grants, package namespaces, and companion sessions.
+- Add per-process handle tables with rights, owner pid, namespace, user credentials, expiry, close-on-exec behavior, duplicate/transfer policy, and revocation reason.
+- Route high-value APIs through handles first: open files, descriptor IO, window capture, IPC endpoints, device opens, keychain grants, companion sessions, and network sockets.
+- Add process-exit, process-crash, logout, session-lock, package-uninstall, permission-revoke, and companion-disconnect cleanup that revokes owned handles.
+- Expose `/proc/<pid>/handles.json`, `/proc/objects`, `handlectl`, and Activity Monitor resource views.
+- Keep a compatibility shim while migrating high-level APIs so current apps do not break during the transition.
+
+Verification:
+
+- Add smoke coverage for valid handle use, stale handle denial, wrong-right denial, duplicated handle cleanup, cross-process transfer, inherited stdio handles, and revoked keychain/device/companion handles.
+- Add fuzz-style invalid handle tests for unknown id, wrong object type, double close, use-after-close, cross-user use, and package namespace escape.
+
+Completion criteria:
+
+- Userland cannot operate on sensitive kernel resources unless it owns a valid handle with matching rights.
+- Runtime diagnostics can answer which process owns each resource and why access was allowed or denied.
+
+#### Queue 3: Unified Spawn, Process Groups, Signals, And Job Control
+
+Why next:
+
+- A native-like shell needs more than a process table. It needs executable images, inherited handles, foreground process groups, cancellation, exit status aggregation, and predictable cleanup.
+- This also gives services, package CLIs, WASM programs, NodeCompat tasks, and worker jobs one launch model.
+
+Implementation cuts:
+
+- Define process image records for app, package CLI, service, worker task, WASM module, NodeCompat program, emulator workload, and companion-backed command.
+- Add `spawn`/`exec` syscall families with executable path, argv, env, cwd, credentials, stdio handles, namespace profile, resource limits, and lifecycle policy.
+- Add process groups, sessions, foreground TTY ownership, and shell job records.
+- Add signal-like runtime events for interrupt, terminate, hangup, kill, pipe close, resize, suspend, and resume.
+- Implement shell `jobs`, `fg`, `bg`, `kill`, background launch, Ctrl-C interruption, pipeline group cleanup, and broken-pipe behavior.
+- Propagate cancellation into workers, WASM cooperative checks, NodeCompat execution, descriptor tables, pipes, services, and package child processes.
+
+Verification:
+
+- Add smoke coverage for spawned process images, inherited stdin/stdout/stderr, env override, cwd scope, process group cleanup, Ctrl-C-style interruption, background job resume, and killed pipeline descriptor cleanup.
+- Add tests proving unsupported native `fork()` semantics fail explicitly while supported spawn/snapshot semantics remain inspectable.
+
+Completion criteria:
+
+- Shell, services, packages, workers, and WASM use one process launch contract.
+- Long-running command workloads can be interrupted or killed without stale descriptors, zombie process rows, or frozen shell state.
+
+#### Queue 4: IPC, Readiness, Timers, And Kernel Event Loop
+
+Why next:
+
+- Native userland depends on waiting for events instead of polling private runtime state.
+- IPC, timers, descriptor readiness, service events, and lifecycle events need one OS-owned queue before serious daemons or terminal programs can exist.
+
+Implementation cuts:
+
+- Add a kernel event queue for timer, process, descriptor, pipe, IPC, device, network, storage, lifecycle, session, companion, and input events.
+- Add timer syscalls for sleep, timeout, interval, cancellation, ownership, and degraded hidden-tab timing reports.
+- Add readiness syscalls such as `io.poll`, `io.wait`, descriptor readiness subscribe, and cancellation tokens.
+- Add IPC broker primitives for named channels, stream IPC over descriptors, datagram-style structured messages, service discovery, backpressure, and message size limits.
+- Expose `/proc/interrupts`, `/proc/timers`, `/proc/ipc`, `timerctl`, `pollctl`, and `busctl`.
+- Clean up timers, event subscriptions, IPC endpoints, and readiness watchers on process exit, crash, permission revoke, package uninstall, and logout.
+
+Verification:
+
+- Add smoke coverage for sleep/wakeup, timer cancellation, pipe readiness, PTY input readiness, socket/message readiness, IPC denied send, service discovery, backpressure, and crashed peer cleanup.
+- Add tests proving hidden-tab throttling is reported as degraded timing instead of native precision.
+
+Completion criteria:
+
+- Programs can wait on timers, IO, IPC, and lifecycle events through one documented OS primitive.
+- Runtime diagnostics can explain why a process woke up, why a timer was delayed, or why an event was dropped.
+
+#### Queue 5: Origin-Isolated App Containers And Trusted System UI
+
+Why next:
+
+- Third-party GUI apps cannot be treated as native-like until they are isolated from the desktop DOM and cannot spoof permission, keychain, package, or companion prompts.
+- The browser gives usable isolation tools, but DindbOS must own the bridge and trusted surfaces.
+
+Implementation cuts:
+
+- Add container modes for trusted same-runtime app, sandboxed iframe, credentialless iframe, worker-rendered surface, and companion-rendered surface.
+- Move containerized apps onto a postMessage syscall bridge with schema validation, capability filtering, rate limits, trace ids, and audit logs.
+- Add CSP, Trusted Types, import-map, and package module loading policy for containerized apps.
+- Add heartbeat, hang detection, crash isolation, and cleanup for sandboxed app containers.
+- Add compositor-owned trusted surfaces for login, lock/unlock, keychain unlock, package install trust, permission grant, companion pairing, remote admin approval, destructive operations, and update activation.
+- Prevent ordinary apps from covering, embedding, capturing, or forging trusted surfaces; route sensitive grant creation only through trusted UI or managed policy.
+- Add `/proc/<pid>/container.json`, `/proc/trusted-ui`, Settings security history, and Activity Monitor isolation badges.
+
+Verification:
+
+- Add smoke coverage for sandboxed app launch, allowed syscall bridge call, denied raw runtime/DOM access, heartbeat timeout, trusted prompt grant/deny/timeout, spoofed dialog denial, and capture denial around trusted surfaces.
+- Add tests proving an app cannot read another window, keychain secret, package root, local mount, or trusted prompt record without a declared grant.
+
+Completion criteria:
+
+- Less-trusted package apps can run as real DindbOS apps without direct desktop internals.
+- Sensitive OS decisions happen through a reusable trusted UI service, not app-rendered lookalikes.
+
+#### Queue 6: Browser API Brokers, Device Tree, And Privacy Ledger
+
+Why next:
+
+- A native OS owns access to devices, clipboard, media, network, notifications, storage, host integration, and user attention.
+- Browser APIs are real capabilities, but if apps call them directly DindbOS cannot enforce permissions or explain access.
+
+Implementation cuts:
+
+- Add brokers for File System Access, Clipboard, Notifications, Badging, Web Share, Storage/OPFS, WebRTC, MediaDevices, Screen Capture, WebAudio, WebGPU, WebUSB, WebSerial, WebHID, WebMIDI, Gamepad, Battery, and browser-host integration features.
+- Add a declarative device/capability tree under `/proc/device-tree` and `/proc/browser-capabilities`, with support state, permission state, limits, provider, fallback, trust label, and owner service.
+- Add package manifest constraints for required device nodes, browser features, PWA-only features, cross-origin-isolation requirements, and companion-required capabilities.
+- Add consent broker and privacy ledger records for files, local mounts, clipboard, capture, camera, microphone, notifications, network hosts, keychain, automation, remote admin, companions, and AI provider file reads.
+- Add `doctor browser`, `doctor hardware`, `privacy report`, `privacy grants`, `privacy revoke`, and Settings permission panels.
+- Add temporary grants with expiry and foreground-window ownership for sensitive APIs.
+
+Verification:
+
+- Add mock-adapter smoke coverage for allowed grant, denied grant, revoked grant, unsupported browser feature, expired temporary grant, device-tree package refusal, and privacy report rendering.
+- Add browser integration checks where automation is stable, such as storage persistence classification, notification permission denial, clipboard write policy, and worker support probes.
+
+Completion criteria:
+
+- Apps consume browser-native power through DindbOS brokers, not direct untracked globals.
+- Users can inspect, revoke, and audit sensitive browser capability use.
+
+#### Queue 7: Secure Boot, Policy Compiler, And Package Trust Enforcement
+
+Why next:
+
+- Once packages, containers, devices, and companions become serious, trust must be measured before activation.
+- Permission checks should be compiled from policy instead of scattered hand-coded branches.
+
+Implementation cuts:
+
+- Add signed system manifests covering runtime version, boot schema, core module hashes, built-in app hashes, syscall ABI version, migration ids, and compatibility tier.
+- Add measured boot records under `/var/run/dindbos/boot-measurements.json` and durable audit history under `/var/log/dindbos/boot-measurements.log`.
+- Add boot trust states: trusted, degraded, unsigned, mismatched, recovered, safe-mode, and refused.
+- Add a policy language for syscalls, paths, handles, network hosts, devices, IPC endpoints, companion capabilities, services, child processes, resource quotas, and temporary grants.
+- Compile policy from app manifests, package manifests, service units, users/groups, managed profiles, trust tiers, compatibility tiers, and temporary grants.
+- Add `bootctl`, `policyctl compile|explain|diff|audit`, `pkg audit`, `doctor boot`, and `doctor policy`.
+- Add safe-mode behavior that skips non-critical packages, services, modules, companions, and repositories when trust verification fails.
+
+Verification:
+
+- Add smoke coverage for valid boot manifest, hash mismatch, safe-mode fallback, policy compile success, invalid policy refusal, inherited child policy, syscall denial explanation, and package activation refusal before mutation.
+- Add property-style tests for path escape, host allowlist bypass, undeclared device access, revoked grant reuse, and companion direct-access denial.
+
+Completion criteria:
+
+- Privileged package, service, device, policy, and companion activation is gated by measured runtime state.
+- Users and developers can ask why an operation was denied and receive a deterministic policy explanation.
+
+#### Queue 8: Cross-Origin Isolation, Shared Memory, And Multi-Core Worker Runtime
+
+Why next:
+
+- Real native-like compute workloads need workers, shared memory, Atomics, quotas, and observable scheduling.
+- These features are browser-feasible but only under strict deployment and capability conditions.
+
+Implementation cuts:
+
+- Define deployment profiles for basic browser tab, installed PWA, cross-origin isolated, managed kiosk, local companion, hosted provider, and developer mode.
+- Add COOP/COEP/CORP requirements, asset-loading restrictions, worker script restrictions, iframe restrictions, and third-party resource policy.
+- Add capability probes for SharedArrayBuffer, Atomics wait/notify, OffscreenCanvas worker rendering, WebGPU, WebCodecs, OPFS worker access, and Service Worker support.
+- Add worker pools for interactive, background, service, build, WASM, emulator, media, and indexing workloads.
+- Add thread-like syscalls for spawn, join, detach, cancel, yield, sleep, futex-like wait/notify where supported, and shared-memory allocate/map/unmap.
+- Add scheduler diagnostics under `/proc/scheduler`, `/proc/<pid>/threads`, `/proc/shared-memory`, `schedctl`, `threadctl`, and `doctor isolation`.
+
+Verification:
+
+- Add smoke coverage for isolated/non-isolated profile classification, package refusal when isolation is required, worker pool assignment, priority ordering, forced termination, shared-memory denied without capability, and SharedArrayBuffer fallback.
+- Add WASM fixture tests for atomic counter behavior, worker pool limits, memory quota denial, and cleanup after process kill.
+
+Completion criteria:
+
+- CPU-heavy and threaded workloads can run when browser capabilities allow them and fail explicitly when they do not.
+- Scheduling, shared memory, and hidden-tab throttling are visible, enforceable, and explainable.
+
+#### Queue 9: Service Worker Boot Layer, Offline Queue, And Recovery Shell
+
+Why next:
+
+- Browser-only DindbOS cannot be a resident kernel after tab close, but installed/PWA mode can still support offline boot assets, update checks, background sync where available, and recovery workflows.
+- The OS should be useful during network failure, update failure, storage damage, and repeated boot crash.
+
+Implementation cuts:
+
+- Add Service Worker boot manifest with build id, boot schema, cached core assets, package index snapshots, offline docs, migration compatibility, and update state.
+- Add page-runtime to Service Worker boot handshake for cache state, offline capability, storage availability, update state, and pending command queue.
+- Add offline command queue for safe deferred work: package index refresh, sync retry, backup enqueue, notification scheduling, companion health probes, and update manifest refresh.
+- Add panic manager and recovery shell for boot failure, migration failure, storage invariant failure, registry corruption, trust failure, service crash loop, package activation loop, and resource exhaustion.
+- Add safe boot entries for normal, safe mode, storage repair, base-system repair, companion-disabled, package-disabled, offline, and developer diagnostics.
+- Add `bootctl worker`, `queuectl`, `doctor offline`, `panicctl`, emergency `fsck`, `regctl repair`, `distctl repair`, `pkg disable`, `service disable`, `rollback`, and diagnostic bundle export.
+
+Verification:
+
+- Add smoke coverage for offline asset cache population, offline boot diagnostics, pending queue persistence, unsupported Background Sync degradation, induced boot panic, safe mode, recovery shell command allowlist, and repeated boot crash fallback.
+- Add tests proving queued commands retain declared credentials and cannot exceed package/service policy.
+
+Completion criteria:
+
+- DindbOS can boot into a useful offline or recovery state without pretending closed-page execution is unlimited.
+- Severe runtime failures lead to inspectable recovery options, not blank-screen failure or silent reset.
+
+#### Queue 10: Conformance Lab And Native-Like Certification Levels
+
+Why next:
+
+- "Native-like" must become a tested claim, not a feeling.
+- Browser behavior varies by engine, PWA install state, storage support, cross-origin isolation, companion availability, and user permissions.
+
+Implementation cuts:
+
+- Define certification levels for kernel basics, durable disk, package platform, WASM userland, worker isolation, descriptors/PTY, network broker, keychain, storage recovery, secure boot, managed policy, companion trust, and browser API brokers.
+- Add a conformance runner that boots isolated profiles, installs fixture packages, runs shell/WASM/NodeCompat/app/service workloads, checks `/proc`, and validates policy denials.
+- Add capability profiles for Chromium, Safari, Firefox, mobile, installed PWA, cross-origin isolated, offline, local companion, remote provider, and managed mode.
+- Add machine-readable reports under `/var/log/dindbos/conformance`, `doctor conformance`, `doctor matrix`, and CI artifacts.
+- Generate compatibility docs from verified matrix results rather than aspirational roadmap text.
+- Add package and companion certification metadata for ABI version, compatibility tier, required capabilities, fallback behavior, smoke commands, protocol version, and expected resource envelope.
+
+Verification:
+
+- Add smoke coverage for conformance report generation, failed guarantee reporting, profile classification, fixture package install/run, matrix docs consistency, package certification refusal, and companion protocol mismatch.
+- Add CI/browser-profile hooks where automation is practical, and manual verification scripts for user-prompt-only APIs.
+
+Completion criteria:
+
+- Native-like implementation rate maps to named, tested certification levels.
+- Users, package authors, and contributors can see exactly which OS guarantees are implemented, degraded, companion-required, experimental, or impossible in the current build.
+
 ### Convergence 1: Browser-Native Syscall ABI
 
 Status: In progress.
