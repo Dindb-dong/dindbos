@@ -225,6 +225,7 @@ export class SyscallDispatcher {
       readonly: Boolean(args.readonly),
       lower: args.lower,
       upper: args.upper,
+      archive: args.archive,
       source: args.source || "syscall",
     }, context.principal);
   }
