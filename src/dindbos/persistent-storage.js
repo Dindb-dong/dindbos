@@ -12,6 +12,7 @@ export class PersistentStorage {
     this.adapter = options.adapter || safeLocalStorage();
     this.indexedDB = options.indexedDB || safeIndexedDB();
     this.opfsProvider = options.opfsProvider || (options.opfsRoot ? async () => options.opfsRoot : safeOpfsProvider());
+    this.quotaBytes = Math.max(0, Number(options.quotaBytes || 0));
     this.opfsRootPromise = null;
     this.savedInodeHashes = new Map();
     this.savedContentHashes = new Map();
@@ -38,6 +39,8 @@ export class PersistentStorage {
       lastStorageJournalAction: "",
       lastStorageTransactionId: "",
       storageRecoveryDecision: null,
+      quotaLimitBytes: this.quotaBytes,
+      lastQuotaReservation: null,
     };
   }
 
@@ -100,6 +103,7 @@ export class PersistentStorage {
         dirtyInodes: recordPayload.dirtyInodeRecords.length,
         dirtyFiles: recordPayload.dirtyFileRecords.length,
       });
+      this.reserveStorageBytes(this.estimatedInodePayloadBytes(recordPayload, transaction), transaction);
       this.updateStatus(recordPayload.manifest, {
         storageFormat: INODE_RECORD_FORMAT,
         inodeRecords: recordPayload.inodeRecords.length,
@@ -124,8 +128,9 @@ export class PersistentStorage {
       savedAt: new Date().toISOString(),
       root: this.serializeSnapshotTree(root),
     });
-      this.updateStatus(payload, { storageFormat: "snapshot", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
-      this.write(this.key, payload);
+    this.reserveStorageBytes(byteLength(payload), { storageFormat: "snapshot", key: this.key });
+    this.updateStatus(payload, { storageFormat: "snapshot", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
+    this.write(this.key, payload);
   }
 
   clearFileSystem() {
@@ -233,6 +238,7 @@ export class PersistentStorage {
   }
 
   write(key, value) {
+    this.reserveStorageBytes(byteLength(value), { key });
     if (this.opfsProvider) {
       this.markWriteQueued();
       this.writeQueue = this.writeQueue
@@ -604,6 +610,51 @@ export class PersistentStorage {
       transactionKind: String(kind || "storage-write"),
       ...details,
     };
+  }
+
+  estimatedInodePayloadBytes(payload = {}, transaction = {}) {
+    return byteLength(payload.manifest)
+      + byteLength(JSON.stringify(transaction))
+      + (payload.dirtyFileRecords || []).reduce((total, record) => total + byteLength(record.content), 0)
+      + (payload.dirtyInodeRecords || []).reduce((total, record) => total + byteLength(record.metadata), 0);
+  }
+
+  reserveStorageBytes(requiredBytes, details = {}) {
+    const quota = Math.max(0, Number(details.quotaBytes || this.quotaBytes || this.lastStatus.quota || 0));
+    const usage = Math.max(0, Number(details.usageBytes ?? this.lastStatus.usage ?? 0));
+    const required = Math.max(0, Number(requiredBytes || 0));
+    if (!quota) {
+      this.lastStatus = {
+        ...this.lastStatus,
+        lastQuotaReservation: null,
+      };
+      return true;
+    }
+    const available = Math.max(0, quota - usage);
+    const allowed = required <= available;
+    const reservation = {
+      requiredBytes: required,
+      usageBytes: usage,
+      quotaBytes: quota,
+      availableBytes: available,
+      allowed,
+      reason: allowed ? "" : "quota-exceeded",
+      at: new Date().toISOString(),
+    };
+    this.lastStatus = {
+      ...this.lastStatus,
+      quotaLimitBytes: quota,
+      lastQuotaReservation: reservation,
+    };
+    if (allowed) {
+      this.recordStorageJournal("quota-reserved", details);
+      return true;
+    }
+    this.recordStorageJournal("quota-denied", {
+      ...details,
+      error: "quota-exceeded",
+    });
+    throw new Error(`storage quota exceeded: required=${required} available=${available} quota=${quota}`);
   }
 
   activeStorageTransactionKey() {
