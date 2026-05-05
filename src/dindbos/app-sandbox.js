@@ -1,4 +1,5 @@
 import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260422-browserd";
+import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
 
 const APP_STATE_DIR = "/var/lib/dindbos/app-state";
 const MAX_APP_STATE_VALUE_BYTES = 64 * 1024;
@@ -323,18 +324,22 @@ export class AppSandbox {
   }
 
   createNodeFacade() {
+    const node = new NodeCompat(this.os, {
+      fileSystem: this.process.manifest.fileSystem,
+      allowedPackages: this.process.manifest.namespace?.dependencyAllowlist,
+    });
     return {
       runFile: (path, cwd = this.process.cwd, argv = []) => {
         this.assertCapability("node.execute");
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
-        return this.os.node.runFile(normalized, "/", { argv });
+        return node.runFile(normalized, "/", { argv });
       },
       evaluate: (source, cwd = this.process.cwd) => {
         this.assertCapability("node.execute");
         const normalized = this.os.fs.normalize(cwd, this.process.cwd);
         this.assertFileSystem(normalized, "read");
-        return this.os.node.evaluate(source, normalized);
+        return node.evaluate(source, normalized);
       },
     };
   }

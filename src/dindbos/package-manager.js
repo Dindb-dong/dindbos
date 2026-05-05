@@ -483,6 +483,8 @@ export class PackageManager {
     record.dependencies = record.dependencies || { packages: {}, npm: {} };
     record.dependencies.npm = record.dependencies.npm || {};
     record.dependencies.npm[dependency.name] = dependency;
+    record.namespace = record.namespace || packageNamespace(record.id, record.app.id, record.installPath, {}, record.dependencies);
+    record.namespace.dependencyAllowlist = Object.keys(record.dependencies.npm || {});
     this.writeNpmDependencyRecords(record);
     this.writePackageRecord(record);
     this.registerPackageApp(record);
@@ -731,7 +733,7 @@ export class PackageManager {
       originalManifest: manifest,
       files: [],
       dependencies,
-      namespace: packageNamespace(id, appId, installPath, manifest.sandbox || manifest.namespace || {}),
+      namespace: packageNamespace(id, appId, installPath, manifest.sandbox || manifest.namespace || {}, dependencies),
       app: {
         id: appId,
         name: String(app.name || name),
@@ -1313,8 +1315,9 @@ function packagePublicRecord(record) {
   });
 }
 
-function packageNamespace(packageId, appId, installPath, sandbox = {}) {
+function packageNamespace(packageId, appId, installPath, sandbox = {}, dependencies = {}) {
   return {
+    packageId,
     packageRoot: installPath,
     stateRoot: `${PACKAGE_STATE_ROOT}/${packageId}`,
     cacheRoot: `${PACKAGE_CACHE_ROOT}/${packageId}`,
@@ -1330,6 +1333,7 @@ function packageNamespace(packageId, appId, installPath, sandbox = {}) {
     networkHosts: [...(sandbox.networkHosts || sandbox.network || [])],
     ipcEndpoints: [...(sandbox.ipcEndpoints || sandbox.ipc || [])],
     childProcessLimit: Number(sandbox.childProcessLimit || 0),
+    dependencyAllowlist: Object.keys(dependencies.npm || {}),
   };
 }
 

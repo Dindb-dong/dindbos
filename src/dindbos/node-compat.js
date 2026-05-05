@@ -70,6 +70,8 @@ export class NodeCompat {
     this.os = os;
     this.system = os.permissions.systemPrincipal();
     this.fsRoot = options.fsRoot ? os.fs.normalize(options.fsRoot) : "";
+    this.fsScopes = options.fileSystem ? normalizeFileSystemScopes(os, options.fileSystem) : null;
+    this.allowedPackages = Array.isArray(options.allowedPackages) ? new Set(options.allowedPackages) : null;
   }
 
   runFile(path, cwd = this.os.session.home || "/", options = {}) {
@@ -141,6 +143,7 @@ export class NodeCompat {
 
   resolvePackage(specifier, fromFilename, cwd, options = {}) {
     const { packageName, subpath } = splitPackageSpecifier(specifier);
+    this.assertPackageAllowed(packageName);
     let cursor = this.os.fs.dirname(fromFilename || this.os.fs.join(cwd, "[eval].js"));
     while (true) {
       const packageRoot = this.os.fs.join(this.os.fs.join(cursor, "node_modules"), packageName);
@@ -201,10 +204,17 @@ export class NodeCompat {
     }
   }
 
-  resolveFsPath(path, cwd = this.os.session.home || "/") {
+  resolveFsPath(path, cwd = this.os.session.home || "/", access = "read") {
     const normalized = this.os.fs.normalize(path, cwd);
+    if (this.fsScopes && isScopedPath(normalized, access === "write" ? this.fsScopes.write : this.fsScopes.read)) return normalized;
+    if (this.fsScopes) throw new Error(`NodeCompat filesystem sandbox denied: ${normalized}`);
     if (!this.fsRoot || normalized === this.fsRoot || normalized.startsWith(`${this.fsRoot}/`)) return normalized;
     throw new Error(`NodeCompat filesystem sandbox denied: ${normalized}`);
+  }
+
+  assertPackageAllowed(packageName) {
+    if (!this.allowedPackages || this.allowedPackages.has(packageName)) return;
+    throw new Error(`NodeCompat dependency not declared: ${packageName}`);
   }
 }
 
@@ -408,7 +418,7 @@ class CommonJsRuntime {
         callback(...args);
       },
       chdir: (path) => {
-        const nextPath = this.node.resolveFsPath(path, context.cwd);
+        const nextPath = this.node.resolveFsPath(path, context.cwd, "read");
         const next = this.os.fs.resolve(nextPath);
         if (!next || next.type !== "directory") throw new Error(`process.chdir: no such directory: ${path}`);
         context.cwd = next.path;
@@ -461,14 +471,14 @@ class CommonJsRuntime {
     const fsModule = {
       constants: createFsConstants(),
       readFileSync: (path, encoding = null) => {
-        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd, "read");
         if (encoding === "utf8" || encoding === "utf-8" || encoding?.encoding) {
           return this.os.fs.readFile(resolved, "/", this.node.system);
         }
         return this.buffer.from(this.os.fs.readFileBytes(resolved, "/", this.node.system));
       },
       writeFileSync: (path, data) => {
-        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd, "write");
         if (data instanceof Uint8Array) {
           this.os.fs.writeOrCreateFileBytes(resolved, data, "/", {}, this.node.system);
           return;
@@ -476,35 +486,35 @@ class CommonJsRuntime {
         this.os.fs.writeOrCreateFile(resolved, stringifyFileData(data), "/", {}, this.node.system);
       },
       appendFileSync: (path, data) => {
-        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd, "write");
         this.os.fs.appendFile(resolved, stringifyFileData(data), "/", this.node.system);
       },
-      existsSync: (path) => this.os.fs.exists(this.node.resolveFsPath(path, this.processContext.cwd), "/"),
+      existsSync: (path) => this.os.fs.exists(this.node.resolveFsPath(path, this.processContext.cwd, "read"), "/"),
       realpathSync: (path) => {
-        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd, "read");
         if (!this.os.fs.exists(resolved, "/")) throw new Error(`ENOENT: no such file or directory, realpath '${path}'`);
         return resolved;
       },
-      statSync: (path) => createStats(this.os.fs.stat(this.node.resolveFsPath(path, this.processContext.cwd), "/")),
-      lstatSync: (path) => createStats(this.os.fs.lstat(this.node.resolveFsPath(path, this.processContext.cwd), "/")),
+      statSync: (path) => createStats(this.os.fs.stat(this.node.resolveFsPath(path, this.processContext.cwd, "read"), "/")),
+      lstatSync: (path) => createStats(this.os.fs.lstat(this.node.resolveFsPath(path, this.processContext.cwd, "read"), "/")),
       readdirSync: (path = ".", options = {}) => {
-        const entries = this.os.fs.list(this.node.resolveFsPath(path, this.processContext.cwd), "/", this.node.system);
+        const entries = this.os.fs.list(this.node.resolveFsPath(path, this.processContext.cwd, "read"), "/", this.node.system);
         if (options?.withFileTypes) return entries.map((entry) => createDirent(entry));
         return entries.map((entry) => entry.name);
       },
-      opendirSync: (path = ".", options = {}) => createDirHandle(this.node.resolveFsPath(path, this.processContext.cwd), fsModule.readdirSync(path, { ...options, withFileTypes: true })),
+      opendirSync: (path = ".", options = {}) => createDirHandle(this.node.resolveFsPath(path, this.processContext.cwd, "read"), fsModule.readdirSync(path, { ...options, withFileTypes: true })),
       mkdirSync: (path, options = {}) => {
-        const resolved = this.node.resolveFsPath(path, this.processContext.cwd);
+        const resolved = this.node.resolveFsPath(path, this.processContext.cwd, "write");
         if (options?.recursive) return ensureDirectory(this.os, resolved, "/", this.node.system);
         return this.os.fs.createDirectory(resolved, "/", {}, this.node.system);
       },
-      mkdtempSync: (prefix) => createTempDirectory(this.os, this.node.resolveFsPath(prefix, this.processContext.cwd), this.node.system),
-      rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", options, this.node.system),
-      unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd), "/", {}, this.node.system),
-      renameSync: (oldPath, newPath) => this.os.fs.move(this.node.resolveFsPath(oldPath, this.processContext.cwd), this.node.resolveFsPath(newPath, this.processContext.cwd), "/", this.node.system),
+      mkdtempSync: (prefix) => createTempDirectory(this.os, this.node.resolveFsPath(prefix, this.processContext.cwd, "write"), this.node.system),
+      rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd, "write"), "/", options, this.node.system),
+      unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd, "write"), "/", {}, this.node.system),
+      renameSync: (oldPath, newPath) => this.os.fs.move(this.node.resolveFsPath(oldPath, this.processContext.cwd, "write"), this.node.resolveFsPath(newPath, this.processContext.cwd, "write"), "/", this.node.system),
       copyFileSync: (source, destination, mode = 0) => {
-        const resolvedSource = this.node.resolveFsPath(source, this.processContext.cwd);
-        const resolvedDestination = this.node.resolveFsPath(destination, this.processContext.cwd);
+        const resolvedSource = this.node.resolveFsPath(source, this.processContext.cwd, "read");
+        const resolvedDestination = this.node.resolveFsPath(destination, this.processContext.cwd, "write");
         if ((Number(mode) & fsModule.constants.COPYFILE_EXCL) && this.os.fs.exists(resolvedDestination, "/")) {
           throw new Error(`EEXIST: file already exists, copyfile '${source}' -> '${destination}'`);
         }
@@ -2743,6 +2753,20 @@ function relativePath(from, to) {
     toParts.shift();
   }
   return [...fromParts.map(() => ".."), ...toParts].join("/") || ".";
+}
+
+function normalizeFileSystemScopes(os, fileSystem = {}) {
+  const read = [...(fileSystem.read || []), ...(fileSystem.write || [])].map((path) => os.fs.normalize(path));
+  const write = [...(fileSystem.write || [])].map((path) => os.fs.normalize(path));
+  return { read: uniqueScopes(read), write: uniqueScopes(write) };
+}
+
+function uniqueScopes(scopes) {
+  return [...new Set(scopes.filter(Boolean))];
+}
+
+function isScopedPath(path, scopes = []) {
+  return scopes.some((scope) => scope === "/" || path === scope || path.startsWith(`${scope}/`));
 }
 
 function createWin32PathModule() {

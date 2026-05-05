@@ -1000,7 +1000,8 @@ Implementation tasks:
 
 - Already present: package records include first-pass namespace metadata for package root, private state root, private cache root, private temp root, process group, dependency root, device grants, network grants, IPC endpoints, and child-process limit.
 - Add namespace inheritance for child processes, WASM programs, NodeCompat commands, workers, and service units launched by a package.
-- Add per-package dependency views so NodeCompat and SDK resolution cannot read undeclared dependency trees by default.
+- Already present: AppSandbox NodeCompat execution inherits package filesystem scopes and a first-pass declared npm dependency allowlist, so package code cannot `require()` undeclared package-local dependency trees through NodeCompat.
+- Add per-package dependency views so SDK resolution, WASM entries, CLI tools, services, and future package child processes cannot read undeclared dependency trees by default.
 - Add namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics.
 - Add a package sandbox manifest section for root policy, state policy, cache policy, device access, network hosts, IPC endpoints, and child-process limits.
 - Add namespace cleanup for package uninstall, cache eviction, app state removal, temporary files, child processes, descriptors, and IPC endpoints.
@@ -1009,7 +1010,8 @@ Implementation tasks:
 Verification:
 
 - Already present: `npm run smoke:packages` verifies package namespace root metadata, state/cache/temp root creation, app manifest namespace exposure, and namespace root cleanup on uninstall.
-- Add smoke coverage for package root isolation, denied undeclared dependency read, child namespace inheritance, and denied cross-package IPC.
+- Already present: `npm run smoke:packages` launches package code that verifies another package root is denied through AppSandbox filesystem APIs and undeclared package-local `node_modules` reads are denied through NodeCompat dependency resolution.
+- Add smoke coverage for child namespace inheritance and denied cross-package IPC.
 - Add tests proving namespace restrictions apply identically to GUI apps, CLI apps, WASM entries, NodeCompat tools, and background services.
 
 Completion criteria:
