@@ -3434,6 +3434,7 @@ export async function settingsRuntimeSnapshot(os) {
   const mounts = await safeReadAsync(() => os.localMounts.status(), []);
   const lifecycle = safeRead(() => os.lifecycleStatus?.(), null);
   const recovery = safeRead(() => os.recoveryStatus?.(), null);
+  const coordination = safeRead(() => os.sessionCoordinationStatus?.(), safeRead(() => os.sessionStatus?.().coordination, null));
   return {
     user,
     home,
@@ -3446,6 +3447,7 @@ export async function settingsRuntimeSnapshot(os) {
     mounts,
     lifecycle,
     recovery,
+    coordination,
   };
 }
 
@@ -3462,6 +3464,7 @@ export function settingsRuntimeMarkup(snapshot) {
         <div><dt>Processes</dt><dd>${snapshot.processes.length}</dd></div>
         <div><dt>Services</dt><dd>${snapshot.services.length}</dd></div>
         <div><dt>Lifecycle</dt><dd>${escapeHtml(snapshot.lifecycle?.state || "unknown")}</dd></div>
+        <div><dt>Session Role</dt><dd>${escapeHtml(snapshot.coordination?.role || "unknown")}</dd></div>
         <div><dt>Recovery</dt><dd>${escapeHtml(formatRecoverySummary(snapshot.recovery))}</dd></div>
         <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(snapshot.storage)}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(snapshot.desktop)}</dd></div>
@@ -3488,12 +3491,30 @@ export function settingsRuntimeMarkup(snapshot) {
       </section>
       <section class="settings-panel">
         <header>
+          <h3>Session Coordination</h3>
+        </header>
+        ${renderSettingsSessionCoordination(snapshot.coordination)}
+      </section>
+      <section class="settings-panel">
+        <header>
           <h3>Local Folders</h3>
           <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
         </header>
         ${renderSettingsMounts(snapshot.mounts)}
       </section>
     </section>
+  `;
+}
+
+function renderSettingsSessionCoordination(coordination) {
+  return `
+    <dl>
+      <div><dt>Instance</dt><dd>${escapeHtml(coordination?.instanceId || "-")}</dd></div>
+      <div><dt>Role</dt><dd>${escapeHtml(coordination?.role || "unknown")}</dd></div>
+      <div><dt>Lock Owner</dt><dd>${escapeHtml(coordination?.lockOwner || "-")}</dd></div>
+      <div><dt>Readonly</dt><dd>${Boolean(coordination?.readonly)}</dd></div>
+      <div><dt>Stale Recovery</dt><dd>${Boolean(coordination?.staleRecovered)}</dd></div>
+    </dl>
   `;
 }
 

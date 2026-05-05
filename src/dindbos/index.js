@@ -52,11 +52,23 @@ export const OS_LIFECYCLE_STATES = [
 const RECOVERY_DIR = "/var/run/dindbos/recovery";
 const LAST_SHUTDOWN_RECOVERY_PATH = `${RECOVERY_DIR}/last-shutdown.json`;
 const LAST_RECOVERY_PATH = `${RECOVERY_DIR}/last-recovery.json`;
+const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
 
 export class DindbOS {
   constructor(options = {}) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
+    this.instanceId = String(options.instanceId || `runtime-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
     this.session = normalizeSession(options.session || {});
+    this.sessionLockTtlMs = Number(options.sessionLockTtlMs || 30_000);
+    this.sessionCoordination = {
+      instanceId: this.instanceId,
+      role: "unknown",
+      lockOwner: "",
+      lockExpiresAt: "",
+      readonly: false,
+      staleRecovered: false,
+      updatedAt: new Date().toISOString(),
+    };
     this.sessionAuth = {
       state: this.session.locked ? "locked" : "authenticated",
       locked: Boolean(this.session.locked),
@@ -159,6 +171,8 @@ export class DindbOS {
     this.ensureDiskPolicyRoots();
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
+    this.writeSessionStatus();
+    await this.coordinateSessionLock();
     this.writeSessionStatus();
     this.recoverPreviousShutdown();
   }
@@ -653,6 +667,7 @@ export class DindbOS {
 
   sessionStatus() {
     return {
+      instanceId: this.instanceId,
       user: this.session.user,
       groups: [...(this.session.groups || [])],
       home: this.session.home,
@@ -661,7 +676,68 @@ export class DindbOS {
       lockedAt: this.sessionAuth.lockedAt,
       unlockedAt: this.sessionAuth.unlockedAt,
       reason: this.sessionAuth.reason,
+      coordination: this.sessionCoordinationStatus(),
     };
+  }
+
+  sessionCoordinationStatus() {
+    return {
+      ...this.sessionCoordination,
+      canWrite: this.sessionCoordination.role !== "secondary",
+    };
+  }
+
+  async coordinateSessionLock(now = Date.now()) {
+    const existing = await this.readSessionLock();
+    const expired = existing?.expiresAtMs && Number(existing.expiresAtMs) <= now;
+    const ownsLock = existing?.owner === this.instanceId;
+    const acquired = !existing || expired || ownsLock;
+    const updatedAt = new Date(now).toISOString();
+    if (acquired) {
+      const record = {
+        owner: this.instanceId,
+        user: this.session.user,
+        acquiredAt: ownsLock ? existing.acquiredAt : updatedAt,
+        updatedAt,
+        expiresAt: new Date(now + this.sessionLockTtlMs).toISOString(),
+        expiresAtMs: now + this.sessionLockTtlMs,
+        staleRecovered: Boolean(existing && expired && !ownsLock),
+      };
+      this.storage.writeValue?.(SESSION_LOCK_STORAGE_KEY, JSON.stringify(record));
+      this.sessionCoordination = {
+        instanceId: this.instanceId,
+        role: "primary",
+        lockOwner: record.owner,
+        lockExpiresAt: record.expiresAt,
+        readonly: false,
+        staleRecovered: record.staleRecovered,
+        updatedAt,
+      };
+    } else {
+      this.sessionCoordination = {
+        instanceId: this.instanceId,
+        role: "secondary",
+        lockOwner: existing.owner || "",
+        lockExpiresAt: existing.expiresAt || "",
+        readonly: true,
+        staleRecovered: false,
+        updatedAt,
+      };
+    }
+    this.writeSessionCoordinationStatus();
+    this.bus.emit("session:coordination", this.sessionCoordinationStatus());
+    return this.sessionCoordinationStatus();
+  }
+
+  async readSessionLock() {
+    const raw = await this.storage.readValue?.(SESSION_LOCK_STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
   }
 
   lockSession(reason = "manual") {
@@ -701,6 +777,28 @@ export class DindbOS {
     this.ensureSystemDirectory("/var/run", "root", system);
     this.ensureSystemDirectory("/var/run/dindbos", "root", system);
     this.fs.writeOrCreateFile("/var/run/dindbos/session.json", `${JSON.stringify(this.sessionStatus(), null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+  }
+
+  writeSessionCoordinationStatus() {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/run", "root", system);
+    this.ensureSystemDirectory("/var/run/dindbos", "root", system);
+    this.ensureSystemDirectory("/proc", "root", system);
+    const status = this.sessionCoordinationStatus();
+    const payload = `${JSON.stringify(status, null, 2)}\n`;
+    this.fs.writeOrCreateFile("/var/run/dindbos/session-lock.json", payload, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/sessions", payload, "/", {
       owner: "root",
       group: "root",
       permissions: "-rw-r--r--",

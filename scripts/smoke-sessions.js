@@ -62,9 +62,12 @@ assert(settingsManifest.fileSystem.read.includes("/home/ada-lovelace"), "Setting
 
 const sessionStatus = os.sessionStatus();
 assert(sessionStatus.state === "authenticated" && sessionStatus.locked === false, "initial session was not authenticated");
+assert(sessionStatus.instanceId, "session status missing runtime instance id");
 const persistedSession = JSON.parse(os.fs.readFile("/var/run/dindbos/session.json"));
 assert(persistedSession.user === "ada-lovelace", "session status file user mismatch");
 assert(persistedSession.state === "authenticated", "session status file state mismatch");
+assert(persistedSession.coordination.role === "primary", "session status file missing primary coordination");
+assert(JSON.parse(os.fs.readFile("/proc/sessions")).role === "primary", "/proc/sessions did not record primary role");
 const initialUsers = os.listUsers();
 assert(initialUsers.some((user) => user.user === "ada-lovelace"), "active session user was not registered");
 assert(os.listGroups().some((group) => group.group === "research-team" && group.members.includes("ada-lovelace")), "active session group membership was not registered");
@@ -100,19 +103,43 @@ assert(events.join(",") === "lock:locked:smoke-test,unlock:authenticated", `sess
 result = await shell.executeAsync("whoami");
 assert(result.status === 0 && result.output === "ada-lovelace", `unlocked shell output mismatch: ${result.output}`);
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock");
+const sharedStorage = createStorage(new Map());
+const primary = new DindbOS({ root: null, storage: sharedStorage, instanceId: "primary-tab", sessionLockTtlMs: 1000 });
+await primary.loadPersistentFileSystem();
+assert(primary.sessionCoordinationStatus().role === "primary", "first runtime did not become primary");
+const secondary = new DindbOS({ root: null, storage: sharedStorage, instanceId: "secondary-tab", sessionLockTtlMs: 1000 });
+await secondary.loadPersistentFileSystem();
+assert(secondary.sessionCoordinationStatus().role === "secondary", "second runtime did not become secondary");
+assert(secondary.sessionCoordinationStatus().readonly === true, "secondary runtime did not enter readonly fallback");
+assert(JSON.parse(secondary.fs.readFile("/proc/sessions")).lockOwner === "primary-tab", "/proc/sessions did not expose primary owner");
+sharedStorage.writeValue("dindbos:session-lock", JSON.stringify({
+  owner: "stale-tab",
+  user: "guest",
+  acquiredAt: "2026-05-05T00:00:00.000Z",
+  updatedAt: "2026-05-05T00:00:00.000Z",
+  expiresAt: "2026-05-05T00:00:01.000Z",
+  expiresAtMs: Date.now() - 1,
+}));
+const recoveredPrimary = new DindbOS({ root: null, storage: sharedStorage, instanceId: "recovered-tab", sessionLockTtlMs: 1000 });
+await recoveredPrimary.loadPersistentFileSystem();
+assert(recoveredPrimary.sessionCoordinationStatus().role === "primary", "stale lock recovery did not elect primary");
+assert(recoveredPrimary.sessionCoordinationStatus().staleRecovered === true, "stale lock recovery was not recorded");
 
-function createStorage() {
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination");
+
+function createStorage(values = new Map()) {
   return {
     async loadFileSystem() {
       return null;
     },
     saveFileSystem() {},
     async flush() {},
-    async readValue() {
-      return null;
+    async readValue(key) {
+      return values.get(key) ?? null;
     },
-    writeValue() {},
+    writeValue(key, value) {
+      values.set(key, value);
+    },
     status: () => ({ backend: "memory" }),
     estimate: async () => ({ backend: "memory" }),
     resetFileSystem() {},

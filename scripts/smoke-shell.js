@@ -127,6 +127,7 @@ result = await shell.executeAsync("doctor");
 assert(result.status === 0, `doctor status mismatch: ${result.status}`);
 assert(result.output.includes("DindbOS doctor"), `doctor heading missing: ${result.output}`);
 assert(result.output.includes("session user=guest"), `doctor session output missing: ${result.output}`);
+assert(result.output.includes("sessionCoord role=primary owner=runtime-smoke readonly=false"), `doctor session coordination output missing: ${result.output}`);
 assert(result.output.includes("storage backend=memory"), `doctor storage output missing: ${result.output}`);
 assert(result.output.includes("localMounts supported=false mounted=0"), `doctor mount output missing: ${result.output}`);
 assert(result.output.includes("helper=unavailable rename=false"), `doctor helper output missing: ${result.output}`);
@@ -267,7 +268,14 @@ function bootOs() {
       status: () => ({ backend: "memory", bytes: 0 }),
       estimate: async () => ({ backend: "memory", bytes: 0 }),
     },
-    sessionStatus: () => ({ locked: false }),
+    sessionStatus: () => ({
+      locked: false,
+      coordination: {
+        role: "primary",
+        lockOwner: "runtime-smoke",
+        readonly: false,
+      },
+    }),
     lifecycleStatus: () => ({ state: "active", reason: "boot-complete", updatedAt: "2026-05-05T00:00:00.000Z" }),
     recoveryStatus: () => ({
       lastShutdown: { recordedAt: "2026-05-04T23:59:59.000Z" },

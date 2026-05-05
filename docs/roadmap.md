@@ -1093,17 +1093,19 @@ Why it matters:
 
 Implementation tasks:
 
-- Add a runtime instance id, session lock, primary/secondary election, and stale-lock recovery for tabs sharing one browser profile.
+- Already present: runtime instances have stable `instanceId` values, storage-backed session locks, primary/secondary election, readonly secondary diagnostics, and stale-lock recovery for tabs sharing one browser profile.
 - Use BroadcastChannel or SharedWorker where available for local-tab coordination of file changes, package installs, app state, and storage flushes.
 - Add conflict policy for two active sessions modifying the same VFS paths or package DB records.
 - Add optional remote sync backend for encrypted snapshots, package cache indexes, settings, and selected user files.
 - Add remote desktop/session handoff protocol for viewing or controlling a running DindbOS instance from another tab or device.
-- Add `/proc/sessions` and Settings diagnostics for active tabs, lock owner, sync status, conflict queue, and last successful snapshot.
+- Already present: `/proc/sessions`, Settings, and `doctor` expose the local runtime instance id, primary/secondary role, lock owner, readonly fallback, and stale-lock recovery state.
+- Add richer Settings diagnostics for sync status, conflict queue, and last successful snapshot.
 - Add offline-first merge rules for user documents, app state, package metadata, and search indexes.
 
 Verification:
 
-- Add smoke coverage for primary election, secondary readonly fallback, stale lock recovery, cross-tab file event delivery, conflict detection, and reload-safe session recovery.
+- Already present: `npm run smoke:sessions` verifies primary election, secondary readonly fallback diagnostics, stale lock recovery, and `/proc/sessions`.
+- Add smoke coverage for cross-tab file event delivery, conflict detection, and reload-safe session recovery.
 - Add tests proving package install/update cannot run concurrently from two primary runtimes against the same storage root.
 
 Completion criteria:
