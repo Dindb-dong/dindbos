@@ -99,8 +99,14 @@ export class WindowManager {
     titlebar.querySelector("[data-window-maximize]").addEventListener("click", () => this.maximize(config.id));
     titlebar.querySelector("[data-window-close]").addEventListener("click", () => this.close(config.id));
     frame.addEventListener("pointerdown", () => this.focus(config.id));
-    makeDraggable(frame, titlebar, () => this.saveWindowPlacement(config.id));
-    makeResizable(frame, () => this.saveWindowPlacement(config.id));
+    makeDraggable(frame, titlebar, () => this.saveWindowPlacement(config.id), {
+      onCapture: (capture) => this.recordPointerCapture(config.id, task.pid, "drag", capture),
+      onRelease: (capture) => this.releasePointerCapture(config.id, capture.pointerId, "drag-end"),
+    });
+    makeResizable(frame, () => this.saveWindowPlacement(config.id), {
+      onCapture: (capture) => this.recordPointerCapture(config.id, task.pid, "resize", capture),
+      onRelease: (capture) => this.releasePointerCapture(config.id, capture.pointerId, "resize-end"),
+    });
 
     config.render(content, api);
     this.os.processes.markReady?.(config.pid);
@@ -166,6 +172,7 @@ export class WindowManager {
     const task = this.windows.get(id);
     if (!task) return;
     cancelMinimizeAnimation(task);
+    this.releaseWindowCapture(id, "window-close");
     this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, "closing", { windowId: id });
     task.frame.remove();
@@ -258,6 +265,44 @@ export class WindowManager {
     return { ...this.lastInputEvent };
   }
 
+  recordPointerCapture(windowId, pid, kind, capture = {}) {
+    const pointerId = Number(capture.pointerId || 0);
+    this.lastCapture = {
+      windowId,
+      pid,
+      kind,
+      pointerId,
+      target: capture.target || null,
+      capturedAt: new Date().toISOString(),
+      releasedAt: "",
+      releaseReason: "",
+    };
+    this.writeCompositorProcfs("capture");
+    return { ...this.lastCapture, target: undefined };
+  }
+
+  releasePointerCapture(windowId, pointerId = 0, reason = "release") {
+    if (!this.lastCapture || this.lastCapture.windowId !== windowId) return null;
+    if (pointerId && this.lastCapture.pointerId && Number(pointerId) !== Number(this.lastCapture.pointerId)) return null;
+    const capture = this.lastCapture;
+    if (capture.target?.hasPointerCapture?.(capture.pointerId)) {
+      capture.target.releasePointerCapture(capture.pointerId);
+    }
+    const released = {
+      ...capture,
+      target: undefined,
+      releasedAt: new Date().toISOString(),
+      releaseReason: reason,
+    };
+    this.lastCapture = null;
+    this.writeCompositorProcfs("capture-release");
+    return released;
+  }
+
+  releaseWindowCapture(windowId, reason = "window-cleanup") {
+    return this.releasePointerCapture(windowId, 0, reason);
+  }
+
   compositorStatus() {
     const surfaces = [...this.windows.values()].map((task) => {
       const rect = surfaceRectForTask(task);
@@ -283,6 +328,13 @@ export class WindowManager {
       focusedAppId: focused?.appId || "",
       surfaceCount: surfaces.length,
       captureOwner: this.lastCapture?.windowId || "",
+      capture: this.lastCapture ? {
+        windowId: this.lastCapture.windowId,
+        pid: this.lastCapture.pid,
+        kind: this.lastCapture.kind,
+        pointerId: this.lastCapture.pointerId,
+        capturedAt: this.lastCapture.capturedAt,
+      } : null,
       paintMode: "dom",
       viewport: {
         width: globalThis.window?.innerWidth || 0,
@@ -468,13 +520,14 @@ function createResizeHandles() {
   return fragment;
 }
 
-function makeDraggable(frame, titlebar, onPlacement = () => {}) {
+function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {}) {
   let drag = null;
   titlebar.addEventListener("pointerdown", (event) => {
     if (event.target.closest("button") || frame.classList.contains("is-maximized")) return;
     const rect = frame.getBoundingClientRect();
     drag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
     titlebar.setPointerCapture(event.pointerId);
+    captureHooks.onCapture?.({ pointerId: event.pointerId, target: titlebar });
   });
   titlebar.addEventListener("pointermove", (event) => {
     if (!drag) return;
@@ -497,11 +550,11 @@ function makeDraggable(frame, titlebar, onPlacement = () => {}) {
       onPlacement();
     }
     drag = null;
-    if (titlebar.hasPointerCapture(event.pointerId)) titlebar.releasePointerCapture(event.pointerId);
+    captureHooks.onRelease?.({ pointerId: event.pointerId, target: titlebar });
   });
 }
 
-function makeResizable(frame, onPlacement = () => {}) {
+function makeResizable(frame, onPlacement = () => {}, captureHooks = {}) {
   frame.querySelectorAll("[data-resize]").forEach((handle) => {
     let start = null;
     const move = (event) => {
@@ -520,8 +573,10 @@ function makeResizable(frame, onPlacement = () => {}) {
       Object.assign(frame.style, { left: `${left}px`, width: `${width}px`, height: `${height}px` });
     };
     const end = () => {
+      const pointerId = start?.pointerId || 0;
       start = null;
       onPlacement();
+      captureHooks.onRelease?.({ pointerId, target: handle });
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
@@ -529,7 +584,9 @@ function makeResizable(frame, onPlacement = () => {}) {
     handle.addEventListener("pointerdown", (event) => {
       if (frame.classList.contains("is-maximized")) return;
       const rect = frame.getBoundingClientRect();
-      start = { edge: handle.dataset.resize, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      start = { edge: handle.dataset.resize, pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      handle.setPointerCapture?.(event.pointerId);
+      captureHooks.onCapture?.({ pointerId: event.pointerId, target: handle });
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);

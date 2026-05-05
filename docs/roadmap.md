@@ -934,8 +934,8 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, stable surface geometry, last-input recording, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
-- Add smoke coverage for pointer capture release on crash, IME event delivery, drag/drop routing, and surface cleanup.
+- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, stable surface geometry, last-input recording, pointer capture cleanup during window close, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
+- Add smoke coverage for IME event delivery, drag/drop routing, and broader surface cleanup.
 - Add tests proving a crashed or suspended app cannot retain global input capture.
 - Add screenshot/capture tests for allowed own-window capture and denied cross-app capture.
 
