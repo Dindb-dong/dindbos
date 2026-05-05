@@ -67,6 +67,7 @@ export class ProcessManager {
       lifecycleLastError: "",
       objectId: "",
     };
+    this.inheritNamespaceHandle(process);
     this.processes.set(process.pid, process);
     const object = this.registerProcessObject(process);
     process.objectId = object?.id || "";
@@ -339,7 +340,36 @@ export class ProcessManager {
 
   revokeProcessObjects(process, reason = "process-exit") {
     this.syncProcessObject(process);
-    return this.os.objects?.revokeOwnedByPid?.(process.pid, reason) || [];
+    const objects = this.os.objects?.revokeOwnedByPid?.(process.pid, reason) || [];
+    this.os.objects?.revokeHandlesByPid?.(process.pid, reason);
+    return objects;
+  }
+
+  inheritNamespaceHandle(process) {
+    const namespace = process.manifest?.namespace;
+    if (!namespace?.objectId || !namespace?.handleId || !this.os.objects) return null;
+    this.os.objects.assertHandle(namespace.handleId, {
+      objectType: "package-namespace",
+      rights: ["enter"],
+    });
+    const handle = this.os.objects.createHandle(namespace.objectId, {
+      ownerPid: process.pid,
+      user: process.user || this.os.session?.user || "",
+      uid: process.uid || 0,
+      gid: process.gid || 0,
+      groups: process.groups || [],
+      namespace,
+      rights: ["enter", "inspect", "read"],
+      closeOnExec: false,
+      transferPolicy: "duplicate",
+      metadata: {
+        packageId: namespace.packageId || "",
+        processGroup: namespace.processGroup || "",
+        inheritedFrom: namespace.processHandleId || namespace.handleId || "",
+      },
+    });
+    namespace.processHandleId = handle.id;
+    return handle;
   }
 
   processObjectMetadata(process) {
