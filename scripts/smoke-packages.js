@@ -91,6 +91,14 @@ assert(namespaceChild?.manifest?.namespace?.processGroup === "package:namespace-
 const namespaceChildStatus = os.fs.readFile(`/proc/${namespaceChild.pid}/status`);
 assert(namespaceChildStatus.includes("Namespace:\tpackage:namespace-probe"), "child /proc status missing inherited package namespace");
 assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === namespaceChild.pid && entry.namespace?.processGroup === "package:namespace-probe"), "/proc processes JSON missing inherited package namespace");
+assert(os.fs.readFile(`/proc/${namespaceChild.pid}/root`).trim() === "/opt/namespace-probe", "child /proc root did not expose package namespace root");
+assert(os.fs.readFile(`/proc/${namespaceChild.pid}/cwd`).trim() === "/home/guest", "child /proc cwd did not expose process cwd");
+const namespaceMounts = os.fs.readFile(`/proc/${namespaceChild.pid}/mounts`);
+assert(namespaceMounts.includes("/opt/namespace-probe pkgfs"), "child /proc mounts missing package root mount");
+assert(namespaceMounts.includes("/var/lib/dindbos/package-state/namespace-probe statefs"), "child /proc mounts missing namespace state root");
+assert(namespaceMounts.includes("namespace=package:namespace-probe"), "child /proc mounts missing namespace label");
+const namespaceLimits = JSON.parse(os.fs.readFile(`/proc/${namespaceChild.pid}/limits`));
+assert(namespaceLimits.processGroup === "package:namespace-probe", "child /proc limits missing process group");
 os.processes.kill(namespaceChild.pid, "namespace-test-cleanup");
 os.processes.kill(namespaceProbeWindow.pid, "namespace-test-cleanup");
 packages.remove("namespace-probe");

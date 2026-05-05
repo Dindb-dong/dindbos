@@ -372,6 +372,30 @@ export class ProcessManager {
       group: "root",
       permissions: "-rw-r--r--",
     }, system);
+    this.os.fs.writeOrCreateFile(`${path}/root`, `${processNamespaceRoot(process)}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile(`${path}/cwd`, `${process.cwd || "/"}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile(`${path}/mounts`, `${processMountLines(this.os, process).join("\n")}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile(`${path}/limits`, `${JSON.stringify(processLimits(process), null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
     this.os.fs.writeOrCreateFile(`${path}/log`, `${this.readLog(process.pid)}\n`, "/", {
       mime: "text/plain",
       owner: "root",
@@ -501,6 +525,82 @@ function formatProcessStatus(process) {
     `LifecycleLastResult:\t${process.lifecycleLastResult || "-"}`,
     `LifecycleLastError:\t${process.lifecycleLastError || "-"}`,
   ].join("\n");
+}
+
+function processNamespaceRoot(process) {
+  return process.manifest?.namespace?.packageRoot || "/";
+}
+
+function processLimits(process) {
+  const namespace = process.manifest?.namespace || {};
+  return {
+    processGroup: namespace.processGroup || "",
+    childProcessLimit: Number(namespace.childProcessLimit || 0),
+    deviceGrants: [...(namespace.deviceGrants || [])],
+    networkHosts: [...(namespace.networkHosts || [])],
+    ipcEndpoints: [...(namespace.ipcEndpoints || [])],
+    rootPolicy: namespace.rootPolicy || "",
+    statePolicy: namespace.statePolicy || "",
+    cachePolicy: namespace.cachePolicy || "",
+    tempPolicy: namespace.tempPolicy || "",
+  };
+}
+
+function processMountLines(os, process) {
+  const namespace = process.manifest?.namespace || null;
+  const globalMounts = safeMountTable(os)
+    .filter((entry) => !namespace || entry.root === "/" || entry.root === "/proc" || entry.root === "/dev" || entry.root === namespace.packageRoot)
+    .map((entry) => processMountLine(entry, namespace?.processGroup || ""));
+  const namespaceMounts = namespace ? [
+    namespaceMount("namespace:root", namespace.packageRoot, "pkgfs", namespace.rootPolicy, namespace.processGroup, { readonly: true }),
+    namespaceMount("namespace:state", namespace.stateRoot, "statefs", namespace.statePolicy, namespace.processGroup),
+    namespaceMount("namespace:cache", namespace.cacheRoot, "cachefs", namespace.cachePolicy, namespace.processGroup),
+    namespaceMount("namespace:temp", namespace.tempRoot, "tmpfs", namespace.tempPolicy, namespace.processGroup),
+    namespaceMount("namespace:deps", namespace.dependencyRoot, "depsfs", "declared-dependencies", namespace.processGroup),
+  ].filter(Boolean).map((entry) => processMountLine(entry, namespace.processGroup)) : [];
+  return [...globalMounts, ...namespaceMounts];
+}
+
+function safeMountTable(os) {
+  try {
+    return os.mountTable?.() || [];
+  } catch {
+    return [];
+  }
+}
+
+function namespaceMount(id, root, driver, policy, processGroup, options = {}) {
+  if (!root) return null;
+  return {
+    id,
+    root,
+    driver,
+    readonly: options.readonly ?? driver === "depsfs",
+    owner: processGroup || "namespace",
+    durability: driver === "tmpfs" ? "runtime" : "persistent",
+    quotaPolicy: policy || "namespace",
+    capabilities: [],
+    usedBytes: 0,
+    support: "namespace-view",
+  };
+}
+
+function processMountLine(entry, processGroup = "") {
+  const flags = entry.readonly ? "ro" : "rw";
+  const caps = Array.isArray(entry.capabilities) && entry.capabilities.length ? entry.capabilities.join(",") : "-";
+  return [
+    entry.id,
+    entry.root,
+    entry.driver,
+    flags,
+    `owner=${entry.owner || "root"}`,
+    `durability=${entry.durability || "runtime"}`,
+    `quota=${entry.quotaPolicy || "unknown"}`,
+    `usedBytes=${Number(entry.usedBytes || 0)}`,
+    `support=${entry.support || "browser-vfs"}`,
+    `caps=${caps}`,
+    `namespace=${processGroup || "-"}`,
+  ].join(" ");
 }
 
 function cloneJson(value) {
