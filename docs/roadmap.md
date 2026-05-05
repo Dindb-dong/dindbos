@@ -1004,7 +1004,7 @@ Implementation tasks:
 - Already present: package apps can launch worker executor CPU tasks through the app sandbox; `ProcessExecutor` records parent pid and inherited package namespace metadata for worker-backed tasks.
 - Already present: package manifests can declare first-pass service units; PackageManager registers them as service records, ServiceManager starts them with package namespace metadata, and uninstall unregisters the service/process.
 - Already present: AppSandbox NodeCompat execution inherits package filesystem scopes and a first-pass declared npm dependency allowlist, so package code cannot `require()` undeclared package-local dependency trees through NodeCompat.
-- Add per-package dependency views so SDK resolution, WASM entries, services, and future package child processes cannot read undeclared dependency trees by default.
+- Already present: per-package dependency views expose declared dependency roots and enforce undeclared package-local `node_modules` denial for AppSandbox filesystem APIs, package SDK dependency inspection, WASM filesystem checks, package services, and namespace-inherited child processes.
 - Already present: Process procfs writes namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics, including package root, synthetic state/cache/temp/dependency namespace mounts, and namespace limits.
 - Already present: AppSandbox exposes a first-pass IPC facade backed by an in-runtime broker; package namespaces can register declared IPC endpoints, cross-package sends are denied unless the sender namespace declares the endpoint, and process exit/crash unregisters owned endpoints.
 - Already present: package manifests support a normalized `sandbox` section for root policy, state policy, cache policy, temp policy, device grants, network hosts, IPC endpoints, and child-process limits; package records, app manifests, package public records, and namespace metadata expose the resolved policy.
@@ -1017,6 +1017,7 @@ Verification:
 
 - Already present: `npm run smoke:packages` verifies package namespace root metadata, state/cache/temp root creation, app manifest namespace exposure, and namespace root cleanup on uninstall.
 - Already present: `npm run smoke:packages` launches package code that verifies another package root is denied through AppSandbox filesystem APIs and undeclared package-local `node_modules` reads are denied through NodeCompat dependency resolution.
+- Already present: `npm run smoke:packages` verifies AppSandbox filesystem APIs, package SDK dependency views, WASM filesystem policy checks, and package service filesystem facades allow declared package dependencies while denying undeclared dependency trees.
 - Already present: `npm run smoke:packages` verifies package-launched child app processes and package WASM child process history inherit package namespace metadata.
 - Already present: `npm run smoke:packages` verifies namespace-aware process procfs root, cwd, mounts, and limits diagnostics for package-launched child processes.
 - Already present: `npm run smoke:packages` verifies denied cross-package IPC against a real package-registered endpoint.
