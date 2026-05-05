@@ -83,6 +83,8 @@ Entropy and zero devices report `fd.read.bytes` as the actual device byte count 
 
 `/dev/clipboard` maps to the DindbOS runtime clipboard service. It is a browser-native OS clipboard primitive inside the DindbOS session, not a promise that every descriptor write can synchronously mutate the host browser clipboard; host clipboard bridging remains subject to browser permission and user-gesture policy.
 
+Terminal.app creates a DindbOS pseudo-terminal session. Processes launched with that PTY session receive TTY metadata on standard streams and `/dev/tty`; reads can consume the PTY input buffer, writes append to the PTY output buffer, and `tty.getWindowSize`/`tty.setWindowSize` operate on the shared session size.
+
 ## Shell Usage
 
 Terminal can call the ABI directly:

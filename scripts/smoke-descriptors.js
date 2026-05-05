@@ -111,6 +111,23 @@ assert(os.descriptors.standardStreams(process.pid).stdout === "tty out", "/dev/t
 result = os.syscall("fd.read", { fd: ttyFd, length: 5 }, context);
 assert(result.ok && result.value.data === "", `fd.read /dev/tty empty stdin mismatch: ${JSON.stringify(result)}`);
 
+const pty = os.pty.createSession({ name: "descriptor smoke pty", columns: 100, rows: 30, input: "pty in" });
+const ptyProcess = os.processes.spawn(app, { cwd: "/home/guest", ptySessionId: pty.id });
+const ptyContext = { ...context, process: ptyProcess };
+result = os.syscall("fd.open", { path: "/dev/tty", flags: "r+" }, ptyContext);
+assert(result.ok, `fd.open pty /dev/tty mismatch: ${JSON.stringify(result)}`);
+const ptyTtyFd = result.value.fd;
+result = os.syscall("fd.ioctl", { fd: ptyTtyFd, request: "tty.getWindowSize" }, ptyContext);
+assert(result.ok && result.value.columns === 100 && result.value.rows === 30, `pty tty size mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.read", { fd: ptyTtyFd, length: 6 }, ptyContext);
+assert(result.ok && result.value.data === "pty in", `pty tty input mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.write", { fd: ptyTtyFd, data: "pty out" }, ptyContext);
+assert(result.ok && os.pty.getSession(pty.id).output === "pty out", `pty tty output mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.write", { fd: 1, data: " stream out" }, ptyContext);
+assert(result.ok && os.pty.getSession(pty.id).output === "pty out stream out", `pty stdout output mismatch: ${JSON.stringify(result)}`);
+os.processes.kill(ptyProcess.pid, "pty-smoke-exit");
+assert(!os.descriptors.tables.has(ptyProcess.pid), "pty descriptor table remained after process kill");
+
 result = os.syscall("fd.open", { path: "/root/secret.txt", flags: "r" }, context);
 assert(!result.ok && result.error.code === "EACCES", `fd.open denied path did not return EACCES: ${JSON.stringify(result)}`);
 
@@ -131,7 +148,7 @@ assert(!os.descriptors.tables.has(crashProcess.pid), "descriptor table remained 
 assert(os.fs.exists(`/var/log/dindbos/crash-${crashProcess.pid}.log`), "descriptor crash smoke did not write crash report");
 assert(!os.fs.exists(`/proc/${crashProcess.pid}/fd.json`), "crashed process fd procfs remained after cleanup");
 
-console.log("descriptors smoke ok open read write seek close devices clipboard tty ioctl crash-cleanup");
+console.log("descriptors smoke ok open read write seek close devices clipboard tty pty ioctl crash-cleanup");
 
 function memoryStorage() {
   return {
