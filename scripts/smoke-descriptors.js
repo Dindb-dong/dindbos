@@ -75,6 +75,15 @@ assert(result.ok, `fd.open /dev/urandom mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: result.value.fd, length: 8 }, context);
 assert(result.ok && result.value.data.length === 8, `fd.read /dev/urandom mismatch: ${JSON.stringify(result)}`);
 
+result = os.syscall("fd.open", { path: "/dev/tty", flags: "r+" }, context);
+assert(result.ok, `fd.open /dev/tty mismatch: ${JSON.stringify(result)}`);
+const ttyFd = result.value.fd;
+result = os.syscall("fd.write", { fd: ttyFd, data: "tty out" }, context);
+assert(result.ok && result.value.bytes === 7, `fd.write /dev/tty mismatch: ${JSON.stringify(result)}`);
+assert(os.descriptors.standardStreams(process.pid).stdout === "tty out", "/dev/tty did not write to process stdout stream");
+result = os.syscall("fd.read", { fd: ttyFd, length: 5 }, context);
+assert(result.ok && result.value.data === "", `fd.read /dev/tty empty stdin mismatch: ${JSON.stringify(result)}`);
+
 result = os.syscall("fd.open", { path: "/root/secret.txt", flags: "r" }, context);
 assert(!result.ok && result.error.code === "EACCES", `fd.open denied path did not return EACCES: ${JSON.stringify(result)}`);
 
@@ -95,7 +104,7 @@ assert(!os.descriptors.tables.has(crashProcess.pid), "descriptor table remained 
 assert(os.fs.exists(`/var/log/dindbos/crash-${crashProcess.pid}.log`), "descriptor crash smoke did not write crash report");
 assert(!os.fs.exists(`/proc/${crashProcess.pid}/fd.json`), "crashed process fd procfs remained after cleanup");
 
-console.log("descriptors smoke ok open read write seek close devices crash-cleanup");
+console.log("descriptors smoke ok open read write seek close devices tty crash-cleanup");
 
 function memoryStorage() {
   return {

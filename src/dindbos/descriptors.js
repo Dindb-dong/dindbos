@@ -75,7 +75,7 @@ export class DescriptorManager {
     let data = "";
     if (descriptor.kind === "file") data = this.readFileDescriptor(descriptor, length);
     else if (descriptor.kind === "stream") data = readBufferedDescriptor(descriptor, length);
-    else if (descriptor.kind === "device") data = this.readDeviceDescriptor(descriptor, length);
+    else if (descriptor.kind === "device") data = this.readDeviceDescriptor(process, descriptor, length);
     else throw descriptorError("EINVAL", `fd.read: ${descriptor.fd}: unsupported descriptor kind`);
     this.writeProcfs(process.pid);
     return { fd: descriptor.fd, data, bytes: byteLength(data), offset: descriptor.offset || 0, eof: data.length < length };
@@ -91,7 +91,7 @@ export class DescriptorManager {
       descriptor.buffer = `${descriptor.buffer || ""}${data}`;
       descriptor.offset = byteLength(descriptor.buffer);
       bytes = byteLength(data);
-    } else if (descriptor.kind === "device") bytes = this.writeDeviceDescriptor(descriptor, data);
+    } else if (descriptor.kind === "device") bytes = this.writeDeviceDescriptor(process, descriptor, data);
     else throw descriptorError("EINVAL", `fd.write: ${descriptor.fd}: unsupported descriptor kind`);
     this.writeProcfs(process.pid);
     return { fd: descriptor.fd, bytes, offset: descriptor.offset || 0 };
@@ -181,7 +181,7 @@ export class DescriptorManager {
   }
 
   openDevice(path, flags) {
-    if (!["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom"].includes(path)) {
+    if (!["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty"].includes(path)) {
       throw descriptorError("ENODEV", `fd.open: ${path}: no such device`);
     }
     return {
@@ -212,7 +212,11 @@ export class DescriptorManager {
     return byteLength(data);
   }
 
-  readDeviceDescriptor(descriptor, length) {
+  readDeviceDescriptor(process, descriptor, length) {
+    if (descriptor.path === "/dev/tty") {
+      const stdin = this.descriptorFor(process.pid, STDIN_FD);
+      return readBufferedDescriptor(stdin, length);
+    }
     if (descriptor.path === "/dev/zero") return "\0".repeat(length);
     if (descriptor.path === "/dev/random" || descriptor.path === "/dev/urandom") {
       const bytes = new Uint8Array(length);
@@ -225,7 +229,13 @@ export class DescriptorManager {
     return "";
   }
 
-  writeDeviceDescriptor(descriptor, data) {
+  writeDeviceDescriptor(process, descriptor, data) {
+    if (descriptor.path === "/dev/tty") {
+      const stdout = this.descriptorFor(process.pid, STDOUT_FD);
+      stdout.buffer = `${stdout.buffer || ""}${data}`;
+      stdout.offset = byteLength(stdout.buffer);
+      return byteLength(data);
+    }
     if (descriptor.path === "/dev/null") return byteLength(data);
     return byteLength(data);
   }
