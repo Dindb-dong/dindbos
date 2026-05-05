@@ -2311,6 +2311,7 @@ export class DindbOS {
     if (!root || root === "/") throw new Error("mount: path is required");
     const driver = normalizeVirtualMountDriver(options.driver || options.type || "memfs");
     if (driver === "overlayfs") return this.mountOverlay(root, options, principal);
+    if (driver === "zipfs") return this.mountZip(root, options, principal);
     if (this.virtualMounts.has(root)) throw new Error(`mount: ${root}: already mounted`);
     const readonly = Boolean(options.readonly);
     const system = this.permissions.systemPrincipal();
@@ -2334,6 +2335,38 @@ export class DindbOS {
     };
     this.virtualMounts.set(root, record);
     this.writeMountTableProcfs("virtual-mount");
+    return { ...record };
+  }
+
+  mountZip(path, options = {}, principal = this.permissions.systemPrincipal()) {
+    const root = this.fs.normalize(path || "");
+    const archive = this.fs.normalize(options.archive || options.sourcePath || "");
+    if (!archive) throw codedError("EINVAL", "mount: zipfs requires archive path");
+    if (this.overlayMounts.has(root) || this.virtualMounts.has(root)) throw codedError("EBUSY", `mount: ${root}: already mounted`);
+    const system = this.permissions.systemPrincipal();
+    const entries = parseStoredZipEntries(this.fs.readFileBytes(archive, "/", system));
+    this.fs.createMount(root, {
+      mountType: "zipfs",
+      handleName: archive,
+      permissions: "dr-xr-xr-x",
+      owner: principal.user || this.session.user || "guest",
+      group: principal.groups?.[0] || "users",
+    }, system);
+    entries.forEach((entry) => materializeZipEntry(this.fs, root, entry, system));
+    const record = {
+      id: `zip:${root}`,
+      root,
+      driver: "zipfs",
+      readonly: true,
+      owner: principal.user || this.session.user || "guest",
+      durability: "runtime",
+      quotaPolicy: "archive",
+      capabilities: ["mount.manage"],
+      source: archive,
+      entries: entries.length,
+    };
+    this.virtualMounts.set(root, record);
+    this.writeMountTableProcfs("zip-mount");
     return { ...record };
   }
 
@@ -2942,6 +2975,7 @@ function normalizeVirtualMountDriver(driver) {
   const value = String(driver || "memfs").toLowerCase();
   if (value === "memfs") return "memfs";
   if (value === "overlayfs") return "overlayfs";
+  if (value === "zipfs") return "zipfs";
   throw codedError("ENOTSUP", `mount: unsupported driver: ${value}`);
 }
 
@@ -2992,6 +3026,98 @@ function materializeOverlayEntry(fs, entry, targetPath, principal) {
     return;
   }
   fs.copy(entry.path, targetPath, "/", { recursive: true }, principal);
+}
+
+function parseStoredZipEntries(bytes) {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  const eocd = findZipEndOfCentralDirectory(data);
+  const entryCount = readUint16(data, eocd + 10);
+  const centralOffset = readUint32(data, eocd + 16);
+  let cursor = centralOffset;
+  const entries = [];
+  for (let index = 0; index < entryCount; index += 1) {
+    if (readUint32(data, cursor) !== 0x02014b50) throw codedError("EINVAL", "mount: zipfs invalid central directory");
+    const method = readUint16(data, cursor + 10);
+    const compressedSize = readUint32(data, cursor + 20);
+    const uncompressedSize = readUint32(data, cursor + 24);
+    const nameLength = readUint16(data, cursor + 28);
+    const extraLength = readUint16(data, cursor + 30);
+    const commentLength = readUint16(data, cursor + 32);
+    const localOffset = readUint32(data, cursor + 42);
+    const name = decodeZipName(data.slice(cursor + 46, cursor + 46 + nameLength));
+    cursor += 46 + nameLength + extraLength + commentLength;
+    if (!name || name.endsWith("/")) continue;
+    if (method !== 0) throw codedError("ENOTSUP", `mount: zipfs ${name}: compression method ${method} is not supported`);
+    if (compressedSize !== uncompressedSize) throw codedError("EINVAL", `mount: zipfs ${name}: stored size mismatch`);
+    entries.push({
+      path: normalizeZipEntryPath(name),
+      bytes: readStoredZipEntryBytes(data, localOffset, compressedSize),
+    });
+  }
+  return entries;
+}
+
+function findZipEndOfCentralDirectory(data) {
+  for (let offset = data.length - 22; offset >= 0 && offset >= data.length - 0xffff - 22; offset -= 1) {
+    if (readUint32(data, offset) === 0x06054b50) return offset;
+  }
+  throw codedError("EINVAL", "mount: zipfs end of central directory not found");
+}
+
+function readStoredZipEntryBytes(data, localOffset, compressedSize) {
+  if (readUint32(data, localOffset) !== 0x04034b50) throw codedError("EINVAL", "mount: zipfs invalid local file header");
+  const nameLength = readUint16(data, localOffset + 26);
+  const extraLength = readUint16(data, localOffset + 28);
+  const start = localOffset + 30 + nameLength + extraLength;
+  return data.slice(start, start + compressedSize);
+}
+
+function materializeZipEntry(fs, root, entry, principal) {
+  const target = fs.join(root, entry.path);
+  ensureZipParentDirectories(fs, fs.dirname(target), root, principal);
+  fs.writeOrCreateFileBytes(target, entry.bytes, "/", {
+    mime: mimeFromZipPath(entry.path),
+    owner: "root",
+    group: "root",
+    permissions: "-r--r--r--",
+  }, principal);
+}
+
+function ensureZipParentDirectories(fs, directory, root, principal) {
+  if (directory === root || fs.exists(directory)) return;
+  ensureZipParentDirectories(fs, fs.dirname(directory), root, principal);
+  fs.createDirectory(directory, "/", {
+    owner: "root",
+    group: "root",
+    permissions: "dr-xr-xr-x",
+  }, principal);
+}
+
+function normalizeZipEntryPath(path) {
+  const normalized = String(path || "").replace(/^\/+/, "");
+  if (!normalized || normalized.includes("..") || normalized.split("/").some((part) => !part)) {
+    throw codedError("EINVAL", `mount: zipfs invalid entry path: ${path}`);
+  }
+  return normalized;
+}
+
+function decodeZipName(bytes) {
+  return new TextDecoder().decode(bytes);
+}
+
+function readUint16(data, offset) {
+  return data[offset] | (data[offset + 1] << 8);
+}
+
+function readUint32(data, offset) {
+  return (data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24)) >>> 0;
+}
+
+function mimeFromZipPath(path) {
+  if (/\.json$/i.test(path)) return "application/json";
+  if (/\.md$/i.test(path)) return "text/markdown";
+  if (/\.txt$/i.test(path)) return "text/plain";
+  return "application/octet-stream";
 }
 
 function formatMountTableLine(entry) {

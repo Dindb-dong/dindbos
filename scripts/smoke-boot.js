@@ -72,9 +72,9 @@ async function verifySuccessfulBootPhases() {
   assert(readonlyMount.ok && readonlyMount.value.root === "/mnt/readonly-smoke", `readonly memfs mount failed: ${JSON.stringify(readonlyMount)}`);
   const readonlyWrite = os.syscall("fs.writeText", { path: "/mnt/readonly-smoke/blocked.txt", content: "blocked" });
   assert(readonlyWrite.ok === false && readonlyWrite.error.code === "EACCES", `readonly memfs write was not denied with EACCES: ${JSON.stringify(readonlyWrite)}`);
-  const unsupportedMount = os.syscall("mount.mount", { path: "/mnt/zip-smoke", driver: "zipfs" });
+  const unsupportedMount = os.syscall("mount.mount", { path: "/mnt/tar-smoke", driver: "tarfs" });
   assert(unsupportedMount.ok === false && unsupportedMount.error.code === "ENOTSUP", `unsupported mount driver was not normalized to ENOTSUP: ${JSON.stringify(unsupportedMount)}`);
-  assert(unsupportedMount.error.message.includes("unsupported driver: zipfs"), `unsupported mount driver message mismatch: ${JSON.stringify(unsupportedMount)}`);
+  assert(unsupportedMount.error.message.includes("unsupported driver: tarfs"), `unsupported mount driver message mismatch: ${JSON.stringify(unsupportedMount)}`);
   const system = os.permissions.systemPrincipal();
   os.fs.createDirectory("/home/guest/lower-smoke", "/", { owner: "guest", group: "users" }, system);
   os.fs.writeOrCreateFile("/home/guest/lower-smoke/base.txt", "lower-base", "/", { owner: "guest", group: "users" }, system);
@@ -88,6 +88,16 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.readFile("/mnt/overlay-smoke/shared.txt") === "upper-shared", "overlayfs upper file did not override lower file");
   assert(os.fs.readFile("/mnt/overlay-smoke/new.txt") === "upper-new", "overlayfs did not expose upper-only file");
   assert(os.mountTable().some((entry) => entry.root === "/mnt/overlay-smoke" && entry.driver === "overlayfs" && entry.precedence === "upper"), "mount table missing overlayfs precedence entry");
+  os.fs.writeOrCreateFileBytes("/home/guest/archive.zip", storedZip([
+    ["README.txt", "zip-root"],
+    ["docs/guide.txt", "zip-nested"],
+  ]), "/", { mime: "application/zip", owner: "guest", group: "users" }, system);
+  const zipMount = os.syscall("mount.mount", { path: "/mnt/zip-smoke", driver: "zipfs", archive: "/home/guest/archive.zip" });
+  assert(zipMount.ok && zipMount.value.driver === "zipfs" && zipMount.value.entries === 2, `zipfs mount failed: ${JSON.stringify(zipMount)}`);
+  assert(os.fs.list("/mnt/zip-smoke").some((entry) => entry.name === "README.txt"), "zipfs root listing missing README.txt");
+  assert(os.fs.list("/mnt/zip-smoke/docs").some((entry) => entry.name === "guide.txt"), "zipfs nested listing missing guide.txt");
+  assert(os.fs.readFile("/mnt/zip-smoke/docs/guide.txt") === "zip-nested", "zipfs nested file content mismatch");
+  assert(os.mountTable().some((entry) => entry.root === "/mnt/zip-smoke" && entry.driver === "zipfs" && entry.entries === 2), "mount table missing zipfs entry count");
   assert(os.diskPolicyForPath("/tmp/payload.bin").bucket === "session", "/tmp did not report session bucket policy");
   assert(os.diskPolicyForPath("/var/cache/npm").bucket === "cache", "/var/cache did not report cache bucket policy");
   const bucketPolicy = os.storageBucketPolicy();
@@ -260,6 +270,86 @@ function createFailingStorage(message) {
     estimate: async () => ({ backend: "memory" }),
     resetFileSystem() {},
   };
+}
+
+function storedZip(entries) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  entries.forEach(([name, content]) => {
+    const nameBytes = encoder.encode(name);
+    const contentBytes = encoder.encode(content);
+    const local = concatBytes(
+      u32(0x04034b50),
+      u16(20),
+      u16(0),
+      u16(0),
+      u16(0),
+      u16(0),
+      u32(0),
+      u32(contentBytes.length),
+      u32(contentBytes.length),
+      u16(nameBytes.length),
+      u16(0),
+      nameBytes,
+      contentBytes,
+    );
+    chunks.push(local);
+    central.push(concatBytes(
+      u32(0x02014b50),
+      u16(20),
+      u16(20),
+      u16(0),
+      u16(0),
+      u16(0),
+      u16(0),
+      u32(0),
+      u32(contentBytes.length),
+      u32(contentBytes.length),
+      u16(nameBytes.length),
+      u16(0),
+      u16(0),
+      u16(0),
+      u16(0),
+      u32(0),
+      u32(offset),
+      nameBytes,
+    ));
+    offset += local.length;
+  });
+  const centralOffset = offset;
+  const centralBytes = concatBytes(...central);
+  const end = concatBytes(
+    u32(0x06054b50),
+    u16(0),
+    u16(0),
+    u16(entries.length),
+    u16(entries.length),
+    u32(centralBytes.length),
+    u32(centralOffset),
+    u16(0),
+  );
+  return concatBytes(...chunks, centralBytes, end);
+}
+
+function concatBytes(...parts) {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  parts.forEach((part) => {
+    output.set(part, offset);
+    offset += part.length;
+  });
+  return output;
+}
+
+function u16(value) {
+  return new Uint8Array([value & 0xff, (value >> 8) & 0xff]);
+}
+
+function u32(value) {
+  return new Uint8Array([value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >> 24) & 0xff]);
 }
 
 async function assertRejects(action, expectedMessage) {
