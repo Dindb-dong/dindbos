@@ -1112,7 +1112,7 @@ Implementation tasks:
 - Already present: conflict repair APIs and `sync` shell commands list `.sync-conflicts` entries and resolve them by applying the conflict copy, keeping local state, or deleting the conflict copy.
 - Already present: interrupted remote sync apply runs are checkpointed under `/var/run/dindbos/remote-sync-apply.json` and can resume from the recorded `nextIndex`.
 - Already present: Settings renders pending `.sync-conflicts` with repair actions that call the same runtime conflict resolution boundary.
-- Add retrying refused records after package validation.
+- Already present: refused remote sync package metadata records are retained in last-applied status and can be retried only after JSON, package id, version, record path, install path, and package DB operation-lock validation.
 
 Verification:
 
@@ -1132,6 +1132,7 @@ Verification:
 - Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify sync conflict listing, conflict resolution, last-repair status, Settings, and shell commands.
 - Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify interrupted apply checkpoint persistence, resume from `nextIndex`, apply-run status, Settings, and shell status output.
 - Already present: `npm run smoke:settings` verifies Settings sync conflict repair actions for use-conflict, keep-local, and delete-conflict.
+- Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify refused package metadata retry, package DB lock denial, retry status, Settings, and shell diagnostics.
 
 Completion criteria:
 

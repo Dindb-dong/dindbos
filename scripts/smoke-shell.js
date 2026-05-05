@@ -136,7 +136,7 @@ assert(result.output.includes("packages installed=1"), `doctor package output mi
 assert(result.output.includes("processes running=0"), `doctor process output missing: ${result.output}`);
 assert(result.output.includes("lifecycle state=active"), `doctor lifecycle output missing: ${result.output}`);
 assert(result.output.includes("closedPagePersistent=false"), `doctor recovery output missing: ${result.output}`);
-assert(result.output.includes("sync backend=storage-value encrypted=true lastSnapshot=2026-05-05T00:02:00.000Z files=2 cache=1 settings=1 lastApplied=2026-05-05T00:03:00.000Z conflicts=1 refused=2"), `doctor sync output missing: ${result.output}`);
+assert(result.output.includes("sync backend=storage-value encrypted=true lastSnapshot=2026-05-05T00:02:00.000Z files=2 cache=1 settings=1 lastApplied=2026-05-05T00:03:00.000Z conflicts=1 refused=2 lastRetry=2026-05-05T00:04:00.000Z retryApplied=1 retryRefused=0"), `doctor sync output missing: ${result.output}`);
 assert(result.output.includes("syncMerge planner=offline-first rules=6"), `doctor sync merge output missing: ${result.output}`);
 assert(result.output.includes("docs/support.md"), `doctor troubleshooting output missing: ${result.output}`);
 
@@ -158,6 +158,7 @@ result = await shell.executeAsync("sync status");
 assert(result.status === 0, `sync status mismatch: ${result.status}`);
 assert(result.output.includes("pendingConflicts=1"), `sync status did not show pending conflicts: ${result.output}`);
 assert(result.output.includes("applyRun=interrupted next=2/5"), `sync status did not show interrupted apply run: ${result.output}`);
+assert(result.output.includes("lastRetry=2026-05-05T00:04:00.000Z applied=1 refused=0"), `sync status did not show retry result: ${result.output}`);
 result = await shell.executeAsync("sync conflicts");
 assert(result.status === 0 && result.output.includes("/home/guest/Documents/.sync-conflicts/note.txt.2026.remote -> /home/guest/Documents/note.txt"), `sync conflicts output mismatch: ${result.output}`);
 result = await shell.executeAsync("sync resolve keep-local /home/guest/Documents/.sync-conflicts/note.txt.2026.remote");
@@ -319,6 +320,11 @@ function bootOs() {
         status: "interrupted",
         nextIndex: 2,
         totalFiles: 5,
+      },
+      lastRetry: {
+        retriedAt: "2026-05-05T00:04:00.000Z",
+        applied: 1,
+        refused: 0,
       },
     }),
     remoteSyncMergePolicy: () => ({

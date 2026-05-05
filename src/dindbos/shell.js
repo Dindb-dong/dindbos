@@ -669,6 +669,7 @@ export class ShellSession {
         `lastSnapshot=${status?.lastSuccessfulSnapshot?.createdAt || "-"}`,
         `lastApplied=${status?.lastAppliedSnapshot?.appliedAt || "-"} conflicts=${Number(status?.lastAppliedSnapshot?.conflicts || 0)} refused=${Number(status?.lastAppliedSnapshot?.refused || 0)}`,
         `applyRun=${status?.lastApplyRun?.status || "-"} next=${Number(status?.lastApplyRun?.nextIndex || 0)}/${Number(status?.lastApplyRun?.totalFiles || 0)}`,
+        `lastRetry=${status?.lastRetry?.retriedAt || "-"} applied=${Number(status?.lastRetry?.applied || 0)} refused=${Number(status?.lastRetry?.refused || 0)}`,
         `pendingConflicts=${Array.isArray(conflicts) ? conflicts.length : 0}`,
       ].join("\n");
     }
@@ -714,7 +715,7 @@ export class ShellSession {
       `processes running=${Array.isArray(processes) ? processes.length : 0}`,
       `lifecycle state=${lifecycle?.state || "unknown"} reason=${lifecycle?.reason || "-"} updated=${lifecycle?.updatedAt || "-"}`,
       `recovery lastShutdown=${recovery?.lastShutdown?.recordedAt || "-"} lastRecovery=${recovery?.lastRecovery?.recoveredAt || "-"} closedPagePersistent=${Boolean(recovery?.closedPagePersistence)}`,
-      `sync backend=${sync?.backend || "unavailable"} encrypted=${Boolean(sync?.encrypted)} lastSnapshot=${sync?.lastSuccessfulSnapshot?.createdAt || "-"} files=${Number(sync?.lastSuccessfulSnapshot?.fileCount || 0)} cache=${Number(sync?.lastSuccessfulSnapshot?.cacheRecords || 0)} settings=${Number(sync?.lastSuccessfulSnapshot?.settingsRecords || 0)} lastApplied=${sync?.lastAppliedSnapshot?.appliedAt || "-"} conflicts=${Number(sync?.lastAppliedSnapshot?.conflicts || 0)} refused=${Number(sync?.lastAppliedSnapshot?.refused || 0)}`,
+      `sync backend=${sync?.backend || "unavailable"} encrypted=${Boolean(sync?.encrypted)} lastSnapshot=${sync?.lastSuccessfulSnapshot?.createdAt || "-"} files=${Number(sync?.lastSuccessfulSnapshot?.fileCount || 0)} cache=${Number(sync?.lastSuccessfulSnapshot?.cacheRecords || 0)} settings=${Number(sync?.lastSuccessfulSnapshot?.settingsRecords || 0)} lastApplied=${sync?.lastAppliedSnapshot?.appliedAt || "-"} conflicts=${Number(sync?.lastAppliedSnapshot?.conflicts || 0)} refused=${Number(sync?.lastAppliedSnapshot?.refused || 0)} lastRetry=${sync?.lastRetry?.retriedAt || "-"} retryApplied=${Number(sync?.lastRetry?.applied || 0)} retryRefused=${Number(sync?.lastRetry?.refused || 0)}`,
       `syncMerge planner=${syncMerge?.planner || "unavailable"} rules=${Array.isArray(syncMerge?.rules) ? syncMerge.rules.length : 0}`,
       "troubleshooting docs=docs/support.md command=storage|mount-local --list|ps|pkg list",
     ].join("\n");
