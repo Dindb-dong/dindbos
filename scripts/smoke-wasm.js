@@ -66,6 +66,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-rights.wasm", wasiRightsWasm(
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-readdir.wasm", wasiReaddirWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFile("/home/guest/bin/wasi-file.txt", "opened read\n", "/", {
   owner: "guest",
   group: "users",
@@ -146,7 +152,13 @@ const wasiRights = await os.wasm.runFile("/home/guest/bin/wasi-rights.wasm", "/h
 });
 assert(wasiRights.status === 8, `wasi read-only descriptor write did not return EBADF: ${wasiRights.status} ${wasiRights.stderr}`);
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights process");
+const wasiReaddir = await os.wasm.runFile("/home/guest/bin/wasi-readdir.wasm", "/home/guest/bin", {
+  argv: ["wasi-readdir.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiReaddir.status === 0, `wasi fd_readdir status mismatch: ${wasiReaddir.status} ${wasiReaddir.stderr}`);
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -416,6 +428,34 @@ function wasiRightsWasm() {
       0x0b,
     ],
     data,
+  });
+}
+
+function wasiReaddirWasm() {
+  const nreadOffset = 16;
+  const bufferOffset = 32;
+  const bufferLength = 192;
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i64", "i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "fd_readdir", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 1 },
+    ],
+    startType: 2,
+    body: [
+      0x41, 0x03, 0x41, bufferOffset, 0x41, ...i32(bufferLength), 0x42, 0x00, 0x41, nreadOffset, 0x10, 0x00, 0x1a,
+      0x41, nreadOffset, 0x28, 0x02, 0x00, 0x45,
+      0x04, 0x40,
+      0x41, 0x01, 0x10, 0x01,
+      0x0b,
+      0x41, 0x00, 0x10, 0x01,
+      0x0b,
+    ],
+    data: new Uint8Array(),
   });
 }
 
