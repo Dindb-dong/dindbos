@@ -993,9 +993,13 @@ export class ShellSession {
 
   storage(args) {
     if (args[0] === "flush") {
+      this.os.assertAdminOperation?.("system-settings:storage-flush", { principal: this.principal, target: "storage.flush" });
       return this.os.flushPersistentFileSystem().then(() => formatStorage(this.withPersistenceStatus(this.os.storage.status())));
     }
-    if (args[0] === "persist") return this.os.storage.persist().then((status) => formatStorage(this.withPersistenceStatus(status)));
+    if (args[0] === "persist") {
+      this.os.assertAdminOperation?.("system-settings:storage-persist", { principal: this.principal, target: "storage.persist" });
+      return this.os.storage.persist().then((status) => formatStorage(this.withPersistenceStatus(status)));
+    }
     return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
   }
 
@@ -1222,9 +1226,10 @@ export class ShellSession {
   }
 
   resetFileSystem() {
+    this.os.assertAdminOperation?.("system-settings:resetfs", { principal: this.principal, target: "storage.resetFileSystem" });
     if (typeof this.os.resetPersistentFileSystem === "function") this.os.resetPersistentFileSystem();
     else this.os.storage.resetFileSystem();
-    window.setTimeout(() => window.location.reload(), 250);
+    globalThis.window?.setTimeout?.(() => window.location.reload(), 250);
     return "persistent filesystem cleared; reloading";
   }
 

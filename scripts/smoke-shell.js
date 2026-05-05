@@ -219,12 +219,34 @@ assert(result.status === 1, `unsupported syscall status mismatch: ${result.statu
 assert(JSON.parse(result.output).error.code === "ENOSYS", `unsupported syscall errno mismatch: ${result.output}`);
 
 const trustKey = "ed25519-pub:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+result = await shell.executeAsync("storage flush");
+assert(result.status === 1, `non-admin storage flush status mismatch: ${result.status}`);
+assert(result.output.includes("administrator required"), `non-admin storage flush output mismatch: ${result.output}`);
+assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:storage-flush decision=denied"), "security audit missing denied storage flush");
+result = await shell.executeAsync("storage persist");
+assert(result.status === 1, `non-admin storage persist status mismatch: ${result.status}`);
+assert(result.output.includes("administrator required"), `non-admin storage persist output mismatch: ${result.output}`);
+assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:storage-persist decision=denied"), "security audit missing denied storage persist");
+result = await shell.executeAsync("resetfs");
+assert(result.status === 1, `non-admin resetfs status mismatch: ${result.status}`);
+assert(result.output.includes("administrator required"), `non-admin resetfs output mismatch: ${result.output}`);
+assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:resetfs decision=denied"), "security audit missing denied resetfs");
 result = await shell.executeAsync(`pkg trust add com.example ${trustKey} Example Publisher`);
 assert(result.status === 1, `non-admin pkg trust add status mismatch: ${result.status}`);
 assert(result.output.includes("administrator required"), `non-admin pkg trust add output mismatch: ${result.output}`);
 assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("decision=denied"), "security audit missing denied package trust change");
 shell.os.session.groups = ["users", "admins"];
 shell.principal = shell.os.permissions.principal(shell.os.session);
+result = await shell.executeAsync("storage flush");
+assert(result.status === 0, `admin storage flush status mismatch: ${result.status}`);
+assert(result.output.includes("backend=memory"), `admin storage flush output mismatch: ${result.output}`);
+assert(shell.os.storageFlushes === 1, "admin storage flush did not reach runtime");
+assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:storage-flush decision=allowed"), "security audit missing allowed storage flush");
+result = await shell.executeAsync("storage persist");
+assert(result.status === 0, `admin storage persist status mismatch: ${result.status}`);
+assert(result.output.includes("persisted=true"), `admin storage persist output mismatch: ${result.output}`);
+assert(shell.os.storagePersists === 1, "admin storage persist did not reach runtime");
+assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:storage-persist decision=allowed"), "security audit missing allowed storage persist");
 result = await shell.executeAsync(`pkg trust add com.example ${trustKey} Example Publisher`);
 assert(result.status === 0, `pkg trust add status mismatch: ${result.status}`);
 assert(result.output === "trusted publisher added com.example", `pkg trust add output mismatch: ${result.output}`);
@@ -292,6 +314,8 @@ function bootOs() {
   const permissions = new PermissionPolicy();
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
   const trustedPublishers = [];
+  let storageFlushes = 0;
+  let storagePersists = 0;
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
@@ -359,6 +383,20 @@ function bootOs() {
     storage: {
       status: () => ({ backend: "memory", bytes: 0 }),
       estimate: async () => ({ backend: "memory", bytes: 0 }),
+      persist: async () => {
+        storagePersists += 1;
+        return { backend: "memory", bytes: 0, persisted: true };
+      },
+    },
+    get storageFlushes() {
+      return storageFlushes;
+    },
+    get storagePersists() {
+      return storagePersists;
+    },
+    flushPersistentFileSystem: async () => {
+      storageFlushes += 1;
+      return { flushed: true };
     },
     sessionStatus: () => ({
       locked: false,

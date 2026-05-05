@@ -456,10 +456,12 @@ export class AppSandbox {
       },
       flush: async () => {
         this.assertCapability("storage.manage");
+        this.os.assertAdminOperation?.("system-settings:storage-flush", { principal: this.principal, target: "storage.flush" });
         return this.os.flushPersistentFileSystem?.();
       },
       resetFileSystem: () => {
         this.assertCapability("storage.manage");
+        this.os.assertAdminOperation?.("system-settings:resetfs", { principal: this.principal, target: "storage.resetFileSystem" });
         if (typeof this.os.resetPersistentFileSystem === "function") this.os.resetPersistentFileSystem();
         else this.os.storage.clearFileSystem();
       },

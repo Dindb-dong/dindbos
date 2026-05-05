@@ -86,10 +86,34 @@ await assertRejects(() => sandbox.fs.writeOrCreateFile("/root/new.txt", "nope"),
 await assertRejects(() => sandbox.processes.list(), "capability denied: process.read");
 await assertRejects(() => sandbox.packages.installFromRegistry("hello-notes"), "capability denied: package.manage");
 await assertRejects(() => sandbox.localMounts.mountLocal("disk"), "capability denied: localMount.manage");
+const storageManagerSandbox = new AppSandbox(os, {
+  ...process,
+  pid: 105,
+  appId: "settings-storage",
+  manifest: { capabilities: ["storage.manage"], fileSystem: { read: [], write: [] } },
+});
+await assertRejects(() => storageManagerSandbox.storage.flush(), "administrator required");
+await assertRejects(() => storageManagerSandbox.storage.resetFileSystem(), "administrator required");
+assert(os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:storage-flush decision=denied"), "security audit missing denied storage flush");
+assert(os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:resetfs decision=denied"), "security audit missing denied resetfs");
+const adminStorageSandbox = new AppSandbox(os, {
+  ...process,
+  pid: 106,
+  appId: "settings-storage",
+  user: "admin-user",
+  groups: ["users", "admins"],
+  manifest: { capabilities: ["storage.manage"], fileSystem: { read: [], write: [] } },
+});
+await adminStorageSandbox.storage.flush();
+adminStorageSandbox.storage.resetFileSystem();
+assert(os.storageFlushes === 1, "admin storage flush did not reach runtime");
+assert(os.storageResets === 1, "admin resetfs did not reach runtime");
+assert(os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:storage-flush decision=allowed"), "security audit missing allowed storage flush");
+assert(os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:resetfs decision=allowed"), "security audit missing allowed resetfs");
 await assertRejects(() => openNonExecutableAppLauncher(), "permission denied");
 await assertRejects(() => os.fs.readFile("/root/public.txt", "/", os.permissions.principal(os.session)), "permission denied");
 
-console.log("permissions smoke ok shell sandbox denials");
+console.log("permissions smoke ok shell sandbox denials admin-storage");
 
 async function openNonExecutableAppLauncher() {
   const runtime = new DindbOS({ root: {}, storage: createRuntimeStorage() });
@@ -143,6 +167,32 @@ function bootOs() {
     storage: {
       status: () => ({ backend: "memory", bytes: 0 }),
       estimate: async () => ({ backend: "memory", bytes: 0 }),
+    },
+    storageFlushes: 0,
+    storageResets: 0,
+    flushPersistentFileSystem: async () => {
+      os.storageFlushes += 1;
+      return { flushed: true };
+    },
+    resetPersistentFileSystem: () => {
+      os.storageResets += 1;
+    },
+    assertAdminOperation(action, context = {}) {
+      const principal = context.principal || this.permissions.principal(this.session);
+      const allowed = principal.system || principal.user === "root" || (principal.groups || []).includes("admins");
+      this.auditSecurity(action, allowed ? "allowed" : "denied", { principal, target: context.target || "", reason: allowed ? "" : "admin-required" });
+      if (!allowed) throw new Error(`${action}: denied: administrator required`);
+      return true;
+    },
+    auditSecurity(action, decision, details = {}) {
+      ["/var", "/var/log", "/var/log/dindbos"].forEach((path) => {
+        if (!this.fs.exists(path)) this.fs.createDirectory(path, "/", { owner: "root", group: "root" }, system);
+      });
+      const principal = details.principal || {};
+      const line = `action=${action} decision=${decision} user=${principal.user || "guest"} groups=${(principal.groups || []).join(",") || "-"} target=${details.target || "-"}${details.reason ? ` reason=${details.reason}` : ""}\n`;
+      if (this.fs.exists("/var/log/dindbos/security-audit.log")) this.fs.appendFile("/var/log/dindbos/security-audit.log", line, "/", system);
+      else this.fs.writeOrCreateFile("/var/log/dindbos/security-audit.log", line, "/", { owner: "root", group: "root", permissions: "-rw-r--r--" }, system);
+      return { action, decision };
     },
     openPath: () => null,
     openNode: () => null,
