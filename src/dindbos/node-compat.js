@@ -86,6 +86,22 @@ export class NodeCompat {
     return runtime.result();
   }
 
+  async runMain(path, cwd = this.os.session.home || "/", options = {}) {
+    const filename = this.resolveEntry(path, cwd);
+    const argv = [...(options.argv || [])];
+    const process = this.createProcessContext(this.os.fs.dirname(filename), ["/usr/bin/node", filename, ...argv]);
+    const runtime = this.isEsmFile(filename, options)
+      ? new EsmRuntime(this, process)
+      : new CommonJsRuntime(this, process);
+    const namespace = runtime instanceof EsmRuntime && options.inputType === "module" && !this.isEsmFile(filename)
+      ? await runtime.evaluate(this.os.fs.readFile(filename, "/", this.system), filename)
+      : await runtime.loadModule(filename);
+    const main = exportedMain(namespace);
+    if (typeof main !== "function") throw new Error(`node: ${filename}: missing main() or default export`);
+    const value = await main(argv);
+    return { ...runtime.result(), value };
+  }
+
   evaluate(source, cwd = this.os.session.home || "/", options = {}) {
     const normalizedCwd = this.os.fs.normalize(cwd);
     const filename = options.filename || this.os.fs.join(normalizedCwd, options.inputType === "module" ? "[eval].mjs" : "[eval].js");
@@ -2860,4 +2876,11 @@ function formatConsoleValue(value) {
   } catch {
     return String(value);
   }
+}
+
+function exportedMain(namespace = {}) {
+  if (typeof namespace === "function") return namespace;
+  if (typeof namespace.main === "function") return namespace.main;
+  if (typeof namespace.default === "function") return namespace.default;
+  return null;
 }
