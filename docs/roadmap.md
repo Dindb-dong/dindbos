@@ -380,18 +380,19 @@ Why it matters:
 
 Implementation tasks:
 
-- Add a network permission model: `net.fetch`, `net.websocket`, `net.webrtc`, `net.dns`, and host allowlists.
-- Implement a runtime network broker so apps request network operations through DindbOS instead of calling `fetch` directly.
-- Add `/proc/net` diagnostics for active requests, WebSocket sessions, denied hosts, and bandwidth estimates.
-- Add Terminal commands such as `netstat`, `curl`, `ping` policy probe, and `dig` policy probe where browser APIs allow.
-- Add package manifest network scopes.
-- Add traffic logging with redaction rules so debugging is possible without leaking secrets.
+- Already present: first-pass network permission model covers `net.fetch`, `net.dns`, and package/app host allowlists; `net.websocket`, `net.webrtc`, and richer firewall scopes remain future work.
+- Already present: runtime network broker routes app and shell fetch requests through DindbOS policy instead of direct app runtime access.
+- Already present: `/proc/net/status.json` and `/proc/net/requests` expose active requests, denied hosts, request history, browser-only WebSocket unsupported state, and bandwidth estimates.
+- Already present: Terminal commands `netstat`, `curl`, `ping` policy probe, and `dig` policy probe route through the network broker.
+- Already present: package manifest `sandbox.networkHosts` scopes flow into package namespace metadata and AppSandbox network policy.
+- Already present: traffic logging redacts sensitive URL query values so debugging is possible without leaking tokens or secrets.
 - Add optional companion protocol for capabilities browsers cannot expose, such as raw TCP/UDP experiments, only behind explicit trust prompts.
 
 Verification:
 
-- Add smoke coverage for allowed fetch, denied host, WebSocket open/close, request cancellation, and `/proc/net` reporting.
-- Add tests proving apps without network permission cannot bypass the broker through runtime APIs.
+- Already present: `npm run smoke:network` verifies allowed fetch, denied host, request cancellation, package network host allowlists, shell network commands, traffic-log redaction, bandwidth estimates, and `/proc/net` reporting.
+- Already present: `npm run smoke:network` verifies apps without `net.fetch` cannot use the broker through AppSandbox runtime APIs.
+- Add smoke coverage for WebSocket open/close once WebSocket sessions are brokered.
 
 Completion criteria:
 

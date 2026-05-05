@@ -19,6 +19,7 @@ export class AppSandbox {
     this.node = this.createNodeFacade();
     this.ipc = this.createIpcFacade();
     this.keychain = this.createKeychainFacade();
+    this.net = this.createNetworkFacade();
     this.storage = this.createStorageFacade();
     this.state = this.createStateFacade();
     this.localMounts = this.createLocalMountFacade();
@@ -411,6 +412,22 @@ export class AppSandbox {
       delete: (name) => {
         this.assertCapability("keychain.write");
         return this.os.keychain.deleteSecret(this.resolveKeychainReference(name), context());
+      },
+    };
+  }
+
+  createNetworkFacade() {
+    const context = () => ({
+      process: this.process,
+      principal: this.principal,
+      assertCapability: (capability) => this.assertCapability(capability),
+    });
+    return {
+      fetch: (url, options = {}) => this.os.network.fetch(url, options, context()),
+      policy: (url, capability = "net.fetch") => this.os.network.policyProbe(url, context(), capability),
+      status: () => {
+        this.assertCapability("net.fetch");
+        return this.os.network.status();
       },
     };
   }
