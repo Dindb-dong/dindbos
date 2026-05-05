@@ -208,6 +208,7 @@ assert(os.fs.readFile("/home/guest/DindbOS API Lab/report.txt").includes("launch
 const apiProcess = os.processes.get(apiWindow.pid);
 assert(apiProcess.logs.some((entry) => entry.message.includes("api-lab wrote")), "API Lab sample did not log through process facade");
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("fs.writeText OK"), "API Lab sample did not write syscall trace under /proc");
+assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("package.info OK"), "API Lab sample did not read package info through syscall");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("process.log OK"), "API Lab sample did not write global syscall log");
 assert(os.fs.readFile("/var/lib/dindbos/app-state/api-lab.json").includes('"launches": 1'), "API Lab sample did not persist app state under app-state");
 const apiWindowAgain = os.apps.launch("api-lab");
