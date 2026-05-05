@@ -314,7 +314,7 @@ Implementation tasks:
 - Already present: `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom` can be opened through descriptor syscalls.
 - Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
 - Already present: `/dev/clipboard` can be opened through descriptor syscalls and maps reads/writes to the DindbOS runtime clipboard service inside the browser policy boundary.
-- Add pseudo-terminal sessions for Terminal.app so interactive programs can read/write through a TTY-like device.
+- Already present: Terminal.app creates a DindbOS pseudo-terminal session; PTY-backed processes share TTY size, input, and output through standard streams and `/dev/tty`.
 - Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags and `fd_readdir` subset, including directory mutation operations.
 
 Verification:
@@ -324,6 +324,7 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies WASI `path_open` read/write against scoped VFS files through opened descriptors.
 - Already present: `npm run smoke:descriptors` verifies `/dev/tty` output through the process stdout stream.
 - Already present: `npm run smoke:descriptors` verifies `/dev/clipboard` descriptor writes update the runtime clipboard and descriptor reads return clipboard chunks.
+- Already present: `npm run smoke:descriptors` verifies PTY-backed `/dev/tty` size, input reads, output writes, stdout mirroring, and descriptor cleanup.
 - Already present: `npm run smoke:descriptors` verifies `fd.ioctl` TTY size get/set, stdout `isatty`, and non-TTY `ENOTTY` behavior.
 - Already present: `npm run smoke:shell` verifies shell pipeline output is delivered through descriptor-backed transient pipeline processes and that descriptor/procfs cleanup runs after pipeline exit.
 - Already present: `npm run smoke:descriptors` verifies `/dev/zero`, `/dev/random`, and `/dev/urandom` report the actual pseudo-device byte count from `fd.read.bytes`.
