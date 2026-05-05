@@ -2750,6 +2750,278 @@ Completion criteria:
 - Native-only capabilities are available only through explicit, inspectable, revocable OS boundaries.
 - DindbOS remains useful in browser-only mode and clearer, not less secure, when companions are present.
 
+### Native-Like 67: Trusted System UI And Secure Attention Path
+
+Status: Later.
+
+Goal: make OS-owned prompts, lock screens, permission dialogs, update approvals, keychain unlocks, and destructive confirmations distinguishable from app-rendered UI.
+
+Why it matters:
+
+- Native OSes protect users with trusted system UI for login, elevation, keychain prompts, screen capture indicators, permission grants, and shutdown/update confirmation.
+- Browser apps can draw anything that looks like a dialog, so a browser-native OS needs an explicit anti-spoofing boundary before high-value permissions become credible.
+- This is technically possible by routing sensitive decisions through compositor-owned surfaces, reserved shortcuts, focus locks, process attribution, and audit logs.
+
+Implementation tasks:
+
+- Define trusted surface classes for login, lock/unlock, keychain unlock, permission grant, package install trust, companion pairing, remote admin approval, destructive file operations, update activation, and factory reset.
+- Add a compositor-owned trusted UI layer that ordinary apps cannot cover, embed, screenshot, spoof, or capture unless an explicit capture policy grants it.
+- Add a reserved secure-attention action, such as a command palette chord or trusted status strip action, that always moves focus to the OS-owned security surface.
+- Add trusted prompt records with prompt id, requester app id, pid, user, requested capability, target resource, policy source, timeout, decision, and audit digest.
+- Add visual and programmatic provenance: every trusted prompt should expose OS issuer, requesting process, signed package identity where available, user scope, and whether a companion or remote admin is involved.
+- Add prompt throttling, coalescing, timeout, denial caching, and abuse detection so a package cannot spam security UI to trick the user.
+- Add `/proc/trusted-ui`, `/var/log/dindbos/trusted-ui.log`, `security prompt list`, `security prompt inspect`, and Settings security history.
+- Add rules that sensitive grants can only be created by the trusted UI service or managed policy, never by direct app state mutation.
+
+Verification:
+
+- Add smoke coverage for trusted prompt creation, user grant, user denial, timeout, requester attribution, prompt history, spoofed app dialog denial, and screenshot/capture policy around trusted surfaces.
+- Add tests proving package apps, sandboxed iframes, NodeCompat tools, WASM programs, services, and remote admin sessions cannot forge trusted prompt records.
+- Add browser interaction tests where feasible for focus trapping, reserved shortcut routing, and compositor z-order protection.
+
+Completion criteria:
+
+- Users can distinguish OS security decisions from ordinary app UI.
+- Sensitive grants, keychain unlocks, companion pairing, and destructive system operations cannot be approved through spoofable app-rendered dialogs.
+
+### Native-Like 68: Browser-Native Threads, Atomics, And Shared Memory Runtime
+
+Status: Later.
+
+Goal: support a native-like threading subset for WASM and worker-backed programs using Workers, SharedArrayBuffer where available, Atomics, structured memory ownership, and explicit fallback modes.
+
+Why it matters:
+
+- Many real native programs assume threads, mutexes, condition variables, atomics, shared memory, and cancellation.
+- Browsers can support real shared memory only under cross-origin isolation, and Worker scheduling remains browser-controlled, so DindbOS must expose this as a capability-gated runtime primitive.
+- A clear thread model makes CPU-heavy tools, compilers, databases, media pipelines, and language runtimes more realistic without pretending the browser is a native kernel.
+
+Implementation tasks:
+
+- Define a DindbOS thread model with process-owned thread ids, worker ids, shared memory regions, stack metadata, lifecycle state, priority hint, cancellation state, and crash propagation.
+- Add manifest capabilities for `thread.spawn`, `thread.shared-memory`, `thread.atomic-wait`, `thread.high-cpu`, and `thread.background`.
+- Add syscalls and SDK APIs for thread spawn, join, detach, cancel, yield, sleep, futex-like wait/notify where supported, shared memory allocate/map/unmap, and thread-local diagnostics.
+- Add SharedArrayBuffer support only when cross-origin isolation is verified; provide explicit `ENOTSUP` or single-thread fallback when unavailable.
+- Add memory ownership rules so shared regions are tied to pid, namespace, package, user, quota, and revocation state.
+- Add thread scheduling integration with worker pool limits, process limits, package limits, service lifecycle suspend/resume, and Activity Monitor CPU/memory reporting.
+- Add `/proc/<pid>/threads`, `/proc/threads`, `/proc/shared-memory`, `threadctl`, and `doctor threads` diagnostics.
+- Add WASM pthread compatibility guidance and NodeCompat worker-thread facade routing for packages that can operate inside DindbOS limits.
+
+Verification:
+
+- Add smoke coverage for thread spawn/join, cancellation, shared memory allocation, denied shared memory without capability, cross-origin-isolation fallback, crashed worker cleanup, and `/proc` thread visibility.
+- Add WASM fixture tests for atomic counter behavior, worker pool limit enforcement, shared memory quota denial, and deterministic cleanup after process kill.
+- Add tests proving one package cannot map another package's shared memory region or keep shared memory after uninstall, crash, logout, or permission revocation.
+
+Completion criteria:
+
+- Threaded workloads can run when browser capabilities allow it and fail explicitly when they do not.
+- Shared memory is permissioned, quota-limited, observable, and cleaned up through the same process lifecycle as files, descriptors, and IPC endpoints.
+
+### Native-Like 69: Host Peripheral Bus Brokers
+
+Status: Later.
+
+Goal: expose WebUSB, WebBluetooth, WebSerial, WebHID, Gamepad, MIDI, and future browser hardware APIs as OS-managed bus brokers instead of direct app access.
+
+Why it matters:
+
+- Native OSes mediate hardware through buses, drivers, permissions, hotplug events, and per-device policy.
+- Browser APIs expose some real hardware paths, but each API has different permission, browser support, and user gesture constraints.
+- DindbOS can get closer to a native OS by treating each hardware path as a device bus with discovery, grants, drivers, logs, and revocation.
+
+Implementation tasks:
+
+- Add bus records for USB, Bluetooth, Serial, HID, Gamepad, MIDI, NFC where available, and companion-provided bus bridges where browser APIs are missing.
+- Add device identity records with vendor/product ids where available, user-visible name, class, serial hash, trusted state, last seen time, driver binding, and permission scope.
+- Add package manifest capabilities for bus scan, device open, device read/write, exclusive lock, background access, companion bus access, and driver registration.
+- Add user-mediated pairing/open flows through the trusted UI service, including purpose strings and per-device revocation.
+- Add driver binding rules so a package-provided driver can claim only declared device classes and cannot receive unrelated devices.
+- Add hotplug, disconnect, permission revoke, busy-device, unsupported-browser, and companion-missing events.
+- Add descriptor-backed read/write streams for serial/HID/MIDI-like devices and structured event streams for gamepad/Bluetooth-style devices.
+- Add `/proc/bus`, `/proc/devices`, `lsdev`, `busctl`, `devctl pair`, `devctl revoke`, and Settings device panels.
+
+Verification:
+
+- Add adapter-mock smoke coverage for supported bus probe, unsupported bus report, pairing grant, pairing denial, device open, read/write, disconnect cleanup, revoked grant, busy lock, and driver binding refusal.
+- Add browser-profile tests for APIs that require real browser support or user gestures, with clear manual verification scripts where automation cannot drive the permission prompt.
+- Add tests proving a package cannot access a device without the matching bus capability, device grant, and driver binding.
+
+Completion criteria:
+
+- Hardware-capable apps use DindbOS device brokers and diagnostics rather than raw browser hardware APIs.
+- Device access remains honest about browser support, user gesture requirements, companion requirements, and revocation state.
+
+### Native-Like 70: Guest VM, Virtual Hardware, And Nested Runtime Lab
+
+Status: Later.
+
+Goal: run tightly scoped guest environments such as small teaching OS images, RISC-V userlands, WASM-hosted interpreters, or nested DindbOS test images with explicit virtual hardware and resource limits.
+
+Why it matters:
+
+- Native OSes often host virtual machines, compatibility labs, and sandboxed guests.
+- Browser-native DindbOS cannot run arbitrary native VMs at native speed, but WASM CPU emulators and nested runtimes can still provide real guest execution for education, compatibility tests, and isolated experiments.
+- This should be treated as guest virtualization, not as proof that DindbOS is secretly Linux or macOS.
+
+Implementation tasks:
+
+- Define a guest runtime manifest with architecture, emulator runtime, disk image refs, virtual devices, boot command, memory limit, CPU budget, network policy, file exchange roots, and compatibility warnings.
+- Add virtual hardware devices for console TTY, block disk, framebuffer, keyboard, pointer, serial port, clock, random source, loopback network, and host-file exchange.
+- Add guest disk image mount/import/export through DindbOS VFS with permission checks and readonly/snapshot modes.
+- Add process integration so each guest appears as a DindbOS process tree with pid, owner, resource limits, stdout/stderr, crash reason, and `/proc/<pid>/guest.json`.
+- Add resource caps for emulated CPU steps, memory, framebuffer size, disk size, network packets, output rate, and wall-clock runtime.
+- Add guest-to-host bridge policy for clipboard, file copy, network loopback, and display capture, all mediated by DindbOS brokers.
+- Add `vmctl create`, `vmctl boot`, `vmctl pause`, `vmctl resume`, `vmctl snapshot`, `vmctl attach`, `vmctl export`, and `doctor vm`.
+- Add compatibility labels that distinguish DindbOS-native, WASI, Linux-compat WASM, interpreted, emulated, nested DindbOS, and unsupported workloads.
+
+Verification:
+
+- Add smoke coverage for booting a tiny fixture guest, console output, disk image mount, snapshot create/restore, resource-limit kill, denied host file exchange, and guest cleanup after crash.
+- Add tests proving guest virtual devices cannot bypass DindbOS filesystem, network, keychain, clipboard, or package namespace policy.
+- Add performance guard tests so too-slow or unsupported guests fail with explicit degraded status instead of freezing the desktop.
+
+Completion criteria:
+
+- DindbOS can host supported guest workloads as isolated, inspectable, resource-limited processes.
+- Guest environments are clearly labeled and cannot be confused with native DindbOS apps or browser host capabilities.
+
+### Native-Like 71: System Pasteboard, Drag-Drop, And Share Broker
+
+Status: Later.
+
+Goal: centralize clipboard, pasteboard history, drag-and-drop, file transfer, share targets, and cross-app data exchange through an OS broker.
+
+Why it matters:
+
+- Native OSes treat clipboard and drag-drop as system services with data types, ownership, privacy prompts, file promises, and app handoff rules.
+- DindbOS already has first-pass clipboard and compositor policy, but richer document and app workflows need a full pasteboard/share boundary.
+- Browser clipboard and drag-drop APIs are powerful but permissioned and inconsistent, so app-direct usage would leak policy and make auditing impossible.
+
+Implementation tasks:
+
+- Add a pasteboard service with item id, owner pid, user, MIME types, data refs, sensitivity label, expiry, source app, target app, and audit state.
+- Support text, HTML, Markdown, image blobs, file refs, virtual file promises, URLs, app-specific custom types, and redacted preview metadata.
+- Add drag sessions owned by the compositor with source surface, target surface, allowed operations, cursor state, data types, temporary grants, and cancellation cleanup.
+- Add a share broker for browser share sheet, download handoff, local mount save, package-to-package send, remote session transfer, and companion-assisted host sharing.
+- Add privacy prompts and Settings policy for pasteboard history, cross-app paste, sensitive data, password-like content, local mount drops, and external share.
+- Add `/proc/pasteboard`, `/proc/dragdrop`, `pbcopy`, `pbpaste`, `share`, `dropctl`, and Settings pasteboard history.
+- Add automatic cleanup when the source process exits, a window closes, a session locks, a user logs out, a grant expires, or a package is uninstalled.
+- Route raw browser clipboard and drag/drop calls through the broker for sandboxed package apps where feasible.
+
+Verification:
+
+- Add smoke coverage for copy/paste text, multi-MIME paste, denied cross-app paste, drag start/drop/cancel, file promise handoff, expiry cleanup, history disabled mode, and audit log records.
+- Add browser interaction tests where feasible for real clipboard permission and drag/drop event routing.
+- Add tests proving sensitive pasteboard items cannot be read by packages without the matching temporary or persistent grant.
+
+Completion criteria:
+
+- Clipboard, drag-drop, and share flows work as reusable OS services across shell, GUI apps, package apps, and remote/companion handoff.
+- Users can inspect, clear, restrict, and audit pasteboard/share activity.
+
+### Native-Like 72: Reproducible Build Farm And Native Toolchain Bridge
+
+Status: Later.
+
+Goal: let DindbOS build, verify, sign, and package browser-safe programs through reproducible build recipes, local WASM toolchains, remote builders, or narrowly scoped companion builders.
+
+Why it matters:
+
+- Native OS platforms need a software supply chain: source, builds, artifacts, signatures, provenance, dependency locks, advisories, and rollback.
+- Building real WASM, NodeCompat, and package artifacts inside only the browser can be slow or impossible for some toolchains, but DindbOS can still own the policy and provenance boundary.
+- This moves DindbOS closer to an OS distribution without giving packages raw host build access.
+
+Implementation tasks:
+
+- Define build recipes with source refs, dependency lockfiles, toolchain id, environment image, expected outputs, permissions, cache policy, reproducibility mode, and signing requirements.
+- Add build backends for browser-only JavaScript packaging, WASM toolchains where feasible, remote sandboxed builders, and companion-assisted native toolchains.
+- Add a build service that creates build processes with isolated roots, readonly source inputs, writable build/temp/cache overlays, network policy, CPU/memory/time limits, and artifact output grants.
+- Add provenance records containing source digest, dependency digests, toolchain digest, builder identity, runtime ABI, browser profile, companion identity where used, logs, and artifact hashes.
+- Add package signing integration with the keychain, trusted publisher records, repository metadata, and rollback-safe activation.
+- Add `buildctl build`, `buildctl verify`, `buildctl diff`, `buildctl sign`, `buildctl publish`, `pkg provenance`, and `doctor builds`.
+- Add cache isolation and garbage collection for build layers, failed outputs, dependency downloads, and toolchain artifacts.
+- Add policy that prevents build scripts from reading user home, keychain, local mounts, companion credentials, or unrelated package roots unless explicitly granted.
+
+Verification:
+
+- Add smoke coverage for a deterministic browser-only package build, denied undeclared source read, artifact hash record, signing flow, failed build cleanup, cache reuse, and provenance inspection.
+- Add tests proving remote or companion builders cannot receive secrets, raw host paths, or package credentials beyond declared build inputs.
+- Add reproducibility tests that rebuild the same fixture and compare artifact digests under the same build profile.
+
+Completion criteria:
+
+- DindbOS can produce and verify package artifacts through inspectable build environments.
+- Build provenance is strong enough for package trust decisions, repository publication, and rollback diagnostics.
+
+### Native-Like 73: Certificate Authority, Trust Store, And Secure Transport Policy
+
+Status: Later.
+
+Goal: maintain an OS-level trust store for package repositories, remote sync providers, companion pairing, WebRTC peers, admin sessions, and signed runtime metadata.
+
+Why it matters:
+
+- Native OSes manage trusted roots, certificates, key usage, revocation, transport policy, and secure update channels.
+- Browsers already own TLS for web navigation, but DindbOS still needs its own trust decisions for package signatures, repository metadata, encrypted sync, companion protocols, remote admin, and signed system images.
+- A DindbOS trust service keeps these decisions auditable instead of scattering public keys and tokens across app state.
+
+Implementation tasks:
+
+- Add a trust store with roots, intermediates, publisher keys, companion keys, repository keys, admin keys, sync provider keys, key usage, expiry, revocation, and trust scope.
+- Add certificate/key import flows through trusted UI, managed policy, repository metadata, local file import, or companion pairing.
+- Add signature verification APIs for package manifests, package artifacts, repository indexes, migration manifests, system images, companion manifests, and remote admin tokens.
+- Add revocation lists, trust pinning, trust-on-first-use records for local companions where acceptable, and rotation workflows for expiring keys.
+- Add transport policy records for repository URLs, sync endpoints, admin endpoints, WebRTC peer identity, companion endpoints, and remote build providers.
+- Add `/etc/dindbos/trust`, `/proc/trust`, `trustctl`, `certctl`, `pkg verify`, and Settings trust panels.
+- Add failure modes for expired key, revoked key, wrong key usage, unknown issuer, bad signature, stale metadata, clock uncertainty, and managed-policy denial.
+- Keep browser TLS status separate from DindbOS content trust so users can see both layers.
+
+Verification:
+
+- Add smoke coverage for trusted package verification, unknown signer refusal, revoked signer refusal, expired key warning, key rotation, companion manifest verification, and trust diagnostics.
+- Add tests proving a package cannot add itself as a trusted publisher or downgrade repository trust metadata.
+- Add tests proving signed system images, migrations, package artifacts, and companion manifests use the same trust service instead of private verification paths.
+
+Completion criteria:
+
+- DindbOS trust decisions are centralized, inspectable, revocable, and test-covered.
+- Package, companion, sync, admin, and update flows cannot silently bypass the OS trust store.
+
+### Native-Like 74: Kernel Panic, Safe Mode, And Emergency Recovery Shell
+
+Status: Later.
+
+Goal: provide native-like failure states for severe runtime corruption, failed migrations, broken services, storage damage, trust failures, and repeated boot crashes.
+
+Why it matters:
+
+- Native OSes have panic screens, recovery modes, single-user shells, safe boot, filesystem repair, rollback, and diagnostic bundles.
+- Browser-native DindbOS should not crash into a blank page or silently reset user data when kernel-level invariants fail.
+- A recovery shell makes the "real OS in the browser" claim more credible because the system can explain and repair itself.
+
+Implementation tasks:
+
+- Define panic classes for boot failure, migration failure, storage invariant failure, registry corruption, trust verification failure, service crash loop, package activation loop, companion protocol compromise, and resource exhaustion.
+- Add a panic manager that freezes risky mutation, records state, opens a trusted recovery surface, and offers safe actions.
+- Add safe mode boot that disables third-party packages, non-critical services, experimental modules, companion access, remote admin, and untrusted repositories.
+- Add emergency shell commands for `doctor`, `fsck`, `regctl repair`, `pkg disable`, `service disable`, `mount remount-ro`, `rollback`, `image restore`, `logs export`, and `factory-reset`.
+- Add recovery profiles for browser-only, offline, no-companion, storage-readonly, no-third-party, managed-policy, and developer diagnostic modes.
+- Add panic bundles containing runtime version, boot phase, browser profile, lifecycle state, recent syscalls, service graph, package activation log, mount table, registry status, and redacted errors.
+- Add repeated-boot-failure detection that automatically offers safe mode after a configurable crash threshold.
+- Add UX copy that is honest about what can be recovered in browser storage and what requires a backup, export, remote sync, or companion.
+
+Verification:
+
+- Add smoke coverage for induced boot panic, safe mode entry, third-party package skip, readonly recovery shell, repair command success, failed repair report, rollback flow, and panic bundle export.
+- Add tests proving emergency mode cannot leak keychain secrets, bypass user identity, or grant package permissions while the trust store is unavailable.
+- Add regression tests for repeated boot crash detection and successful return to normal boot after repair.
+
+Completion criteria:
+
+- Severe runtime failures lead to inspectable recovery states, not silent data loss or blank-screen failure.
+- Users and developers can repair, export diagnostics, roll back, or intentionally reset through OS-owned workflows.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
