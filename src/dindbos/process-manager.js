@@ -160,6 +160,7 @@ export class ProcessManager {
     process.crashReportPath = report.path;
     process.crashIndexPath = report.indexPath;
     this.os.windows?.releaseProcessCapture?.(process.pid, "process-crash");
+    this.os.timers?.cleanupByPid?.(process.pid, "process-crash");
     this.os.descriptors?.closeProcess?.(process.pid, "process-crash");
     this.os.unregisterIpcEndpointsForPid?.(process.pid, "process-crash");
     this.revokeProcessObjects(process, "process-crash");
@@ -210,6 +211,7 @@ export class ProcessManager {
     this.log(process.pid, `exit ${reason}`);
     this.sampleActivity(process.pid, "exit", 1);
     this.processes.delete(process.pid);
+    this.os.timers?.cleanupByPid?.(process.pid, reason);
     this.os.descriptors?.closeProcess?.(process.pid, reason);
     this.os.unregisterIpcEndpointsForPid?.(process.pid, reason);
     this.revokeProcessObjects(process, reason);

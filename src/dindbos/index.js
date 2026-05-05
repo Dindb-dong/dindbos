@@ -18,6 +18,7 @@ import { ProcessExecutor } from "./process-executor.js?v=20260422-browserd";
 import { ProcessManager } from "./process-manager.js?v=20260422-browserd";
 import { ServiceManager } from "./service-manager.js?v=20260422-browserd";
 import { SyscallDispatcher } from "./syscalls.js?v=20260422-browserd";
+import { TimerManager } from "./timer-manager.js?v=20260422-browserd";
 import { VirtualFileSystem } from "./vfs.js?v=20260422-browserd";
 import { WasmRunner } from "./wasm-runner.js?v=20260422-browserd";
 import { WindowManager } from "./window-manager.js?v=20260422-browserd";
@@ -244,6 +245,7 @@ export class DindbOS {
     this.services = new ServiceManager(this);
     this.executor = new ProcessExecutor(this);
     this.descriptors = new DescriptorManager(this);
+    this.timers = new TimerManager(this, options.timers || {});
     this.syscalls = new SyscallDispatcher(this);
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);

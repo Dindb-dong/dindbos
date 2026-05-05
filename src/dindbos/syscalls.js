@@ -76,6 +76,10 @@ export class SyscallDispatcher {
     if (name === "package.info") return this.packageInfo(args, context);
     if (name === "storage.status") return this.storageStatus(context);
     if (name === "storage.sync") throw syscallError("EAGAIN", "syscall: storage.sync requires async syscall dispatch");
+    if (name === "timer.status") return this.timerStatus(args, context);
+    if (name === "timer.create") return this.timerCreate(args, context);
+    if (name === "timer.cancel") return this.timerCancel(args, context);
+    if (name === "timer.sleep") throw syscallError("EAGAIN", "syscall: timer.sleep requires async syscall dispatch");
     if (name === "localMount.status") return this.localMountStatus(context);
     if (name === "mount.list") return this.mountList(context);
     if (name === "mount.mount") return this.mount(args, context);
@@ -93,6 +97,7 @@ export class SyscallDispatcher {
   async dispatchAsync(name, args, context) {
     if (name === "fd.sync") return this.fdSync(args, context);
     if (name === "storage.sync") return this.storageSync(context);
+    if (name === "timer.sleep") return this.timerSleep(args, context);
     return this.dispatch(name, args, context);
   }
 
@@ -259,6 +264,27 @@ export class SyscallDispatcher {
       ...safeRead(() => this.os.persistenceStatus?.(), {}),
       bucketPolicy: safeRead(() => this.os.storageBucketPolicy?.(), null),
     };
+  }
+
+  timerStatus(args, context) {
+    const process = context.process || null;
+    const pid = args.pid === undefined ? undefined : numberArg(args.pid, "pid");
+    if (pid !== undefined && (!process || Number(process.pid) !== pid)) this.assertCapability("process.read", context);
+    return this.os.timers.status(pid === undefined ? {} : { ownerPid: pid });
+  }
+
+  timerCreate(args, context) {
+    return this.os.timers.create(this.requireProcess(context), args);
+  }
+
+  timerCancel(args, context) {
+    const id = String(args.id || args.timerId || args.handleId || "").trim();
+    if (!id) throw syscallError("EINVAL", "syscall: timer.cancel needs id or handleId");
+    return this.os.timers.cancel(id, this.requireProcess(context), { reason: "timer-cancel-syscall" });
+  }
+
+  async timerSleep(args, context) {
+    return this.os.timers.sleep(this.requireProcess(context), args);
   }
 
   localMountStatus(context) {
