@@ -3521,7 +3521,7 @@ function renderSettingsRemoteSync(sync) {
     <dl>
       <div><dt>Backend</dt><dd>${escapeHtml(sync?.backend || "unavailable")}</dd></div>
       <div><dt>Encrypted</dt><dd>${Boolean(sync?.encrypted)}</dd></div>
-      <div><dt>Last Snapshot</dt><dd>${snapshot ? `${escapeHtml(shortTime(snapshot.createdAt))} · files=${Number(snapshot.fileCount || 0)}` : "none"}</dd></div>
+      <div><dt>Last Snapshot</dt><dd>${snapshot ? `${escapeHtml(shortTime(snapshot.createdAt))} · files=${Number(snapshot.fileCount || 0)} · cache=${Number(snapshot.cacheRecords || 0)} · settings=${Number(snapshot.settingsRecords || 0)}` : "none"}</dd></div>
       <div><dt>Last Error</dt><dd>${escapeHtml(sync?.lastError || "-")}</dd></div>
     </dl>
   `;
@@ -3548,7 +3548,7 @@ function renderSettingsSessionCoordination(coordination) {
 function formatSyncSummary(sync) {
   const snapshot = sync?.lastSuccessfulSnapshot;
   if (!snapshot) return `${sync?.backend || "unavailable"} no-snapshot`;
-  return `${sync?.backend || "sync"} encrypted=${Boolean(sync?.encrypted)} last=${shortTime(snapshot.createdAt)} files=${Number(snapshot.fileCount || 0)}`;
+  return `${sync?.backend || "sync"} encrypted=${Boolean(sync?.encrypted)} last=${shortTime(snapshot.createdAt)} files=${Number(snapshot.fileCount || 0)} cache=${Number(snapshot.cacheRecords || 0)} settings=${Number(snapshot.settingsRecords || 0)}`;
 }
 
 function renderSettingsLifecycle(lifecycle, recovery) {
