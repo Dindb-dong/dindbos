@@ -2,6 +2,8 @@
 
 Apps receive a sandboxed runtime object in their `render()` function or package `mount()` function. The sandbox exposes only the APIs allowed by the app manifest.
 
+For the package-author overview across permissions, filesystem scopes, process lifecycle, app state, package signing, compatibility, and browser limits, see `docs/developer-guide.md`.
+
 ```js
 export function mount({ content, os, pkg, imports, window }) {
   content.textContent = pkg.name;

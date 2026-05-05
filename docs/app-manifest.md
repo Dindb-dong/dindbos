@@ -2,6 +2,8 @@
 
 Packages are installed from `dindbos.app.json`.
 
+For the package-author workflow and runtime rules around permissions, filesystem scopes, lifecycle, state, signing, and compatibility, see `docs/developer-guide.md`.
+
 ```json
 {
   "id": "hello-notes",
