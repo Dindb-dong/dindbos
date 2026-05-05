@@ -84,6 +84,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-remove.wasm", wasiRemoveWasm(
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-rename.wasm", wasiRenameWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFile("/home/guest/bin/wasi-file.txt", "opened read\n", "/", {
   owner: "guest",
   group: "users",
@@ -95,6 +101,15 @@ os.fs.writeOrCreateFile("/home/guest/bin/wasi-delete.txt", "delete me\n", "/", {
   permissions: "-rw-r--r--",
 }, system);
 os.fs.createDirectory("/home/guest/bin/wasi-remove-dir", "/", {
+  owner: "guest",
+  group: "users",
+}, system);
+os.fs.writeOrCreateFile("/home/guest/bin/wasi-rename-from.txt", "rename me\n", "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rw-r--r--",
+}, system);
+os.fs.createDirectory("/home/guest/bin/wasi-rename-dir", "/", {
   owner: "guest",
   group: "users",
 }, system);
@@ -194,7 +209,17 @@ assert(wasiRemove.status === 0, `wasi path remove status mismatch: ${wasiRemove.
 assert(!os.fs.exists("/home/guest/bin/wasi-delete.txt"), "wasi path_unlink_file did not remove file");
 assert(!os.fs.exists("/home/guest/bin/wasi-remove-dir"), "wasi path_remove_directory did not remove directory");
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir mkdir remove process");
+const wasiRename = await os.wasm.runFile("/home/guest/bin/wasi-rename.wasm", "/home/guest/bin", {
+  argv: ["wasi-rename.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiRename.status === 0, `wasi path_rename status mismatch: ${wasiRename.status} ${wasiRename.stderr}`);
+assert(!os.fs.exists("/home/guest/bin/wasi-rename-from.txt"), "wasi path_rename left source file in place");
+assert(os.fs.readFile("/home/guest/bin/wasi-renamed.txt") === "rename me\n", "wasi path_rename did not preserve file content");
+assert(!os.fs.exists("/home/guest/bin/wasi-rename-dir"), "wasi path_rename left source directory in place");
+assert(os.fs.stat("/home/guest/bin/wasi-renamed-dir")?.type === "directory", "wasi path_rename did not rename directory");
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir mkdir remove rename process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -540,6 +565,40 @@ function wasiRemoveWasm() {
       0x41, 0x03, 0x41, 0x00, 0x41, ...i32(filePath.length), 0x10, 0x00, 0x1a,
       0x41, 0x03, 0x41, dirOffset, 0x41, ...i32(dirPath.length), 0x10, 0x01,
       0x10, 0x02,
+      0x0b,
+    ],
+    data,
+  });
+}
+
+function wasiRenameWasm() {
+  const fileFrom = bytes("wasi-rename-from.txt");
+  const fileTo = bytes("wasi-renamed.txt");
+  const dirFrom = bytes("wasi-rename-dir");
+  const dirTo = bytes("wasi-renamed-dir");
+  const fileToOffset = 32;
+  const dirFromOffset = 64;
+  const dirToOffset = 96;
+  const data = new Uint8Array(128);
+  data.set(fileFrom, 0);
+  data.set(fileTo, fileToOffset);
+  data.set(dirFrom, dirFromOffset);
+  data.set(dirTo, dirToOffset);
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "path_rename", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 1 },
+    ],
+    startType: 2,
+    body: [
+      0x41, 0x03, 0x41, 0x00, 0x41, ...i32(fileFrom.length), 0x41, 0x03, 0x41, ...i32(fileToOffset), 0x41, ...i32(fileTo.length), 0x10, 0x00, 0x1a,
+      0x41, 0x03, 0x41, ...i32(dirFromOffset), 0x41, ...i32(dirFrom.length), 0x41, 0x03, 0x41, ...i32(dirToOffset), 0x41, ...i32(dirTo.length), 0x10, 0x00,
+      0x10, 0x01,
       0x0b,
     ],
     data,
