@@ -692,11 +692,13 @@ export class ShellSession {
     const browser = snapshot.browser || {};
     const storage = snapshot.storage || {};
     const companions = snapshot.companions || {};
+    const background = snapshot.backgroundMaintenance || {};
     return [
       "DindbOS compatibility",
       `runtime=${snapshot.runtime || "DindbOS.js"} version=${snapshot.version || "0.2.0"} mode=${snapshot.mode || "browser-native"}`,
       ...tierLines,
-      `browser workers=${Boolean(browser.workers)} wasm=${Boolean(browser.webAssembly)} opfs=${Boolean(browser.opfs)} indexedDB=${Boolean(browser.indexedDB)} cacheApi=${Boolean(browser.cacheApi)} fileSystemAccess=${Boolean(browser.fileSystemAccess)}`,
+      `browser workers=${Boolean(browser.workers)} wasm=${Boolean(browser.webAssembly)} opfs=${Boolean(browser.opfs)} indexedDB=${Boolean(browser.indexedDB)} cacheApi=${Boolean(browser.cacheApi)} fileSystemAccess=${Boolean(browser.fileSystemAccess)} serviceWorker=${Boolean(browser.serviceWorker)} periodicSync=${Boolean(browser.periodicSync)}`,
+      `background serviceWorker=${Boolean(background.serviceWorkerSupported)} periodicSync=${Boolean(background.periodicSyncSupported)} registered=${Boolean(background.registered)} closedPagePersistent=${Boolean(background.closedPagePersistence)} decision=${background.decision || "unknown"}`,
       `storage backend=${storage.backend || "memory"} structured=${storage.structuredBackend || "memory"} persisted=${Boolean(storage.persisted)} buckets=${storage.buckets || "unknown"}`,
       `companions browserProvider=${companions.browserProviderUrl || "ws://127.0.0.1:8787/browser"} localMounts=${companions.localMounts || 0}`,
       `unsupported native=${(snapshot.unsupportedNative || []).join("; ")}`,

@@ -1063,13 +1063,15 @@ Implementation tasks:
 - Already present: recovery records under `/var/run/dindbos/recovery` capture dirty shutdown state, pending persistence status, suspended services, worker-backed processes, and running processes.
 - Already present: service degradation records lifecycle policy reasons in `/var/run/dindbos/services.json`, `/var/log/dindbos/services.log`, and Activity Monitor's service permission review.
 - Already present: Settings and `doctor` expose lifecycle/recovery diagnostics, last shutdown/recovery records, and closed-page unsupported boundaries across timers, workers, services, and unflushed async storage.
-- Add optional service worker or periodic background sync integration only for browser-supported, permissioned, limited maintenance tasks.
+- Already present: `backgroundMaintenanceStatus()` and `doctor compat` expose Service Worker / Periodic Background Sync probes, report closed-page persistence as unsupported when unavailable, and keep supported browsers in an explicit `available-but-not-registered` state until a permissioned maintenance task owns registration.
+- Add optional Service Worker or Periodic Background Sync task registration only for browser-supported, permissioned, limited maintenance tasks.
 
 Verification:
 
 - Already present: smoke coverage verifies pending-write lifecycle flushes, boot-time lifecycle diagnostics, service visibility/pagehide suspend/resume wiring, OS lifecycle transitions for pagehide/pageshow/visibility/beforeunload, dirty shutdown recovery records after reload, and service degradation after pagehide.
 - Already present: `npm run smoke:processes` verifies per-process lifecycle callback invocation, `process:lifecycle` events, and `/proc` callback diagnostics.
 - Already present: `npm run smoke:settings` and `npm run smoke:shell` verify lifecycle/recovery diagnostics and closed-page unsupported reporting.
+- Already present: `npm run smoke:shell` verifies Service Worker / Periodic Background Sync compatibility probes and unsupported closed-page background execution reporting.
 - Add smoke coverage for richer recovery diagnostics after reload.
 
 Completion criteria:

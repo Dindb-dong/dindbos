@@ -31,6 +31,8 @@ Process lifecycle callbacks are recorded per process. `suspending` runs `prepare
 
 Settings and `doctor` expose lifecycle/recovery diagnostics, including the last shutdown/recovery record and a closed-page boundary list. DindbOS reports closed-page persistence as unsupported unless a future browser-supported background API explicitly owns that work.
 
+`doctor compat` also reports Service Worker and Periodic Background Sync probes. DindbOS does not auto-register closed-page maintenance; it reports `unsupported-in-this-runtime` or `available-but-not-registered` until an explicit, permissioned maintenance service owns a limited task.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed

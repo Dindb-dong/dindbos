@@ -44,6 +44,7 @@ export function compatibilitySnapshot(runtime = {}) {
   const storageStatus = safeRead(() => runtime.storage?.status?.(), {});
   const storageBucketPolicy = safeRead(() => runtime.storageBucketPolicy?.(), null);
   const localMounts = safeRead(() => runtime.localMounts?.status?.(), []);
+  const backgroundMaintenance = safeRead(() => runtime.backgroundMaintenanceStatus?.(), backgroundMaintenanceCapabilities());
   const browserProvider = runtime.browserProvider || {};
   const tiers = COMPATIBILITY_TIERS.map((tier) => ({
     ...tier,
@@ -60,6 +61,7 @@ export function compatibilitySnapshot(runtime = {}) {
     },
     tiers,
     browser,
+    backgroundMaintenance,
     storage: {
       backend: storageStatus.backend || "memory",
       structuredBackend: storageStatus.structuredBackend || "memory",
@@ -154,9 +156,27 @@ function browserCapabilities() {
     opfs: Boolean(globalThis.navigator?.storage?.getDirectory),
     indexedDB: typeof globalThis.indexedDB !== "undefined",
     cacheApi: typeof globalThis.caches !== "undefined",
-    fileSystemAccess: typeof globalThis.showDirectoryPicker === "function",
+      fileSystemAccess: typeof globalThis.showDirectoryPicker === "function",
+    serviceWorker: Boolean(globalThis.navigator?.serviceWorker),
+    periodicSync: Boolean(globalThis.PeriodicSyncManager || globalThis.ServiceWorkerRegistration?.prototype?.periodicSync),
     webCrypto: Boolean(globalThis.crypto?.subtle),
     webSocket: typeof globalThis.WebSocket === "function",
+  };
+}
+
+function backgroundMaintenanceCapabilities() {
+  const serviceWorkerSupported = Boolean(globalThis.navigator?.serviceWorker);
+  const periodicSyncSupported = Boolean(globalThis.PeriodicSyncManager || globalThis.ServiceWorkerRegistration?.prototype?.periodicSync);
+  return {
+    serviceWorkerSupported,
+    periodicSyncSupported,
+    registered: false,
+    permissionRequired: serviceWorkerSupported,
+    closedPagePersistence: false,
+    decision: serviceWorkerSupported ? "available-but-not-registered" : "unsupported-in-this-runtime",
+    reason: serviceWorkerSupported
+      ? "Background maintenance requires explicit registration and permissioned browser support."
+      : "Service Worker support is unavailable in this runtime.",
   };
 }
 
