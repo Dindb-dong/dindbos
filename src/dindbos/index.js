@@ -55,6 +55,7 @@ const LAST_RECOVERY_PATH = `${RECOVERY_DIR}/last-recovery.json`;
 const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
 const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
 const REMOTE_SYNC_SNAPSHOT_KEY = "dindbos:remote-sync:last-snapshot";
+const REMOTE_SYNC_APPLY_STATUS_PATH = "/var/run/dindbos/remote-sync-apply.json";
 
 export class DindbOS {
   constructor(options = {}) {
@@ -165,6 +166,7 @@ export class DindbOS {
       lastSuccessfulSnapshot: null,
       lastAppliedSnapshot: null,
       lastRepair: null,
+      lastApplyRun: null,
       lastError: "",
     };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
@@ -816,6 +818,8 @@ export class DindbOS {
       lastAppliedSnapshot: this.remoteSync.lastAppliedSnapshot
         ? { ...this.remoteSync.lastAppliedSnapshot }
         : null,
+      lastRepair: this.remoteSync.lastRepair ? { ...this.remoteSync.lastRepair } : null,
+      lastApplyRun: this.remoteSync.lastApplyRun ? { ...this.remoteSync.lastApplyRun } : this.readRemoteSyncApplyRun(),
     };
   }
 
@@ -988,39 +992,138 @@ export class DindbOS {
     if (!snapshot?.ciphertext) throw new Error("remote sync apply requires an encrypted snapshot");
     const appliedAt = new Date().toISOString();
     const dryRun = Boolean(options.dryRun);
+    const startIndex = Math.max(0, Math.trunc(Number(options.startIndex || 0)));
+    const maxFiles = Number.isFinite(Number(options.maxFiles)) ? Math.max(0, Math.trunc(Number(options.maxFiles))) : Infinity;
     try {
       const payload = await decryptRemoteSyncPayload(snapshot, passphrase);
+      const files = Array.isArray(payload.files) ? payload.files : [];
       const result = {
         id: snapshot.id || payload.id || "",
         createdAt: snapshot.createdAt || payload.createdAt || "",
         appliedAt,
         dryRun,
-        fileCount: Array.isArray(payload.files) ? payload.files.length : 0,
+        status: "complete",
+        resumeOf: String(options.resumeOf || ""),
+        startIndex,
+        nextIndex: startIndex,
+        fileCount: files.length,
         summary: {},
         changes: [],
       };
-      (payload.files || []).forEach((file) => {
+      this.recordRemoteSyncApplyRun({
+        snapshotId: result.id,
+        createdAt: result.createdAt,
+        status: dryRun ? "dry-run" : "running",
+        startedAt: appliedAt,
+        updatedAt: appliedAt,
+        startIndex,
+        nextIndex: startIndex,
+        totalFiles: files.length,
+        dryRun,
+      });
+      let appliedFiles = 0;
+      for (let index = startIndex; index < files.length; index += 1) {
+        if (appliedFiles >= maxFiles) {
+          result.status = "interrupted";
+          break;
+        }
+        const file = files[index];
         const planned = this.planRemoteSyncApplyFile(file, options);
         result.summary[planned.action] = Number(result.summary[planned.action] || 0) + 1;
         if (!dryRun) this.executeRemoteSyncApplyPlan(planned);
         result.changes.push(planned);
-      });
+        appliedFiles += 1;
+        result.nextIndex = index + 1;
+        this.recordRemoteSyncApplyRun({
+          snapshotId: result.id,
+          createdAt: result.createdAt,
+          status: dryRun ? "dry-run" : "running",
+          startedAt: appliedAt,
+          updatedAt: new Date().toISOString(),
+          startIndex,
+          nextIndex: result.nextIndex,
+          totalFiles: files.length,
+          dryRun,
+        });
+      }
       this.remoteSync.lastAppliedSnapshot = {
         id: result.id,
         createdAt: result.createdAt,
         appliedAt,
         dryRun,
+        status: result.status,
+        startIndex: result.startIndex,
+        nextIndex: result.nextIndex,
         fileCount: result.fileCount,
         summary: { ...result.summary },
         conflicts: Number(result.summary["conflict-copy"] || 0),
         refused: Number(result.summary.refuse || 0),
       };
+      this.recordRemoteSyncApplyRun({
+        snapshotId: result.id,
+        createdAt: result.createdAt,
+        status: result.status,
+        startedAt: appliedAt,
+        updatedAt: new Date().toISOString(),
+        startIndex,
+        nextIndex: result.nextIndex,
+        totalFiles: files.length,
+        dryRun,
+        summary: { ...result.summary },
+      });
       this.remoteSync.lastError = "";
       this.bus.emit("sync:apply", this.remoteSyncStatus());
       return result;
     } catch (error) {
       this.remoteSync.lastError = error?.message || String(error);
       throw error;
+    }
+  }
+
+  async resumeRemoteSyncApply(options = {}) {
+    const run = this.remoteSync.lastApplyRun || this.readRemoteSyncApplyRun();
+    if (!run || run.status !== "interrupted") throw new Error("remote sync apply has no interrupted run to resume");
+    const snapshot = this.normalizeRemoteSyncSnapshotInput(options.snapshot);
+    if (!snapshot?.ciphertext) throw new Error("remote sync resume requires the original encrypted snapshot");
+    return this.applyRemoteSyncSnapshot({
+      ...options,
+      snapshot,
+      startIndex: Number(run.nextIndex || 0),
+      resumeOf: run.snapshotId || "",
+    });
+  }
+
+  recordRemoteSyncApplyRun(run = {}) {
+    const status = {
+      snapshotId: String(run.snapshotId || ""),
+      createdAt: String(run.createdAt || ""),
+      status: String(run.status || "unknown"),
+      startedAt: String(run.startedAt || ""),
+      updatedAt: String(run.updatedAt || new Date().toISOString()),
+      startIndex: Number(run.startIndex || 0),
+      nextIndex: Number(run.nextIndex || 0),
+      totalFiles: Number(run.totalFiles || 0),
+      dryRun: Boolean(run.dryRun),
+      summary: run.summary && typeof run.summary === "object" ? { ...run.summary } : {},
+    };
+    this.remoteSync.lastApplyRun = status;
+    const system = this.permissions.systemPrincipal();
+    this.ensureDirectoryPath(this.fs.dirname(REMOTE_SYNC_APPLY_STATUS_PATH), { principal: system });
+    this.fs.writeOrCreateFile(REMOTE_SYNC_APPLY_STATUS_PATH, `${JSON.stringify(status, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    return { ...status };
+  }
+
+  readRemoteSyncApplyRun() {
+    if (!this.fs?.exists?.(REMOTE_SYNC_APPLY_STATUS_PATH)) return null;
+    try {
+      return JSON.parse(this.fs.readFile(REMOTE_SYNC_APPLY_STATUS_PATH, "/", this.permissions.systemPrincipal()));
+    } catch {
+      return null;
     }
   }
 

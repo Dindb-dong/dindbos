@@ -668,6 +668,7 @@ export class ShellSession {
         `backend=${status?.backend || "unavailable"} encrypted=${Boolean(status?.encrypted)} rules=${Number(status?.mergeRuleCount || 0)}`,
         `lastSnapshot=${status?.lastSuccessfulSnapshot?.createdAt || "-"}`,
         `lastApplied=${status?.lastAppliedSnapshot?.appliedAt || "-"} conflicts=${Number(status?.lastAppliedSnapshot?.conflicts || 0)} refused=${Number(status?.lastAppliedSnapshot?.refused || 0)}`,
+        `applyRun=${status?.lastApplyRun?.status || "-"} next=${Number(status?.lastApplyRun?.nextIndex || 0)}/${Number(status?.lastApplyRun?.totalFiles || 0)}`,
         `pendingConflicts=${Array.isArray(conflicts) ? conflicts.length : 0}`,
       ].join("\n");
     }
