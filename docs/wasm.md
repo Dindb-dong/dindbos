@@ -52,12 +52,13 @@ args_get(argvPtr, argvBufPtr) -> errno
 environ_sizes_get(environCountPtr, environBufSizePtr) -> errno
 environ_get(environPtr, environBufPtr) -> errno
 fd_write(fd, iovsPtr, iovsLen, nwrittenPtr) -> errno
+fd_read(fd, iovsPtr, iovsLen, nreadPtr) -> errno
 proc_exit(code)
 random_get(ptr, len) -> errno
 clock_time_get(id, precision, resultPtr) -> errno
 ```
 
-`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read`, opened WASI file descriptors, stdin pipes, and pipe-backed TTY behavior remain roadmap work.
+`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read` reads through the same table, including stdin data supplied by shell pipelines and `runFile({ stdin })`. Opened WASI file descriptors and pipe-backed TTY behavior remain roadmap work.
 
 ## Process Model
 
@@ -78,4 +79,4 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 npm run smoke:wasm
 ```
 
-The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, basic WASI `fd_write`/`proc_exit`, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
+The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, basic WASI `fd_write`/`fd_read`/`proc_exit`, stdin pipeline delivery, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
