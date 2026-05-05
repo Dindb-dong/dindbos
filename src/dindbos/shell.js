@@ -1080,8 +1080,8 @@ export class ShellSession {
   }
 
   fsck(args = []) {
-    const repair = args.includes("--repair");
-    const dryRun = !repair || args.includes("--dry-run");
+    const repair = args.includes("--repair") || args.includes("--dry-run");
+    const dryRun = args.includes("--dry-run") || !args.includes("--repair");
     const explain = args.includes("--explain") || args[0] === "explain";
     const result = mergeFsckResults(
       this.os.fs.checkIntegrity({ repair, dryRun }),
@@ -1096,8 +1096,11 @@ export class ShellSession {
     ["/var", "/var/log", "/var/log/dindbos"].forEach((path) => {
       if (!this.os.fs.exists(path)) this.os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, principal);
     });
+    const runId = `fsck-${Date.now().toString(36)}`;
+    const auditRecords = this.fsckAuditRecords(result, runId);
     const line = [
       new Date().toISOString(),
+      `run=${runId}`,
       `ok=${Boolean(result.ok)}`,
       `dryRun=${Boolean(result.dryRun)}`,
       `repaired=${Boolean(result.repaired)}`,
@@ -1105,11 +1108,49 @@ export class ShellSession {
       `packages=${Number(result.checkedPackages || 0)}`,
       `problems=${Number(result.problemCount || 0)}`,
       `repairs=${Number(result.repairCount || 0)}`,
+      `auditRecords=${auditRecords.length}`,
       `codes=${[...(result.problems || [])].map((entry) => entry.code).join(",") || "-"}`,
     ].join(" ");
     const path = "/var/log/dindbos/fsck.log";
     if (this.os.fs.exists(path)) this.os.fs.appendFile(path, `${line}\n`, "/", principal);
     else this.os.fs.writeOrCreateFile(path, `${line}\n`, "/", { owner: "root", group: "root", permissions: "-rw-r--r--", mime: "text/plain" }, principal);
+    if (auditRecords.length) this.appendFsckAuditLog(auditRecords, principal);
+  }
+
+  fsckAuditRecords(result = {}, runId = "") {
+    const at = new Date().toISOString();
+    const problems = (result.problems || []).map((entry) => ({
+      at,
+      runId,
+      record: "problem",
+      action: entry.repairable
+        ? (result.dryRun ? "repair-planned" : "repair-eligible")
+        : "repair-refused",
+      code: entry.code || "unknown",
+      path: entry.path || "",
+      message: entry.message || "",
+      repairable: Boolean(entry.repairable),
+      dryRun: Boolean(result.dryRun),
+    }));
+    const repairs = (result.repairs || []).map((entry) => ({
+      at,
+      runId,
+      record: "repair",
+      action: entry.dryRun ? "mutation-planned" : "mutation-applied",
+      kind: entry.kind || "unknown",
+      path: entry.path || "",
+      from: entry.from ?? "",
+      to: entry.to ?? "",
+      dryRun: Boolean(entry.dryRun),
+    }));
+    return [...problems, ...repairs];
+  }
+
+  appendFsckAuditLog(records = [], principal = this.principal) {
+    const path = "/var/log/dindbos/fsck-audit.log";
+    const lines = records.map((record) => `${JSON.stringify(record)}\n`).join("");
+    if (this.os.fs.exists(path)) this.os.fs.appendFile(path, lines, "/", principal);
+    else this.os.fs.writeOrCreateFile(path, lines, "/", { owner: "root", group: "root", permissions: "-rw-r--r--", mime: "application/jsonl" }, principal);
   }
 
   sync(args) {
