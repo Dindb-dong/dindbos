@@ -24,6 +24,44 @@ assert(result.status === 1 && result.output.includes("vault locked"), `locked ke
 result = await shell.executeAsync("keychain unlock fallback-passphrase");
 assert(result.status === 0 && result.output.includes("password-derived-fallback"), `keychain unlock mismatch: ${JSON.stringify(result)}`);
 
+const passkeyRawId = new Uint8Array([7, 8, 9, 10]).buffer;
+const webAuthnCalls = [];
+os.webAuthn = {
+  create: async (options) => {
+    webAuthnCalls.push("create");
+    assert(options.publicKey.challenge instanceof Uint8Array, "passkey enrollment missing challenge");
+    assert(options.publicKey.authenticatorSelection.userVerification === "required", "passkey enrollment did not require user verification");
+    assert(options.publicKey.user.name === "guest", "passkey enrollment user mismatch");
+    return { id: "cred-guest-primary", rawId: passkeyRawId };
+  },
+  get: async (options) => {
+    webAuthnCalls.push("get");
+    assert(options.publicKey.challenge instanceof Uint8Array, "passkey assertion missing challenge");
+    assert(options.publicKey.allowCredentials[0].type === "public-key", "passkey assertion missing allowed credential");
+    assert(options.publicKey.userVerification === "required", "passkey assertion did not require user verification");
+    return { id: "cred-guest-primary", rawId: passkeyRawId };
+  },
+};
+result = await shell.executeAsync("keychain passkey enroll primary");
+assert(result.status === 0 && result.output.includes("credential=cred-guest-primary") && result.output.includes("label=primary"), `passkey enroll mismatch: ${JSON.stringify(result)}`);
+assert(!os.fs.readFile("/var/lib/dindbos/keychain/guest/records.json").includes("s3cr3t-token"), "passkey metadata exposed raw secret value");
+result = await shell.executeAsync("keychain status");
+assert(result.status === 0 && result.output.includes("passkey=true") && result.output.includes("passkeySupported=true"), `passkey status mismatch: ${JSON.stringify(result)}`);
+result = await shell.executeAsync("keychain lock");
+assert(result.status === 0, `passkey lock status mismatch: ${result.status}`);
+result = await shell.executeAsync("keychain passkey unlock");
+assert(result.status === 0 && result.output.includes("passkey-webauthn"), `passkey unlock mismatch: ${JSON.stringify(result)}`);
+result = await shell.executeAsync("keychain get registry.token");
+assert(result.status === 0 && result.output === "s3cr3t-token", `passkey-unlocked secret read mismatch: ${JSON.stringify(result)}`);
+result = await shell.executeAsync("keychain passkey reauth");
+assert(result.status === 0 && result.output.includes("passkey-webauthn"), `passkey reauth mismatch: ${JSON.stringify(result)}`);
+const webAuthn = os.webAuthn;
+os.webAuthn = null;
+result = await shell.executeAsync("keychain passkey reauth");
+assert(result.status === 1 && result.output.includes("WebAuthn unavailable"), `passkey unavailable mismatch: ${JSON.stringify(result)}`);
+os.webAuthn = webAuthn;
+assert(webAuthnCalls.join(",") === "create,get,get", `unexpected WebAuthn call sequence: ${webAuthnCalls.join(",")}`);
+
 result = await shell.executeAsync("keychain grant registry.token secret-package 1000");
 assert(result.status === 0 && result.output === "keychain grant registry.token secret-package", `keychain grant package mismatch: ${JSON.stringify(result)}`);
 os.packages.install({
@@ -101,8 +139,10 @@ const audit = os.keychain.auditEntries({ appId: "shell", principal: os.permissio
 assert(audit.some((entry) => entry.action === "get" && entry.result === "denied"), "keychain audit missing denied access");
 assert(audit.some((entry) => entry.action === "grant" && entry.result === "allowed"), "keychain audit missing grant");
 assert(audit.some((entry) => entry.action === "revoke" && entry.result === "allowed"), "keychain audit missing revoke");
+assert(audit.some((entry) => entry.action === "passkey-enroll" && entry.result === "allowed"), "keychain audit missing passkey enrollment");
+assert(audit.some((entry) => entry.action === "reauthenticate" && entry.result === "allowed"), "keychain audit missing passkey reauth");
 
-console.log("keychain smoke ok vault grants signing audit export-policy");
+console.log("keychain smoke ok vault grants signing audit export-policy passkey");
 
 function processFor(appId, capabilities) {
   return {
