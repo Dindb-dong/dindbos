@@ -22,6 +22,7 @@ const installed = packages.install(packageManifest("rollback-demo", "0.1.0", [
 ]));
 
 assert(installed.id === "rollback-demo", "valid package install returned wrong id");
+assert(installed.compatibility.tier === "A", `default compatibility tier mismatch: ${installed.compatibility.tier}`);
 assert(os.fs.exists("/opt/rollback-demo/app.js"), "valid package file missing");
 assert(os.fs.exists("/var/lib/dindbos/packages/rollback-demo.json"), "valid package record missing");
 assert(os.fs.exists("/usr/share/applications/Rollback Demo.app"), "valid package launcher missing");
@@ -41,6 +42,15 @@ assert(!os.fs.exists("/var/lib/dindbos/packages/broken-pkg.json"), "failed local
 assert(!os.fs.exists("/usr/share/applications/Broken Pkg.app"), "failed local install left launcher");
 assert(!os.apps.apps.has("broken-pkg"), "failed local install registered app");
 assert(!lifecycleEvents.some((event) => event.includes("broken-pkg")), "failed local install emitted lifecycle event");
+
+await assertRejects(
+  () => packages.install(packageManifest("wasm-future", "0.1.0", [
+    { path: "app.wasm", mime: "application/wasm", base64: "AGFzbQEAAA==" },
+  ], { compatibility: { tier: "C" } })),
+  "requires unsupported compatibility tier C",
+);
+assert(!os.fs.exists("/opt/wasm-future"), "unsupported compatibility package mutated install directory");
+assert(!os.apps.apps.has("wasm-future"), "unsupported compatibility package registered app");
 
 await assertRejects(
   () => packages.install(packageManifest("rollback-demo", "0.2.0", [
@@ -239,7 +249,7 @@ function bootOs(root = null) {
   return os;
 }
 
-function packageManifest(id, version, files) {
+function packageManifest(id, version, files, extra = {}) {
   const title = titleFor(id);
   return {
     id,
@@ -252,6 +262,7 @@ function packageManifest(id, version, files) {
       entry: "app.js",
     },
     files,
+    ...extra,
   };
 }
 

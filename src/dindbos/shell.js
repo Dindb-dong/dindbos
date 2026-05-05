@@ -1,10 +1,12 @@
+import { compatibilitySnapshot } from "./compat.js?v=20260422-browserd";
+
 const BUILTIN_MANUALS = {
   cat: "cat <file> - print file contents",
   cd: "cd [path] - change current directory",
   chmod: "chmod <mode> <path> - change mode bits, for example chmod 644 note.txt",
   clear: "clear - clear terminal output",
   cp: "cp [-r] <source> <destination> - copy files or directories",
-  doctor: "doctor - print runtime diagnostics for troubleshooting",
+  doctor: "doctor [compat] - print runtime diagnostics or compatibility tiers for troubleshooting",
   df: "df - show mounted filesystem storage status",
   echo: "echo <text> [> file|>> file] - print or redirect text",
   env: "env - list shell environment",
@@ -259,7 +261,7 @@ export class ShellSession {
     if (command === "id") return `uid=${this.env.USER} gid=${(this.os.session.groups || ["users"]).join(",")}`;
     if (command === "uname") return "DindbOS.js browser-runtime 0.2.0";
     if (command === "date") return new Date().toString();
-    if (command === "doctor") return this.doctor();
+    if (command === "doctor") return this.doctor(args);
     if (command === "history") return this.history.map((entry, index) => `${String(index + 1).padStart(4)}  ${entry}`).join("\n");
     if (command === "env") return Object.entries(this.env).map(([key, value]) => `${key}=${value}`).join("\n");
     if (command === "export") return this.export(args);
@@ -600,7 +602,8 @@ export class ShellSession {
     return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
   }
 
-  async doctor() {
+  async doctor(args = []) {
+    if (args[0] === "compat") return this.doctorCompat();
     const sessionStatus = safeRead(() => this.os.sessionStatus?.(), null);
     const storage = await safeAsync(() => this.os.storage?.estimate?.(), safeRead(() => this.os.storage?.status?.(), {}));
     const mounts = await safeAsync(() => this.os.localMounts?.status?.(), []);
@@ -620,6 +623,25 @@ export class ShellSession {
       `packages installed=${Array.isArray(packages) ? packages.length : 0}`,
       `processes running=${Array.isArray(processes) ? processes.length : 0}`,
       "troubleshooting docs=docs/support.md command=storage|mount-local --list|ps|pkg list",
+    ].join("\n");
+  }
+
+  doctorCompat() {
+    const snapshot = safeRead(() => this.os.compatibilitySnapshot?.(), compatibilitySnapshot(this.os));
+    const tierLines = (snapshot.tiers || []).map((tier) => (
+      `tier ${tier.id} ${tier.status} ${tier.key} - ${tier.name}`
+    ));
+    const browser = snapshot.browser || {};
+    const storage = snapshot.storage || {};
+    const companions = snapshot.companions || {};
+    return [
+      "DindbOS compatibility",
+      `runtime=${snapshot.runtime || "DindbOS.js"} version=${snapshot.version || "0.2.0"} mode=${snapshot.mode || "browser-native"}`,
+      ...tierLines,
+      `browser workers=${Boolean(browser.workers)} wasm=${Boolean(browser.webAssembly)} opfs=${Boolean(browser.opfs)} indexedDB=${Boolean(browser.indexedDB)} cacheApi=${Boolean(browser.cacheApi)} fileSystemAccess=${Boolean(browser.fileSystemAccess)}`,
+      `storage backend=${storage.backend || "memory"} structured=${storage.structuredBackend || "memory"} persisted=${Boolean(storage.persisted)} buckets=${storage.buckets || "unknown"}`,
+      `companions browserProvider=${companions.browserProviderUrl || "ws://127.0.0.1:8787/browser"} localMounts=${companions.localMounts || 0}`,
+      `unsupported native=${(snapshot.unsupportedNative || []).join("; ")}`,
     ].join("\n");
   }
 
@@ -1295,6 +1317,8 @@ function formatPackage(record) {
     `description=${record.description || "-"}`,
     `installPath=${record.installPath}`,
     `sourcePath=${record.sourcePath || "-"}`,
+    `compatibility.tier=${record.compatibility?.tier || "A"}`,
+    `compatibility.status=${record.compatibility?.status || "supported"}`,
     `trust.source=${record.trust?.source || "local"}`,
     `trust.trusted=${record.trust?.trusted ?? true}`,
     `trust.signature=${record.trust?.signature?.status || "local"}`,

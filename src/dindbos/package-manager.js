@@ -1,4 +1,5 @@
 import { removeAppState } from "./app-sandbox.js?v=20260422-browserd";
+import { compatibilityRequirementForManifest } from "./compat.js?v=20260422-browserd";
 
 const APPLICATION_DIR = "/usr/share/applications";
 const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
@@ -468,6 +469,10 @@ export class PackageManager {
   normalizePackage(manifest, options = {}) {
     if (!manifest || typeof manifest !== "object") throw new Error("pkg: manifest must be an object");
     const id = normalizePackageId(manifest.id);
+    const compatibility = compatibilityRequirementForManifest(manifest);
+    if (!compatibility.supported) {
+      throw new Error(`pkg: ${id}: requires unsupported compatibility tier ${compatibility.tier} (${compatibility.name})`);
+    }
     const app = manifest.app || {};
     const appId = normalizeAppId(app.id || id);
     const name = String(manifest.name || app.name || id);
@@ -488,6 +493,7 @@ export class PackageManager {
       installPath,
       sourcePath: options.sourcePath || manifest.sourcePath || "",
       trust: options.trust || packageTrust(options.sourcePath || manifest.sourcePath || "", options.registry || ""),
+      compatibility,
       installedAt: new Date().toISOString(),
       originalManifest: manifest,
       files: [],
@@ -789,6 +795,7 @@ export class PackageManager {
         version: record.version,
         entry: `package:${record.id}`,
         description: record.description,
+        compatibility: record.compatibility,
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
       },
@@ -939,6 +946,7 @@ function packagePublicRecord(record) {
     description: record.description,
     installPath: record.installPath,
     sourcePath: record.sourcePath,
+    compatibility: cloneJson(record.compatibility || { tier: "A", status: "supported" }),
     dependencies: cloneJson(record.dependencies || {}),
     files: [...(record.files || [])],
     lifecycle: cloneJson(record.lifecycle || {}),

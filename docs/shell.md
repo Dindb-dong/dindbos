@@ -103,9 +103,12 @@ Unsigned, invalid, or untrusted remote manifests fail before package files or la
 
 ```text
 doctor
+doctor compat
 ```
 
 It reports the active session, current working directory, storage backend and dirty-write state, local mount availability/counts, file helper rename support, installed package count, running process count, and the follow-up commands that expose deeper runtime details. `mount-local --helper` prints the native file helper protocol status for local mount operations that cannot be implemented honestly inside the browser sandbox.
+
+`doctor compat` prints the DindbOS compatibility tiers, browser capability probes, storage backend, browser provider companion endpoint, and hard unsupported native boundaries. Use it before installing a package that declares a required compatibility tier.
 
 ## Verification
 
@@ -113,4 +116,4 @@ It reports the active session, current working directory, storage backend and di
 npm run smoke:shell
 ```
 
-The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.
+The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, compatibility diagnostics, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.
