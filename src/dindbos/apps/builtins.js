@@ -3320,6 +3320,7 @@ function renderActivityServicePermissionReview(manifest) {
         <div><dt>Capabilities</dt><dd>${escapeHtml(formatManifestList(manifest.capabilities))}</dd></div>
         <div><dt>FS Read</dt><dd>${escapeHtml(formatManifestList(manifest.fileSystem?.read))}</dd></div>
         <div><dt>FS Write</dt><dd>${escapeHtml(formatManifestList(manifest.fileSystem?.write))}</dd></div>
+        <div><dt>Lifecycle Policy</dt><dd>${escapeHtml(manifest.lifecyclePolicy || "resumable")}</dd></div>
         <div><dt>Schedule</dt><dd>${escapeHtml(formatServiceSchedule(manifest.schedule))}</dd></div>
       </dl>
     </section>

@@ -117,6 +117,7 @@ const serviceDetail = renderActivityDetail(
     id: "search-indexer",
     name: "Search Indexer",
     schedule: { everyMs: 60000 },
+    lifecyclePolicy: "scheduled-when-visible",
     capabilities: ["storage.read"],
     fileSystem: { read: ["/home/guest"], write: ["/var/lib/dindbos/search"] },
   },
@@ -127,6 +128,7 @@ assert(serviceDetail.includes("data-service-action=\"disable\""), "activity serv
 assert(serviceDetail.includes("Permission Review"), "activity service detail did not render service permission review");
 assert(serviceDetail.includes("storage.read"), "activity service detail did not render service capabilities");
 assert(serviceDetail.includes("/var/lib/dindbos/search"), "activity service detail did not render service write scope");
+assert(serviceDetail.includes("scheduled-when-visible"), "activity service detail did not render service lifecycle policy");
 assert(serviceDetail.includes("every 60000ms"), "activity service detail did not render service schedule");
 assert(serviceDetail.includes("indexed"), "activity service detail did not render service log");
 

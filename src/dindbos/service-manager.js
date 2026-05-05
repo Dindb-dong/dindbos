@@ -1,5 +1,12 @@
 const SERVICE_STATE_PATH = "/var/run/dindbos/services.json";
 const SERVICE_LOG_PATH = "/var/log/dindbos/services.log";
+export const SERVICE_LIFECYCLE_POLICIES = [
+  "foreground-only",
+  "visible-tab-only",
+  "resumable",
+  "scheduled-when-visible",
+  "companion-required",
+];
 
 export class ServiceManager {
   constructor(os) {
@@ -20,12 +27,19 @@ export class ServiceManager {
         enabled: service.enabled,
         pid: 0,
         schedule: service.schedule,
+        lifecyclePolicy: service.lifecyclePolicy,
         startedAt: "",
         stoppedAt: "",
         lastRunAt: "",
         runCount: 0,
         lastError: "",
       });
+    } else {
+      const record = this.records.get(service.id);
+      record.name = service.name;
+      record.enabled = service.enabled;
+      record.schedule = service.schedule;
+      record.lifecyclePolicy = service.lifecyclePolicy;
     }
     this.writeState();
     return this.get(service.id);
@@ -51,6 +65,7 @@ export class ServiceManager {
       name: service.name,
       enabled: service.enabled,
       schedule: cloneSchedule(service.schedule),
+      lifecyclePolicy: service.lifecyclePolicy,
       capabilities: [...service.capabilities],
       fileSystem: {
         read: [...service.fileSystem.read],
@@ -173,6 +188,15 @@ export class ServiceManager {
   suspend(reason = "page-hidden") {
     this.records.forEach((record) => {
       if (record.state !== "running") return;
+      const service = this.definitions.get(record.id);
+      const lifecyclePolicy = service?.lifecyclePolicy || record.lifecyclePolicy || "resumable";
+      if (shouldDegradeOnSuspend(lifecyclePolicy, reason)) {
+        record.state = "degraded";
+        record.lastError = `policy ${lifecyclePolicy} cannot continue during ${reason}`;
+        this.log(record.id, `degraded ${record.lastError}`, "warn");
+        this.emit("degraded", record);
+        return;
+      }
       record.previousState = "running";
       record.state = "suspended";
       this.log(record.id, `suspended ${reason}`);
@@ -270,6 +294,7 @@ function normalizeService(definition = {}) {
     name: String(definition.name || id),
     enabled: definition.enabled !== false,
     schedule: definition.schedule || null,
+    lifecyclePolicy: normalizeLifecyclePolicy(definition.lifecyclePolicy || definition.policy),
     capabilities: [...(definition.capabilities || [])],
     fileSystem: {
       read: [...(definition.fileSystem?.read || ["/"])],
@@ -279,6 +304,17 @@ function normalizeService(definition = {}) {
     stop: definition.stop || null,
     run: definition.run || null,
   };
+}
+
+function normalizeLifecyclePolicy(policy) {
+  const value = String(policy || "resumable").trim();
+  if (SERVICE_LIFECYCLE_POLICIES.includes(value)) return value;
+  throw new Error(`service: invalid lifecycle policy: ${value}`);
+}
+
+function shouldDegradeOnSuspend(policy, reason) {
+  if (!["foreground-only", "visible-tab-only", "companion-required"].includes(policy)) return false;
+  return ["pagehide", "visibility-hidden", "page-hidden"].includes(reason);
 }
 
 function cloneSchedule(schedule) {
