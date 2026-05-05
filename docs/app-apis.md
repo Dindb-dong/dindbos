@@ -102,6 +102,24 @@ Available as `os.apps` plus selected top-level helpers.
 
 HTML files should be opened through Browser.app by passing a path or URL context.
 
+## Window And Surface APIs
+
+Apps also receive a `window` object for their own DindbOS window.
+
+- `window.close()`
+- `window.focus()`
+- `window.getState(key)`
+- `window.setState(key, value)`
+- `window.setTitle(title)`
+- `window.setAccessibilityTree(tree)`
+- `window.getAccessibilityTree()`
+- `window.captureSurface(options)`
+- `window.captureDesktop(options)`
+
+`window.captureSurface()` can capture the caller's own DOM-backed surface as a bounded `metadata+dom-text` descriptor. It includes surface geometry, title, focus/minimized/hidden state, accessibility summary when published, and bounded text extracted from the app surface. It deliberately reports `pixelDataAvailable: false`; DindbOS does not fake bitmap screenshots from DOM surfaces.
+
+Cross-app window capture requires the `compositor.captureWindow` capability plus an explicit user-approved request. Full desktop capture requires `compositor.captureDesktop` plus user approval. Denied capture requests return structured denial records and are reflected in `/proc/compositor.surfaceCapture`.
+
 ## Processes
 
 Available as `os.processes`.
