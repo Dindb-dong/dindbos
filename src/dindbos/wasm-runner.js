@@ -27,6 +27,7 @@ export class WasmRunner {
       argv: [...(options.argv || [])],
       cwd: options.cwd || this.os.session.home || "/",
       executable: options.path || "",
+      parentPid: options.parentPid || 0,
       runtime: "wasm",
     });
     const stdout = [];
@@ -106,16 +107,18 @@ export class WasmRunner {
   processApp(options = {}) {
     const basename = this.os.fs.basename(options.path || "wasm");
     const cwd = options.cwd || this.os.session.home || "/";
+    const manifest = options.manifest || {};
+    const fileSystem = manifest.fileSystem || {};
     return {
-      id: `wasm:${basename}`,
-      name: basename,
+      id: options.appId || `wasm:${basename}`,
+      name: options.name || basename,
       manifest: {
-        version: "0.1.0",
-        entry: options.path || "wasm",
-        capabilities: ["process.read"],
+        version: manifest.version || "0.1.0",
+        entry: manifest.entry || options.path || "wasm",
+        capabilities: unique([...(manifest.capabilities || []), "process.read"]),
         fileSystem: {
-          read: unique([cwd, options.path || ""]),
-          write: unique([cwd]),
+          read: unique(fileSystem.read || [cwd, options.path || ""]),
+          write: unique(fileSystem.write || [cwd]),
         },
       },
     };

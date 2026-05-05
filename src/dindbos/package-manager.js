@@ -482,6 +482,7 @@ export class PackageManager {
     const name = String(manifest.name || app.name || id);
     const installPath = `${PACKAGE_INSTALL_ROOT}/${id}`;
     const entry = normalizeOptionalRelativePath(app.entry || manifest.entry || "");
+    const runtime = normalizePackageRuntime(app.runtime || manifest.runtime || inferPackageRuntime(entry));
     const capabilities = [
       ...(manifest.permissions?.capabilities || []),
       ...(manifest.capabilities || []),
@@ -513,6 +514,7 @@ export class PackageManager {
         accepts: [...(app.accepts || manifest.accepts || [])],
         entry,
         entryPath: entry ? `${installPath}/${entry}` : "",
+        runtime,
         content: String(app.content || manifest.content || ""),
         capabilities: unique(capabilities),
         fileSystem: {
@@ -704,7 +706,7 @@ export class PackageManager {
   installDeclaredInlineFiles(record, files) {
     files.forEach((file) => {
       if (file.url) throw new Error(`pkg: ${file.path || ""}: URL file entries require remote install`);
-      const content = contentFromInlineFile(file);
+      const content = inlineFilePayload(file);
       this.writePackageFile(record, file, content);
     });
   }
@@ -718,7 +720,7 @@ export class PackageManager {
         this.writePackageFile(record, { ...file, sourceUrl: fileUrl }, content);
         continue;
       }
-      const content = contentFromInlineFile(file);
+      const content = inlineFilePayload(file);
       await verifyIntegrity(content, file.integrity, file.path);
       this.writePackageFile(record, file, content);
     }
@@ -727,24 +729,20 @@ export class PackageManager {
   writePackageFile(record, file, content) {
     const path = this.resolvePackageFilePath(record, file.path);
     this.ensureParentDirectories(path);
-    this.os.fs.writeOrCreateFile(
-      path,
-      content,
-      "/",
-      {
-        mime: file.mime || mimeFromName(path),
-        owner: "root",
-        group: "root",
-        permissions: file.permissions || "-rw-r--r--",
-      },
-      this.system,
-    );
+    const metadata = {
+      mime: file.mime || mimeFromName(path),
+      owner: "root",
+      group: "root",
+      permissions: file.permissions || "-rw-r--r--",
+    };
+    if (content instanceof Uint8Array) this.os.fs.writeOrCreateFileBytes(path, content, "/", metadata, this.system);
+    else this.os.fs.writeOrCreateFile(path, content, "/", metadata, this.system);
     record.files.push({
       path,
       mime: file.mime || mimeFromName(path),
       sourceUrl: file.sourceUrl || "",
       integrity: file.integrity || "",
-      size: byteLength(content),
+      size: contentByteLength(content),
     });
   }
 
@@ -798,6 +796,7 @@ export class PackageManager {
       manifest: {
         version: record.version,
         entry: `package:${record.id}`,
+        runtime: record.app.runtime,
         description: record.description,
         compatibility: record.compatibility,
         capabilities: record.app.capabilities,
@@ -876,6 +875,9 @@ function localRegistryIndexPayload() {
 }
 
 function renderPackagedApp(content, runtime, record, windowApi, manager = null) {
+  if (record.app.entryPath && record.app.runtime === "wasm") {
+    return mountPackageWasmEntrypoint(content, runtime, record, windowApi, manager);
+  }
   if (record.app.entryPath) {
     return mountPackageEntrypoint(content, runtime, record, windowApi, manager);
   }
@@ -893,6 +895,55 @@ function renderPackagedApp(content, runtime, record, windowApi, manager = null) 
       </dl>
     </section>
   `;
+}
+
+async function mountPackageWasmEntrypoint(content, runtime, record, windowApi, manager = null) {
+  const activeRecord = safeRead(() => manager?.markFirstRun?.(record.id), record) || record;
+  content.innerHTML = `
+    <section class="package-app">
+      <p class="dos-kicker">WASM Package ${escapeHtml(activeRecord.id)} ${escapeHtml(activeRecord.version)}</p>
+      <h2>${escapeHtml(activeRecord.app.name)}</h2>
+      <p>Running ${escapeHtml(activeRecord.app.entry)}.</p>
+    </section>
+  `;
+  try {
+    const root = manager?.os || runtime.os;
+    if (!root?.wasm?.runFile) throw new Error("WASM package runtime is unavailable");
+    const result = await root.wasm.runFile(activeRecord.app.entryPath, activeRecord.installPath, {
+      argv: [activeRecord.app.entryPath],
+      principal: runtime.principal,
+      parentPid: runtime.process?.pid || 0,
+      appId: `package:${activeRecord.app.id}:wasm`,
+      name: activeRecord.app.name,
+      manifest: {
+        version: activeRecord.version,
+        entry: activeRecord.app.entryPath,
+        capabilities: activeRecord.app.capabilities,
+        fileSystem: activeRecord.app.fileSystem,
+      },
+    });
+    content.innerHTML = `
+      <section class="package-app" data-wasm-package>
+        <p class="dos-kicker">WASM Package ${escapeHtml(activeRecord.id)} ${escapeHtml(activeRecord.version)}</p>
+        <h2>${escapeHtml(activeRecord.app.name)}</h2>
+        <dl>
+          <div><dt>Entry</dt><dd>${escapeHtml(activeRecord.app.entry)}</dd></div>
+          <div><dt>Status</dt><dd data-wasm-status>${escapeHtml(String(result.status))}</dd></div>
+          <div><dt>PID</dt><dd>${escapeHtml(String(result.pid))}</dd></div>
+        </dl>
+        ${result.stdout ? `<pre data-wasm-stdout>${escapeHtml(result.stdout)}</pre>` : ""}
+        ${result.stderr ? `<pre data-wasm-stderr>${escapeHtml(result.stderr)}</pre>` : ""}
+      </section>
+    `;
+  } catch (error) {
+    content.innerHTML = `
+      <section class="package-app">
+        <p class="dos-kicker">WASM package runtime error</p>
+        <h2>${escapeHtml(activeRecord.app.name)}</h2>
+        <pre>${escapeHtml(error.message)}</pre>
+      </section>
+    `;
+  }
 }
 
 async function mountPackageEntrypoint(content, runtime, record, windowApi, manager = null) {
@@ -956,6 +1007,17 @@ function packagePublicRecord(record) {
     lifecycle: cloneJson(record.lifecycle || {}),
     trust: cloneJson(record.trust || {}),
   });
+}
+
+function inferPackageRuntime(entry) {
+  return String(entry || "").toLowerCase().endsWith(".wasm") ? "wasm" : "javascript";
+}
+
+function normalizePackageRuntime(value) {
+  const runtime = String(value || "javascript").trim().toLowerCase();
+  if (runtime === "js" || runtime === "module" || runtime === "javascript") return "javascript";
+  if (runtime === "wasm" || runtime === "webassembly") return "wasm";
+  throw new Error(`pkg: unsupported app runtime: ${value}`);
 }
 
 function createModuleUrl(source) {
@@ -1262,12 +1324,33 @@ function contentFromInlineFile(file) {
   throw new Error(`pkg: ${file.path || ""}: file entry needs content, base64, or url`);
 }
 
+function inlineFilePayload(file) {
+  if (!file || typeof file !== "object") throw new Error("pkg: file entry must be an object");
+  if (typeof file.content === "string") return file.content;
+  if (typeof file.base64 === "string" && isBinaryPackageFile(file)) return decodeBase64Bytes(file.base64);
+  if (typeof file.base64 === "string") return decodeBase64Text(file.base64);
+  throw new Error(`pkg: ${file.path || ""}: file entry needs content, base64, or url`);
+}
+
+function isBinaryPackageFile(file) {
+  const mime = String(file.mime || mimeFromName(file.path || "")).toLowerCase();
+  return mime === "application/wasm" || /\.wasm$/i.test(file.path || "");
+}
+
 function decodeBase64Text(value) {
   if (typeof atob === "function") {
     const binary = atob(value);
     return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
   }
   return Buffer.from(value, "base64").toString("utf8");
+}
+
+function decodeBase64Bytes(value) {
+  const base64 = String(value || "");
+  if (typeof atob === "function") {
+    return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  }
+  return new Uint8Array(Buffer.from(base64, "base64"));
 }
 
 async function verifyIntegrity(content, integrity, label = "file") {
@@ -1279,12 +1362,13 @@ async function verifyIntegrity(content, integrity, label = "file") {
 }
 
 async function sha256Base64(content) {
+  const bytes = content instanceof Uint8Array ? content : new TextEncoder().encode(String(content ?? ""));
   if (globalThis.crypto?.subtle) {
-    const hash = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+    const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
     return base64FromBytes(new Uint8Array(hash));
   }
   const crypto = await import("node:crypto");
-  return crypto.createHash("sha256").update(content).digest("base64");
+  return crypto.createHash("sha256").update(bytes).digest("base64");
 }
 
 function base64FromBytes(bytes) {
@@ -1315,6 +1399,7 @@ function mimeFromName(path) {
   if (/\.html?$/i.test(path)) return "text/html";
   if (/\.css$/i.test(path)) return "text/css";
   if (/\.js$/i.test(path)) return "text/javascript";
+  if (/\.wasm$/i.test(path)) return "application/wasm";
   return "text/plain";
 }
 
@@ -1330,6 +1415,10 @@ function unique(values) {
 
 function byteLength(value) {
   return new TextEncoder().encode(String(value ?? "")).length;
+}
+
+function contentByteLength(value) {
+  return value instanceof Uint8Array ? value.byteLength : byteLength(value);
 }
 
 function cloneJson(value) {
