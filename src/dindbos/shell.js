@@ -906,6 +906,20 @@ export class ShellSession {
 
   df() {
     const status = this.os.storage.status();
+    if (typeof this.os.mountTable === "function") {
+      return [
+        "Filesystem     Driver     Flags Durability   Used       Quota              Support",
+        ...this.os.mountTable().map((entry) => [
+          String(entry.root || "/").padEnd(14),
+          String(entry.driver || "vfs").padEnd(10),
+          (entry.readonly ? "ro" : "rw").padEnd(5),
+          String(entry.durability || "runtime").padEnd(12),
+          formatBytes(entry.usedBytes).padEnd(10),
+          String(entry.quotaPolicy || "unknown").padEnd(18),
+          entry.support || "browser-vfs",
+        ].join(" ")),
+      ].join("\n");
+    }
     if (typeof this.os.diskPolicyAreas === "function") {
       return [
         "Filesystem     Type       Durability   Used       Policy",

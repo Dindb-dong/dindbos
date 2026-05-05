@@ -65,6 +65,8 @@ async function verifySuccessfulBootPhases() {
   assert(os.mountTable().some((entry) => entry.root === "/opt/hello-notes" && entry.driver === "pkgfs" && entry.readonly), "mount table missing readonly package image entry");
   assert(os.mountTable().some((entry) => entry.root === "/proc" && entry.driver === "procfs" && entry.readonly), "mount table missing readonly procfs entry");
   assert(os.fs.readFile("/proc/mounts").includes("disk:/opt /opt pkgfs"), "/proc/mounts missing package filesystem entry");
+  assert(os.fs.readFile("/proc/mounts").includes("usedBytes="), "/proc/mounts missing used byte diagnostics");
+  assert(os.fs.readFile("/proc/mounts").includes("support="), "/proc/mounts missing browser support diagnostics");
   assert(JSON.parse(os.fs.readFile("/proc/mounts.json")).mounts.some((entry) => entry.root === "/var/cache" && entry.driver === "cachefs"), "/proc/mounts.json missing cachefs entry");
   const readonlyMount = os.syscall("mount.mount", { path: "/mnt/readonly-smoke", driver: "memfs", readonly: true });
   assert(readonlyMount.ok && readonlyMount.value.root === "/mnt/readonly-smoke", `readonly memfs mount failed: ${JSON.stringify(readonlyMount)}`);
