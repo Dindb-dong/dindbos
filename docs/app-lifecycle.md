@@ -49,6 +49,8 @@ Interrupted applies are checkpointed under `/var/run/dindbos/remote-sync-apply.j
 
 Conflict repair is explicit. `os.listRemoteSyncConflicts()` scans `.sync-conflicts` folders and returns target paths, while `os.resolveRemoteSyncConflict(path, { action })` supports `use-conflict`, `keep-local`, and `delete-conflict`. Settings renders the same pending conflicts with repair buttons, and the shell exposes the boundary through `sync status`, `sync conflicts`, and `sync resolve <action> <conflict-path>`.
 
+Package metadata retry is separate from general apply. Refused package records remain listed in `os.remoteSyncStatus().lastAppliedSnapshot.refusedRecords`; `os.retryRemoteSyncRefusals({ passphrase, snapshot })` re-decrypts the original snapshot, validates each package record JSON, id, version, record path, install path, and package DB lock, then writes only validated package metadata. Retry results are recorded in `os.remoteSyncStatus().lastRetry` and surfaced through Settings plus `sync status`.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed

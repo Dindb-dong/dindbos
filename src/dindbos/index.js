@@ -167,6 +167,7 @@ export class DindbOS {
       lastAppliedSnapshot: null,
       lastRepair: null,
       lastApplyRun: null,
+      lastRetry: null,
       lastError: "",
     };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
@@ -816,10 +817,11 @@ export class DindbOS {
         ? { ...this.remoteSync.lastSuccessfulSnapshot }
         : null,
       lastAppliedSnapshot: this.remoteSync.lastAppliedSnapshot
-        ? { ...this.remoteSync.lastAppliedSnapshot }
+        ? cloneSyncStatusRecord(this.remoteSync.lastAppliedSnapshot)
         : null,
       lastRepair: this.remoteSync.lastRepair ? { ...this.remoteSync.lastRepair } : null,
       lastApplyRun: this.remoteSync.lastApplyRun ? { ...this.remoteSync.lastApplyRun } : this.readRemoteSyncApplyRun(),
+      lastRetry: this.remoteSync.lastRetry ? cloneSyncStatusRecord(this.remoteSync.lastRetry) : null,
     };
   }
 
@@ -1009,6 +1011,7 @@ export class DindbOS {
         fileCount: files.length,
         summary: {},
         changes: [],
+        refusedRecords: [],
       };
       this.recordRemoteSyncApplyRun({
         snapshotId: result.id,
@@ -1030,6 +1033,9 @@ export class DindbOS {
         const file = files[index];
         const planned = this.planRemoteSyncApplyFile(file, options);
         result.summary[planned.action] = Number(result.summary[planned.action] || 0) + 1;
+        if (planned.action === "refuse") {
+          result.refusedRecords.push(remoteSyncRefusalRecord(planned, index));
+        }
         if (!dryRun) this.executeRemoteSyncApplyPlan(planned);
         result.changes.push(planned);
         appliedFiles += 1;
@@ -1058,6 +1064,7 @@ export class DindbOS {
         summary: { ...result.summary },
         conflicts: Number(result.summary["conflict-copy"] || 0),
         refused: Number(result.summary.refuse || 0),
+        refusedRecords: result.refusedRecords.map((record) => ({ ...record })),
       };
       this.recordRemoteSyncApplyRun({
         snapshotId: result.id,
@@ -1078,6 +1085,112 @@ export class DindbOS {
       this.remoteSync.lastError = error?.message || String(error);
       throw error;
     }
+  }
+
+  listRemoteSyncRefusals() {
+    const records = this.remoteSync.lastAppliedSnapshot?.refusedRecords;
+    return Array.isArray(records) ? records.map((record) => ({ ...record })) : [];
+  }
+
+  async retryRemoteSyncRefusals(options = {}) {
+    const passphrase = String(options.passphrase || "");
+    if (!passphrase) throw new Error("remote sync retry requires a passphrase");
+    const snapshot = this.normalizeRemoteSyncSnapshotInput(options.snapshot);
+    if (!snapshot?.ciphertext) throw new Error("remote sync retry requires the original encrypted snapshot");
+    const startedAt = new Date().toISOString();
+    const refused = this.listRemoteSyncRefusals();
+    const refusedPaths = new Set(refused.map((record) => record.path));
+    const result = {
+      id: snapshot.id || "",
+      startedAt,
+      status: "complete",
+      applied: 0,
+      refused: 0,
+      records: [],
+    };
+    try {
+      const payload = await decryptRemoteSyncPayload(snapshot, passphrase);
+      const files = (Array.isArray(payload.files) ? payload.files : [])
+        .filter((file) => {
+          const path = this.fs.normalize(String(file.path || "/"), "/");
+          return refusedPaths.has(path);
+        });
+      files.forEach((file, index) => {
+        const path = this.fs.normalize(String(file.path || "/"), "/");
+        try {
+          const packageRecord = this.validateRemoteSyncPackageRecord(path, file);
+          this.withRuntimeOperationLock("package-db", {
+            operation: "sync-retry",
+            packageId: packageRecord.record.id,
+          }, () => {
+            this.writeRemoteSyncApplyFile(path, packageRecord.bytes, file.mime || "application/json");
+            if (packageRecord.record?.app && this.fs.exists(packageRecord.record.installPath || `/opt/${packageRecord.record.id}`)) {
+              this.packages.registerPackageApp(packageRecord.record);
+            }
+          });
+          result.applied += 1;
+          result.records.push({
+            path,
+            action: "applied",
+            scope: "package-metadata",
+            packageId: packageRecord.record.id,
+            version: packageRecord.record.version,
+            index,
+          });
+        } catch (error) {
+          result.refused += 1;
+          result.records.push({
+            path,
+            action: "refused",
+            scope: "package-metadata",
+            reason: error?.message || String(error),
+            index,
+          });
+        }
+      });
+      this.remoteSync.lastRetry = {
+        id: result.id,
+        retriedAt: startedAt,
+        status: result.status,
+        applied: result.applied,
+        refused: result.refused,
+        records: result.records.map((record) => ({ ...record })),
+      };
+      this.remoteSync.lastError = "";
+      this.bus.emit("sync:retry", this.remoteSyncStatus());
+      return result;
+    } catch (error) {
+      this.remoteSync.lastError = error?.message || String(error);
+      throw error;
+    }
+  }
+
+  validateRemoteSyncPackageRecord(path, file = {}) {
+    const normalized = this.fs.normalize(path, "/");
+    if (!normalized.startsWith("/var/lib/dindbos/packages/") || !normalized.endsWith(".json")) {
+      throw new Error("remote sync retry only accepts package metadata records");
+    }
+    const bytes = base64ToBytes(file.content || "");
+    let record;
+    try {
+      record = JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      throw new Error("package metadata record is not valid JSON");
+    }
+    if (!record || typeof record !== "object" || Array.isArray(record)) throw new Error("package metadata record must be a JSON object");
+    const id = String(record.id || "");
+    const version = String(record.version || "");
+    if (!isSafePackageRecordId(id)) throw new Error("package metadata record has an invalid package id");
+    if (!version.trim()) throw new Error("package metadata record has no version");
+    const expectedPath = `/var/lib/dindbos/packages/${id}.json`;
+    if (normalized !== expectedPath) throw new Error(`package metadata path mismatch: expected ${expectedPath}`);
+    if (record.installPath && this.fs.normalize(record.installPath, "/") !== `/opt/${id}`) {
+      throw new Error("package metadata installPath must stay inside its package root");
+    }
+    if (record.app?.id && !isSafePackageRecordId(String(record.app.id))) {
+      throw new Error("package metadata app id is invalid");
+    }
+    return { record, bytes };
   }
 
   async resumeRemoteSyncApply(options = {}) {
@@ -2366,6 +2479,27 @@ function snapshotSummary(snapshot) {
     cacheRecords: Number(snapshot.cacheRecords || 0),
     settingsRecords: Number(snapshot.settingsRecords || 0),
   };
+}
+
+function cloneSyncStatusRecord(value) {
+  return JSON.parse(JSON.stringify(value ?? {}));
+}
+
+function remoteSyncRefusalRecord(plan, index = 0) {
+  return {
+    path: plan.path,
+    scope: plan.scope,
+    policy: plan.policy,
+    action: plan.action,
+    reason: plan.reason,
+    mime: plan.mime || "",
+    bytes: Number(plan.bytes || 0),
+    index,
+  };
+}
+
+function isSafePackageRecordId(value) {
+  return /^[a-z0-9][a-z0-9._-]*$/i.test(String(value || "")) && !String(value || "").includes("..");
 }
 
 function normalizeMergeValue(value) {

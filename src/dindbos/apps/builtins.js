@@ -3527,13 +3527,17 @@ function renderSettingsRemoteSync(sync, conflicts = []) {
   const applied = sync?.lastAppliedSnapshot;
   const repair = sync?.lastRepair;
   const applyRun = sync?.lastApplyRun;
+  const retry = sync?.lastRetry;
+  const refusedRecords = Array.isArray(applied?.refusedRecords) ? applied.refusedRecords : [];
   return `
     <dl>
       <div><dt>Backend</dt><dd>${escapeHtml(sync?.backend || "unavailable")}</dd></div>
       <div><dt>Encrypted</dt><dd>${Boolean(sync?.encrypted)}</dd></div>
       <div><dt>Last Snapshot</dt><dd>${snapshot ? `${escapeHtml(shortTime(snapshot.createdAt))} · files=${Number(snapshot.fileCount || 0)} · cache=${Number(snapshot.cacheRecords || 0)} · settings=${Number(snapshot.settingsRecords || 0)}` : "none"}</dd></div>
       <div><dt>Last Applied</dt><dd>${applied ? `${escapeHtml(shortTime(applied.appliedAt))} · conflicts=${Number(applied.conflicts || 0)} · refused=${Number(applied.refused || 0)}` : "none"}</dd></div>
+      <div><dt>Refused Records</dt><dd>${refusedRecords.length}</dd></div>
       <div><dt>Apply Run</dt><dd>${applyRun ? `${escapeHtml(applyRun.status || "unknown")} · next=${Number(applyRun.nextIndex || 0)}/${Number(applyRun.totalFiles || 0)}` : "none"}</dd></div>
+      <div><dt>Last Retry</dt><dd>${retry ? `${escapeHtml(shortTime(retry.retriedAt))} · applied=${Number(retry.applied || 0)} · refused=${Number(retry.refused || 0)}` : "none"}</dd></div>
       <div><dt>Last Repair</dt><dd>${repair ? `${escapeHtml(shortTime(repair.resolvedAt))} · remaining=${Number(repair.remainingConflicts || 0)}` : "none"}</dd></div>
       <div><dt>Merge Rules</dt><dd>${Number(sync?.mergeRuleCount || 0)}</dd></div>
       <div><dt>Last Error</dt><dd>${escapeHtml(sync?.lastError || "-")}</dd></div>

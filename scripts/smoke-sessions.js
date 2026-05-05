@@ -300,6 +300,29 @@ assert(syncTarget.fs.exists("/var/cache/dindbos/package-index.json"), "remote sy
 assert(syncTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync apply did not restore settings metadata");
 assert(syncTarget.remoteSyncStatus().lastAppliedSnapshot.conflicts >= 1, "remote sync status did not record apply conflicts");
 assert(syncTarget.remoteSyncStatus().lastAppliedSnapshot.refused >= 1, "remote sync status did not record refused apply records");
+assert(syncTarget.remoteSyncStatus().lastAppliedSnapshot.refusedRecords.some((record) => record.path === "/var/lib/dindbos/packages/session-pkg.json"), "remote sync status did not retain refused package record details");
+const retryResult = await syncTarget.retryRemoteSyncRefusals({
+  passphrase: "session-sync-secret",
+  snapshot: syncSnapshot,
+});
+assert(retryResult.applied >= 1 && retryResult.refused === 0, "remote sync refused retry did not apply validated package metadata");
+assert(syncTarget.fs.exists("/var/lib/dindbos/packages/session-pkg.json"), "remote sync refused retry did not restore package metadata");
+assert(JSON.parse(syncTarget.fs.readFile("/var/lib/dindbos/packages/session-pkg.json")).id === "session-pkg", "remote sync refused retry wrote the wrong package record");
+assert(syncTarget.remoteSyncStatus().lastRetry.applied >= 1, "remote sync status did not record refused retry result");
+const lockStorage = createStorage(new Map());
+const retryLocker = new DindbOS({ root: null, storage: lockStorage, instanceId: "sync-retry-locker" });
+const lockedRetryTarget = new DindbOS({ root: null, storage: lockStorage, instanceId: "sync-retry-target" });
+await retryLocker.loadPersistentFileSystem();
+await lockedRetryTarget.loadPersistentFileSystem();
+const retryLock = retryLocker.acquireRuntimeOperationLock("package-db", { operation: "install", packageId: "session-pkg" });
+lockedRetryTarget.remoteSync.lastAppliedSnapshot = syncTarget.remoteSyncStatus().lastAppliedSnapshot;
+const lockedRetryResult = await lockedRetryTarget.retryRemoteSyncRefusals({
+  passphrase: "session-sync-secret",
+  snapshot: syncSnapshot,
+});
+assert(lockedRetryResult.refused >= 1, "remote sync refused retry ignored package-db operation lock");
+assert(!lockedRetryTarget.fs.exists("/var/lib/dindbos/packages/session-pkg.json"), "remote sync refused retry wrote package metadata while locked");
+retryLocker.releaseRuntimeOperationLock("package-db", retryLock);
 const pendingSyncConflicts = syncTarget.listRemoteSyncConflicts();
 assert(pendingSyncConflicts.length >= 1, "remote sync conflict repair list did not find conflict copies");
 const repairedConflict = syncTarget.resolveRemoteSyncConflict(pendingSyncConflicts[0].path, { action: "use-conflict" });
@@ -325,7 +348,7 @@ assert(resumedApply.status === "complete" && resumedApply.startIndex === 1, "rem
 assert(resumeTarget.remoteSyncStatus().lastApplyRun.status === "complete", "remote sync status did not record completed resumed apply");
 assert(resumeTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync resumed apply did not restore remaining settings file");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume sync-retry");
 
 function createStorage(values = new Map()) {
   return {
