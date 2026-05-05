@@ -672,6 +672,21 @@ assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("fs.writeText 
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("package.info OK"), "API Lab sample did not read package info through syscall");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("process.log OK"), "API Lab sample did not write global syscall log");
 assert(os.fs.readFile("/var/lib/dindbos/app-state/guest/api-lab.json").includes('"launches": 1'), "API Lab sample did not persist app state under per-user app-state");
+const beforePackageFsck = os.fs.snapshot();
+os.fs.remove(apiLab.installPath, "/", { recursive: true }, os.permissions.systemPrincipal());
+os.fs.createMount("/opt/orphan-pkg", {
+  mountType: "pkgfs",
+  owner: "root",
+  group: "root",
+  permissions: "dr-xr-xr-x",
+}, os.permissions.systemPrincipal());
+const packageFsck = packages.checkIntegrity({ dryRun: true });
+assert(!packageFsck.ok, "package fsck did not detect package DB drift");
+assert(packageFsck.problems.some((entry) => entry.code === "package-root-missing" && entry.path === apiLab.installPath), "package fsck did not report missing package root");
+assert(packageFsck.problems.some((entry) => entry.code === "package-record-missing" && entry.path === "/opt/orphan-pkg"), "package fsck did not report orphan pkgfs root");
+const packageFsckShell = await shell.executeAsync("fsck --dry-run");
+assert(packageFsckShell.output.includes("package-root-missing") && packageFsckShell.output.includes("package-record-missing"), `shell fsck did not include package drift: ${packageFsckShell.output}`);
+os.fs.root = beforePackageFsck;
 const apiWindowAgain = os.apps.launch("api-lab");
 await apiWindowAgain.rendered;
 await waitFor(() => apiWindowAgain.content.innerHTML.includes("launches=2"), `API Lab sample did not restore app state on relaunch: ${apiWindowAgain.content.innerHTML}`);
