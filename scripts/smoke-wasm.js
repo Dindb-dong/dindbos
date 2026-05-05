@@ -60,6 +60,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-open-write.wasm", wasiOpenWri
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-rights.wasm", wasiRightsWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFile("/home/guest/bin/wasi-file.txt", "opened read\n", "/", {
   owner: "guest",
   group: "users",
@@ -134,7 +140,13 @@ const wasiOpenWrite = await os.wasm.runFile("/home/guest/bin/wasi-open-write.was
 assert(wasiOpenWrite.status === 0, `wasi path_open write status mismatch: ${wasiOpenWrite.status} ${wasiOpenWrite.stderr}`);
 assert(os.fs.readFile("/home/guest/bin/wasi-out.txt") === "opened write\n", "wasi path_open write did not persist file");
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open process");
+const wasiRights = await os.wasm.runFile("/home/guest/bin/wasi-rights.wasm", "/home/guest/bin", {
+  argv: ["wasi-rights.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiRights.status === 8, `wasi read-only descriptor write did not return EBADF: ${wasiRights.status} ${wasiRights.stderr}`);
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -372,6 +384,41 @@ function wasiOpenWriteWasm() {
   });
 }
 
+function wasiRightsWasm() {
+  const path = bytes("wasi-file.txt");
+  const content = bytes("blocked\n");
+  const contentOffset = 32;
+  const iovOffset = 64;
+  const fdOffset = 80;
+  const writtenOffset = 84;
+  const data = new Uint8Array(96);
+  data.set(path, 0);
+  data.set(content, contentOffset);
+  data.set(u32le(contentOffset), iovOffset);
+  data.set(u32le(content.length), iovOffset + 4);
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i32", "i32", "i64", "i64", "i32", "i32"], results: ["i32"] },
+      { params: ["i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "path_open", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "fd_write", type: 1 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 2 },
+    ],
+    startType: 3,
+    body: [
+      0x41, 0x03, 0x41, 0x00, 0x41, 0x00, 0x41, ...i32(path.length), 0x41, 0x00, 0x42, ...i64(2n), 0x42, 0x00, 0x41, 0x00, 0x41, ...i32(fdOffset), 0x10, 0x00, 0x1a,
+      0x41, ...i32(fdOffset), 0x28, 0x02, 0x00, 0x41, ...i32(iovOffset), 0x41, 0x01, 0x41, ...i32(writtenOffset), 0x10, 0x01,
+      0x10, 0x02,
+      0x0b,
+    ],
+    data,
+  });
+}
+
 function wasmModule({ types, imports, startType, body, data }) {
   const importCount = imports.length;
   const sections = [
@@ -438,6 +485,21 @@ function i32(value) {
     cursor >>= 7;
     const signBit = byte & 0x40;
     more = !((cursor === 0 && signBit === 0) || (cursor === -1 && signBit !== 0));
+    if (more) byte |= 0x80;
+    out.push(byte);
+  }
+  return out;
+}
+
+function i64(value) {
+  const out = [];
+  let cursor = BigInt(value);
+  let more = true;
+  while (more) {
+    let byte = Number(cursor & 0x7fn);
+    cursor >>= 7n;
+    const signBit = byte & 0x40;
+    more = !((cursor === 0n && signBit === 0) || (cursor === -1n && signBit !== 0));
     if (more) byte |= 0x80;
     out.push(byte);
   }
