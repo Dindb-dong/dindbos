@@ -29,6 +29,7 @@ export class WasmRunner {
       executable: options.path || "",
       parentPid: options.parentPid || 0,
       stdin: options.stdin || "",
+      ptySessionId: options.ptySessionId || "",
       preopens: [options.cwd || this.os.session.home || "/"],
       runtime: "wasm",
     });

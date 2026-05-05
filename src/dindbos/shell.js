@@ -63,8 +63,9 @@ const STATUS_PREFIX_COMMANDS = new Set([
 ]);
 
 export class ShellSession {
-  constructor(os) {
+  constructor(os, options = {}) {
     this.os = os;
+    this.ptySessionId = options.ptySessionId || "";
     this.cwd = os.session.home || "/";
     this.history = [];
     this.historyIndex = 0;
@@ -726,7 +727,7 @@ export class ShellSession {
 
   async executeWasm(path, argv = [], stdin = "") {
     if (!this.os.wasm?.runFile) throw new Error("wasm: WebAssembly runner is unavailable");
-    const result = await this.os.wasm.runFile(path, "/", { argv, stdin, principal: this.principal });
+    const result = await this.os.wasm.runFile(path, "/", { argv, stdin, principal: this.principal, ptySessionId: this.ptySessionId });
     const output = [result.stdout, result.stderr].filter(Boolean).join(result.stdout && result.stderr ? "\n" : "");
     if (result.status) throw new Error(output || `wasm: ${path}: exited with status ${result.status}`);
     return output;

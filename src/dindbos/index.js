@@ -51,6 +51,7 @@ export class DindbOS {
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
     this.clipboard = options.clipboard || createRuntimeClipboard(options.clipboardText || "");
+    this.pty = options.pty || createRuntimePtyManager();
     this.browserProvider = {
       url: normalizeBrowserProviderUrl(options.browserProviderUrl),
       label: options.browserProviderLabel || "Local browserd",
@@ -809,6 +810,64 @@ function createRuntimeClipboard(initialText = "") {
       };
     },
   };
+}
+
+function createRuntimePtyManager() {
+  let nextId = 1;
+  const sessions = new Map();
+  return {
+    createSession(options = {}) {
+      const now = new Date().toISOString();
+      const id = `pty${nextId++}`;
+      const session = {
+        id,
+        name: String(options.name || id),
+        columns: boundedInteger(options.columns, 80, 1, 1000),
+        rows: boundedInteger(options.rows, 24, 1, 1000),
+        input: String(options.input || ""),
+        output: String(options.output || ""),
+        createdAt: now,
+        updatedAt: now,
+      };
+      sessions.set(id, session);
+      return { ...session };
+    },
+    getSession(id) {
+      const session = sessions.get(String(id || ""));
+      return session ? { ...session } : null;
+    },
+    peekInput(id) {
+      return sessions.get(String(id || ""))?.input || "";
+    },
+    writeOutput(id, data = "") {
+      const session = sessions.get(String(id || ""));
+      if (!session) return { bytes: 0 };
+      const text = String(data ?? "");
+      session.output += text;
+      session.updatedAt = new Date().toISOString();
+      return { bytes: byteLength(text), outputBytes: byteLength(session.output) };
+    },
+    resizeSession(id, size = {}) {
+      const session = sessions.get(String(id || ""));
+      if (!session) return null;
+      session.columns = boundedInteger(size.columns, session.columns, 1, 1000);
+      session.rows = boundedInteger(size.rows, session.rows, 1, 1000);
+      session.updatedAt = new Date().toISOString();
+      return { ...session };
+    },
+    closeSession(id) {
+      return sessions.delete(String(id || ""));
+    },
+    listSessions() {
+      return [...sessions.values()].map((session) => ({ ...session }));
+    },
+  };
+}
+
+function boundedInteger(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(number)));
 }
 
 function byteLength(value) {

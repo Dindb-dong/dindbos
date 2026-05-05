@@ -3011,7 +3011,8 @@ export function renderMarkdownPreview(markdown) {
 }
 
 function renderTerminal(os, content) {
-  const shell = new ShellSession(os);
+  const pty = os.pty?.createSession?.({ name: "Terminal.app", columns: 80, rows: 24 });
+  const shell = new ShellSession(os, { ptySessionId: pty?.id || "" });
   content.innerHTML = `
     <section class="terminal-app">
       <pre></pre>

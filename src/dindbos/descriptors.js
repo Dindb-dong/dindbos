@@ -15,9 +15,11 @@ export class DescriptorManager {
       nextFd: 3,
       descriptors: new Map(),
     };
-    table.descriptors.set(STDIN_FD, streamDescriptor(STDIN_FD, "stdin", "stdin", { readable: true, buffer: String(options.stdin || "") }));
-    table.descriptors.set(STDOUT_FD, streamDescriptor(STDOUT_FD, "stdout", "stdout", { writable: true }));
-    table.descriptors.set(STDERR_FD, streamDescriptor(STDERR_FD, "stderr", "stderr", { writable: true }));
+    const pty = this.os.pty?.getSession?.(options.ptySessionId);
+    const ptyInput = pty ? this.os.pty?.peekInput?.(pty.id) : "";
+    table.descriptors.set(STDIN_FD, streamDescriptor(STDIN_FD, "stdin", "stdin", { readable: true, buffer: String(options.stdin || ptyInput || ""), tty: pty }));
+    table.descriptors.set(STDOUT_FD, streamDescriptor(STDOUT_FD, "stdout", "stdout", { writable: true, tty: pty }));
+    table.descriptors.set(STDERR_FD, streamDescriptor(STDERR_FD, "stderr", "stderr", { writable: true, tty: pty }));
     this.tables.set(Number(process.pid), table);
     (options.preopens || []).forEach((path) => this.preopen(process.pid, path));
     this.writeProcfs(process.pid);
@@ -53,7 +55,7 @@ export class DescriptorManager {
     const path = normalizedPath(this.os, args.path, args.cwd || process.cwd);
     const flags = normalizeFlags(args.flags || "r");
     const descriptor = path.startsWith("/dev/")
-      ? this.openDevice(path, flags)
+      ? this.openDevice(path, flags, process)
       : this.openFile(path, flags, context);
     const fd = table.nextFd;
     table.nextFd += 1;
@@ -130,6 +132,7 @@ export class DescriptorManager {
     else if (descriptor.kind === "stream") {
       descriptor.buffer = `${descriptor.buffer || ""}${data}`;
       descriptor.offset = byteLength(descriptor.buffer);
+      writePtyOutput(this.os, descriptor, data);
       bytes = byteLength(data);
     } else if (descriptor.kind === "device") bytes = this.writeDeviceDescriptor(process, descriptor, data);
     else if (descriptor.kind === "pipe") {
@@ -190,7 +193,9 @@ export class DescriptorManager {
       };
     }
     if (request === "tty.setWindowSize") {
-      descriptor.tty = ttySize({ tty: args });
+      const size = ttySize({ tty: args });
+      descriptor.tty = descriptor.tty ? { ...descriptor.tty, ...size } : size;
+      if (descriptor.tty?.id) descriptor.tty = this.os.pty?.resizeSession?.(descriptor.tty.id, size) || descriptor.tty;
       this.writeProcfs(process.pid);
       return {
         fd: descriptor.fd,
@@ -269,7 +274,7 @@ export class DescriptorManager {
     };
   }
 
-  openDevice(path, flags) {
+  openDevice(path, flags, process = {}) {
     if (!["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/dev/clipboard"].includes(path)) {
       throw descriptorError("ENODEV", `fd.open: ${path}: no such device`);
     }
@@ -280,6 +285,7 @@ export class DescriptorManager {
       writable: path === "/dev/clipboard" ? flags.writable : true,
       offset: 0,
       flags: flags.raw,
+      tty: path === "/dev/tty" ? this.os.pty?.getSession?.(process.context?.ptySessionId) || null : null,
     };
   }
 
@@ -343,6 +349,7 @@ export class DescriptorManager {
       const stdout = this.descriptorFor(process.pid, STDOUT_FD);
       stdout.buffer = `${stdout.buffer || ""}${data}`;
       stdout.offset = byteLength(stdout.buffer);
+      writePtyOutput(this.os, descriptor, data);
       return byteLength(data);
     }
     if (descriptor.path === "/dev/null") return byteLength(data);
@@ -372,6 +379,7 @@ function streamDescriptor(fd, name, path, options = {}) {
     offset: 0,
     buffer: options.buffer || "",
     flags: options.readable ? "r" : "w",
+    tty: options.tty || null,
   };
 }
 
@@ -402,7 +410,12 @@ function publicDescriptor(descriptor) {
     preopen: Boolean(descriptor.preopen),
     rights: descriptor.rights ? { ...descriptor.rights } : null,
     wasi: descriptor.wasi ? { ...descriptor.wasi } : null,
+    tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
   };
+}
+
+function writePtyOutput(os, descriptor, data) {
+  if (descriptor.tty?.id) os.pty?.writeOutput?.(descriptor.tty.id, data);
 }
 
 function normalizeDescriptorRights(rights, descriptor) {
