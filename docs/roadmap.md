@@ -199,7 +199,8 @@ Implementation cuts:
 - Extend staged activation to package launcher/app registration/service registration groups so multi-record activation commits as one transaction boundary.
 - Add staged directories for package install/update so activation happens only after all files, integrity checks, quota reservations, launcher writes, and app registration are ready.
 - Add `fsync`-style barriers to Shell, SDK, WASM, and NodeCompat paths so programs can request durability before reporting success.
-- Add `fsck.dindbos check|repair|dry-run|explain` for orphaned nodes, broken package mounts, bad link counts, partial journals, stale local mount metadata, and package DB drift.
+- Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
+- Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts, bad link counts, partial journals, stale local mount metadata, package DB drift, and conservative salvage export.
 - Add storage-class quota arbitration for user data, package roots, package state, cache, temp, snapshots, logs, backups, sync staging, and recovery data.
 - Add conservative repair rules: never weaken ownership, permissions, security labels, quarantine state, or encrypted-volume locks during repair.
 
@@ -207,7 +208,8 @@ Verification:
 
 - Already present: `npm run smoke:storage` verifies failed VFS atomic writes preserve existing file bytes/metadata and clean staged temp files before successful atomic commit; `npm run smoke:packages` verifies a sandboxed package app can use the AppSandbox atomic VFS API.
 - Already present: `npm run smoke:packages` verifies package install atomically creates package DB records and AppRegistry manifest records; `npm run smoke:services` verifies service state records are atomically created.
-- Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, dry-run repair, real repair audit records, and failed repair fallback.
+- Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
+- Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
 
@@ -764,7 +766,8 @@ Implementation tasks:
 - Already present: inline package installs reserve estimated package file, package record, and launcher bytes before filesystem/app registry mutation, then fail closed on quota denial.
 - Already present: remote package installs reserve declared remote file sizes plus package record and launcher bytes before package file fetch or filesystem/app registry mutation, then fail closed on quota denial.
 - Extend quota reservation to large app/import writes.
-- Add `fsck`-style integrity checks for inode/content mismatches, orphaned content records, broken mount metadata, and package DB drift.
+- Already present: first-pass `fsck` integrity checks detect VFS structure problems and file size drift, expose dry-run repair plans, and can repair safe size/children metadata.
+- Extend `fsck`-style integrity checks to inode/content mismatches, orphaned content records, broken mount metadata, package DB drift, and salvage exports.
 - Add optional per-user encrypted volumes using WebCrypto-derived keys.
 - Add storage pressure handling that can evict cache volumes without touching durable user files.
 
@@ -775,6 +778,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies remote package install quota denial happens before package file fetch, install directory, package record, or app registry mutation.
 - Already present: `npm run smoke:storage` verifies VFS atomic write abort cleanup, existing file preservation, metadata preservation, and successful atomic commit; `npm run smoke:packages` verifies sandboxed package access to the atomic VFS API.
 - Already present: `npm run smoke:packages` verifies package DB and AppRegistry manifest atomic create events during package install; `npm run smoke:services` verifies service state atomic create events.
+- Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run and safe repair behavior for corrupt file size metadata.
 - Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, large app/import quota denial before mutation, and repair of orphaned records.
 
 Completion criteria:
