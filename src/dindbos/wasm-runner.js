@@ -14,6 +14,17 @@ export class WasmRunner {
     if (typeof WebAssembly === "undefined") throw new Error("wasm: WebAssembly is unavailable in this runtime");
     const normalized = this.os.fs.normalize(path, cwd);
     const bytes = this.os.fs.readFileBytes(normalized, "/", options.principal);
+    if (options.executionBackend === "worker" || options.backend === "worker") {
+      return this.os.executor.runWasmTask({
+        ...options,
+        bytes,
+        path: normalized,
+        cwd: this.os.fs.dirname(normalized),
+        appId: options.appId || `wasm:${this.os.fs.basename(normalized)}`,
+        name: options.name || this.os.fs.basename(normalized),
+        env: this.environment({ ...options, cwd: this.os.fs.dirname(normalized), path: normalized }, { cwd: this.os.fs.dirname(normalized) }),
+      });
+    }
     return this.runBytes(bytes, {
       ...options,
       path: normalized,
