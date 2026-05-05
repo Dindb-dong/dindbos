@@ -38,6 +38,7 @@ const BUILTIN_MANUALS = {
   touch: "touch <path> - create or update a file",
   tree: "tree [path] - render a directory tree",
   umount: "umount [--forget] <path> - unmount a local folder",
+  wasm: "wasm <file> [args...] - run a WebAssembly module as a DindbOS process",
   which: "which <command> - locate a command through PATH",
 };
 
@@ -57,6 +58,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "syscall",
   "tree",
   "umount",
+  "wasm",
   "which",
 ]);
 
@@ -271,10 +273,12 @@ export class ShellSession {
     if (command === "which") return this.which(args[0]);
     if (command === "man") return BUILTIN_MANUALS[args[0]] || `man: ${args[0] || ""}: no manual entry`;
     if (command === "node") return this.node(args);
+    if (command === "wasm") return this.wasm(args);
     if (command === "npm") return this.npm(args);
     if (command === "df") return this.df();
     if (command === "mount") return this.mount();
     const script = this.resolveExecutable(command);
+    if (script?.path.endsWith(".wasm")) return this.executeWasm(script.path, args);
     if (script) return this.executeScript(script.path, args, stdin, options.scriptDepth || 0);
     throw new Error(this.commandNotFound(command));
   }
@@ -666,6 +670,20 @@ export class ShellSession {
     const [file, ...argv] = rest;
     if (!file) return "node: usage: node [--input-type=module] [-e code] <file>";
     return Promise.resolve(this.os.node.runFile(file, this.cwd, { argv, inputType })).then(formatNodeResult);
+  }
+
+  wasm(args) {
+    const [file, ...argv] = args;
+    if (!file) return "wasm: usage: wasm <file> [args...]";
+    return this.executeWasm(this.os.fs.normalize(file, this.cwd), argv);
+  }
+
+  async executeWasm(path, argv = []) {
+    if (!this.os.wasm?.runFile) throw new Error("wasm: WebAssembly runner is unavailable");
+    const result = await this.os.wasm.runFile(path, "/", { argv, principal: this.principal });
+    const output = [result.stdout, result.stderr].filter(Boolean).join(result.stdout && result.stderr ? "\n" : "");
+    if (result.status) throw new Error(output || `wasm: ${path}: exited with status ${result.status}`);
+    return output;
   }
 
   readFile(path) {
