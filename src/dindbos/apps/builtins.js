@@ -1349,12 +1349,21 @@ export async function importDroppedFiles(os, currentPath, fileList, reporter = n
       await scheduleFilesOperation(reporter, file.name);
       continue;
     }
-    const target = await allocateImportPath(os, currentPath, file.name || "upload.bin", { ...options, reporter });
-    if (!target) {
+    const conflict = await planImportPath(os, currentPath, file.name || "upload.bin", { ...options, reporter });
+    if (!conflict) {
       reporter?.step(file.name || "skipped");
       await scheduleFilesOperation(reporter, file.name || "skipped");
       continue;
     }
+    const target = conflict.path;
+    if (!os.localMounts?.isMountedPath(currentPath)) reserveImportStorage(os, fileByteLength(file), {
+      scope: "files-import",
+      source: "dropped-file",
+      path: target,
+      name: file.name || "upload.bin",
+    });
+    await ensureImportParent(os, os.fs.dirname(target));
+    await replaceExistingPath(os, target, conflict, reporter);
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.writeFileBlob(target, file, "/", { mime: file.type || mimeFromName(target) });
     else await os.fs.writeOrCreateFileBlob(target, file, "/", { mime: file.type || mimeFromName(target), owner: "guest", group: "users", permissions: "-rw-r--r--" });
     imported.push(target);
@@ -1376,13 +1385,22 @@ async function importDindbArchiveDirect(os, currentPath, archive, reporter = nul
   if (!reporter?.started) reporter?.start(archive.entries.length, archiveName);
   for (const entry of archive.entries) {
     const relative = sanitizeRelativePath(entry.path || entry.name || "file.bin");
-    const target = await allocateImportPath(os, currentPath, relative, { ...options, reporter });
-    if (!target) {
+    const conflict = await planImportPath(os, currentPath, relative, { ...options, reporter });
+    if (!conflict) {
       reporter?.step(relative);
       await scheduleFilesOperation(reporter, relative);
       continue;
     }
+    const target = conflict.path;
     const bytes = base64ToBytes(entry.data || "");
+    if (!os.localMounts?.isMountedPath(target)) reserveImportStorage(os, bytes.byteLength, {
+      scope: "files-import",
+      source: "archive-entry",
+      path: target,
+      archive: archiveName,
+    });
+    await ensureImportParent(os, os.fs.dirname(target));
+    await replaceExistingPath(os, target, conflict, reporter);
     if (os.localMounts?.isMountedPath(target)) await os.localMounts.writeFileBytes(target, bytes, "/", { mime: entry.mime || mimeFromName(target) });
     else os.fs.writeOrCreateFileBytes(target, bytes, "/", {
       mime: entry.mime || mimeFromName(target),
@@ -1404,6 +1422,13 @@ async function importDindbArchiveAtomic(os, currentPath, archive, reporter = nul
   const plan = [];
   if (!reporter?.started) reporter?.start(archive.entries.length, archiveName);
   try {
+    reserveImportStorage(os, archiveImportBytes(archive), {
+      scope: "files-import",
+      source: "archive",
+      path: currentPath,
+      archive: archiveName,
+      entries: archive.entries.length,
+    });
     ensureVirtualDirectory(os, stagingParent);
     const stagingRoot = uniquePath(os, stagingParent, `archive-${Date.now().toString(36)}`);
     ensureVirtualDirectory(os, stagingRoot);
@@ -1898,6 +1923,27 @@ function relativeArchivePath(root, path) {
 
 function sanitizeRelativePath(path) {
   return String(path || "").split("/").filter((part) => part && part !== "." && part !== "..").join("/") || "file.bin";
+}
+
+function reserveImportStorage(os, bytes, details = {}) {
+  if (typeof os.storage?.reserveStorageBytes !== "function") return;
+  os.storage.reserveStorageBytes(bytes, details);
+}
+
+function archiveImportBytes(archive = {}) {
+  return (archive.entries || []).reduce((total, entry) => total + base64DecodedLength(entry.data || ""), 0);
+}
+
+function base64DecodedLength(value = "") {
+  const text = String(value || "").replace(/\s/g, "");
+  if (!text) return 0;
+  const padding = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((text.length * 3) / 4) - padding);
+}
+
+function fileByteLength(file = {}) {
+  if (typeof file.size === "number") return Math.max(0, Number(file.size || 0));
+  return 0;
 }
 
 function uniquePath(os, directory, name) {

@@ -98,6 +98,15 @@ await assertRejects(() => broadSandbox.fs.exists("/root/public.txt"), "permissio
 await assertRejects(() => sandbox.state.set("bad", undefined), "JSON serializable");
 await assertRejects(() => sandbox.fs.readFile("/root/secret.txt"), "sandbox denied");
 await assertRejects(() => sandbox.fs.writeOrCreateFile("/root/new.txt", "nope"), "sandbox denied");
+const quotaReservations = [];
+os.storage.reserveStorageBytes = (bytes, details = {}) => {
+  quotaReservations.push({ bytes, details });
+  throw new Error("storage quota exceeded: app write refused");
+};
+await assertRejects(() => sandbox.fs.writeOrCreateFileBytes("/home/guest/Documents/quota.bin", new Uint8Array([1, 2, 3])), "storage quota exceeded");
+assert(quotaReservations.length === 1 && quotaReservations[0].details.scope === "app-write", "sandbox app write did not reserve quota before mutation");
+assert(!os.fs.exists("/home/guest/Documents/quota.bin"), "quota-denied sandbox app write mutated the VFS");
+os.storage.reserveStorageBytes = () => true;
 await assertRejects(() => sandbox.processes.list(), "capability denied: process.read");
 await assertRejects(() => sandbox.packages.installFromRegistry("hello-notes"), "capability denied: package.manage");
 await assertRejects(() => sandbox.localMounts.mountLocal("disk"), "capability denied: localMount.manage");

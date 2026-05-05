@@ -20,6 +20,7 @@ Current implementation:
 - VFS exposes binary-safe byte read/write APIs while keeping text APIs compatible.
 - In-memory binary file nodes use native `Uint8Array`; base64 is only used at persistence/export boundaries.
 - Files.app supports browser file import, DindbOS archive export/import, and drag and drop upload.
+- AppSandbox file writes and Files.app imports reserve estimated bytes before VFS mutation; quota denial preserves existing files and stops archive staging before it starts.
 - Files.app shows local mount permission state, reconnect/sync/forget actions, and copy/move/import/export progress.
 - IndexedDB, localStorage, and memory remain fallbacks for snapshot storage.
 - `storage` reports backend, saved bytes, and browser quota estimates when available.

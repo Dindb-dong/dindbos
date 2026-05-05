@@ -98,66 +98,157 @@ export class AppSandbox {
       writeFile: (path, content, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(content), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "writeFile",
+        });
         return this.os.fs.writeFile(normalized, content, "/", this.principal);
       },
       writeFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(bytes), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "writeFileBytes",
+        });
         return this.os.fs.writeFileBytes(normalized, bytes, "/", options, this.principal);
       },
       writeFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(blob), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "writeFileBlob",
+        });
         return this.os.fs.writeFileBlob(normalized, blob, "/", options, this.principal);
       },
       atomicWriteFile: (path, content, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(content), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "atomicWriteFile",
+        });
         return this.os.fs.atomicWriteFile(normalized, content, "/", options, this.principal);
       },
       atomicWriteFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(bytes), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "atomicWriteFileBytes",
+        });
         return this.os.fs.atomicWriteFileBytes(normalized, bytes, "/", options, this.principal);
       },
       atomicWriteFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(blob), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "atomicWriteFileBlob",
+        });
         return this.os.fs.atomicWriteFileBlob(normalized, blob, "/", options, this.principal);
       },
       appendFile: (path, content, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(content), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "appendFile",
+        });
         return this.os.fs.appendFile(normalized, content, "/", this.principal);
       },
       writeOrCreateFile: (path, content, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(content), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "writeOrCreateFile",
+        });
         return this.os.fs.writeOrCreateFile(normalized, content, "/", options, this.principal);
       },
       writeOrCreateFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(bytes), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "writeOrCreateFileBytes",
+        });
         return this.os.fs.writeOrCreateFileBytes(normalized, bytes, "/", options, this.principal);
       },
       writeOrCreateFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(blob), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "writeOrCreateFileBlob",
+        });
         return this.os.fs.writeOrCreateFileBlob(normalized, blob, "/", options, this.principal);
       },
       atomicWriteOrCreateFile: (path, content, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(content), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "atomicWriteOrCreateFile",
+        });
         return this.os.fs.atomicWriteOrCreateFile(normalized, content, "/", options, this.principal);
       },
       atomicWriteOrCreateFileBytes: (path, bytes, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(bytes), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "atomicWriteOrCreateFileBytes",
+        });
         return this.os.fs.atomicWriteOrCreateFileBytes(normalized, bytes, "/", options, this.principal);
       },
       atomicWriteOrCreateFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "write");
+        reserveStorageBytes(this.os, contentByteLength(blob), {
+          scope: "app-write",
+          appId: this.process.appId,
+          pid: this.process.pid,
+          path: normalized,
+          operation: "atomicWriteOrCreateFileBlob",
+        });
         return this.os.fs.atomicWriteOrCreateFileBlob(normalized, blob, "/", options, this.principal);
       },
       createFile: (path, cwd = this.process.cwd, options = {}) => {
@@ -773,6 +864,20 @@ function cloneJson(value) {
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function reserveStorageBytes(os, bytes, details = {}) {
+  if (typeof os.storage?.reserveStorageBytes !== "function") return;
+  os.storage.reserveStorageBytes(bytes, details);
+}
+
+function contentByteLength(value) {
+  if (value instanceof Uint8Array) return value.byteLength;
+  if (ArrayBuffer.isView(value)) return value.byteLength;
+  if (value instanceof ArrayBuffer) return value.byteLength;
+  if (typeof Blob !== "undefined" && value instanceof Blob) return Number(value.size || 0);
+  if (value && typeof value.size === "number" && typeof value.arrayBuffer === "function") return Number(value.size || 0);
+  return new TextEncoder().encode(String(value ?? "")).byteLength;
 }
 
 function packageSummary(record, details = false) {
