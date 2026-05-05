@@ -172,7 +172,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 520,
     height: 380,
     manifest: {
-      capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage"],
+      capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
     },
     render: ({ content, os: runtime }) => renderSettings(runtime, content),
@@ -3334,6 +3334,8 @@ async function renderSettingsContent(os, content) {
         if (button.dataset.settingsAction === "restore-mounts") await os.localMounts.restorePersistedMounts({ request: true });
         if (button.dataset.settingsAction === "remount") await os.localMounts.requestAccess(button.dataset.mountPath);
         if (button.dataset.settingsAction === "forget") await os.localMounts.forgetMount(button.dataset.mountPath);
+        if (button.dataset.settingsAction === "service-restart") await os.services.restart(button.dataset.serviceId);
+        if (button.dataset.settingsAction === "service-disable") await os.services.disable(button.dataset.serviceId);
       } finally {
         renderSettings(os, content);
       }
@@ -3348,6 +3350,7 @@ export async function settingsRuntimeSnapshot(os) {
   const storageStatus = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
   const storage = await safeReadAsync(() => os.storage.estimate(), storageStatus);
   const packages = safeRead(() => os.packages.list(), []);
+  const services = safeRead(() => os.services?.list?.(), []);
   const mounts = await safeReadAsync(() => os.localMounts.status(), []);
   return {
     user,
@@ -3355,6 +3358,7 @@ export async function settingsRuntimeSnapshot(os) {
     apps: safeRead(() => os.apps.list(), []),
     packages,
     processes,
+    services,
     storage: { ...storageStatus, ...storage },
     desktop: safeRead(() => os.fs.join(home, "Desktop"), `${home}/Desktop`),
     mounts,
@@ -3372,6 +3376,7 @@ export function settingsRuntimeMarkup(snapshot) {
         <div><dt>Apps</dt><dd>${snapshot.apps.length}</dd></div>
         <div><dt>Packages</dt><dd>${snapshot.packages.length}</dd></div>
         <div><dt>Processes</dt><dd>${snapshot.processes.length}</dd></div>
+        <div><dt>Services</dt><dd>${snapshot.services.length}</dd></div>
         <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(snapshot.storage)}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(snapshot.desktop)}</dd></div>
         <div><dt>Local Mounts</dt><dd>${snapshot.mounts.length ? `${snapshot.mounts.length} folder${snapshot.mounts.length === 1 ? "" : "s"}` : "none"}</dd></div>
@@ -3382,6 +3387,12 @@ export function settingsRuntimeMarkup(snapshot) {
           <button type="button" data-settings-action="flush-storage">Flush now</button>
         </header>
         <p>${escapeHtml(formatStorageState(snapshot.storage))}</p>
+      </section>
+      <section class="settings-panel">
+        <header>
+          <h3>Services</h3>
+        </header>
+        ${renderSettingsServices(snapshot.services)}
       </section>
       <section class="settings-panel">
         <header>
@@ -3413,6 +3424,27 @@ function formatStorageState(storage) {
     storage.persistLastFlushedAt ? `lastFlush=${shortTime(storage.persistLastFlushedAt)} (${storage.persistLastFlushDurationMs || 0}ms)` : "",
     storage.lastWriteError || storage.persistLastFlushError ? `error=${storage.lastWriteError || storage.persistLastFlushError}` : "",
   ].filter(Boolean).join(" · ");
+}
+
+function renderSettingsServices(services) {
+  if (!services.length) return `<p class="settings-muted">No runtime services are registered.</p>`;
+  return `
+    <div class="settings-mount-list">
+      ${services.map((service) => `
+        <article class="settings-mount-card" data-service-state="${escapeAttr(service.state || "")}">
+          <div>
+            <strong>${escapeHtml(service.name || service.id)}</strong>
+            <span>${escapeHtml(service.id)} · ${escapeHtml(service.state || "unknown")} · runs=${Number(service.runCount || 0)}</span>
+            ${service.lastError ? `<small>${escapeHtml(service.lastError)}</small>` : ""}
+          </div>
+          <div>
+            <button type="button" data-settings-action="service-restart" data-service-id="${escapeAttr(service.id)}">Restart</button>
+            <button type="button" data-settings-action="service-disable" data-service-id="${escapeAttr(service.id)}">Disable</button>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderSettingsMounts(mounts) {
