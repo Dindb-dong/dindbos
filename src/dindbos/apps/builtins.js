@@ -3090,6 +3090,7 @@ function renderActivityMonitor(os, content) {
     const selectedServiceId = serviceIdForProcess(selected);
     const selectedService = selectedServiceId ? safeRead(() => os.services?.get?.(selectedServiceId), null) : null;
     const selectedServiceLog = selectedServiceId ? safeRead(() => os.services?.log?.(selectedServiceId), []) : [];
+    const selectedServiceManifest = selectedServiceId ? safeRead(() => os.services?.manifest?.(selectedServiceId), null) : null;
     content.innerHTML = `
       <section class="activity-app">
         <header>
@@ -3138,7 +3139,7 @@ function renderActivityMonitor(os, content) {
             `).join("") || `<p class="activity-empty">No running processes.</p>`}
           </div>
           <aside class="activity-detail">
-            ${selected ? renderActivityDetail(selected, processLog, selectedService, selectedServiceLog) : "<p>No process selected.</p>"}
+            ${selected ? renderActivityDetail(selected, processLog, selectedService, selectedServiceLog, selectedServiceManifest) : "<p>No process selected.</p>"}
           </aside>
         </div>
       </section>
@@ -3251,7 +3252,7 @@ function activitySortOptions(selected) {
   `).join("");
 }
 
-export function renderActivityDetail(process, processLog, service = null, serviceLog = []) {
+export function renderActivityDetail(process, processLog, service = null, serviceLog = [], serviceManifest = null) {
   return `
     <div class="activity-detail-header">
       <div>
@@ -3279,12 +3280,12 @@ export function renderActivityDetail(process, processLog, service = null, servic
       <div><dt>Activity</dt><dd>${escapeHtml(formatActivityScore(process.activityScore))} · ${process.activitySamples || 0} samples</dd></div>
       <div><dt>Runtime</dt><dd>${escapeHtml(formatBytes(process.runtimeBytes))} · ${process.logLines || 0} logs</dd></div>
     </dl>
-    ${service ? renderActivityServiceDetail(service, serviceLog) : ""}
+    ${service ? renderActivityServiceDetail(service, serviceLog, serviceManifest) : ""}
     <pre>${escapeHtml(processLog || "No process log yet.")}</pre>
   `;
 }
 
-function renderActivityServiceDetail(service, serviceLog = []) {
+function renderActivityServiceDetail(service, serviceLog = [], serviceManifest = null) {
   return `
     <section class="activity-service-detail">
       <header>
@@ -3304,7 +3305,23 @@ function renderActivityServiceDetail(service, serviceLog = []) {
         <div><dt>Last Run</dt><dd>${escapeHtml(shortTime(service.lastRunAt))}</dd></div>
         <div><dt>Last Error</dt><dd>${escapeHtml(service.lastError || "-")}</dd></div>
       </dl>
+      ${renderActivityServicePermissionReview(serviceManifest)}
       <pre>${escapeHtml(formatServiceLog(serviceLog))}</pre>
+    </section>
+  `;
+}
+
+function renderActivityServicePermissionReview(manifest) {
+  if (!manifest) return "";
+  return `
+    <section class="activity-service-permissions">
+      <h5>Permission Review</h5>
+      <dl>
+        <div><dt>Capabilities</dt><dd>${escapeHtml(formatManifestList(manifest.capabilities))}</dd></div>
+        <div><dt>FS Read</dt><dd>${escapeHtml(formatManifestList(manifest.fileSystem?.read))}</dd></div>
+        <div><dt>FS Write</dt><dd>${escapeHtml(formatManifestList(manifest.fileSystem?.write))}</dd></div>
+        <div><dt>Schedule</dt><dd>${escapeHtml(formatServiceSchedule(manifest.schedule))}</dd></div>
+      </dl>
     </section>
   `;
 }
@@ -3312,6 +3329,17 @@ function renderActivityServiceDetail(service, serviceLog = []) {
 function formatServiceLog(entries = []) {
   if (!entries.length) return "No service log yet.";
   return entries.map((entry) => `${entry.at || ""} ${String(entry.level || "info").toUpperCase()} ${entry.message || ""}`.trim()).join("\n");
+}
+
+function formatManifestList(values = []) {
+  const list = Array.isArray(values) ? values.filter(Boolean) : [];
+  return list.length ? list.join(", ") : "-";
+}
+
+function formatServiceSchedule(schedule) {
+  if (!schedule) return "-";
+  if (schedule.everyMs) return `every ${Number(schedule.everyMs)}ms`;
+  return JSON.stringify(schedule);
 }
 
 function serviceIdForProcess(process) {

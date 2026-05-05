@@ -34,6 +34,12 @@ const scheduled = await os.services.runScheduled("search-indexer");
 assert(scheduled.runCount === 1, "scheduled service run count mismatch");
 assert(os.fs.readFile("/var/lib/dindbos/search/last-run.txt") === "indexed\n", "scheduled service did not write runtime state");
 assert(events.includes("scheduled-run:search-indexer:running"), "scheduled-run event missing");
+const manifest = os.services.manifest("search-indexer");
+assert(manifest.capabilities.length === 0, "service manifest default capabilities mismatch");
+assert(manifest.fileSystem.read.includes("/home/guest"), "service manifest read scope missing");
+assert(manifest.fileSystem.write.includes("/var/lib/dindbos/search"), "service manifest write scope missing");
+manifest.fileSystem.read.push("/mutated");
+assert(!os.services.manifest("search-indexer").fileSystem.read.includes("/mutated"), "service manifest leaked mutable read scope");
 
 os.services.suspend("visibility-hidden");
 assert(os.services.get("search-indexer").state === "suspended", "service did not suspend");
