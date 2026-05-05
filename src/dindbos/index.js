@@ -807,10 +807,173 @@ export class DindbOS {
   remoteSyncStatus() {
     return {
       ...this.remoteSync,
+      mergeRuleCount: this.remoteSyncMergePolicy().rules.length,
       lastSuccessfulSnapshot: this.remoteSync.lastSuccessfulSnapshot
         ? { ...this.remoteSync.lastSuccessfulSnapshot }
         : null,
     };
+  }
+
+  remoteSyncMergePolicy() {
+    return {
+      version: 1,
+      planner: "offline-first",
+      rules: [
+        {
+          root: this.session.home,
+          scope: "user-documents",
+          policy: "three-way-text-or-conflict-copy",
+          reason: "User documents are durable local-first data; text can merge, binary conflicts must preserve both sides.",
+        },
+        {
+          root: "/var/lib/dindbos/app-state",
+          scope: "app-state",
+          policy: "single-writer-or-app-merge-hook",
+          reason: "Structured app state needs app-owned merge semantics when both sides changed.",
+        },
+        {
+          root: "/var/lib/dindbos/packages",
+          scope: "package-metadata",
+          policy: "transaction-conflict-refusal",
+          reason: "Package records must change through package transactions, not sync overwrite.",
+        },
+        {
+          root: "/var/lib/dindbos/search",
+          scope: "search-indexes",
+          policy: "rebuild-derived-index",
+          reason: "Search indexes are derived state and should be rebuilt after sync.",
+        },
+        {
+          root: "/etc/dindbos",
+          scope: "settings",
+          policy: "last-writer-wins-safe-settings",
+          reason: "Safe settings can use timestamp order until stricter per-setting policy exists.",
+        },
+        {
+          root: "/var/cache",
+          scope: "cache-metadata",
+          policy: "remote-cache-metadata-replace",
+          reason: "Cache metadata is evictable and can be replaced without overwriting durable user files.",
+        },
+      ],
+    };
+  }
+
+  planRemoteSyncMerge(changes = []) {
+    const items = Array.isArray(changes) ? changes : [];
+    const planned = items.map((change) => this.planRemoteSyncMergeChange(change));
+    return {
+      version: 1,
+      plannedAt: new Date().toISOString(),
+      policyVersion: this.remoteSyncMergePolicy().version,
+      total: planned.length,
+      summary: planned.reduce((summary, item) => {
+        summary[item.action] = Number(summary[item.action] || 0) + 1;
+        return summary;
+      }, {}),
+      changes: planned,
+    };
+  }
+
+  planRemoteSyncMergeChange(change = {}) {
+    const path = this.fs.normalize(String(change.path || "/"), "/");
+    const rule = this.remoteSyncRuleForPath(path);
+    const base = normalizeMergeValue(change.base);
+    const local = normalizeMergeValue(change.local);
+    const remote = normalizeMergeValue(change.remote);
+    const localChanged = !mergeValuesEqual(base, local);
+    const remoteChanged = !mergeValuesEqual(base, remote);
+    const mime = String(change.mime || "");
+    const textLike = isTextMergeCandidate(path, mime, local, remote, base);
+    const baseResult = {
+      path,
+      scope: rule.scope,
+      policy: rule.policy,
+      action: "noop",
+      winner: "",
+      conflictPath: "",
+      merged: undefined,
+      reason: rule.reason,
+    };
+    if (rule.scope === "package-metadata") {
+      return {
+        ...baseResult,
+        action: "refuse",
+        reason: "Package metadata sync conflicts are refused until a package transaction can validate records, launchers, and trust state.",
+      };
+    }
+    if (rule.scope === "search-indexes") {
+      return {
+        ...baseResult,
+        action: "rebuild",
+        winner: "local",
+        reason: "Search indexes are derived state; rebuild from synced files instead of merging index records.",
+      };
+    }
+    if (rule.scope === "cache-metadata") {
+      return {
+        ...baseResult,
+        action: remoteChanged ? "use-remote" : "use-local",
+        winner: remoteChanged ? "remote" : "local",
+        reason: "Cache metadata is evictable and can be replaced by the newest remote snapshot metadata.",
+      };
+    }
+    if (!localChanged && !remoteChanged) return baseResult;
+    if (localChanged && !remoteChanged) return { ...baseResult, action: "use-local", winner: "local", reason: "Only the local side changed." };
+    if (!localChanged && remoteChanged) return { ...baseResult, action: "use-remote", winner: "remote", reason: "Only the remote side changed." };
+    if (mergeValuesEqual(local, remote)) return { ...baseResult, action: "use-local", winner: "both", reason: "Both sides converged on the same value." };
+    if (rule.scope === "settings") {
+      const winner = newestSide(change.localModified, change.remoteModified);
+      return {
+        ...baseResult,
+        action: "last-writer-wins",
+        winner,
+        reason: `Settings use timestamp order for first-pass safe-setting merges; ${winner} is newer.`,
+      };
+    }
+    if (rule.scope === "app-state") {
+      return {
+        ...baseResult,
+        action: "conflict-copy",
+        winner: "both",
+        conflictPath: syncConflictPath(path, change.remoteModified),
+        reason: "Both app-state records changed; preserve a conflict copy until the owning app provides a merge hook.",
+      };
+    }
+    if (textLike) {
+      const merged = mergeTextValues(base, local, remote);
+      if (merged.clean) {
+        return {
+          ...baseResult,
+          action: "three-way-merge",
+          winner: "merged",
+          merged: merged.value,
+          reason: "Text changes appended on both sides and were merged without dropping either side.",
+        };
+      }
+    }
+    return {
+      ...baseResult,
+      action: "conflict-copy",
+      winner: "both",
+      conflictPath: syncConflictPath(path, change.remoteModified),
+      reason: textLike
+        ? "Text edits overlap; preserve both versions as a conflict copy."
+        : "Binary or structured document changed on both sides; preserve both versions as a conflict copy.",
+    };
+  }
+
+  remoteSyncRuleForPath(path) {
+    const normalized = this.fs.normalize(path, "/");
+    return this.remoteSyncMergePolicy().rules
+      .filter((rule) => normalized === rule.root || normalized.startsWith(`${rule.root}/`))
+      .sort((left, right) => right.root.length - left.root.length)
+      [0] || {
+        root: "/",
+        scope: "unknown",
+        policy: "conflict-copy",
+        reason: "Unknown sync roots preserve both sides until an explicit policy is defined.",
+      };
   }
 
   async createRemoteSyncSnapshot(options = {}) {
@@ -1896,6 +2059,62 @@ function snapshotSummary(snapshot) {
     cacheRecords: Number(snapshot.cacheRecords || 0),
     settingsRecords: Number(snapshot.settingsRecords || 0),
   };
+}
+
+function normalizeMergeValue(value) {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (value instanceof Uint8Array) return { type: "bytes", value: Array.from(value) };
+  if (typeof value === "string") return { type: "text", value };
+  return { type: "json", value };
+}
+
+function mergeValuesEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isTextMergeCandidate(path, mime, ...values) {
+  if (mime.startsWith("text/")) return true;
+  if (["application/json", "application/markdown", "application/javascript"].includes(mime)) return true;
+  if (/\.(txt|md|json|js|mjs|css|html|csv|log)$/i.test(path)) return true;
+  return values.every((value) => value === null || value.type === "text");
+}
+
+function mergeTextValues(base, local, remote) {
+  const baseText = base?.value ?? "";
+  const localText = local?.value ?? "";
+  const remoteText = remote?.value ?? "";
+  if (localText === remoteText) return { clean: true, value: localText };
+  if (localText === baseText) return { clean: true, value: remoteText };
+  if (remoteText === baseText) return { clean: true, value: localText };
+  if (localText.startsWith(baseText) && remoteText.startsWith(baseText)) {
+    const localSuffix = localText.slice(baseText.length);
+    const remoteSuffix = remoteText.slice(baseText.length);
+    if (localSuffix && remoteSuffix && localSuffix !== remoteSuffix) {
+      return { clean: true, value: `${baseText}${localSuffix}${remoteSuffix}` };
+    }
+  }
+  return { clean: false, value: "" };
+}
+
+function newestSide(localModified, remoteModified) {
+  const localTime = Date.parse(localModified || "");
+  const remoteTime = Date.parse(remoteModified || "");
+  if (!Number.isFinite(localTime) && !Number.isFinite(remoteTime)) return "remote";
+  if (!Number.isFinite(remoteTime)) return "local";
+  if (!Number.isFinite(localTime)) return "remote";
+  return remoteTime >= localTime ? "remote" : "local";
+}
+
+function syncConflictPath(path, modified = "") {
+  const stamp = (modified && !Number.isNaN(Date.parse(modified)) ? new Date(modified) : new Date())
+    .toISOString()
+    .replace(/[:.]/g, "-");
+  const normalized = String(path || "/remote").replace(/\/$/, "");
+  const slash = normalized.lastIndexOf("/");
+  const directory = slash > 0 ? normalized.slice(0, slash) : "/";
+  const name = slash >= 0 ? normalized.slice(slash + 1) : normalized;
+  return `${directory === "/" ? "" : directory}/.sync-conflicts/${name}.${stamp}.remote`;
 }
 
 async function encryptRemoteSyncPayload(payload, passphrase) {

@@ -13,6 +13,7 @@ const calls = {
   lifecycle: 0,
   coordination: 0,
   sync: 0,
+  syncMerge: 0,
 };
 
 const os = {
@@ -123,6 +124,7 @@ const os = {
     return {
       backend: "storage-value",
       encrypted: true,
+      mergeRuleCount: 6,
       lastSuccessfulSnapshot: {
         id: "sync-smoke",
         createdAt: "2026-05-05T00:01:00.000Z",
@@ -133,6 +135,10 @@ const os = {
       },
       lastError: "",
     };
+  },
+  remoteSyncMergePolicy() {
+    calls.syncMerge += 1;
+    return { planner: "offline-first", rules: [{ scope: "user-documents" }, { scope: "package-metadata" }] };
   },
   fs: {
     join(base, name) {
@@ -154,6 +160,7 @@ assert(calls.lifecycle === 1, "settings snapshot did not read lifecycle status")
 assert(calls.recovery === 1, "settings snapshot did not read recovery status");
 assert(calls.coordination === 1, "settings snapshot did not read session coordination status");
 assert(calls.sync === 1, "settings snapshot did not read remote sync status");
+assert(calls.syncMerge === 1, "settings snapshot did not read remote sync merge policy");
 
 assert(snapshot.user === "guest", "settings snapshot user mismatch");
 assert(snapshot.home === "/home/guest", "settings snapshot home mismatch");
@@ -170,6 +177,7 @@ assert(snapshot.coordination.role === "secondary", "settings snapshot coordinati
 assert(snapshot.sync.lastSuccessfulSnapshot.fileCount === 4, "settings snapshot sync status mismatch");
 assert(snapshot.sync.lastSuccessfulSnapshot.cacheRecords === 1, "settings snapshot sync cache coverage mismatch");
 assert(snapshot.sync.lastSuccessfulSnapshot.settingsRecords === 2, "settings snapshot sync settings coverage mismatch");
+assert(snapshot.syncMerge.planner === "offline-first", "settings snapshot sync merge policy mismatch");
 
 const markup = settingsRuntimeMarkup(snapshot);
 
@@ -190,6 +198,7 @@ assert(markup.includes("<dt>Session Handoff</dt><dd>active · control · peer=pr
 assert(markup.includes("<dt>Session Recovery</dt><dd>recovered · conflicts=2</dd>"), "settings markup did not render session recovery diagnostics");
 assert(markup.includes("<dt>Sync</dt><dd>storage-value encrypted=true") && markup.includes("files=4 cache=1 settings=2</dd>"), "settings markup did not render sync summary");
 assert(markup.includes("<dt>Last Snapshot</dt><dd>") && markup.includes("· files=4 · cache=1 · settings=2</dd>"), "settings markup did not render remote sync panel");
+assert(markup.includes("<dt>Merge Rules</dt><dd>6</dd>"), "settings markup did not render remote sync merge rules");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");

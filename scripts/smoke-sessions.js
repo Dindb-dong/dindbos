@@ -229,8 +229,50 @@ assert(!syncSnapshot.ciphertext.includes("settings coverage"), "remote sync snap
 assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.fileCount === syncSnapshot.fileCount, "remote sync status did not record last snapshot");
 assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.cacheRecords === syncSnapshot.cacheRecords, "remote sync status did not record cache coverage");
 assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.settingsRecords === syncSnapshot.settingsRecords, "remote sync status did not record settings coverage");
+const mergePolicy = tabB.remoteSyncMergePolicy();
+assert(mergePolicy.rules.some((rule) => rule.scope === "user-documents"), "remote sync merge policy missing user document rule");
+assert(mergePolicy.rules.some((rule) => rule.scope === "package-metadata"), "remote sync merge policy missing package metadata rule");
+const mergePlan = tabB.planRemoteSyncMerge([
+  {
+    path: "/home/guest/Documents/notes.txt",
+    mime: "text/plain",
+    base: "title\n",
+    local: "title\nlocal\n",
+    remote: "title\nremote\n",
+  },
+  {
+    path: "/var/lib/dindbos/app-state/api-lab.json",
+    base: { count: 1 },
+    local: { count: 2 },
+    remote: { count: 3 },
+  },
+  {
+    path: "/var/lib/dindbos/packages/session-pkg.json",
+    base: "{}",
+    local: "{\"version\":\"1.0.0\"}",
+    remote: "{\"version\":\"2.0.0\"}",
+  },
+  {
+    path: "/var/lib/dindbos/search/index.json",
+    remote: "{\"documents\":1}",
+  },
+  {
+    path: "/etc/dindbos/settings.json",
+    base: "{\"theme\":\"light\"}",
+    local: "{\"theme\":\"blue\"}",
+    remote: "{\"theme\":\"dark\"}",
+    localModified: "2026-05-05T00:01:00.000Z",
+    remoteModified: "2026-05-05T00:02:00.000Z",
+  },
+]);
+assert(mergePlan.summary["three-way-merge"] === 1, "remote sync merge planner did not merge text documents");
+assert(mergePlan.changes[0].merged.includes("local\nremote\n"), "remote sync text merge did not preserve both suffixes");
+assert(mergePlan.summary["conflict-copy"] === 1, "remote sync merge planner did not preserve app-state conflicts");
+assert(mergePlan.summary.refuse === 1, "remote sync merge planner did not refuse package metadata conflicts");
+assert(mergePlan.summary.rebuild === 1, "remote sync merge planner did not rebuild search indexes");
+assert(mergePlan.summary["last-writer-wins"] === 1 && mergePlan.changes[4].winner === "remote", "remote sync merge planner did not apply settings last-writer-wins");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge");
 
 function createStorage(values = new Map()) {
   return {
