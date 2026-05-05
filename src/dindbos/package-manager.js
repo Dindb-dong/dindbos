@@ -8,6 +8,7 @@ const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
 const PACKAGE_STATE_ROOT = "/var/lib/dindbos/package-state";
 const PACKAGE_CACHE_ROOT = "/var/cache/dindbos/packages";
 const PACKAGE_TEMP_ROOT = "/tmp/dindbos/packages";
+const PACKAGE_STAGING_ROOT = "/tmp/dindbos/package-staging";
 const PACKAGE_SOURCE_DIR = "/opt/dindbos/packages";
 const PACKAGE_TEMPLATE_DIR = "/opt/dindbos/templates";
 const PACKAGE_INSTALL_ROOT = "/opt";
@@ -408,7 +409,7 @@ export class PackageManager {
     this.reservePackageInstallQuota(record, manifest.files || [], { remote: true });
     return this.runPackageTransactionAsync(record, previous ? "update" : "install", async () => {
       this.ensurePackageRoots();
-      this.ensurePackageDirectory(record);
+      this.preparePackageStaging(record);
       await this.installDeclaredFiles(record, manifest.files || [], sourceUrl, fetcher);
       this.activatePackage(record, previous, previous ? "update" : "install");
       this.emitPackageLifecycle(previous ? "update" : "install", record, { previousVersion: previous?.version || "" });
@@ -423,7 +424,7 @@ export class PackageManager {
     this.reservePackageInstallQuota(record, manifest.files || []);
     return this.runPackageTransaction(record, previous ? "update" : "install", () => {
       this.ensurePackageRoots();
-      this.ensurePackageDirectory(record);
+      this.preparePackageStaging(record);
       this.installDeclaredInlineFiles(record, manifest.files || []);
       this.activatePackage(record, previous, previous ? "update" : "install");
       this.emitPackageLifecycle(previous ? "update" : "install", record, { previousVersion: previous?.version || "" });
@@ -955,6 +956,7 @@ export class PackageManager {
       "/tmp",
       "/tmp/dindbos",
       PACKAGE_TEMP_ROOT,
+      PACKAGE_STAGING_ROOT,
       "/opt/dindbos",
       PACKAGE_SOURCE_DIR,
       PACKAGE_TEMPLATE_DIR,
@@ -1099,6 +1101,60 @@ export class PackageManager {
     );
   }
 
+  preparePackageStaging(record) {
+    const stagingPath = this.packageStagingPath(record);
+    if (this.os.fs.exists(stagingPath)) this.os.fs.remove(stagingPath, "/", { recursive: true }, this.system);
+    this.os.fs.createMount(stagingPath, {
+      mountType: "pkgfs",
+      handleName: `${record.id}:staging`,
+      owner: "root",
+      group: "root",
+      permissions: "dr-xr-xr-x",
+      transient: true,
+    }, this.system);
+    record.stagingPath = stagingPath;
+    this.os.fs.emitChange?.("package-staging", stagingPath);
+    this.writePackageImageMetadata(record, stagingPath);
+    this.writeNpmDependencyRecords(record);
+    this.ensureNamespaceRoots(record);
+    return stagingPath;
+  }
+
+  writePackageImageMetadata(record, rootPath = record.installPath) {
+    this.os.fs.atomicWriteOrCreateFile(
+      `${rootPath}/dindbos.app.json`,
+      `${JSON.stringify(record.originalManifest, null, 2)}\n`,
+      "/",
+      { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
+      this.system,
+    );
+    this.os.fs.atomicWriteOrCreateFile(
+      `${rootPath}/PACKAGE.md`,
+      [`# ${record.name}`, "", record.description || "No package description.", ""].join("\n"),
+      "/",
+      { mime: "text/markdown", owner: "root", group: "root", permissions: "-rw-r--r--" },
+      this.system,
+    );
+  }
+
+  activatePackageRoot(record) {
+    const stagingPath = record.stagingPath || "";
+    if (!stagingPath) return null;
+    if (!this.os.fs.exists(stagingPath)) throw new Error(`pkg: staging root missing for ${record.id}`);
+    if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
+    const node = this.os.fs.move(stagingPath, record.installPath, "/", this.system);
+    node.type = "mount";
+    node.mountType = "pkgfs";
+    node.handleName = record.id;
+    node.permissions = "dr-xr-xr-x";
+    node.owner = "root";
+    node.group = "root";
+    node.transient = false;
+    delete record.stagingPath;
+    this.os.fs.emitChange?.("package-image-activate", record.installPath);
+    return node;
+  }
+
   ensurePackageDirectory(record) {
     const existing = this.os.fs.resolve(record.installPath);
     if (!existing) {
@@ -1120,21 +1176,7 @@ export class PackageManager {
       existing.transient = false;
       this.os.fs.emitChange?.("package-image-mount", record.installPath);
     }
-    this.os.fs.atomicWriteOrCreateFile(
-      `${record.installPath}/dindbos.app.json`,
-      `${JSON.stringify(record.originalManifest, null, 2)}\n`,
-      "/",
-      { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
-      this.system,
-    );
-    this.os.fs.atomicWriteOrCreateFile(
-      `${record.installPath}/PACKAGE.md`,
-      [`# ${record.name}`, "", record.description || "No package description.", ""].join("\n"),
-      "/",
-      { mime: "text/markdown", owner: "root", group: "root", permissions: "-rw-r--r--" },
-      this.system,
-    );
-    this.writeNpmDependencyRecords(record);
+    this.writePackageImageMetadata(record);
     this.ensureNamespaceRoots(record);
   }
 
@@ -1186,7 +1228,7 @@ export class PackageManager {
 
   writeNpmDependencyRecords(record) {
     Object.entries(record.dependencies?.npm || {}).forEach(([name, dependency]) => {
-      const path = this.resolvePackageFilePath(record, `node_modules/${name}/package.json`);
+      const path = this.resolvePackageFilePath(record, `node_modules/${name}/package.json`, this.packageWriteRoot(record));
       this.ensureParentDirectories(path);
       this.os.fs.atomicWriteOrCreateFile(
         path,
@@ -1228,19 +1270,20 @@ export class PackageManager {
   }
 
   writePackageFile(record, file, content) {
-    const path = this.resolvePackageFilePath(record, file.path);
-    this.ensureParentDirectories(path);
+    const finalPath = this.resolvePackageFilePath(record, file.path);
+    const writePath = this.resolvePackageFilePath(record, file.path, this.packageWriteRoot(record));
+    this.ensureParentDirectories(writePath);
     const metadata = {
-      mime: file.mime || mimeFromName(path),
+      mime: file.mime || mimeFromName(finalPath),
       owner: "root",
       group: "root",
       permissions: file.permissions || "-rw-r--r--",
     };
-    if (content instanceof Uint8Array) this.os.fs.atomicWriteOrCreateFileBytes(path, content, "/", metadata, this.system);
-    else this.os.fs.atomicWriteOrCreateFile(path, content, "/", metadata, this.system);
+    if (content instanceof Uint8Array) this.os.fs.atomicWriteOrCreateFileBytes(writePath, content, "/", metadata, this.system);
+    else this.os.fs.atomicWriteOrCreateFile(writePath, content, "/", metadata, this.system);
     record.files.push({
-      path,
-      mime: file.mime || mimeFromName(path),
+      path: finalPath,
+      mime: file.mime || mimeFromName(finalPath),
       sourceUrl: file.sourceUrl || "",
       integrity: file.integrity || "",
       size: contentByteLength(content),
@@ -1258,13 +1301,22 @@ export class PackageManager {
     });
   }
 
-  resolvePackageFilePath(record, path) {
+  packageWriteRoot(record) {
+    return record.stagingPath || record.installPath;
+  }
+
+  packageStagingPath(record) {
+    return `${PACKAGE_STAGING_ROOT}/${record.id}-${Date.now().toString(36)}`;
+  }
+
+  resolvePackageFilePath(record, path, rootPath = record.installPath) {
     const relative = String(path || "").trim();
     if (!relative || relative.startsWith("/") || relative.split("/").includes("..")) {
       throw new Error(`pkg: invalid package file path: ${path || ""}`);
     }
-    const resolved = this.os.fs.normalize(relative, record.installPath);
-    if (resolved !== record.installPath && resolved.startsWith(`${record.installPath}/`)) return resolved;
+    const root = this.os.fs.normalize(rootPath || record.installPath);
+    const resolved = this.os.fs.normalize(relative, root);
+    if (resolved !== root && resolved.startsWith(`${root}/`)) return resolved;
     throw new Error(`pkg: file escapes package root: ${path}`);
   }
 
@@ -1337,6 +1389,7 @@ export class PackageManager {
     const activation = this.createPackageActivation(record, operation);
     this.emitPackageActivation("start", record, activation);
     try {
+      this.runPackageActivationPhase(activation, record, "package-root", () => this.activatePackageRoot(record));
       this.runPackageActivationPhase(activation, record, "package-record", () => this.writePackageRecord(record));
       this.runPackageActivationPhase(activation, record, "launcher", () => this.installLauncher(record));
       this.runPackageActivationPhase(activation, record, "app-registry", () => this.registerPackageApp(record));
@@ -1407,9 +1460,10 @@ export class PackageManager {
   }
 
   writePackageRecord(record) {
+    const { stagingPath, ...persistedRecord } = record;
     this.os.fs.atomicWriteOrCreateFile(
       this.packageRecordPath(record.id),
-      `${JSON.stringify(record, null, 2)}\n`,
+      `${JSON.stringify(persistedRecord, null, 2)}\n`,
       "/",
       { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
       this.system,

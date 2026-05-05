@@ -60,10 +60,12 @@ assert(os.fs.exists("/var/lib/dindbos/packages/rollback-demo.json"), "valid pack
 assert(os.fs.exists("/usr/share/applications/Rollback Demo.app"), "valid package launcher missing");
 assert(os.apps.apps.has("rollback-demo"), "valid package app was not registered");
 assert(lifecycleEvents.includes("install:rollback-demo:rollback-demo"), "app:install lifecycle event missing");
-["package-record", "launcher", "app-registry", "services"].forEach((phase) => {
+["package-root", "package-record", "launcher", "app-registry", "services"].forEach((phase) => {
   assert(activationEvents.includes(`phase-complete:rollback-demo:${phase}`), `package activation phase missing: ${phase}`);
 });
 assert(activationEvents.includes("complete:rollback-demo:complete"), "package activation completion event missing");
+assert(!packages.info("rollback-demo").stagingPath, "package record persisted staging path");
+assert(os.fs.list("/tmp/dindbos/package-staging").length === 0, "successful package activation left staging root entries");
 
 await assertRejects(
   () => packages.install(packageManifest("broken-pkg", "0.1.0", [
@@ -96,6 +98,7 @@ await assertRejects(
 assert(activationFailureEvents.includes("phase-error:activation-fail:app-registry"), "activation failure did not report app-registry phase error");
 assert(activationFailureEvents.includes("error:activation-fail:error"), "activation failure did not report activation error");
 assert(!activationFailOs.fs.exists("/opt/activation-fail"), "failed activation left install root");
+assert(activationFailOs.fs.list("/tmp/dindbos/package-staging").length === 0, "failed activation left staging root entries");
 assert(!activationFailOs.fs.exists("/var/lib/dindbos/packages/activation-fail.json"), "failed activation left package record");
 assert(!activationFailOs.fs.exists("/usr/share/applications/Activation Fail.app"), "failed activation left launcher");
 assert(!activationFailOs.apps.apps.has("activation-fail"), "failed activation registered app");
