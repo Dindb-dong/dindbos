@@ -216,10 +216,22 @@ assert(namespaceMounts.includes("/var/lib/dindbos/package-state/namespace-probe 
 assert(namespaceMounts.includes("namespace=package:namespace-probe"), "child /proc mounts missing namespace label");
 const namespaceLimits = JSON.parse(os.fs.readFile(`/proc/${namespaceChild.pid}/limits`));
 assert(namespaceLimits.processGroup === "package:namespace-probe", "child /proc limits missing process group");
+const namespaceEndpoint = os.ipcEndpoints.get("namespace-target.echo");
+assert(namespaceEndpoint?.objectId && namespaceEndpoint?.handleId, "IPC endpoint did not receive kernel object and handle ids");
+assert(os.objects.get(namespaceEndpoint.objectId)?.type === "ipc", "IPC endpoint kernel object type mismatch");
+assert(os.objects.getHandle(namespaceEndpoint.handleId)?.rights.includes("receive"), "IPC endpoint handle missing receive right");
+assert(JSON.parse(os.fs.readFile(`/proc/${namespaceTargetWindow.pid}/handles.json`)).some((entry) => entry.id === namespaceEndpoint.handleId && entry.objectType === "ipc"), "IPC endpoint handle missing from owner procfs handles");
+assert(os.sendIpcMessage(os.processes.get(namespaceTargetWindow.pid), "namespace-target.echo", { ok: true }).ok === true, "IPC endpoint handle blocked allowed owner send");
+os.objects.revokeHandle(namespaceEndpoint.handleId, "ipc-handle-smoke");
+await assertRejects(
+  () => os.sendIpcMessage(os.processes.get(namespaceTargetWindow.pid), "namespace-target.echo", { stale: true }),
+  "stale handle",
+);
 os.processes.kill(namespaceChild.pid, "namespace-test-cleanup");
 os.processes.kill(namespaceProbeWindow.pid, "namespace-test-cleanup");
 os.processes.kill(namespaceTargetWindow.pid, "namespace-test-cleanup");
 assert(!os.ipcEndpoints.has("namespace-target.echo"), "package IPC endpoint remained after owner process exit");
+assert(os.objects.get(namespaceEndpoint.objectId)?.status === "revoked", "IPC endpoint kernel object was not revoked after owner process exit");
 packages.remove("namespace-probe");
 packages.remove("namespace-target");
 
