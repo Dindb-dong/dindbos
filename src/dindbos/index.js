@@ -59,6 +59,7 @@ const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
 const REMOTE_SYNC_SNAPSHOT_KEY = "dindbos:remote-sync:last-snapshot";
 const REMOTE_SYNC_APPLY_STATUS_PATH = "/var/run/dindbos/remote-sync-apply.json";
 const PACKAGE_PREFERENCES_DIR = "/var/lib/dindbos/package-preferences";
+const COMPANION_PERMISSIONS_PATH = "/etc/dindbos/companions.json";
 const WELL_KNOWN_GROUP_IDS = { root: 0, admins: 10, users: 100, packages: 101 };
 const WELL_KNOWN_USER_IDS = { root: 0, guest: 1000 };
 
@@ -2005,6 +2006,102 @@ export class DindbOS {
     return entry;
   }
 
+  companionPermissions() {
+    if (!this.fs.exists(COMPANION_PERMISSIONS_PATH)) return { version: 1, updatedAt: "", companions: {} };
+    const parsed = safeJson(this.fs.readFile(COMPANION_PERMISSIONS_PATH, "/", this.permissions.systemPrincipal()), null);
+    if (!parsed || parsed.version !== 1 || !parsed.companions || typeof parsed.companions !== "object") {
+      return { version: 1, updatedAt: "", companions: {} };
+    }
+    const companions = {};
+    Object.entries(parsed.companions).forEach(([key, value]) => {
+      const identity = sanitizeIdentifier(value?.identity || key, "");
+      if (!identity) return;
+      companions[identity] = normalizeCompanionPermission(identity, value);
+    });
+    return {
+      version: 1,
+      updatedAt: String(parsed.updatedAt || ""),
+      companions,
+    };
+  }
+
+  listCompanionPermissions() {
+    return Object.values(this.companionPermissions().companions)
+      .sort((left, right) => left.identity.localeCompare(right.identity))
+      .map((entry) => ({ ...entry, capabilities: [...entry.capabilities] }));
+  }
+
+  companionPermissionStatus(identity) {
+    const id = sanitizeIdentifier(identity, "");
+    if (!id) return null;
+    const record = this.companionPermissions().companions[id] || null;
+    return record ? { ...record, capabilities: [...record.capabilities] } : null;
+  }
+
+  grantCompanionPermission(identity, protocolVersion, capabilities = [], context = {}) {
+    const id = sanitizeIdentifier(identity, "");
+    if (!id) throw new Error("companion: identity is required");
+    const protocol = String(protocolVersion || "").trim();
+    if (!protocol) throw new Error("companion: protocol version is required");
+    this.assertAdminOperation("companion-permission:grant", { principal: context.principal, target: id });
+    const permissions = this.companionPermissions();
+    permissions.companions[id] = normalizeCompanionPermission(id, {
+      identity: id,
+      protocolVersion: protocol,
+      capabilities,
+      approved: true,
+      grantedBy: context.principal?.user || this.session.user || "guest",
+      grantedAt: new Date().toISOString(),
+      revokedAt: "",
+    });
+    return this.writeCompanionPermissions(permissions).companions[id];
+  }
+
+  revokeCompanionPermission(identity, context = {}) {
+    const id = sanitizeIdentifier(identity, "");
+    if (!id) throw new Error("companion: identity is required");
+    this.assertAdminOperation("companion-permission:revoke", { principal: context.principal, target: id });
+    const permissions = this.companionPermissions();
+    const existing = permissions.companions[id] || normalizeCompanionPermission(id, { identity: id });
+    permissions.companions[id] = {
+      ...existing,
+      approved: false,
+      revokedBy: context.principal?.user || this.session.user || "guest",
+      revokedAt: new Date().toISOString(),
+    };
+    return this.writeCompanionPermissions(permissions).companions[id];
+  }
+
+  isCompanionApproved(identity, protocolVersion = "", capability = "") {
+    const record = this.companionPermissionStatus(identity);
+    if (!record || !record.approved) return false;
+    if (protocolVersion && record.protocolVersion !== String(protocolVersion || "").trim()) return false;
+    if (capability) return hasCompanionCapability(record.capabilities, capability);
+    return true;
+  }
+
+  writeCompanionPermissions(record) {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/etc", "root", system);
+    this.ensureSystemDirectory("/etc/dindbos", "root", system);
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      companions: {},
+    };
+    Object.entries(record.companions || {}).forEach(([key, value]) => {
+      const identity = sanitizeIdentifier(value?.identity || key, "");
+      if (identity) payload.companions[identity] = normalizeCompanionPermission(identity, value);
+    });
+    this.fs.writeOrCreateFile(COMPANION_PERMISSIONS_PATH, `${JSON.stringify(payload, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    return payload;
+  }
+
   packagePreferences(userName = this.session.user) {
     const user = sanitizeUserName(userName || this.session.user);
     const path = this.packagePreferencesPath(user);
@@ -3057,6 +3154,30 @@ function normalizePreferenceValue(value) {
   } catch {
     return String(value ?? "");
   }
+}
+
+function normalizeCompanionPermission(identity, value = {}) {
+  return {
+    identity,
+    protocolVersion: String(value.protocolVersion || "").trim(),
+    capabilities: normalizeCompanionCapabilities(value.capabilities),
+    approved: Boolean(value.approved),
+    grantedBy: String(value.grantedBy || ""),
+    grantedAt: String(value.grantedAt || ""),
+    revokedBy: String(value.revokedBy || ""),
+    revokedAt: String(value.revokedAt || ""),
+  };
+}
+
+function normalizeCompanionCapabilities(capabilities) {
+  return [...new Set((Array.isArray(capabilities) ? capabilities : String(capabilities || "").split(","))
+    .map((capability) => String(capability || "").trim())
+    .filter(Boolean))].sort();
+}
+
+function hasCompanionCapability(capabilities, capability) {
+  const requested = String(capability || "").trim().toLowerCase();
+  return normalizeCompanionCapabilities(capabilities).some((entry) => entry.toLowerCase() === requested);
 }
 
 function sanitizeIdentifier(value, fallback) {

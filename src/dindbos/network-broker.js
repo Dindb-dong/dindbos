@@ -98,11 +98,21 @@ export class NetworkBroker {
   }
 
   companionStatus(companion = this.rawSocketCompanion || this.os.networkRawSocketCompanion || null) {
+    const identity = companion?.identity || "";
+    const protocolVersion = companion?.protocolVersion || "";
+    const configuredCapabilities = [...(companion?.capabilities || [])].map(String);
+    const permission = this.os.companionPermissionStatus?.(identity) || null;
+    const permissionMatches = permission
+      ? Boolean(permission.approved && permission.protocolVersion === protocolVersion)
+      : true;
+    const capabilities = permission && permission.approved
+      ? configuredCapabilities.filter((capability) => permission.capabilities.some((entry) => entry.toLowerCase() === capability.toLowerCase()))
+      : configuredCapabilities;
     return {
-      identity: companion?.identity || "",
-      protocolVersion: companion?.protocolVersion || "",
-      approved: Boolean(companion?.approved && companion?.identity === "networkd" && companion?.protocolVersion === "dindbos-networkd-v1"),
-      capabilities: [...(companion?.capabilities || [])].map(String),
+      identity,
+      protocolVersion,
+      approved: Boolean(companion?.approved && identity === "networkd" && protocolVersion === "dindbos-networkd-v1" && permissionMatches),
+      capabilities,
       rawTcpUdp: companion ? "companion-gated" : "unsupported-browser-only",
     };
   }
