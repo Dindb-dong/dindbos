@@ -431,7 +431,9 @@ Implementation tasks:
 - Add per-user cache.
 - Already present: package trust changes through `pkg trust add/remove` require an administrator principal.
 - Already present: package trust allow/deny decisions are recorded in `/var/log/dindbos/security-audit.log`.
-- Add administrator-only operations for system settings and companion permissions.
+- Already present: system settings storage-management operations through sandboxed `storage.manage` and shell `storage flush` / `storage persist` / `resetfs` require an administrator principal.
+- Already present: system settings storage-management allow/deny decisions are recorded in `/var/log/dindbos/security-audit.log`.
+- Add administrator-only operations for companion permissions.
 - Add audit logs for permission escalation, broader denied access, and companion pairing.
 
 Verification:
@@ -442,6 +444,7 @@ Verification:
 - Already present: `npm run smoke:permissions` verifies app state does not leak across users for the same app id, and `npm run smoke:packages` verifies package uninstall cleans the app's per-user state record.
 - Already present: `npm run smoke:sessions` and `npm run smoke:shell` verify non-admin package trust mutation denial, admin package trust mutation allowance, and security audit logging for both decisions.
 - Already present: `npm run smoke:window-manager` verifies per-user window placement persistence and no layout leakage across session users.
+- Already present: `npm run smoke:permissions` and `npm run smoke:shell` verify non-admin system storage-management denial, admin storage-management allowance, and security audit logging for both decisions.
 
 Completion criteria:
 
