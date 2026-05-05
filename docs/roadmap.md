@@ -307,13 +307,14 @@ Implementation tasks:
 - Already present: WASI `fd_write` for stdout/stderr writes through the shared descriptor table instead of a separate direct output path.
 - Already present: WASI `fd_read` reads through the shared descriptor table, including stdin supplied by shell pipelines and `runFile({ stdin })`.
 - Already present: WASI programs receive a preopened cwd descriptor and can use `path_open` plus `fd_read`/`fd_write`/`fd_close` for scoped VFS file read/write through opened descriptors.
+- Already present: WASI `path_open` maps first-pass `rightsBase` read/write rights onto descriptor read/write checks.
 - Already present: shell pipelines pass segment output through transient pipe descriptors owned by a short-lived `shell:pipeline` process while preserving existing shell pipeline output semantics.
 - Already present: `fd.ioctl` exposes first-pass TTY control requests for window size and `isatty` checks, returning `ENOTTY` for non-TTY descriptors.
 - Already present: `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom` can be opened through descriptor syscalls.
 - Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
 - Add `/dev/clipboard` where browser policy allows.
 - Add pseudo-terminal sessions for Terminal.app so interactive programs can read/write through a TTY-like device.
-- Broaden WASI descriptor coverage beyond the first scoped `path_open` subset, including richer rights/flags handling and directory operations.
+- Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags subset, including directory operations.
 
 Verification:
 
@@ -324,7 +325,8 @@ Verification:
 - Already present: `npm run smoke:descriptors` verifies `fd.ioctl` TTY size get/set, stdout `isatty`, and non-TTY `ENOTTY` behavior.
 - Already present: `npm run smoke:shell` verifies shell pipeline output is delivered through descriptor-backed transient pipeline processes and that descriptor/procfs cleanup runs after pipeline exit.
 - Already present: `npm run smoke:descriptors` verifies `/dev/zero`, `/dev/random`, and `/dev/urandom` report the actual pseudo-device byte count from `fd.read.bytes`.
-- Add smoke coverage for multi-process pipe chaining and richer WASI descriptor rights/flags.
+- Already present: `npm run smoke:wasm` verifies read-only WASI `rightsBase` denies descriptor writes with `EBADF`.
+- Add smoke coverage for multi-process pipe chaining and WASI directory operations.
 
 Completion criteria:
 
