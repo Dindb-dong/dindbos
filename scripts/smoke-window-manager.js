@@ -107,6 +107,18 @@ function bootOs() {
   return {
     permissions,
     fs: new VirtualFileSystem(null, { home: "/home/guest", policy: permissions }),
+    clipboard: createTestClipboard(),
+  };
+}
+
+function createTestClipboard() {
+  let text = "";
+  return {
+    readText: () => text,
+    writeText: (value = "") => {
+      text = String(value);
+      return { bytes: new TextEncoder().encode(text).byteLength };
+    },
   };
 }
 
@@ -304,6 +316,16 @@ async function runLiveWindowStateSmoke() {
     const globalRoute = liveManager.routeShortcutEvent({ ctrlKey: true, shiftKey: true, key: "p", target: { tagName: "INPUT" }, preventDefault: () => {} });
     assert(globalRoute.handled && globalRoute.scope === "global", "global shortcut scope did not route from text entry");
     assert(JSON.parse(liveOs.fs.readFile("/proc/compositor")).shortcutRouter.routed >= 3, "/proc/compositor did not expose shortcut router state");
+    const copyRoute = liveManager.routeClipboardEvent("copy", { target: { tagName: "TEXTAREA" } }, { text: "copied text" });
+    assert(copyRoute.handled && copyRoute.bytes === 11 && liveOs.clipboard.readText() === "copied text", "compositor clipboard copy policy did not write runtime clipboard");
+    const pasteRoute = liveManager.routeClipboardEvent("paste", { target: { tagName: "INPUT" } });
+    assert(pasteRoute.handled && pasteRoute.textEntry && pasteRoute.bytes === 11, "compositor clipboard paste policy did not route to text entry");
+    liveManager.activeWindowId = "";
+    const deniedPaste = liveManager.routeClipboardEvent("paste", {}, { requireContent: true });
+    assert(!deniedPaste.handled && deniedPaste.deniedReason === "no-focused-window", "compositor clipboard paste did not deny missing focused window");
+    liveManager.activeWindowId = "browser";
+    const clipboardStatus = JSON.parse(liveOs.fs.readFile("/proc/compositor")).clipboardRouter;
+    assert(clipboardStatus.copied === 1 && clipboardStatus.pasted === 1 && clipboardStatus.denied >= 1, "/proc/compositor did not expose clipboard router state");
     task.titlebar.listeners.pointerdown({
       pointerId: 7,
       clientX: 10,
