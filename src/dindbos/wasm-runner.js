@@ -166,6 +166,29 @@ export class WasmRunner {
             return errnoNumber(error.code || "EIO");
           }
         },
+        fd_readdir: (fd, bufferPtr, bufferLength, cookie, nreadPtr) => {
+          try {
+            const entries = this.os.descriptors.readDirectory(process, { fd, cookie: Number(cookie || 0) }, context);
+            let written = 0;
+            const limit = Number(bufferLength || 0);
+            for (const entry of entries) {
+              const name = new TextEncoder().encode(entry.name);
+              const recordLength = 24 + name.length;
+              if (written + recordLength > limit) break;
+              const base = Number(bufferPtr || 0) + written;
+              writeU64(base, BigInt(entry.cookie));
+              writeU64(base + 8, BigInt(entry.cookie));
+              writeU32(base + 16, name.length);
+              readMemory(base + 20, 1)[0] = wasiFileType(entry.type);
+              writeMemory(base + 24, name);
+              written += recordLength;
+            }
+            writeU32(nreadPtr, written);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
         path_open: (dirfd, dirflags, pathPtr, pathLength, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) => {
           void dirflags;
           try {
@@ -373,6 +396,13 @@ function wasiError(code, message) {
   const error = new Error(message);
   error.code = code;
   return error;
+}
+
+function wasiFileType(type) {
+  if (type === "directory") return 3;
+  if (type === "file") return 4;
+  if (type === "link") return 7;
+  return 0;
 }
 
 function cStringBytes(values) {
