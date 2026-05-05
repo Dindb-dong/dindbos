@@ -168,12 +168,13 @@ export class WasmRunner {
         },
         path_open: (dirfd, dirflags, pathPtr, pathLength, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) => {
           void dirflags;
-          void rightsBase;
-          void rightsInheriting;
           try {
             const path = readString(pathPtr, pathLength);
+            const options = wasiOpenOptions(Number(oflags || 0), BigInt(rightsBase || 0), BigInt(rightsInheriting || 0), Number(fdflags || 0));
             const descriptor = this.os.descriptors.openAt(process, Number(dirfd), path, {
-              flags: wasiOpenFlags(Number(oflags || 0), Number(fdflags || 0)),
+              flags: options.flags,
+              rights: options.rights,
+              wasi: options.wasi,
             }, context);
             writeU32(openedFdPtr, descriptor.fd);
             return 0;
@@ -326,13 +327,52 @@ function errnoNumber(code) {
   return values[code] || 1;
 }
 
-function wasiOpenFlags(oflags, fdflags) {
+const WASI_RIGHT_FD_READ = 1n << 1n;
+const WASI_RIGHT_FD_WRITE = 1n << 6n;
+
+function wasiOpenOptions(oflags, rightsBase, rightsInheriting, fdflags) {
+  const rightsProvided = rightsBase !== 0n || rightsInheriting !== 0n;
+  const inferred = inferredWasiRights(oflags, fdflags);
+  const rights = rightsProvided
+    ? {
+      read: Boolean(rightsBase & WASI_RIGHT_FD_READ),
+      write: Boolean(rightsBase & WASI_RIGHT_FD_WRITE),
+    }
+    : inferred;
+  return {
+    flags: wasiOpenFlags(oflags, fdflags, rights),
+    rights,
+    wasi: {
+      oflags,
+      fdflags,
+      rightsBase: rightsBase.toString(),
+      rightsInheriting: rightsInheriting.toString(),
+    },
+  };
+}
+
+function inferredWasiRights(oflags, fdflags) {
   const create = Boolean(oflags & 1);
   const truncate = Boolean(oflags & 8);
   const append = Boolean(fdflags & 1);
-  if (append) return "a+";
-  if (create || truncate) return "w+";
+  if (create || truncate || append) return { read: true, write: true };
+  return { read: true, write: false };
+}
+
+function wasiOpenFlags(oflags, fdflags, rights) {
+  const create = Boolean(oflags & 1);
+  const truncate = Boolean(oflags & 8);
+  const append = Boolean(fdflags & 1);
+  if (append) return rights.read ? "a+" : "a";
+  if (create || truncate) return rights.read ? "w+" : "w";
+  if (rights.write && !rights.read) throw wasiError("EINVAL", "wasi path_open: write-only descriptors require create, truncate, or append flags");
   return "r";
+}
+
+function wasiError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
 }
 
 function cStringBytes(values) {
