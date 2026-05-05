@@ -686,6 +686,10 @@ assert(packageFsck.problems.some((entry) => entry.code === "package-root-missing
 assert(packageFsck.problems.some((entry) => entry.code === "package-record-missing" && entry.path === "/opt/orphan-pkg"), "package fsck did not report orphan pkgfs root");
 const packageFsckShell = await shell.executeAsync("fsck --dry-run");
 assert(packageFsckShell.output.includes("package-root-missing") && packageFsckShell.output.includes("package-record-missing"), `shell fsck did not include package drift: ${packageFsckShell.output}`);
+const packageFsckRepair = packages.checkIntegrity({ repair: true, dryRun: false });
+assert(packageFsckRepair.repairs.some((entry) => entry.kind === "remove-orphan-pkgfs" && entry.path === "/opt/orphan-pkg"), "package fsck repair did not report orphan pkgfs removal");
+assert(!os.fs.exists("/opt/orphan-pkg"), "package fsck repair did not remove orphan pkgfs root");
+assert(!packageFsckRepair.repairs.some((entry) => entry.path === apiLab.installPath), "package fsck repair tried to recreate/remove missing package root");
 os.fs.root = beforePackageFsck;
 const apiWindowAgain = os.apps.launch("api-lab");
 await apiWindowAgain.rendered;
