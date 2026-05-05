@@ -13,6 +13,8 @@ export class PersistentStorage {
     this.indexedDB = options.indexedDB || safeIndexedDB();
     this.opfsProvider = options.opfsProvider || (options.opfsRoot ? async () => options.opfsRoot : safeOpfsProvider());
     this.quotaBytes = Math.max(0, Number(options.quotaBytes || 0));
+    this.storageClassQuotas = normalizeStorageClassQuotas(options.storageClassQuotas || {});
+    this.storageClassUsage = new Map();
     this.opfsRootPromise = null;
     this.savedInodeHashes = new Map();
     this.savedContentHashes = new Map();
@@ -40,6 +42,8 @@ export class PersistentStorage {
       lastStorageTransactionId: "",
       storageRecoveryDecision: null,
       quotaLimitBytes: this.quotaBytes,
+      storageClassQuotas: { ...this.storageClassQuotas },
+      storageClassUsage: {},
       lastQuotaReservation: null,
     };
   }
@@ -620,10 +624,13 @@ export class PersistentStorage {
   }
 
   reserveStorageBytes(requiredBytes, details = {}) {
+    const storageClass = storageClassForReservation(details);
     const quota = Math.max(0, Number(details.quotaBytes || this.quotaBytes || this.lastStatus.quota || 0));
     const usage = Math.max(0, Number(details.usageBytes ?? this.lastStatus.usage ?? 0));
     const required = Math.max(0, Number(requiredBytes || 0));
-    if (!quota) {
+    const classQuota = Math.max(0, Number(details.storageClassQuotaBytes ?? this.storageClassQuotas[storageClass] ?? 0));
+    const classUsage = Math.max(0, Number(details.storageClassUsageBytes ?? this.storageClassUsage.get(storageClass) ?? 0));
+    if (!quota && !classQuota) {
       this.lastStatus = {
         ...this.lastStatus,
         lastQuotaReservation: null,
@@ -631,29 +638,53 @@ export class PersistentStorage {
       return true;
     }
     const available = Math.max(0, quota - usage);
-    const allowed = required <= available;
+    const classAvailable = Math.max(0, classQuota - classUsage);
+    const globalAllowed = !quota || required <= available;
+    const classAllowed = !classQuota || required <= classAvailable;
+    const allowed = globalAllowed && classAllowed;
+    const reason = allowed ? "" : classAllowed ? "quota-exceeded" : "storage-class-quota-exceeded";
     const reservation = {
       requiredBytes: required,
       usageBytes: usage,
       quotaBytes: quota,
       availableBytes: available,
+      storageClass,
+      storageClassUsageBytes: classUsage,
+      storageClassQuotaBytes: classQuota,
+      storageClassAvailableBytes: classAvailable,
       allowed,
-      reason: allowed ? "" : "quota-exceeded",
+      reason,
       at: new Date().toISOString(),
     };
     this.lastStatus = {
       ...this.lastStatus,
       quotaLimitBytes: quota,
+      storageClassQuotas: { ...this.storageClassQuotas },
       lastQuotaReservation: reservation,
     };
     if (allowed) {
-      this.recordStorageJournal("quota-reserved", details);
+      if (storageClass && classQuota && details.trackStorageClassUsage !== false) {
+        this.storageClassUsage.set(storageClass, classUsage + required);
+        this.lastStatus = {
+          ...this.lastStatus,
+          storageClassUsage: Object.fromEntries(this.storageClassUsage),
+          lastQuotaReservation: {
+            ...reservation,
+            storageClassReservedBytes: classUsage + required,
+          },
+        };
+      }
+      this.recordStorageJournal("quota-reserved", { ...details, storageClass });
       return true;
     }
     this.recordStorageJournal("quota-denied", {
       ...details,
-      error: "quota-exceeded",
+      storageClass,
+      error: reason,
     });
+    if (reason === "storage-class-quota-exceeded") {
+      throw new Error(`storage class quota exceeded: class=${storageClass || "global"} required=${required} available=${classAvailable} quota=${classQuota}`);
+    }
     throw new Error(`storage quota exceeded: required=${required} available=${available} quota=${quota}`);
   }
 
@@ -718,6 +749,7 @@ export class PersistentStorage {
       journalId: String(details.journalId || ""),
       transactionId: String(details.transactionId || this.activeStorageTransactionId || ""),
       transactionKind: String(details.transactionKind || ""),
+      storageClass: String(details.storageClass || ""),
       dirtyFiles: Number(details.dirtyFiles || 0),
       dirtyInodes: Number(details.dirtyInodes || 0),
       fileRecords: Number(details.fileRecords || 0),
@@ -943,6 +975,31 @@ function joinPath(base, name) {
 
 function byteLength(value) {
   return new TextEncoder().encode(String(value ?? "")).length;
+}
+
+function normalizeStorageClassQuotas(value = {}) {
+  return Object.fromEntries(Object.entries(value)
+    .map(([key, quota]) => [String(key || "").trim(), Math.max(0, Number(quota || 0))])
+    .filter(([key, quota]) => key && quota > 0));
+}
+
+function storageClassForReservation(details = {}) {
+  if (details.storageClass) return String(details.storageClass);
+  const transactionKind = String(details.transactionKind || "");
+  const storageFormat = String(details.storageFormat || "");
+  const key = String(details.key || "");
+  const source = String(details.source || "");
+  const path = String(details.path || "");
+  if (transactionKind === "package-install" || storageFormat === "package-install" || key.startsWith("package:")) return "package-roots";
+  if (path.startsWith("/var/lib/dindbos/packages") || path.startsWith("/var/lib/dindbos/app-state")) return "package-state";
+  if (path.startsWith("/var/cache")) return "cache";
+  if (path.startsWith("/tmp") || source === "archive") return "temp";
+  if (path.startsWith("/var/log")) return "logs";
+  if (path.includes("/backup") || key.includes("backup")) return "backups";
+  if (path.includes("sync") || key.includes("sync") || transactionKind.includes("sync")) return "sync-staging";
+  if (path.includes("recovery") || key.includes("recovery")) return "recovery";
+  if (storageFormat === "snapshot" || transactionKind === "filesystem-save") return "snapshots";
+  return "user-data";
 }
 
 function safeLocalStorage() {

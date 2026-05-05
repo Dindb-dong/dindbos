@@ -12,6 +12,7 @@ await verifyInterruptedOpfsTransactionRecoveryDecision();
 await verifyQuotaReservationDeniesBeforeMutation();
 await verifyOpfsFailureFallsBackToSnapshot();
 await verifyLifecyclePendingWriteFlushes();
+await verifyStorageClassQuotaArbitration();
 
 console.log(`persistent storage smoke ok binaryBytes=${binary.byteLength} journal=write quota=reservation`);
 
@@ -157,6 +158,41 @@ async function verifyQuotaReservationDeniesBeforeMutation() {
   const reservation = storage.status().lastQuotaReservation;
   assert(reservation?.allowed === false && reservation.reason === "quota-exceeded", `quota denial status mismatch: ${JSON.stringify(reservation)}`);
   assert(storage.journal().some((entry) => entry.action === "quota-denied" && entry.error === "quota-exceeded"), "quota denial journal entry missing");
+}
+
+async function verifyStorageClassQuotaArbitration() {
+  const storage = new PersistentStorage({
+    key: "smoke:class-quota",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: null,
+    quotaBytes: 1_000,
+    storageClassQuotas: {
+      "package-roots": 32,
+      cache: 12,
+    },
+  });
+  storage.reserveStorageBytes(16, {
+    transactionKind: "package-install",
+    packageId: "quota-lab",
+    storageClassUsageBytes: 8,
+  });
+  let reservation = storage.status().lastQuotaReservation;
+  assert(reservation.allowed && reservation.storageClass === "package-roots", `package storage class reservation mismatch: ${JSON.stringify(reservation)}`);
+  assert(reservation.storageClassQuotaBytes === 32 && reservation.storageClassAvailableBytes === 24, `package storage class quota fields mismatch: ${JSON.stringify(reservation)}`);
+  await assertRejects(() => storage.reserveStorageBytes(16, {
+    transactionKind: "package-install",
+    packageId: "quota-lab",
+    storageClassUsageBytes: 24,
+  }), "storage class quota exceeded");
+  reservation = storage.status().lastQuotaReservation;
+  assert(!reservation.allowed && reservation.reason === "storage-class-quota-exceeded", `storage class denial reason mismatch: ${JSON.stringify(reservation)}`);
+  assert(storage.journal().some((entry) => entry.action === "quota-denied" && entry.error === "storage-class-quota-exceeded" && entry.storageClass === "package-roots"), "storage class quota denial journal missing");
+  storage.reserveStorageBytes(8, {
+    path: "/var/cache/npm/index.json",
+    storageClassUsageBytes: 0,
+  });
+  assert(storage.status().lastQuotaReservation.storageClass === "cache", "path-based cache storage class was not inferred");
 }
 
 async function assertRejects(action, expectedMessage) {
