@@ -4371,6 +4371,283 @@ Completion criteria:
 - DindbOS can predict and manage browser storage pressure before critical writes fail.
 - Users can see which data is protected, which data is disposable, and which OS component owns each byte.
 
+## Technically Feasible Native-OS Expansion Tracks
+
+This addendum lists hard but technically possible work that would move DindbOS closer to a native OS architecture. These are not cosmetic desktop features. Each track must become a reusable runtime primitive with shell access, app/package access, policy enforcement, diagnostics, and verification.
+
+Feasibility labels:
+
+- Browser-only: possible in a normal browser tab, with degraded behavior when a browser capability is missing.
+- Installed PWA: possible only when Service Worker, offline cache, notification, launch-handler, or install-lifecycle behavior is available.
+- Cross-origin isolated: requires COOP/COEP and browser support for SharedArrayBuffer, Atomics, or stricter worker/runtime features.
+- Companion-assisted: possible only through an explicit local or remote helper with a narrow protocol and auditable trust boundary.
+- Research-grade: possible, but expensive enough that it should be isolated behind labs, conformance profiles, or experimental package channels first.
+
+### Expansion 1: Dedicated Kernel Worker And Microkernel Split
+
+Feasibility: Browser-only first pass; cross-origin isolated for high-throughput shared-memory paths.
+
+Goal: move authoritative kernel state out of direct desktop/app object references and into a dedicated kernel worker that receives validated messages.
+
+Why it matters:
+
+- Native OSes have a kernel/user boundary. DindbOS currently has kernel-like services, but a stronger split would make apps, packages, WASM, NodeCompat, services, and UI all cross the same boundary.
+- A worker-hosted kernel can keep the desktop responsive while expensive syscall validation, path resolution, package activation, policy checks, and storage transactions run away from the UI thread.
+- This creates a realistic path toward multi-runtime processes without pretending the browser exposes ring 0 privileges.
+
+Implementation tasks:
+
+- Define the kernel worker boot protocol: runtime version, storage backend, boot profile, policy bundle, service registry, package registry, device broker registry, and recovery mode.
+- Move syscall dispatch, process table mutation, descriptor table mutation, VFS metadata mutation, package DB mutation, service state, policy checks, and audit logging behind a message protocol.
+- Define message envelopes with call id, caller pid, user, package namespace, capability token, request type, payload schema, deadline, cancellation id, and trace id.
+- Add structured clone and transferable payload rules for byte buffers, descriptor reads, WASM IO, file import/export, preview cache writes, and archive operations.
+- Add kernel worker crash handling: freeze mutation, preserve last committed storage root, write crash diagnostics, show recovery shell, and allow safe-mode reboot.
+- Add compatibility adapters so existing same-thread callers can use the worker-backed kernel without rewriting every built-in app at once.
+- Add `/proc/kernel-worker`, `/proc/syscalls`, `/proc/kernel-queue`, `kernelctl status`, `kernelctl trace`, and Activity Monitor kernel queue views.
+
+Verification:
+
+- Add smoke coverage for kernel worker boot, syscall success, syscall denial, invalid message refusal, large byte transfer, cancellation, timeout, worker crash recovery, and safe-mode fallback.
+- Add tests proving desktop UI cannot mutate VFS, process, package, service, or policy state without going through the worker protocol.
+- Add regression tests for message replay, duplicate call id, stale capability token, wrong pid, wrong user, malformed payload, and oversized transfer.
+
+Completion criteria:
+
+- Kernel state has one authoritative owner.
+- Apps and shells interact with kernel services through validated messages, not private object references.
+- A kernel worker failure becomes an inspectable recovery state instead of silent data corruption.
+
+### Expansion 2: Mmap-Style Shared File Regions And Zero-Copy IPC
+
+Feasibility: Cross-origin isolated for real shared memory; browser-only fallback through copied buffers.
+
+Goal: provide native-like shared memory and memory-mapped file semantics for WASM, media, indexing, emulator, database, and IPC workloads.
+
+Why it matters:
+
+- Native systems rely on `mmap`, shared memory, and zero-copy buffers for fast databases, renderers, media pipelines, language runtimes, and IPC.
+- Browser APIs can approximate this with SharedArrayBuffer, Atomics, OPFS handles, worker transfer, and copy-on-write snapshots when deployed under the right headers.
+- Without this layer, every heavy process must copy bytes through high-level APIs, which limits serious userland workloads.
+
+Implementation tasks:
+
+- Add a memory object registry for anonymous shared buffers, file-backed regions, copy-on-write snapshots, device buffers, media buffers, and IPC ring buffers.
+- Add syscalls for `mem.create`, `mem.map`, `mem.unmap`, `mem.protect`, `mem.share`, `mem.stat`, `mem.sync`, and `mem.revoke`.
+- Add file-backed mapping rules for read-only preview mappings, writable staged mappings, append-only log mappings, and package-root immutable mappings.
+- Add dirty-page tracking for mapped file writes, explicit sync barriers, rollback on failed commit, and quota reservation before mapping expansion.
+- Add futex-like wait/notify wrappers where Atomics are available, plus explicit degraded behavior where hidden-tab or non-isolated deployments cannot provide native timing.
+- Add WASM import bindings and NodeCompat buffer adapters so user programs can use mapped regions without importing private runtime internals.
+- Expose `/proc/shared-memory`, `/proc/<pid>/maps`, `memctl`, and `doctor isolation`.
+
+Verification:
+
+- Add smoke coverage for shared buffer creation, cross-process transfer, read-only denial, writable staged sync, rollback after failed sync, quota denial, revoked mapping denial, and degraded non-isolated fallback.
+- Add WASM fixture tests for shared counters, mapped file reads, mapped file writes, grow denial, and kill cleanup.
+- Add tests proving a process cannot map another user's file, another package's private state, keychain bytes, trusted UI surfaces, or companion sessions without policy grants.
+
+Completion criteria:
+
+- Heavy userland can share bytes through OS-managed mappings.
+- File-backed mappings preserve the same durability, permission, quota, and rollback rules as normal file writes.
+
+### Expansion 3: Native-Grade File Locks, Leases, And Concurrent Writer Control
+
+Feasibility: Browser-only for intra-runtime locks; Service Worker or BroadcastChannel for multi-tab locks; companion-assisted for host filesystem coordination.
+
+Goal: prevent concurrent writers from corrupting user files, package records, registries, databases, local mounts, and sync state.
+
+Why it matters:
+
+- Native OSes provide locking, leases, advisory locks, mandatory locks, and filesystem change notifications so multiple programs can coordinate.
+- DindbOS already has atomic write paths, but serious apps need predictable behavior when TextEdit, Files.app, sync, package activation, and a WASM program all target related paths.
+- Browser storage can be accessed from multiple tabs, workers, and Service Worker flows, so lock ownership must be explicit and recoverable.
+
+Implementation tasks:
+
+- Add kernel-owned lock records for file, directory, package root, registry, service state, app state, keychain vault, local mount metadata, sync workspace, and storage transaction scopes.
+- Support advisory read locks, advisory write locks, mandatory system locks, leases, lock upgrade/downgrade, timeout, stale lock detection, and lock break policy.
+- Add syscalls for `lock.acquire`, `lock.release`, `lock.stat`, `lock.wait`, `lock.break`, and `lock.explain`.
+- Route TextEdit saves, Files.app copy/move/import/export, package activation, app registry updates, service state writes, snapshots, and sync apply through the lock manager.
+- Add multi-tab coordination using BroadcastChannel, Web Locks API where available, Service Worker arbitration where installed, and clear fallback diagnostics where unsupported.
+- Add `/proc/locks`, `lockctl`, Activity Monitor lock owner views, and Settings storage conflict diagnostics.
+- Add companion-assisted lock mapping for local mount paths where host-side helpers can observe external file changes.
+
+Verification:
+
+- Add smoke coverage for shared read locks, exclusive write locks, timeout, stale lock cleanup, refused mandatory lock break, lock owner process exit cleanup, and conflict explanation.
+- Add tests proving interrupted package activation releases locks only after rollback and that concurrent editor/package/sync writes cannot partially interleave.
+- Add multi-context tests where practical for BroadcastChannel/Web Locks behavior, with explicit degraded-mode checks when unavailable.
+
+Completion criteria:
+
+- Two runtime actors cannot corrupt the same logical resource through concurrent writes.
+- Users and developers can see who owns a lock, why an operation is blocked, and how recovery will proceed.
+
+### Expansion 4: Real Terminal Stack With PTY, Shell Sessions, And Text UI Apps
+
+Feasibility: Browser-only first pass; cross-origin isolated for high-throughput terminal workloads; companion-assisted for host command bridges only.
+
+Goal: make Terminal a real session endpoint backed by pseudo-terminals, foreground process groups, line discipline, terminal modes, and descriptor-driven IO.
+
+Why it matters:
+
+- Native shells are not just command parsers. They coordinate TTY state, signals, foreground jobs, terminal resize, stdin/stdout/stderr, and interactive programs.
+- WASM and NodeCompat packages need a terminal contract to run editors, REPLs, package CLIs, test runners, debuggers, and curses-like text UIs.
+- A real PTY layer also gives services, remote sessions, and automation a consistent way to observe and control command execution.
+
+Implementation tasks:
+
+- Add PTY master/slave descriptor pairs with ownership, window size, terminal mode flags, foreground process group, input queue, output queue, and close semantics.
+- Implement canonical/raw input modes, echo, erase/kill characters, Ctrl-C/Ctrl-D/Ctrl-Z events, resize notifications, and bracketed paste policy.
+- Add process group integration for foreground/background jobs, stopped jobs, resumed jobs, killed jobs, and orphaned process group cleanup.
+- Add shell built-ins for `stty`, `tty`, `jobs`, `fg`, `bg`, `kill`, `wait`, and `ps -j`-style diagnostics.
+- Add WASI/NodeCompat bindings so interactive programs read and write the PTY through descriptor syscalls.
+- Add terminal scrollback as an OS-owned buffer with export, search, privacy redaction, and per-session retention policy.
+- Expose `/dev/pts/*`, `/proc/tty`, `/proc/<pid>/tty`, `ttyctl`, and Activity Monitor TTY columns.
+
+Verification:
+
+- Add smoke coverage for PTY open/close, stdin read, stdout write, raw/canonical mode, Ctrl-C cancellation, Ctrl-D EOF, resize event, background write policy, and killed job cleanup.
+- Add WASM fixture tests for interactive stdin, terminal resize, nonblocking read fallback, and process group signal delivery.
+- Add tests proving an app cannot inject into another user's PTY, steal a foreground terminal, or read scrollback without policy grants.
+
+Completion criteria:
+
+- Interactive command-line programs can run as first-class DindbOS processes.
+- Terminal sessions are observable, revocable, restorable where possible, and consistent with descriptor/process rules.
+
+### Expansion 5: Native-Style Daemon Model With Service Worker Participation
+
+Feasibility: Installed PWA for offline/update participation; browser-only for page-bound daemons; companion-assisted for long-running host tasks.
+
+Goal: split services into page-bound daemons, worker daemons, Service Worker-assisted queues, and companion-backed daemons with honest lifecycle guarantees.
+
+Why it matters:
+
+- Native OSes run background services independent of individual app windows.
+- Browsers cannot run arbitrary code forever after every page closes, but DindbOS can still provide explicit service classes with different persistence guarantees.
+- This avoids fake daemons while still enabling sync, indexing, notifications, backup, update checks, package repositories, and remote provider health checks.
+
+Implementation tasks:
+
+- Define service classes: interactive, page-daemon, worker-daemon, service-worker-queue, notification-wakeup, sync-wakeup, companion-daemon, and remote-provider-daemon.
+- Add service unit fields for lifecycle class, restart policy, dependency graph, storage grants, network grants, device grants, wake policy, background limits, and degraded behavior.
+- Add a Service Worker command queue for safe deferred tasks with credentials, policy, retry count, idempotency key, and audit log.
+- Add daemon health checks, watchdog timeouts, crash loops, restart backoff, safe-mode disable, and user/admin disable controls.
+- Add app/package APIs to register service units during package activation and remove them during package uninstall rollback.
+- Add `/proc/services`, `/var/log/dindbos/services`, `servicectl start|stop|restart|status|logs|enable|disable`, and Settings service panels.
+- Add clear labels for page-bound, PWA-assisted, companion-assisted, remote, unsupported, and degraded services.
+
+Verification:
+
+- Add smoke coverage for service install, dependency start order, restart backoff, disabled safe-mode boot, command queue persistence, unsupported background feature degradation, and uninstall cleanup.
+- Add tests proving queued tasks cannot outlive revoked package policy, cannot run under stale user credentials, and cannot mutate protected storage after package removal.
+- Add PWA/manual profile checks for Service Worker update and offline task behavior where automation cannot fully simulate user browser policies.
+
+Completion criteria:
+
+- Background work has explicit OS semantics instead of hidden timers.
+- Users can tell whether a service is actually running, queued for later, degraded, or impossible in the current browser profile.
+
+### Expansion 6: Hardware Driver And Host Capability Bus
+
+Feasibility: Browser-only for Web API brokers; companion-assisted for native-only devices; research-grade for broad driver compatibility.
+
+Goal: build a driver-style capability bus that exposes browser devices and helper-provided host devices through one permissioned DindbOS device model.
+
+Why it matters:
+
+- Native OSes mediate hardware through drivers and device nodes.
+- Browsers expose real device APIs such as WebUSB, WebSerial, WebHID, WebMIDI, Gamepad, MediaDevices, WebGPU, WebRTC, Clipboard, and Screen Capture, but direct app access bypasses OS policy.
+- A DindbOS device bus would let packages request devices declaratively and give users audit/revoke controls.
+
+Implementation tasks:
+
+- Define device classes for storage, clipboard, camera, microphone, display capture, GPU, audio, USB, serial, HID, MIDI, gamepad, network, printer, scanner, notification, share target, and companion bridge.
+- Add provider drivers for browser APIs, mock test devices, local companion devices, remote provider devices, and virtual devices.
+- Add device open/close/read/write/ioctl/event syscalls and descriptor integration where appropriate.
+- Add package manifest declarations for required devices, optional devices, isolation requirements, foreground-window requirements, and companion protocol requirements.
+- Add trusted pairing prompts, temporary grants, per-device policy, privacy ledger entries, revoke flow, and foreground ownership checks.
+- Expose `/dev`, `/proc/device-tree`, `/proc/browser-capabilities`, `devctl`, `doctor hardware`, and Settings device history.
+- Add fallback contracts so packages can detect unsupported, denied, degraded, busy, companion-missing, and policy-refused device states.
+
+Verification:
+
+- Add mock-driver smoke coverage for open, denied open, busy device, revoked grant, event delivery, descriptor cleanup, package manifest refusal, and privacy ledger records.
+- Add browser probe tests for stable capabilities and manual verification scripts for user-prompt-heavy APIs.
+- Add tests proving raw browser APIs cannot be called by sandboxed packages when a DindbOS broker exists for the same capability.
+
+Completion criteria:
+
+- Apps consume hardware-like capabilities through DindbOS devices and brokers.
+- Device access is permissioned, inspectable, revocable, and honest about browser/companion limits.
+
+### Expansion 7: Encrypted Multi-Volume Storage And Per-User Recovery
+
+Feasibility: Browser-only with WebCrypto; installed PWA improves recovery/offline UX; companion-assisted only for external backup escrow.
+
+Goal: provide native-like encrypted homes, sealed keychain records, recovery keys, backup metadata, and volume-level lock/unlock behavior.
+
+Why it matters:
+
+- A native OS protects user data at rest and separates system files, user homes, keychains, caches, backups, and removable volumes.
+- Browser storage is origin-scoped, but DindbOS can still encrypt sensitive volumes before writing bytes into OPFS/IndexedDB.
+- Encryption must integrate with users, sessions, package state, app scopes, snapshots, sync, and recovery instead of being a one-off file wrapper.
+
+Implementation tasks:
+
+- Define encrypted volume records for user home, keychain, package-private state, backups, sync staging, and portable system images.
+- Add WebCrypto-based key derivation, random volume keys, wrapped keys, recovery keys, lock state, unlock prompts, key rotation, and emergency revoke records.
+- Add sealed keychain records tied to user/session/package grants and optional WebAuthn-backed unlock where available.
+- Route VFS reads/writes for encrypted volumes through transparent decrypt/encrypt adapters while preserving metadata policy and quota accounting.
+- Add snapshot and backup behavior that preserves encryption boundaries and never exports plaintext without an explicit trusted prompt.
+- Add `volumectl`, `keychainctl`, `recoveryctl`, `/proc/volumes`, and Settings recovery views.
+- Add redacted diagnostic exports that prove volume health without exposing secrets.
+
+Verification:
+
+- Add smoke coverage for volume create, lock, unlock, wrong passphrase denial, recovery key unlock, key rotation, sealed key read denial, package uninstall grant cleanup, and encrypted backup export metadata.
+- Add tests proving locked volume data cannot be read through shell, Files.app, package app, WASM, NodeCompat, preview cache, search index, sync, or diagnostics.
+- Add regression tests for interrupted key rotation, failed snapshot, quota denial during encrypted write, and recovery without weakening permissions.
+
+Completion criteria:
+
+- Sensitive user data can be locked independently of the visible desktop session.
+- Recovery and backup flows are explicit, auditable, and do not silently leak plaintext.
+
+### Expansion 8: Native-Like Networking Lab With Loopback, Firewall, And Service Mesh
+
+Feasibility: Browser-only for virtual sockets and fetch/WebSocket brokers; companion-assisted for raw sockets, DNS, packet capture, and local LAN exposure.
+
+Goal: give DindbOS userland a network stack abstraction with virtual loopback services, policy firewall, named sockets, HTTP/WebSocket brokers, and companion-backed native escapes.
+
+Why it matters:
+
+- Native OSes make networking a system service with sockets, ports, DNS, firewalls, permissions, and diagnostics.
+- Browsers do not expose raw TCP/UDP to ordinary pages, but DindbOS can still provide virtual sockets, service-to-service networking, fetch/WebSocket policy, WebRTC data channels, and companion-backed native protocols.
+- This gives packages and WASM programs a realistic network contract without lying about browser limits.
+
+Implementation tasks:
+
+- Add socket object records for virtual loopback, stream IPC, datagram IPC, WebSocket broker sessions, fetch broker sessions, WebRTC data channels, and companion sockets.
+- Add syscalls for `socket.open`, `socket.bind`, `socket.listen`, `socket.accept`, `socket.connect`, `socket.read`, `socket.write`, `socket.close`, and `socket.stat`.
+- Add a policy firewall for host allowlists, port classes, package identity, service identity, user identity, protocol, data direction, and companion requirement.
+- Add service mesh discovery for local DindbOS services, package services, browserd-compatible providers, remote providers, and mock test services.
+- Add network namespace labels for user session, package sandbox, service account, test lab, and companion boundary.
+- Add `netctl`, `firewallctl`, `resolvectl`, `/proc/net`, `/proc/sockets`, and Activity Monitor network columns.
+- Add explicit failures for raw socket unsupported, DNS unavailable, CORS blocked, companion missing, WebRTC denied, host policy denied, and remote provider mismatch.
+
+Verification:
+
+- Add smoke coverage for virtual loopback server/client, denied host, allowed fetch broker, WebSocket broker, service discovery, namespace isolation, firewall audit, socket cleanup after process kill, and companion-missing diagnostics.
+- Add tests proving packages cannot bypass network policy through direct `fetch`, `WebSocket`, WebRTC, browserd, or companion endpoints.
+- Add regression tests for stale sockets, half-closed pipes, backpressure, oversized messages, reconnect loops, and remote provider protocol mismatch.
+
+Completion criteria:
+
+- Network-capable userland targets DindbOS socket/broker APIs rather than raw browser globals.
+- Network permissions, failures, and companion requirements are visible and testable.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
