@@ -36,6 +36,13 @@ export class SyscallDispatcher {
     if (name === "fs.stat") return this.fsStat(args, context);
     if (name === "fs.readText") return this.fsReadText(args, context);
     if (name === "fs.writeText") return this.fsWriteText(args, context);
+    if (name === "fd.list") return this.fdList(context);
+    if (name === "fd.open") return this.fdOpen(args, context);
+    if (name === "fd.read") return this.fdRead(args, context);
+    if (name === "fd.write") return this.fdWrite(args, context);
+    if (name === "fd.seek") return this.fdSeek(args, context);
+    if (name === "fd.stat") return this.fdStat(args, context);
+    if (name === "fd.close") return this.fdClose(args, context);
     if (name === "env.get") return this.envGet(args, context);
     if (name === "env.list") return this.envList(context);
     if (name === "app.list") return this.appList();
@@ -88,6 +95,41 @@ export class SyscallDispatcher {
     const content = String(args.content ?? "");
     this.os.fs.writeOrCreateFile(path, content, "/", args.options || {}, context.principal);
     return { path, bytes: byteLength(content) };
+  }
+
+  fdList(context) {
+    return this.os.descriptors.list(this.requireProcess(context).pid);
+  }
+
+  fdOpen(args, context) {
+    const process = this.requireProcess(context);
+    const path = this.normalizedPath(args, context);
+    const flags = String(args.flags || "r");
+    if (!path.startsWith("/dev/")) {
+      if (flags.includes("r") || flags.includes("+")) this.assertFileSystem(path, "read", context);
+      if (flags.includes("w") || flags.includes("a") || flags.includes("+")) this.assertFileSystem(path, "write", context);
+    }
+    return this.os.descriptors.open(process, { ...args, path }, context);
+  }
+
+  fdRead(args, context) {
+    return this.os.descriptors.read(this.requireProcess(context), args, context);
+  }
+
+  fdWrite(args, context) {
+    return this.os.descriptors.write(this.requireProcess(context), args, context);
+  }
+
+  fdSeek(args, context) {
+    return this.os.descriptors.seek(this.requireProcess(context), args, context);
+  }
+
+  fdStat(args, context) {
+    return this.os.descriptors.stat(this.requireProcess(context), args, context);
+  }
+
+  fdClose(args, context) {
+    return this.os.descriptors.close(this.requireProcess(context), args, context);
   }
 
   envGet(args, context) {
@@ -196,6 +238,11 @@ export class SyscallDispatcher {
     const path = String(args.path || "");
     if (!path) throw syscallError("EINVAL", "syscall: path is required");
     return this.os.fs.normalize(path, args.cwd || context.process?.cwd || this.os.session?.home || "/");
+  }
+
+  requireProcess(context) {
+    if (context.process?.pid) return context.process;
+    throw syscallError("EINVAL", "syscall: descriptor operations require a process context");
   }
 
   assertCapability(capability, context) {

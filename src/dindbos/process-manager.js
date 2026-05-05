@@ -35,6 +35,7 @@ export class ProcessManager {
     this.processes.set(process.pid, process);
     this.history.push({ ...process });
     this.logs.set(process.pid, []);
+    this.os.descriptors?.initProcess?.(process, context);
     this.log(process.pid, `spawn ${process.appId}`);
     this.sampleActivity(process.pid, "spawn", 2);
     this.syncProcfs();
@@ -97,6 +98,7 @@ export class ProcessManager {
     const report = this.writeCrashReport(process, error);
     process.crashReportPath = report.path;
     process.crashIndexPath = report.indexPath;
+    this.os.descriptors?.closeProcess?.(process.pid);
     this.syncProcfs();
     this.os.bus.emit("process:crash", process);
     this.emitAppLifecycle("crash", process, { error: error?.message || String(error) });
@@ -144,6 +146,7 @@ export class ProcessManager {
     this.log(process.pid, `exit ${reason}`);
     this.sampleActivity(process.pid, "exit", 1);
     this.processes.delete(process.pid);
+    this.os.descriptors?.closeProcess?.(process.pid);
     this.history.push({ ...this.withRuntimeMetrics(process) });
     this.syncProcfs();
     if (process.windowId && this.os.windows.has(process.windowId)) {
@@ -276,6 +279,7 @@ export class ProcessManager {
       group: "root",
       permissions: "-rw-r--r--",
     }, system);
+    this.os.descriptors?.writeProcfs?.(process.pid);
   }
 
   writeCrashReport(process, error) {

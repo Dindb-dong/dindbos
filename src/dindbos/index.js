@@ -1,6 +1,7 @@
 import { AppRegistry } from "./app-registry.js?v=20260422-browserd";
 import { AppSandbox } from "./app-sandbox.js?v=20260422-browserd";
 import { compatibilitySnapshot } from "./compat.js?v=20260422-browserd";
+import { DescriptorManager } from "./descriptors.js?v=20260422-browserd";
 import { RuntimeCacheStore } from "./cache-store.js?v=20260422-browserd";
 import { DesktopShell } from "./desktop-shell.js?v=20260422-browserd";
 import { EventBus } from "./event-bus.js?v=20260422-browserd";
@@ -75,6 +76,7 @@ export class DindbOS {
     this.shell = new DesktopShell(this);
     this.windows = new WindowManager(this);
     this.processes = new ProcessManager(this);
+    this.descriptors = new DescriptorManager(this);
     this.syscalls = new SyscallDispatcher(this);
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);
@@ -786,4 +788,4 @@ function normalizeBrowserProviderUrl(url) {
   }
 }
 
-export { AppRegistry, AppSandbox, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WasmRunner, WindowManager };
+export { AppRegistry, AppSandbox, DescriptorManager, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WasmRunner, WindowManager };
