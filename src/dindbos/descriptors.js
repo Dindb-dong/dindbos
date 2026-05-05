@@ -26,6 +26,16 @@ export class DescriptorManager {
     this.tables.delete(Number(pid));
   }
 
+  standardStreams(pid) {
+    const table = this.tables.get(Number(pid));
+    if (!table) return null;
+    return {
+      stdin: String(table.descriptors.get(STDIN_FD)?.buffer || ""),
+      stdout: String(table.descriptors.get(STDOUT_FD)?.buffer || ""),
+      stderr: String(table.descriptors.get(STDERR_FD)?.buffer || ""),
+    };
+  }
+
   list(pid) {
     const table = this.tableFor(pid);
     return [...table.descriptors.values()].map(publicDescriptor);
@@ -67,6 +77,7 @@ export class DescriptorManager {
     if (descriptor.kind === "file") bytes = this.writeFileDescriptor(descriptor, data, context);
     else if (descriptor.kind === "stream") {
       descriptor.buffer = `${descriptor.buffer || ""}${data}`;
+      descriptor.offset = byteLength(descriptor.buffer);
       bytes = byteLength(data);
     } else if (descriptor.kind === "device") bytes = this.writeDeviceDescriptor(descriptor, data);
     else throw descriptorError("EINVAL", `fd.write: ${descriptor.fd}: unsupported descriptor kind`);
