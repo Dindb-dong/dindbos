@@ -1,20 +1,23 @@
 /* Global theme tokens */
 :root {
-  --bg: #10130f;
-  --bg-deep: #080a07;
-  --surface: rgba(22, 25, 20, 0.84);
-  --surface-strong: rgba(30, 34, 27, 0.96);
-  --line: rgba(230, 235, 218, 0.18);
-  --line-strong: rgba(230, 235, 218, 0.32);
-  --text: #f2f5ea;
-  --muted: #b9c1ad;
+  --bg: #f7f1e8;
+  --bg-deep: #e9dfd2;
+  --surface: rgba(255, 252, 247, 0.94);
+  --surface-strong: #fffaf2;
+  --surface-muted: #efe6da;
+  --line: rgba(34, 42, 32, 0.14);
+  --line-strong: rgba(34, 42, 32, 0.26);
+  --text: #1b211c;
+  --ink: #1b211c;
+  --muted: #65705f;
   --accent: #3b82f6;
-  --green: #8ac66a;
-  --yellow: #e0b84d;
-  --red: #e15845;
-  --shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  --green: #2f8c52;
+  --yellow: #b77812;
+  --red: #c84234;
+  --shadow: 0 22px 56px rgba(52, 42, 29, 0.18);
+  --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
   --radius: 8px;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: SUIT, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* Global box sizing */
@@ -33,10 +36,7 @@ body {
 /* Body canvas */
 body {
   overflow: hidden;
-  background:
-    radial-gradient(circle at 16% 72%, rgba(138, 198, 106, 0.22), transparent 26rem),
-    radial-gradient(circle at 82% 16%, rgba(59, 130, 246, 0.14), transparent 24rem),
-    linear-gradient(135deg, var(--bg-deep), var(--bg));
+  background: var(--bg);
   color: var(--text);
   letter-spacing: 0;
 }
@@ -68,10 +68,7 @@ button {
   inset: 0;
   z-index: -2;
   content: "";
-  background-image:
-    linear-gradient(rgba(230, 235, 218, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(230, 235, 218, 0.05) 1px, transparent 1px);
-  background-size: 32px 32px;
+  background: transparent;
 }
 
 /* Menu bar */
@@ -89,8 +86,9 @@ button {
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(13, 16, 12, 0.78);
+  background: rgba(255, 252, 247, 0.86);
   backdrop-filter: blur(20px);
+  box-shadow: 0 10px 28px rgba(52, 42, 29, 0.08);
 }
 
 /* Brand launcher */
@@ -99,8 +97,10 @@ button {
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--ink);
+  color: #fffaf2;
   cursor: pointer;
+  font-weight: 700;
 }
 
 /* Task strip */
@@ -119,7 +119,7 @@ button {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-strong);
   cursor: pointer;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -166,8 +166,8 @@ button {
 
 /* Desktop icon hover */
 .dos-icon:hover {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--line-strong);
+  background: rgba(255, 250, 242, 0.7);
 }
 
 /* Icon art */
@@ -176,60 +176,77 @@ button {
   width: 58px;
   height: 58px;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06));
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.18), 0 12px 28px rgba(0, 0, 0, 0.24);
+  background: var(--surface-strong);
+  color: var(--ink);
+  box-shadow: 0 12px 24px rgba(52, 42, 29, 0.12);
+}
+
+/* Icon vector */
+.dos-icon-art svg {
+  width: 28px;
+  height: 28px;
 }
 
 /* Folder icon art */
 [data-icon="folder"] .dos-icon-art {
-  background: linear-gradient(180deg, #d6de50, #96b64b);
+  background: #e4f0c6;
+  color: #47690f;
 }
 
 /* Terminal icon art */
 [data-icon="terminal"] .dos-icon-art {
-  background: linear-gradient(160deg, #11150f, #2d3628);
+  background: #20241f;
+  color: #c6f6b5;
 }
 
 /* Activity icon art */
 [data-icon="activity"] .dos-icon-art {
-  background: linear-gradient(160deg, #121711, #3b82f6 48%, #8ac66a 49%);
+  background: #e6f0ff;
+  color: var(--accent);
 }
 
 /* Portfolio icon art */
 [data-icon="portfolio"] .dos-icon-art {
-  background: linear-gradient(160deg, #eef2e5, #3b82f6);
+  background: #e7f0ff;
+  color: var(--accent);
 }
 
 /* Text icon art */
 [data-icon="text"] .dos-icon-art {
-  background: linear-gradient(180deg, #eef2e5, #bdc8ae);
+  background: #fffaf2;
+  color: #5d6458;
 }
 
 /* Calculator icon art */
 [data-icon="calculator"] .dos-icon-art {
-  background: linear-gradient(160deg, #eef2e5, #e0b84d);
+  background: #fff1cf;
+  color: var(--yellow);
 }
 
 /* Settings icon art */
 [data-icon="settings"] .dos-icon-art {
-  background: linear-gradient(160deg, #eef2e5, #8ac66a);
+  background: #e7f4df;
+  color: var(--green);
 }
 
 /* Browser icon art */
 [data-icon="browser"] .dos-icon-art {
-  background: linear-gradient(160deg, #eef2e5, #3b82f6);
+  background: #e7f0ff;
+  color: var(--accent);
 }
 
 /* PDF icon art */
 [data-icon="pdf"] .dos-icon-art {
-  background: linear-gradient(160deg, #eef2e5, #e15845);
+  background: #ffe8e3;
+  color: var(--red);
 }
 
 /* Device icon art */
 [data-icon="device"] .dos-icon-art {
-  background: linear-gradient(160deg, #171b14, #4a5544);
+  background: #e8e3db;
+  color: #383f35;
 }
 
 /* Icon label */
@@ -242,7 +259,7 @@ button {
   font-weight: 700;
   line-height: 1.25;
   text-align: center;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.72);
+  text-shadow: 0 1px rgba(255, 255, 255, 0.7);
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -261,15 +278,42 @@ button {
 
 /* Dock item */
 .dos-dock-item {
-  width: 88px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  width: 136px;
   min-height: 42px;
-  padding: 8px;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(13, 16, 12, 0.78);
+  background: rgba(255, 252, 247, 0.86);
   color: var(--text);
   cursor: pointer;
   backdrop-filter: blur(20px);
+  box-shadow: 0 10px 24px rgba(52, 42, 29, 0.08);
+  text-align: left;
+}
+
+/* Dock item label */
+.dos-dock-item span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+/* Dock item glyph */
+.dos-dock-glyph {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+/* Dock icon vector */
+.dos-dock-glyph svg {
+  width: 20px;
+  height: 20px;
 }
 
 /* Window layer */
@@ -324,7 +368,7 @@ button {
   gap: 12px;
   padding: 0 10px 0 14px;
   border-bottom: 1px solid var(--line);
-  background: rgba(10, 12, 9, 0.78);
+  background: var(--surface-strong);
   cursor: grab;
   user-select: none;
 }
@@ -377,7 +421,7 @@ button {
   min-height: 0;
   overflow: auto;
   padding: 18px;
-  background: rgba(16, 19, 15, 0.52);
+  background: rgba(255, 250, 242, 0.72);
 }
 
 /* Resize handle */
@@ -427,7 +471,7 @@ button {
 /* Shared app kicker */
 .dos-kicker {
   margin: 0 0 8px;
-  color: var(--green);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 800;
 }
@@ -441,7 +485,7 @@ button {
 /* Portfolio heading */
 .portfolio-app h1 {
   margin: 0;
-  font-size: clamp(32px, 5vw, 58px);
+  font-size: 44px;
   line-height: 1;
 }
 
@@ -468,7 +512,7 @@ button {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--surface-strong);
 }
 
 /* Portfolio project meta */
@@ -497,7 +541,7 @@ button {
   overflow: auto;
   padding: 14px 10px;
   border-right: 1px solid var(--line);
-  background: rgba(9, 12, 8, 0.58);
+  background: var(--surface-muted);
 }
 
 /* Files sidebar section */
@@ -555,7 +599,7 @@ button {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-strong);
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -581,7 +625,7 @@ button {
   min-height: 30px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-strong);
   cursor: pointer;
 }
 
@@ -610,7 +654,7 @@ button {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-strong);
   color: var(--ink);
 }
 
@@ -693,7 +737,7 @@ button {
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-strong);
   cursor: pointer;
 }
 
@@ -708,7 +752,7 @@ button {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-strong);
 }
 
 /* Empty operation strip */
@@ -834,65 +878,65 @@ button {
 .dos-mini-icon {
   width: 16px;
   height: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--line-strong);
   border-radius: 4px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08));
+  background: var(--surface-strong);
 }
 
 /* Mini folder icon */
 [data-icon="folder"] .dos-mini-icon {
-  background: linear-gradient(180deg, #d6de50, #96b64b);
+  background: #e4f0c6;
 }
 
 /* Mini app icon */
 [data-icon="app"] .dos-mini-icon,
 [data-icon="portfolio"] .dos-mini-icon {
-  background: linear-gradient(160deg, #eef2e5, #3b82f6);
+  background: #dbeafe;
 }
 
 /* Mini terminal icon */
 [data-icon="terminal"] .dos-mini-icon {
-  background: linear-gradient(160deg, #11150f, #2d3628);
+  background: #20241f;
 }
 
 /* Mini activity icon */
 [data-icon="activity"] .dos-mini-icon {
-  background: linear-gradient(160deg, #121711, #3b82f6 48%, #8ac66a 49%);
+  background: #e6f0ff;
 }
 
 /* Mini text icon */
 [data-icon="text"] .dos-mini-icon {
-  background: linear-gradient(180deg, #eef2e5, #bdc8ae);
+  background: #fffaf2;
 }
 
 /* Mini settings icon */
 [data-icon="settings"] .dos-mini-icon {
-  background: linear-gradient(160deg, #eef2e5, #8ac66a);
+  background: #e7f4df;
 }
 
 /* Mini browser icon */
 [data-icon="browser"] .dos-mini-icon {
-  background: linear-gradient(160deg, #eef2e5, #3b82f6);
+  background: #e7f0ff;
 }
 
 /* Mini PDF icon */
 [data-icon="pdf"] .dos-mini-icon {
-  background: linear-gradient(160deg, #eef2e5, #e15845);
+  background: #ffe8e3;
 }
 
 /* Mini image icon */
 [data-icon="image"] .dos-mini-icon {
-  background: linear-gradient(160deg, #eef2e5, #8ac66a 48%, #3b82f6 49%);
+  background: #dff4ed;
 }
 
 /* Mini device icon */
 [data-icon="device"] .dos-mini-icon {
-  background: linear-gradient(160deg, #171b14, #4a5544);
+  background: #e8e3db;
 }
 
 /* Mini trash icon */
 [data-icon="trash"] .dos-mini-icon {
-  background: linear-gradient(160deg, #eef2e5, #697264);
+  background: #ece7df;
 }
 
 /* Files status */
@@ -920,7 +964,7 @@ button {
   overflow: auto;
   padding: 16px;
   border-left: 1px solid var(--line);
-  background: rgba(9, 12, 8, 0.48);
+  background: rgba(255, 250, 242, 0.78);
 }
 
 /* Files inspector heading */
@@ -982,7 +1026,7 @@ button {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-strong);
 }
 
 /* Files operation history error */
@@ -1010,7 +1054,7 @@ button {
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(14, 18, 12, 0.94);
+  background: var(--surface-strong);
   box-shadow: var(--shadow);
   backdrop-filter: blur(20px);
 }
@@ -1148,7 +1192,7 @@ button {
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-strong);
 }
 
 /* Activity filters */
@@ -1167,7 +1211,7 @@ button {
   height: 36px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-strong);
   color: var(--text);
   font: inherit;
   font-size: 12px;
@@ -1229,7 +1273,7 @@ button {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: rgba(10, 12, 9, 0.94);
+  background: var(--surface-muted);
   color: var(--muted);
   cursor: default;
   font-size: 11px;
@@ -1265,7 +1309,7 @@ button {
   min-height: 0;
   overflow: auto;
   padding: 14px;
-  background: rgba(9, 12, 8, 0.36);
+  background: rgba(255, 250, 242, 0.76);
 }
 
 /* Activity detail header */
@@ -1287,7 +1331,7 @@ button {
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-strong);
   cursor: pointer;
 }
 
@@ -1363,7 +1407,7 @@ button {
   min-height: 360px;
   margin: -18px;
   overflow: hidden;
-  background: rgba(8, 10, 7, 0.74);
+  background: rgba(255, 250, 242, 0.78);
 }
 
 /* Browser toolbar */
@@ -1373,7 +1417,7 @@ button {
   gap: 8px;
   padding: 10px;
   border-bottom: 1px solid var(--line);
-  background: rgba(10, 12, 9, 0.78);
+  background: var(--surface-strong);
 }
 
 /* Browser toolbar controls */
@@ -1383,7 +1427,7 @@ button {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-strong);
   color: var(--text);
 }
 
@@ -1426,7 +1470,7 @@ button {
   gap: 6px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-muted);
 }
 
 /* Browser diagnostics list */
@@ -1981,6 +2025,228 @@ button {
   gap: 6px;
 }
 
+/* Boot screen overlay */
+.dos-boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #111412;
+  color: #f7f1e8;
+  perspective: 900px;
+}
+
+/* Boot panel */
+.dos-boot-panel {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: min(680px, calc(100vw - 32px));
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid rgba(247, 241, 232, 0.18);
+  border-radius: var(--radius);
+  background: rgba(20, 24, 20, 0.92);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+}
+
+/* Boot header */
+.dos-boot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Boot product mark */
+.dos-boot-header span {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+/* Boot status */
+.dos-boot-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #c6f6b5;
+  font-size: 13px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Boot log */
+.dos-boot-log {
+  display: grid;
+  gap: 8px;
+  max-height: 310px;
+  margin: 0;
+  overflow: hidden auto;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono);
+}
+
+/* Boot log row */
+.dos-boot-log li {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) 92px minmax(0, 1.4fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(247, 241, 232, 0.12);
+  border-radius: var(--radius);
+  background: rgba(247, 241, 232, 0.06);
+}
+
+/* Boot log text */
+.dos-boot-log span,
+.dos-boot-log strong,
+.dos-boot-log small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Boot log status */
+.dos-boot-log strong {
+  color: #c6f6b5;
+  font-size: 12px;
+}
+
+/* Boot log detail */
+.dos-boot-log small {
+  color: rgba(247, 241, 232, 0.68);
+  font-size: 12px;
+}
+
+/* Boot recovered row */
+.dos-boot-log li[data-boot-phase-status="recovered"] strong {
+  color: #ffd993;
+}
+
+/* Boot error row */
+.dos-boot-log li[data-boot-phase-status="error"] strong {
+  color: #ffaaa1;
+}
+
+/* Boot particle field */
+.dos-boot-flight {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  transform-style: preserve-3d;
+}
+
+/* Boot flying character */
+.dos-boot-flight span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: rgba(247, 241, 232, 0.72);
+  font: 700 14px/1 var(--mono);
+  opacity: 0;
+  transform: translate3d(var(--boot-x), var(--boot-y), -180px) scale(0.7);
+}
+
+/* Boot final word */
+.dos-boot-word {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  gap: 3px;
+  color: #f7f1e8;
+  font-size: 64px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+/* Boot final word letter */
+.dos-boot-word span {
+  display: inline-block;
+  opacity: 0;
+  transform: translate3d(var(--boot-word-x), var(--boot-word-y), 260px) scale(2.4);
+}
+
+/* Boot completing panel */
+.dos-boot-screen.is-completing .dos-boot-panel {
+  animation: boot-panel-dismiss 520ms ease forwards;
+}
+
+/* Boot completing particles */
+.dos-boot-screen.is-completing .dos-boot-flight span {
+  animation: boot-particle-flight 980ms cubic-bezier(0.2, 0.9, 0.24, 1) forwards;
+  animation-delay: var(--boot-delay);
+}
+
+/* Boot completing word */
+.dos-boot-screen.is-completing .dos-boot-word {
+  animation: boot-word-fade 1800ms ease forwards;
+  animation-delay: 620ms;
+}
+
+/* Boot completing letter */
+.dos-boot-screen.is-completing .dos-boot-word span {
+  animation: boot-word-assemble 760ms cubic-bezier(0.18, 0.9, 0.2, 1) forwards;
+  animation-delay: var(--boot-word-delay);
+}
+
+/* Boot panel dismiss animation */
+@keyframes boot-panel-dismiss {
+  to {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+
+/* Boot particle flight animation */
+@keyframes boot-particle-flight {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 0, 260px) scale(2.1);
+  }
+}
+
+/* Boot word assemble animation */
+@keyframes boot-word-assemble {
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Boot word fade animation */
+@keyframes boot-word-fade {
+  0% {
+    opacity: 0;
+  }
+  32% {
+    opacity: 1;
+  }
+  76% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* Mobile layout */
 @media (max-width: 760px) {
   /* Mobile menu bar */
@@ -2004,16 +2270,31 @@ button {
     right: 10px;
     bottom: 14px;
     left: 10px;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
     transform: none;
   }
 
   /* Mobile dock item */
   .dos-dock-item {
+    grid-template-columns: 1fr;
     width: auto;
     min-width: 0;
+    min-height: 44px;
+    justify-items: center;
     overflow: hidden;
+    padding: 8px;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Mobile dock labels */
+  .dos-dock-item span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
     white-space: nowrap;
   }
 
@@ -2167,5 +2448,33 @@ button {
   .files-operation,
   .settings-mount-card {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Mobile boot panel */
+  .dos-boot-panel {
+    padding: 18px;
+  }
+
+  /* Mobile boot header */
+  .dos-boot-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  /* Mobile boot status */
+  .dos-boot-header strong {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  /* Mobile boot log row */
+  .dos-boot-log li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  /* Mobile boot final word */
+  .dos-boot-word {
+    font-size: 42px;
   }
 }
