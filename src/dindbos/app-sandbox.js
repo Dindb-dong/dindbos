@@ -576,7 +576,7 @@ export class AppSandbox {
       updatedAt: new Date().toISOString(),
       values: cloneJson(record.values || {}),
     };
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       this.statePath(),
       `${JSON.stringify(payload, null, 2)}\n`,
       "/",
