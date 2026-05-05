@@ -56,6 +56,16 @@ const atomicCreatePath = "/home/guest/Documents/atomic-created.txt";
 reloaded.atomicWriteOrCreateFile(atomicCreatePath, "created atomically", "/", { mime: "text/plain" });
 assert(reloaded.readFile(atomicCreatePath) === "created atomically", "atomic write-or-create did not create file");
 
+const corruptNode = reloaded.resolve(atomicCreatePath);
+corruptNode.size = 9_999;
+const fsckDryRun = reloaded.checkIntegrity({ repair: true, dryRun: true });
+assert(!fsckDryRun.ok, "fsck dry-run did not detect corrupt file size");
+assert(fsckDryRun.repairs.some((entry) => entry.kind === "size" && entry.dryRun), "fsck dry-run did not report planned size repair");
+assert(reloaded.stat(atomicCreatePath).size === 9_999, "fsck dry-run mutated file size");
+const fsckRepair = reloaded.checkIntegrity({ repair: true, dryRun: false });
+assert(fsckRepair.repaired, "fsck repair did not report repaired state");
+assert(reloaded.stat(atomicCreatePath).size === "created atomically".length, "fsck repair did not restore file size");
+
 console.log(`storage smoke ok textBytes=${text.length} binaryBytes=${bytes.byteLength}`);
 
 function bootVfs() {

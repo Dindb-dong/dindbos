@@ -587,6 +587,75 @@ export class VirtualFileSystem {
     return candidate;
   }
 
+  checkIntegrity(options = {}) {
+    const dryRun = options.dryRun !== false;
+    const repair = Boolean(options.repair);
+    const problems = [];
+    const repairs = [];
+    let checkedNodes = 0;
+    const linkCounts = new Map();
+    const visit = (node, path = "/") => {
+      checkedNodes += 1;
+      if (!node || typeof node !== "object") {
+        problems.push(problem("invalid-node", path, "node is not an object", false));
+        return;
+      }
+      if (node.type === "file") {
+        const actualSize = fileContentByteLength(node.content);
+        if (Number(node.size || 0) !== actualSize) {
+          problems.push(problem("size-mismatch", path, `size=${node.size || 0} actual=${actualSize}`, true));
+          if (repair) {
+            repairs.push(repairRecord("size", path, node.size || 0, actualSize, dryRun));
+            if (!dryRun) node.size = actualSize;
+          }
+        }
+        if (node.linkId) linkCounts.set(node.linkId, (linkCounts.get(node.linkId) || 0) + 1);
+      }
+      if (this.isLink(node) && node.target && !safeResolveLink(this, node, path)) {
+        problems.push(problem("broken-link", path, `target=${node.target}`, false));
+      }
+      if (!isDirectoryLike(node)) return;
+      if (!Array.isArray(node.children)) {
+        problems.push(problem("invalid-children", path, "directory children is not an array", true));
+        if (repair) {
+          repairs.push(repairRecord("children", path, "invalid", "[]", dryRun));
+          if (!dryRun) node.children = [];
+        }
+        return;
+      }
+      const names = new Map();
+      node.children.forEach((child) => {
+        const childName = child?.name || "";
+        const childPath = this.join(path, childName || "<unnamed>");
+        if (!childName) problems.push(problem("missing-name", childPath, "child has no name", false));
+        if (names.has(childName)) problems.push(problem("duplicate-name", childPath, `duplicates ${this.join(path, childName)}`, false));
+        else names.set(childName, child);
+        visit(child, childPath);
+      });
+    };
+    visit(this.root, "/");
+    const linkActualCounts = linkCounts;
+    const verifyLinks = (node, path = "/") => {
+      if (node?.type === "file" && node.linkId) {
+        const expected = linkActualCounts.get(node.linkId) || 0;
+        const statCount = this.nodeStat(node, path).linkCount;
+        if (statCount !== expected) problems.push(problem("link-count-mismatch", path, `linkCount=${statCount} actual=${expected}`, false));
+      }
+      (node?.children || []).forEach((child) => verifyLinks(child, this.join(path, child.name || "<unnamed>")));
+    };
+    verifyLinks(this.root, "/");
+    return {
+      ok: problems.length === 0,
+      dryRun,
+      repaired: repair && !dryRun,
+      checkedNodes,
+      problemCount: problems.length,
+      repairCount: repairs.length,
+      problems,
+      repairs,
+    };
+  }
+
   snapshot() {
     return cloneForSnapshot(this.root);
   }
@@ -770,4 +839,31 @@ function iconFromMime(mime) {
   if (mime === "application/pdf") return "pdf";
   if (mime?.startsWith("image/")) return "image";
   return "text";
+}
+
+function problem(code, path, message, repairable) {
+  return {
+    code,
+    path,
+    message,
+    repairable: Boolean(repairable),
+  };
+}
+
+function repairRecord(kind, path, from, to, dryRun) {
+  return {
+    kind,
+    path,
+    from,
+    to,
+    dryRun: Boolean(dryRun),
+  };
+}
+
+function safeResolveLink(fs, node, path) {
+  try {
+    return Boolean(fs.resolve(node.target, fs.dirname(path)));
+  } catch {
+    return false;
+  }
 }

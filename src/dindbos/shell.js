@@ -20,6 +20,7 @@ const BUILTIN_MANUALS = {
   env: "env - list shell environment",
   export: "export KEY=value - set shell environment variable",
   find: "find [path] [name] - search files by name",
+  fsck: "fsck [--dry-run|--repair] - check VFS integrity and optionally repair safe metadata",
   grep: "grep <text> <file> - search lines in a text file",
   kill: "kill <pid> - terminate a process",
   keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing - manage DindbOS secrets",
@@ -77,6 +78,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "sudo",
   "sync",
   "syscall",
+  "fsck",
   "tree",
   "umount",
   "wasm",
@@ -281,6 +283,7 @@ export class ShellSession {
     if (command === "stat") return this.stat(args[0] || this.cwd);
     if (command === "readlink") return this.os.fs.lstat(args[0] || this.cwd, this.cwd, this.principal)?.target || "";
     if (command === "find") return this.find(args);
+    if (command === "fsck") return this.fsck(args);
     if (command === "open") {
       this.os.openPath(this.os.fs.normalize(args[0] || this.cwd, this.cwd));
       return "";
@@ -1076,6 +1079,13 @@ export class ShellSession {
     return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
   }
 
+  fsck(args = []) {
+    const repair = args.includes("--repair");
+    const dryRun = !repair || args.includes("--dry-run");
+    const result = this.os.fs.checkIntegrity({ repair, dryRun });
+    return formatFsck(result);
+  }
+
   sync(args) {
     const [action, operand, target] = args;
     if (!action || action === "status") {
@@ -1788,6 +1798,19 @@ function formatStorage(status) {
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
   ].join("\n");
+}
+
+function formatFsck(result = {}) {
+  const lines = [
+    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
+  ];
+  (result.problems || []).slice(0, 20).forEach((entry) => {
+    lines.push(`${entry.code} ${entry.path} repairable=${Boolean(entry.repairable)} ${entry.message}`);
+  });
+  (result.repairs || []).slice(0, 20).forEach((entry) => {
+    lines.push(`repair ${entry.kind} ${entry.path} ${entry.from} -> ${entry.to} dryRun=${Boolean(entry.dryRun)}`);
+  });
+  return lines.join("\n");
 }
 
 function formatMountStatus(mounts) {

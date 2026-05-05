@@ -215,6 +215,15 @@ assert(JSON.parse(result.output).value[0].id === "calculator", `syscall app.list
 result = await shell.executeAsync("syscall storage.status '{}'");
 assert(result.status === 0, `syscall storage.status status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).value.backend === "memory", `syscall storage.status output mismatch: ${result.output}`);
+shell.os.fs.resolve("/home/guest/syscall-note.txt").size = 12345;
+result = await shell.executeAsync("fsck --dry-run");
+assert(result.status === 0, `fsck dry-run status mismatch: ${result.status}`);
+assert(result.output.includes("ok=false") && result.output.includes("size-mismatch"), `fsck dry-run output mismatch: ${result.output}`);
+assert(shell.os.fs.stat("/home/guest/syscall-note.txt").size === 12345, "fsck dry-run mutated file size");
+result = await shell.executeAsync("fsck --repair");
+assert(result.status === 0, `fsck repair status mismatch: ${result.status}`);
+assert(result.output.includes("repaired=true") || result.output.includes("dryRun=false"), `fsck repair output mismatch: ${result.output}`);
+assert(shell.os.fs.stat("/home/guest/syscall-note.txt").size === "via syscall".length, "fsck repair did not fix file size");
 result = await shell.executeAsync("syscall localMount.status '{}'");
 assert(result.status === 0, `syscall localMount.status status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).value.supported === false, `syscall localMount.status output mismatch: ${result.output}`);
