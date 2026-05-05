@@ -340,6 +340,7 @@ export class WasmRunner {
     try {
       const compiled = await WebAssembly.instantiate(toUint8Array(bytes), imports);
       instance = compiled.instance || compiled;
+      assertWasmMemoryLimit(instance, options.maxMemoryPages);
       const start = instance.exports?._start || instance.exports?.main;
       if (typeof start !== "function") throw new Error("wasm: module must export _start or main");
       const returned = start();
@@ -435,6 +436,18 @@ function toUint8Array(bytes) {
   if (bytes instanceof Uint8Array) return bytes;
   if (Array.isArray(bytes)) return new Uint8Array(bytes);
   return new Uint8Array(bytes || []);
+}
+
+function assertWasmMemoryLimit(instance, maxMemoryPages) {
+  const limit = Number(maxMemoryPages);
+  if (!Number.isFinite(limit) || limit < 0) return;
+  const memory = instance?.exports?.memory;
+  if (!memory?.buffer) return;
+  const pages = Math.ceil(memory.buffer.byteLength / 65536);
+  if (pages <= limit) return;
+  const error = new Error(`wasm: memory pages ${pages} exceed limit ${limit}`);
+  error.code = "ENOMEM";
+  throw error;
 }
 
 function parseSyscallRequest(text) {

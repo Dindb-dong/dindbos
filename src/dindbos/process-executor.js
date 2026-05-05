@@ -101,6 +101,14 @@ const handleWasmTask = async (message) => {
   const readString = (ptr, length) => new TextDecoder().decode(readMemory(ptr, length));
   const writeU32 = (ptr, value) => memoryView().setUint32(Number(ptr || 0), Number(value || 0), true);
   const writeMemory = (ptr, bytes) => readMemory(ptr, bytes.length).set(bytes);
+  const assertMemoryLimit = () => {
+    const limit = Number(message.maxMemoryPages);
+    if (!Number.isFinite(limit) || limit < 0) return;
+    const memory = instance?.exports?.memory;
+    if (!memory?.buffer) return;
+    const pages = Math.ceil(memory.buffer.byteLength / 65536);
+    if (pages > limit) throw new Error("wasm: memory pages " + pages + " exceed limit " + limit);
+  };
   const argv = message.argv || [];
   const env = message.env || {};
   const envEntries = Object.entries(env).map(([key, value]) => key + "=" + value);
@@ -177,6 +185,7 @@ const handleWasmTask = async (message) => {
   try {
     const compiled = await WebAssembly.instantiate(new Uint8Array(message.bytes || []), imports);
     instance = compiled.instance || compiled;
+    assertMemoryLimit();
     const start = instance.exports?._start || instance.exports?.main;
     if (typeof start !== "function") throw new Error("wasm: module must export _start or main");
     const returned = start();
@@ -597,6 +606,7 @@ export class ProcessExecutor {
         bytes,
         argv: options.argv || [],
         env: options.env || {},
+        maxMemoryPages: options.maxMemoryPages,
       }, [bytes.buffer]);
     });
   }

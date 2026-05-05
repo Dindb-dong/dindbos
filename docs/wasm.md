@@ -80,12 +80,15 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 
 `runFile(path, cwd, { executionBackend: "worker" })` can run stdout/stderr-only DindbOS ABI and basic WASI modules through `ProcessExecutor`'s worker backend. That path keeps WebAssembly instantiation and execution off the main runtime thread, records `executionBackend: "worker"` in process history and `/proc`, and returns stdout, stderr, and exit status through the executor output buffer. This is a first-pass isolation path for output-only modules; syscall-heavy WASM still runs on the main-thread runner until the WASM ABI can target the worker syscall bridge safely.
 
+`runFile(path, cwd, { maxMemoryPages })` adds a first-pass memory guard. When the module exports memory and the current page count is greater than the configured limit, DindbOS stops the run before `_start`, marks the process as crashed, and records the page-limit reason in the crash report. The same guard is also passed to the worker output backend.
+
 ## Current Limits
 
 - no full WASI import surface yet
 - no full pseudo-terminal sessions yet
 - no broad WASI metadata edge-case coverage yet
 - worker isolation currently covers stdout/stderr-only DindbOS ABI and basic WASI modules, not syscall-heavy WASM
+- memory guard checks current exported pages before `_start`; grow-time enforcement and cooperative abort remain roadmap work
 - no compiler toolchain integration docs yet
 
 ## Verification
@@ -94,4 +97,4 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 npm run smoke:wasm
 ```
 
-The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, basic WASI `fd_write`/`fd_read`/`fd_readdir`/`path_create_directory`/`path_unlink_file`/`path_remove_directory`/`path_rename`/`path_symlink`/`path_readlink`/`path_link`/`path_open`/`fd_close`/`proc_exit`, worker-backed WASM stdout/status/process backend tracking, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, read-only `rightsBase` denial for descriptor writes, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
+The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, `maxMemoryPages` crash handling, basic WASI `fd_write`/`fd_read`/`fd_readdir`/`path_create_directory`/`path_unlink_file`/`path_remove_directory`/`path_rename`/`path_symlink`/`path_readlink`/`path_link`/`path_open`/`fd_close`/`proc_exit`, worker-backed WASM stdout/status/process backend tracking and memory-limit denial, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, read-only `rightsBase` denial for descriptor writes, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
