@@ -478,7 +478,8 @@ Implementation tasks:
 
 - Already present: persistent storage records a first-pass write journal for queued, completed, failed, and fallback browser storage writes, exposed through storage status and `PersistentStorage.journal()`.
 - Already present: OPFS-backed filesystem saves are grouped with explicit storage transaction ids, transaction kind, dirty file/inode counts, and matching queued/completed journal entries.
-- Extend storage transaction groups into interrupted-write replay and recovery decisions.
+- Already present: OPFS-backed filesystem saves write a durable active transaction marker, clear it on completion/fallback, and report an interrupted-write recovery decision on the next load when a marker remains.
+- Extend storage transaction groups into full interrupted-write replay instead of only recovery decision reporting.
 - Add atomic rename/write semantics for package installs, editor saves, and archive imports.
 - Add filesystem snapshots and rollback points for package updates and user-triggered restore.
 - Add quota reservation before large writes and package installs.
@@ -488,7 +489,7 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:persistent-storage` verifies storage write journal records for snapshot fallback writes, OPFS write-failure fallback, and matching OPFS multi-record transaction groups.
+- Already present: `npm run smoke:persistent-storage` verifies storage write journal records for snapshot fallback writes, OPFS write-failure fallback, matching OPFS multi-record transaction groups, and interrupted transaction recovery decisions.
 - Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, quota denial before mutation, and repair of orphaned records.
 
 Completion criteria:
