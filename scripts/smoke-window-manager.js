@@ -330,6 +330,19 @@ async function runLiveWindowStateSmoke() {
     liveManager.activeWindowId = "browser";
     const clipboardStatus = JSON.parse(liveOs.fs.readFile("/proc/compositor")).clipboardRouter;
     assert(clipboardStatus.copied === 1 && clipboardStatus.pasted === 1 && clipboardStatus.denied >= 1, "/proc/compositor did not expose clipboard router state");
+    const axTree = api.setAccessibilityTree({
+      role: "window",
+      name: "Browser",
+      focus: true,
+      actions: ["focus", "close"],
+      children: [
+        { role: "textbox", name: "Address", value: "https://example.com", state: { focused: true } },
+        { role: "button", name: "Reload", actions: ["click"] },
+      ],
+    });
+    assert(axTree.children.length === 2 && api.getAccessibilityTree().children[0].role === "textbox", "window accessibility tree was not stored");
+    const axSurface = JSON.parse(liveOs.fs.readFile("/proc/compositor")).surfaces.find((surface) => surface.windowId === "browser");
+    assert(axSurface.accessibility.name === "Browser" && axSurface.accessibility.nodeCount === 3, "/proc/compositor did not expose accessibility summary");
     const lockTarget = { locked: false, requestPointerLock() { this.locked = true; } };
     const lockResult = liveManager.requestPointerLock("browser", { target: lockTarget });
     assert(lockResult.handled && lockTarget.locked, "focused window pointer-lock request did not route");

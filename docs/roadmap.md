@@ -931,12 +931,12 @@ Implementation tasks:
 - Already present: compositor pointer-lock policy allows only the focused window to acquire lock, denies missing or unfocused windows, exits pointer lock during window close, and exposes active/denied/release diagnostics in `/proc/compositor`.
 - Already present: app-declared shortcut scopes route global, focused-app, and text-entry shortcuts separately so text fields do not receive focused-app shortcuts unless the app declares a text-entry scope.
 - Add screenshot/capture APIs for app windows and full desktop surfaces with user-visible permission checks.
-- Add accessibility metadata per window and control, exposed through a runtime tree that apps can update without direct access to other apps.
+- Already present: windows can publish accessibility metadata through the window API, including role, name, value, bounds, state, actions, focus, and child controls; `/proc/compositor` exposes per-surface accessibility summaries without granting direct DOM access.
 - Already present: compositor diagnostics under `/proc/compositor` expose focused pid, active window, surface geometry, paint mode, viewport, capture owner placeholder, and last input event; `doctor` also reports the focused surface summary.
 
 Verification:
 
-- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, shortcut scope routing, stable surface geometry, last-input recording, IME/drop routing, compositor clipboard copy/paste policy, pointer-lock policy, pointer capture cleanup during window close, input/shortcut/clipboard/pointer-lock router state, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
+- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, shortcut scope routing, stable surface geometry, last-input recording, IME/drop routing, compositor clipboard copy/paste policy, pointer-lock policy, accessibility metadata publication, pointer capture cleanup during window close, input/shortcut/clipboard/pointer-lock router state, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
 - Add smoke coverage for broader surface cleanup.
 - Add tests proving a crashed or suspended app cannot retain global input capture.
 - Add screenshot/capture tests for allowed own-window capture and denied cross-app capture.
