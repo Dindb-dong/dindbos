@@ -19,6 +19,10 @@ export class KeychainManager {
       unlockMethod: vault.unlockMethod,
       fallbackWarning: vault.fallbackWarning,
       webCrypto: Boolean(globalThis.crypto?.getRandomValues),
+      passkeySupported: this.passkeySupported(),
+      passkeyEnrolled: Boolean(vault.passkey?.credentialId),
+      passkeyCredentialId: vault.passkey?.credentialId || "",
+      passkeyLabel: vault.passkey?.label || "",
     };
   }
 
@@ -38,6 +42,97 @@ export class KeychainManager {
     vault.unlockMethod = passphrase ? "password-derived-fallback" : "session";
     vault.fallbackWarning = passphrase ? "weaker-than-passkey" : "";
     this.audit(vault, "unlock", "-", requesterId(context), "allowed");
+    this.writeMetadata(vault);
+    return this.status(context);
+  }
+
+  async enrollPasskey(options = {}, context = {}) {
+    const vault = this.vaultFor(context);
+    this.assertUnlocked(vault, "passkey-enroll", context);
+    const provider = this.passkeyProvider();
+    if (!provider?.create) {
+      this.audit(vault, "passkey-enroll", "-", requesterId(context), "denied", "unsupported");
+      throw new Error("keychain: passkey WebAuthn unavailable");
+    }
+    const userId = randomBytes(16);
+    const credential = await provider.create({
+      publicKey: {
+        challenge: randomBytes(32),
+        rp: { name: "DindbOS" },
+        user: {
+          id: userId,
+          name: vault.user,
+          displayName: vault.user,
+        },
+        pubKeyCredParams: [
+          { type: "public-key", alg: -7 },
+          { type: "public-key", alg: -257 },
+        ],
+        authenticatorSelection: {
+          residentKey: "preferred",
+          userVerification: "required",
+        },
+        timeout: 60000,
+        attestation: "none",
+      },
+    });
+    const credentialId = credentialIdFrom(credential);
+    if (!credentialId) throw new Error("keychain: passkey enrollment returned no credential id");
+    vault.passkey = {
+      credentialId,
+      rawId: credentialRawIdFrom(credential),
+      label: String(options.label || "default"),
+      enrolledAt: new Date().toISOString(),
+      lastUsedAt: "",
+      userVerification: "required",
+    };
+    this.audit(vault, "passkey-enroll", "-", requesterId(context), "allowed", `credential=${credentialId}`);
+    this.writeMetadata(vault);
+    return this.status(context);
+  }
+
+  async unlockWithPasskey(context = {}) {
+    return this.verifyPasskey("unlock", context);
+  }
+
+  async reauthenticateWithPasskey(context = {}) {
+    return this.verifyPasskey("reauthenticate", context);
+  }
+
+  async verifyPasskey(action, context = {}) {
+    const vault = this.vaultFor(context);
+    const passkey = vault.passkey || {};
+    if (!passkey.credentialId) {
+      this.audit(vault, action, "-", requesterId(context), "denied", "no-passkey");
+      throw new Error("keychain: passkey not enrolled");
+    }
+    const provider = this.passkeyProvider();
+    if (!provider?.get) {
+      this.audit(vault, action, "-", requesterId(context), "denied", "unsupported");
+      throw new Error("keychain: passkey WebAuthn unavailable");
+    }
+    const assertion = await provider.get({
+      publicKey: {
+        challenge: randomBytes(32),
+        allowCredentials: [{
+          id: passkey.rawId ? base64UrlToBytes(passkey.rawId) : textBytes(passkey.credentialId),
+          type: "public-key",
+        }],
+        userVerification: "required",
+        timeout: 60000,
+      },
+    });
+    const credentialId = credentialIdFrom(assertion);
+    if (credentialId && credentialId !== passkey.credentialId) {
+      this.audit(vault, action, "-", requesterId(context), "denied", "credential-mismatch");
+      throw new Error("keychain: passkey credential mismatch");
+    }
+    vault.unlocked = true;
+    vault.unlockedAt = new Date().toISOString();
+    vault.unlockMethod = "passkey-webauthn";
+    vault.fallbackWarning = "";
+    vault.passkey.lastUsedAt = new Date().toISOString();
+    this.audit(vault, action, "-", requesterId(context), "allowed", "method=passkey");
     this.writeMetadata(vault);
     return this.status(context);
   }
@@ -295,6 +390,7 @@ export class KeychainManager {
       unlockMethod: vault.unlockMethod,
       fallbackWarning: vault.fallbackWarning,
       records: [...vault.records.values()].map(publicRecord),
+      passkey: publicPasskey(vault.passkey),
       auditRecords: vault.audit.length,
     };
     this.os.fs.writeOrCreateFile(`${userDir}/records.json`, `${JSON.stringify(payload, null, 2)}\n`, "/", {
@@ -322,6 +418,15 @@ export class KeychainManager {
       ensureDirectory(this.os, path, this.system);
     });
   }
+
+  passkeyProvider() {
+    return this.os.webAuthn || this.os.webauthn || globalThis.navigator?.credentials || null;
+  }
+
+  passkeySupported() {
+    const provider = this.passkeyProvider();
+    return Boolean(provider?.create && provider?.get);
+  }
 }
 
 function publicRecord(record) {
@@ -337,6 +442,17 @@ function publicRecord(record) {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     grants: record.grants.map((grant) => ({ ...grant })),
+  };
+}
+
+function publicPasskey(passkey = null) {
+  if (!passkey?.credentialId) return null;
+  return {
+    credentialId: passkey.credentialId,
+    label: passkey.label || "",
+    enrolledAt: passkey.enrolledAt || "",
+    lastUsedAt: passkey.lastUsedAt || "",
+    userVerification: passkey.userVerification || "required",
   };
 }
 
@@ -389,4 +505,24 @@ function base64Url(bytes) {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
+}
+
+function credentialIdFrom(credential = {}) {
+  if (credential.id) return String(credential.id);
+  return credentialRawIdFrom(credential);
+}
+
+function credentialRawIdFrom(credential = {}) {
+  if (!credential.rawId) return "";
+  return base64Url(new Uint8Array(credential.rawId));
+}
+
+function base64UrlToBytes(value = "") {
+  const padded = `${String(value).replace(/-/g, "+").replace(/_/g, "/")}${"=".repeat((4 - (String(value).length % 4)) % 4)}`;
+  return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
+}
+
+function textBytes(value = "") {
+  if (globalThis.TextEncoder) return new TextEncoder().encode(String(value));
+  return Uint8Array.from(String(value), (char) => char.charCodeAt(0));
 }

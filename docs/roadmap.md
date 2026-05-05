@@ -1050,8 +1050,8 @@ Why it matters:
 Implementation tasks:
 
 - Already present: first-pass keychain service exposes per-user vault metadata, app-scoped secrets, lock/unlock state, temporary grants, revocation, redacted metadata files, and audit records without storing raw secret values in ordinary VFS records.
-- Already present: keychain records use WebCrypto-backed random secret references and package signing key public identifiers for first-pass signing-key lookup; encrypted wrapping, verification, and passkey-backed unlock remain future hardening.
-- Add passkey/WebAuthn-backed unlock or reauthentication flows where supported, with password-derived fallback clearly marked as weaker.
+- Already present: keychain records use WebCrypto-backed random secret references and package signing key public identifiers for first-pass signing-key lookup; encrypted wrapping and cryptographic assertion verification remain future hardening.
+- Already present: first-pass passkey/WebAuthn enrollment, unlock, and reauthentication flows are exposed through the keychain service and shell, require WebAuthn user verification where supported, and keep password-derived fallback clearly marked as weaker.
 - Already present: package manifests can declare `secrets` references with alias, keychain name, kind, required flag, and purpose; package app manifests and runtime public records expose only references, and package apps can request declared credentials through the keychain facade.
 - Already present: first-pass signing key management creates auditable package-author signing key references and public key ids without exposing private key material through shell lookup.
 - Already present: `keychain` shell commands cover list, status, get, set, delete, lock, unlock, grant, revoke, audit, explicit export, signing create, and signing lookup.
@@ -1064,6 +1064,7 @@ Verification:
 - Already present: `npm run smoke:keychain` verifies raw secret values are not exposed through ordinary keychain metadata VFS reads or keychain audit logs.
 - Already present: `npm run smoke:settings` verifies Settings reads keychain diagnostics and renders active grants, denied requests, stale credentials, export warnings, and recovery warnings.
 - Already present: `npm run smoke:keychain` verifies ordinary package DB, keychain metadata, and audit-log exports do not expose raw secret values, non-exportable secrets cannot be exported, and explicitly exportable secrets only expose values through the keychain service export path.
+- Already present: `npm run smoke:keychain` verifies passkey enrollment, WebAuthn-backed unlock, passkey reauthentication, unavailable-WebAuthn refusal, required user verification options, status diagnostics, and audit records.
 
 Completion criteria:
 

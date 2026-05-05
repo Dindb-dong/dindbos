@@ -14,7 +14,7 @@ const BUILTIN_MANUALS = {
   find: "find [path] [name] - search files by name",
   grep: "grep <text> <file> - search lines in a text file",
   kill: "kill <pid> - terminate a process",
-  keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|signing - manage DindbOS secrets",
+  keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing - manage DindbOS secrets",
   ls: "ls [-la] [path] - list directory contents",
   man: "man <command> - show command help",
   manifest: "manifest [app] - show app manifests",
@@ -667,6 +667,8 @@ export class ShellSession {
         `grants=${status.grants}`,
         `unlock=${status.unlockMethod}`,
         `webcrypto=${status.webCrypto}`,
+        `passkey=${status.passkeyEnrolled}`,
+        `passkeySupported=${status.passkeySupported}`,
         `warning=${status.fallbackWarning || "-"}`,
       ].join(" ");
     }
@@ -714,8 +716,25 @@ export class ShellSession {
         ? entries.map((entry) => `${entry.at} ${entry.action} ${entry.name} requester=${entry.requester} result=${entry.result}${entry.detail ? ` ${entry.detail}` : ""}`).join("\n")
         : "keychain: no audit records";
     }
+    if (action === "passkey") return this.keychainPasskey(name, rest, context);
     if (action === "signing") return this.keychainSigning(name, rest, context);
-    return "keychain: usage: keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|signing";
+    return "keychain: usage: keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing";
+  }
+
+  async keychainPasskey(action, args, context) {
+    if (action === "enroll") {
+      const status = await this.os.keychain.enrollPasskey({ label: args.join(" ") || "default" }, context);
+      return `keychain passkey enrolled credential=${status.passkeyCredentialId || "-"} label=${status.passkeyLabel || "default"}`;
+    }
+    if (action === "unlock") {
+      const status = await this.os.keychain.unlockWithPasskey(context);
+      return `keychain unlocked ${status.unlockMethod}`;
+    }
+    if (action === "reauth" || action === "reauthenticate") {
+      const status = await this.os.keychain.reauthenticateWithPasskey(context);
+      return `keychain passkey reauthenticated ${status.unlockMethod}`;
+    }
+    return "keychain: usage: keychain passkey enroll [label] | unlock | reauth";
   }
 
   keychainSigning(action, args, context) {
