@@ -81,6 +81,9 @@ export class SyscallDispatcher {
     if (name === "timer.create") return this.timerCreate(args, context);
     if (name === "timer.cancel") return this.timerCancel(args, context);
     if (name === "timer.sleep") throw syscallError("EAGAIN", "syscall: timer.sleep requires async syscall dispatch");
+    if (name === "trustedPrompt.status") return this.trustedPromptStatus(args, context);
+    if (name === "trustedPrompt.create") return this.trustedPromptCreate(args, context);
+    if (name === "trustedPrompt.decide") return this.trustedPromptDecide(args, context);
     if (name === "localMount.status") return this.localMountStatus(context);
     if (name === "mount.list") return this.mountList(context);
     if (name === "mount.mount") return this.mount(args, context);
@@ -293,6 +296,23 @@ export class SyscallDispatcher {
     return this.os.timers.sleep(this.requireProcess(context), args);
   }
 
+  trustedPromptStatus(args, context) {
+    const process = context.process || null;
+    const pid = args.pid === undefined ? undefined : numberArg(args.pid, "pid");
+    if (pid !== undefined && (!process || Number(process.pid) !== pid)) this.assertCapability("process.read", context);
+    return this.os.trustedPrompts.status(pid === undefined ? {} : { ownerPid: pid });
+  }
+
+  trustedPromptCreate(args, context) {
+    return this.os.trustedPrompts.create(this.requireProcess(context), args);
+  }
+
+  trustedPromptDecide(args, context) {
+    const id = String(args.id || args.promptId || "").trim();
+    if (!id) throw syscallError("EINVAL", "syscall: trustedPrompt.decide needs id");
+    return this.os.trustedPrompts.decide(id, args.decision || args.action, context);
+  }
+
   localMountStatus(context) {
     this.assertCapability("localMount.read", context);
     const mounts = safeRead(() => this.os.localMounts.listMounts?.(), []);
@@ -451,7 +471,7 @@ function syscallError(code, message) {
 
 function errnoForError(error) {
   const text = String(error?.message || error || "").toLowerCase();
-  if (text.includes("permission denied") || text.includes("sandbox denied") || text.includes("capability denied")) return "EACCES";
+  if (text.includes("permission denied") || text.includes("sandbox denied") || text.includes("capability denied") || text.includes("administrator required")) return "EACCES";
   if (text.includes("no such process")) return "ESRCH";
   if (text.includes("not found") || text.includes("no such")) return "ENOENT";
   if (text.includes("invalid") || text.includes("missing")) return "EINVAL";

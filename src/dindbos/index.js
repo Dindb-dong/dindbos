@@ -20,6 +20,7 @@ import { ServiceManager } from "./service-manager.js?v=20260422-browserd";
 import { StorageTransactionManager } from "./storage-transaction-manager.js?v=20260422-browserd";
 import { SyscallDispatcher } from "./syscalls.js?v=20260422-browserd";
 import { TimerManager } from "./timer-manager.js?v=20260422-browserd";
+import { TrustedPromptManager } from "./trusted-prompt-manager.js?v=20260422-browserd";
 import { VirtualFileSystem } from "./vfs.js?v=20260422-browserd";
 import { WasmRunner } from "./wasm-runner.js?v=20260422-browserd";
 import { WindowManager } from "./window-manager.js?v=20260422-browserd";
@@ -248,6 +249,7 @@ export class DindbOS {
     this.descriptors = new DescriptorManager(this);
     this.timers = new TimerManager(this, options.timers || {});
     this.storageTransactions = new StorageTransactionManager(this);
+    this.trustedPrompts = new TrustedPromptManager(this, options.trustedPrompts || {});
     this.syscalls = new SyscallDispatcher(this);
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);
