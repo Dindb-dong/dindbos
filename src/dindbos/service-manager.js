@@ -316,7 +316,7 @@ export class ServiceManager {
     ensureDirectory(this.os, "/var", system);
     ensureDirectory(this.os, "/var/run", system);
     ensureDirectory(this.os, "/var/run/dindbos", system);
-    this.os.fs.writeOrCreateFile(SERVICE_STATE_PATH, `${JSON.stringify(this.list(), null, 2)}\n`, "/", {
+    this.os.fs.atomicWriteOrCreateFile(SERVICE_STATE_PATH, `${JSON.stringify(this.list(), null, 2)}\n`, "/", {
       mime: "application/json",
       owner: "root",
       group: "root",

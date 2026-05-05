@@ -4,6 +4,8 @@ import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
 
 const os = createDindbOSTestRuntime();
 const events = [];
+const fsEvents = [];
+os.fs.onChange = (event) => fsEvents.push(event);
 ["start", "stop", "crash", "scheduled-run", "degraded", "suspend", "resume"].forEach((type) => {
   os.bus.on(`service:${type}`, (event) => events.push(`${type}:${event.service.id}:${event.service.state}`));
 });
@@ -27,6 +29,7 @@ const started = await os.services.start("search-indexer");
 assert(started.state === "running", "service did not enter running state");
 assert(started.pid > 0 && os.processes.get(started.pid), "service did not create a runtime process");
 assert(os.fs.readFile("/var/run/dindbos/services.json").includes("search-indexer"), "service state file missing registered service");
+assert(fsEvents.some((event) => event.action === "atomic-create" && event.path === "/var/run/dindbos/services.json"), "service state was not atomically created");
 assert(os.fs.readFile("/var/log/dindbos/services.log").includes("indexer boot"), "service log missing start entry");
 assert(events.includes("start:search-indexer:running"), "service start event missing");
 
