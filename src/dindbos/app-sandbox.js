@@ -12,6 +12,7 @@ export class AppSandbox {
     this.apps = this.createAppFacade();
     this.processes = this.createProcessFacade();
     this.packages = this.createPackageFacade();
+    this.services = this.createServiceFacade();
     this.npm = this.createNpmFacade();
     this.node = this.createNodeFacade();
     this.storage = this.createStorageFacade();
@@ -265,6 +266,43 @@ export class AppSandbox {
       remove: (packageId) => {
         this.assertCapability("package.manage");
         return packageSummary(this.os.packages.remove(packageId), true);
+      },
+    };
+  }
+
+  createServiceFacade() {
+    return {
+      list: () => {
+        this.assertCapability("service.read");
+        return this.os.services?.list?.() || [];
+      },
+      get: (serviceId) => {
+        this.assertCapability("service.read");
+        return this.os.services?.get?.(serviceId) || null;
+      },
+      log: (serviceId) => {
+        this.assertCapability("service.read");
+        return this.os.services?.readLog?.(serviceId) || [];
+      },
+      start: (serviceId) => {
+        this.assertCapability("service.manage");
+        return this.os.services.start(serviceId, { principal: this.os.permissions.systemPrincipal() });
+      },
+      stop: (serviceId) => {
+        this.assertCapability("service.manage");
+        return this.os.services.stop(serviceId, { principal: this.os.permissions.systemPrincipal() });
+      },
+      restart: (serviceId) => {
+        this.assertCapability("service.manage");
+        return this.os.services.restart(serviceId, { principal: this.os.permissions.systemPrincipal() });
+      },
+      disable: (serviceId) => {
+        this.assertCapability("service.manage");
+        return this.os.services.disable(serviceId, { principal: this.os.permissions.systemPrincipal() });
+      },
+      enable: (serviceId) => {
+        this.assertCapability("service.manage");
+        return this.os.services.enable(serviceId, { principal: this.os.permissions.systemPrincipal() });
       },
     };
   }

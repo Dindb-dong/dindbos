@@ -41,6 +41,8 @@ Current service states:
 
 `start()`, `stop()`, `restart()`, `disable()`, `runScheduled()`, `suspend()`, `resume()`, and `crash()` update service state and emit `service:*` events on the runtime bus.
 
+Settings.app reads `os.services.list()` and renders service state, run count, restart controls, and disable controls through the sandboxed `service.read` / `service.manage` facade.
+
 ## Process Boundary
 
 Starting a service creates a DindbOS process with runtime `service`, a `service:<id>` app id, `/proc` visibility, descriptor cleanup, and crash report integration. Service crashes write through `ProcessManager.crash()` so diagnostics appear under `/var/log/dindbos/crash-<pid>.log`.
