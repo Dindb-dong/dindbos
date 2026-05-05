@@ -20,7 +20,9 @@ export class PersistentStorage {
     this.writeQueue = Promise.resolve();
     this.writeJournal = [];
     this.nextJournalId = 1;
+    this.nextTransactionId = 1;
     this.activeWriteJournalId = "";
+    this.activeStorageTransactionId = "";
     this.lastStatus = {
       key: this.key,
       backend: this.opfsProvider ? "opfs" : this.indexedDB ? "indexedDB" : this.adapter ? "localStorage" : "memory",
@@ -34,6 +36,7 @@ export class PersistentStorage {
       lastWriteError: "",
       storageJournalRecords: 0,
       lastStorageJournalAction: "",
+      lastStorageTransactionId: "",
     };
   }
 
@@ -87,6 +90,13 @@ export class PersistentStorage {
   saveFileSystem(root) {
     if (this.opfsProvider) {
       const recordPayload = this.createInodeRecordPayload(root);
+      const transaction = this.createStorageTransaction("filesystem-save", {
+        storageFormat: INODE_RECORD_FORMAT,
+        inodeRecords: recordPayload.inodeRecords.length,
+        fileRecords: recordPayload.fileRecords.length,
+        dirtyInodes: recordPayload.dirtyInodeRecords.length,
+        dirtyFiles: recordPayload.dirtyFileRecords.length,
+      });
       this.updateStatus(recordPayload.manifest, {
         storageFormat: INODE_RECORD_FORMAT,
         inodeRecords: recordPayload.inodeRecords.length,
@@ -95,14 +105,14 @@ export class PersistentStorage {
         dirtyInodes: recordPayload.dirtyInodeRecords.length,
         dirtyFiles: recordPayload.dirtyFileRecords.length,
       });
-      this.markWriteQueued();
+      this.markWriteQueued(transaction);
       this.writeQueue = this.writeQueue
         .catch(() => {})
         .then(() => this.writeInodeRecordPayload(recordPayload))
-        .then(() => this.markWriteComplete())
+        .then(() => this.markWriteComplete(transaction))
         .catch((error) => {
-          this.markWriteError(error);
-          return this.writeSnapshotFallback(root);
+          this.markWriteError(error, transaction);
+          return this.writeSnapshotFallback(root, transaction);
         });
       return;
     }
@@ -524,23 +534,29 @@ export class PersistentStorage {
     await this.cleanupOpfsFileRecords(new Set(payload.records.map((record) => opfsFileName(record.key))));
   }
 
-  async writeSnapshotFallback(root) {
+  async writeSnapshotFallback(root, transaction = {}) {
     const payload = JSON.stringify({
       version: STORAGE_VERSION,
       savedAt: new Date().toISOString(),
       root: this.serializeSnapshotTree(root),
     });
+    const fallbackTransaction = transaction.transactionId ? {
+      ...transaction,
+      transactionKind: `${transaction.transactionKind || "filesystem-save"}-fallback`,
+      storageFormat: "snapshot-fallback",
+    } : {};
     this.updateStatus(payload, { storageFormat: "snapshot-fallback", inodeRecords: 0, fileRecords: 0, contentBytes: 0, dirtyInodes: 0, dirtyFiles: 0 });
     try {
       await this.opfsDelete(this.key);
     } catch {}
     await this.writeDurableFallback(this.key, payload);
-    this.markWriteComplete();
+    this.markWriteComplete(fallbackTransaction);
   }
 
   markWriteQueued(details = {}) {
     const entry = this.recordStorageJournal("write-queued", details);
     this.activeWriteJournalId = entry.id;
+    this.activeStorageTransactionId = entry.transactionId || details.transactionId || "";
     this.lastStatus = {
       ...this.lastStatus,
       writePending: true,
@@ -552,6 +568,7 @@ export class PersistentStorage {
   markWriteComplete(details = {}) {
     this.recordStorageJournal("write-completed", {
       journalId: this.activeWriteJournalId,
+      transactionId: this.activeStorageTransactionId,
       ...details,
     });
     this.lastStatus = {
@@ -564,6 +581,7 @@ export class PersistentStorage {
   markWriteError(error, details = {}) {
     this.recordStorageJournal("write-error", {
       journalId: this.activeWriteJournalId,
+      transactionId: this.activeStorageTransactionId,
       error: error?.message || String(error),
       ...details,
     });
@@ -571,6 +589,14 @@ export class PersistentStorage {
       ...this.lastStatus,
       writePending: false,
       lastWriteError: error?.message || String(error),
+    };
+  }
+
+  createStorageTransaction(kind, details = {}) {
+    return {
+      transactionId: `storage-tx-${this.nextTransactionId++}`,
+      transactionKind: String(kind || "storage-write"),
+      ...details,
     };
   }
 
@@ -583,6 +609,12 @@ export class PersistentStorage {
       storageFormat: String(details.storageFormat || this.lastStatus.storageFormat || ""),
       key: String(details.key || this.key || ""),
       journalId: String(details.journalId || ""),
+      transactionId: String(details.transactionId || this.activeStorageTransactionId || ""),
+      transactionKind: String(details.transactionKind || ""),
+      dirtyFiles: Number(details.dirtyFiles || 0),
+      dirtyInodes: Number(details.dirtyInodes || 0),
+      fileRecords: Number(details.fileRecords || 0),
+      inodeRecords: Number(details.inodeRecords || 0),
       error: String(details.error || ""),
     };
     this.writeJournal.push(entry);
@@ -591,6 +623,7 @@ export class PersistentStorage {
       ...this.lastStatus,
       storageJournalRecords: this.writeJournal.length,
       lastStorageJournalAction: entry.action,
+      lastStorageTransactionId: entry.transactionId,
     };
     return entry;
   }
