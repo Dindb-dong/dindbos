@@ -977,7 +977,7 @@ Verification:
 - Already present: `npm run smoke:boot` verifies `overlayfs` lower-only files, upper-only files, upper-over-lower precedence, and shared mount table overlay metadata.
 - Already present: `npm run smoke:boot` verifies `zipfs` root listing, nested listing, nested file reads, and shared mount table ZIP entry counts.
 - Already present: `npm run smoke:boot` verifies cross-driver `stat` shape for `memfs`, `overlayfs`, `zipfs`, and `pkgfs`, plus `zipfs` unsupported compression normalization to `ENOTSUP`.
-- Add cross-driver tests proving shell, app APIs, NodeCompat, and WASI see the same path behavior for mounted trees.
+- Already present: `npm run smoke:wasm` verifies Shell, AppSandbox filesystem APIs, NodeCompat, and WASI all read the same mounted `memfs` path.
 
 Completion criteria:
 
