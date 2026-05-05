@@ -1,5 +1,6 @@
 import { removeAppState } from "./app-sandbox.js?v=20260422-browserd";
 import { compatibilityRequirementForManifest } from "./compat.js?v=20260422-browserd";
+import { createDindbOSSDK } from "./sdk.js?v=20260422-browserd";
 
 const APPLICATION_DIR = "/usr/share/applications";
 const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";
@@ -89,22 +90,19 @@ const SAMPLE_API_PACKAGE = {
       path: "app.js",
       mime: "text/javascript",
       content: [
-        "export function mount({ content, os, pkg }) {",
+        "export function mount({ content, os, pkg, sdk }) {",
         "  const workspace = '/home/guest/DindbOS API Lab';",
         "  if (!os.fs.exists(workspace)) os.fs.createDirectory(workspace);",
         "  const reportPath = os.fs.join(workspace, 'report.txt');",
         "  const launches = Number(os.state.get('launches', 0)) + 1;",
         "  os.state.set('launches', launches);",
-        "  const process = os.processes.current();",
-        "  const info = os.syscall('package.info', { packageId: pkg.id });",
-        "  if (!info.ok) throw new Error(info.error.message);",
-        "  const report = 'package=' + pkg.id + '\\nprocess=' + process.pid + '\\nversion=' + info.value.version + '\\nlaunches=' + launches + '\\n';",
-        "  const write = os.syscall('fs.writeText', { path: reportPath, content: report });",
-        "  if (!write.ok) throw new Error(write.error.message);",
-        "  os.syscall('process.log', { message: `api-lab wrote ${reportPath}` });",
-        "  const read = os.syscall('fs.readText', { path: reportPath });",
-        "  if (!read.ok) throw new Error(read.error.message);",
-        "  content.innerHTML = '<main data-api-lab><h2>' + pkg.name + '</h2><p>' + read.value + '</p></main>';",
+        "  const process = sdk.processes.current();",
+        "  const info = sdk.packages.info(pkg.id);",
+        "  const report = 'package=' + pkg.id + '\\nprocess=' + process.pid + '\\nversion=' + info.version + '\\nlaunches=' + launches + '\\n';",
+        "  sdk.fs.writeText(reportPath, report);",
+        "  sdk.processes.log(`api-lab wrote ${reportPath}`);",
+        "  const read = sdk.fs.readText(reportPath);",
+        "  content.innerHTML = '<main data-api-lab><h2>' + pkg.name + '</h2><p>' + read + '</p></main>';",
         "}",
       ].join("\n"),
     },
@@ -1143,6 +1141,7 @@ async function mountPackageEntrypoint(content, runtime, record, windowApi, manag
       os: runtime,
       pkg: packagePublicRecord(activeRecord),
       package: packagePublicRecord(activeRecord),
+      sdk: createDindbOSSDK(runtime),
       imports: createImportFacade(activeRecord),
       window: windowApi,
     });
