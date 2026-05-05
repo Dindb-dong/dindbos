@@ -67,13 +67,18 @@ package.list
 package.info
 storage.status
 localMount.status
+mount.list
+mount.mount
+mount.unmount
 process.list
 process.get
 process.log
 app.launch
 ```
 
-Filesystem and descriptor syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process, package, storage, local mount, and app launch syscalls run through the same capability checks used by the existing high-level app facade.
+Filesystem and descriptor syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process, package, storage, local mount, mount, and app launch syscalls run through the same capability checks used by the existing high-level app facade.
+
+`mount.list` returns the shared DindbOS mount table. `mount.mount` and `mount.unmount` currently manage runtime `memfs` mounts only; unsupported drivers fail explicitly instead of pretending the browser can mount arbitrary host filesystems. Sandboxed apps need `mount.read` or `mount.manage` capabilities for these calls.
 
 Descriptor syscalls require a process context. New processes receive standard descriptors `0` stdin, `1` stdout, and `2` stderr. `fd.open` currently supports text VFS files plus `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty`, and `/dev/clipboard`; descriptor state is exposed under `/proc/<pid>/fd.json` and cleaned up when the process exits or crashes.
 

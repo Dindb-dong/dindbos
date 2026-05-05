@@ -185,6 +185,7 @@ export class DindbOS {
       lastRetry: null,
       lastError: "",
     };
+    this.virtualMounts = new Map();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
@@ -2264,6 +2265,7 @@ export class DindbOS {
       },
     ];
     const localMounts = this.localMounts?.listMounts?.() || [];
+    [...this.virtualMounts.values()].forEach((mount) => roots.push({ ...mount }));
     localMounts.forEach((mount) => {
       roots.push({
         id: `local:${mount.path}`,
@@ -2280,6 +2282,46 @@ export class DindbOS {
     return roots
       .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.root === entry.root && candidate.driver === entry.driver) === index)
       .sort((left, right) => left.root.localeCompare(right.root));
+  }
+
+  mountVirtual(path, options = {}, principal = this.permissions.systemPrincipal()) {
+    const root = this.fs.normalize(path || "");
+    if (!root || root === "/") throw new Error("mount: path is required");
+    const driver = normalizeVirtualMountDriver(options.driver || options.type || "memfs");
+    if (this.virtualMounts.has(root)) throw new Error(`mount: ${root}: already mounted`);
+    const readonly = Boolean(options.readonly);
+    const system = this.permissions.systemPrincipal();
+    this.fs.createMount(root, {
+      mountType: driver,
+      handleName: options.source || driver,
+      permissions: readonly ? "dr-xr-xr-x" : "drwxrwxrwx",
+      owner: principal.user || this.session.user || "guest",
+      group: principal.groups?.[0] || "users",
+    }, system);
+    const record = {
+      id: `virtual:${root}`,
+      root,
+      driver,
+      readonly,
+      owner: principal.user || this.session.user || "guest",
+      durability: "runtime",
+      quotaPolicy: "memory",
+      capabilities: ["mount.manage"],
+      source: options.source || "syscall",
+    };
+    this.virtualMounts.set(root, record);
+    this.writeMountTableProcfs("virtual-mount");
+    return { ...record };
+  }
+
+  unmountVirtual(path, principal = this.permissions.systemPrincipal()) {
+    const root = this.fs.normalize(path || "");
+    const record = this.virtualMounts.get(root);
+    if (!record) throw new Error(`umount: ${root}: not a virtual mount`);
+    if (this.fs.exists(root)) this.fs.remove(root, "/", { recursive: true }, this.permissions.systemPrincipal());
+    this.virtualMounts.delete(root);
+    this.writeMountTableProcfs("virtual-unmount");
+    return { ...record };
   }
 
   mountLines() {
@@ -2823,6 +2865,12 @@ function mountDriverForDiskArea(area) {
   if (area.root === "/mnt") return "mountfs";
   if (area.root === "/var") return "statefs";
   return "browserfs";
+}
+
+function normalizeVirtualMountDriver(driver) {
+  const value = String(driver || "memfs").toLowerCase();
+  if (value === "memfs") return "memfs";
+  throw new Error(`mount: unsupported driver: ${value}`);
 }
 
 function formatMountTableLine(entry) {

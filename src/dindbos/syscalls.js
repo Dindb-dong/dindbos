@@ -52,6 +52,9 @@ export class SyscallDispatcher {
     if (name === "package.info") return this.packageInfo(args, context);
     if (name === "storage.status") return this.storageStatus(context);
     if (name === "localMount.status") return this.localMountStatus(context);
+    if (name === "mount.list") return this.mountList(context);
+    if (name === "mount.mount") return this.mount(args, context);
+    if (name === "mount.unmount") return this.unmount(args, context);
     if (name === "process.list") return this.processList(context);
     if (name === "process.get") return this.processGet(args, context);
     if (name === "process.log") return this.processLog(args, context);
@@ -207,6 +210,27 @@ export class SyscallDispatcher {
       helper: safeRead(() => this.os.localMounts.nativeHelperStatus?.(), { status: "unavailable" }),
       copyPolicy: safeRead(() => this.os.localMounts.copyPolicy?.(), null),
     };
+  }
+
+  mountList(context) {
+    this.assertCapability("mount.read", context);
+    return safeRead(() => this.os.mountTable?.(), []);
+  }
+
+  mount(args, context) {
+    this.assertCapability("mount.manage", context);
+    const path = this.normalizedPath(args, context);
+    return this.os.mountVirtual(path, {
+      driver: args.driver || args.type || "memfs",
+      readonly: Boolean(args.readonly),
+      source: args.source || "syscall",
+    }, context.principal);
+  }
+
+  unmount(args, context) {
+    this.assertCapability("mount.manage", context);
+    const path = this.normalizedPath(args, context);
+    return this.os.unmountVirtual(path, context.principal);
   }
 
   processList(context) {

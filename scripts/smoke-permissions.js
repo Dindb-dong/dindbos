@@ -56,6 +56,8 @@ syscallResult = sandbox.syscall("package.list", {});
 assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied package mismatch: ${JSON.stringify(syscallResult)}`);
 syscallResult = sandbox.syscall("storage.status", {});
 assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied storage mismatch: ${JSON.stringify(syscallResult)}`);
+syscallResult = sandbox.syscall("mount.mount", { path: "/mnt/sandbox", driver: "memfs" });
+assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied mount mismatch: ${JSON.stringify(syscallResult)}`);
 sandbox.state.set("prefs", { theme: "dark", count: 1 });
 assert(sandbox.state.path() === "/var/lib/dindbos/app-state/limited.json", "app state path was not namespaced by app id");
 assert(sandbox.state.get("prefs").theme === "dark", "app state did not read back its own value");
