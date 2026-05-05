@@ -86,6 +86,9 @@ export class DindbOS {
       lockedAt: this.session.locked ? new Date().toISOString() : "",
       unlockedAt: this.session.locked ? "" : new Date().toISOString(),
       reason: this.session.lockReason || "",
+      authMethod: this.session.locked ? "" : "session-placeholder",
+      loggedOutAt: "",
+      lastLoginAt: this.session.locked ? "" : new Date().toISOString(),
     };
     this.bus = new EventBus();
     this.sessionChannelName = options.sessionChannelName || "dindbos:session-events";
@@ -2184,7 +2187,32 @@ export class DindbOS {
       lockedAt: this.sessionAuth.lockedAt,
       unlockedAt: this.sessionAuth.unlockedAt,
       reason: this.sessionAuth.reason,
+      authMethod: this.sessionAuth.authMethod,
+      loggedOutAt: this.sessionAuth.loggedOutAt,
+      lastLoginAt: this.sessionAuth.lastLoginAt,
+      authenticationPolicy: this.authenticationPolicy(),
       coordination: this.sessionCoordinationStatus(),
+    };
+  }
+
+  authenticationPolicy() {
+    return {
+      mode: "browser-native-placeholder",
+      loginMethods: ["session-placeholder"],
+      password: {
+        supported: false,
+        status: "placeholder",
+        reason: "Password verification is not implemented until a credential store and trusted login UI exist.",
+      },
+      passkey: {
+        supported: false,
+        status: "placeholder",
+        reason: "Passkey login is reserved for a future WebAuthn-backed trusted login flow.",
+      },
+      guestReset: {
+        supported: true,
+        user: "guest",
+      },
     };
   }
 
@@ -2364,6 +2392,7 @@ export class DindbOS {
 
   unlockSession() {
     if (!this.sessionAuth.locked) return this.sessionStatus();
+    if (this.sessionAuth.state === "logged-out") throw new Error(`session: ${this.session.user}: logged out; login required`);
     Object.assign(this.sessionAuth, {
       state: "authenticated",
       locked: false,
@@ -2373,6 +2402,61 @@ export class DindbOS {
     this.writeSessionStatus();
     this.bus.emit("session:unlock", this.sessionStatus());
     return this.sessionStatus();
+  }
+
+  logoutSession(reason = "manual") {
+    Object.assign(this.sessionAuth, {
+      state: "logged-out",
+      locked: true,
+      lockedAt: new Date().toISOString(),
+      loggedOutAt: new Date().toISOString(),
+      authMethod: "",
+      reason: String(reason || "manual"),
+    });
+    this.writeSessionStatus();
+    this.bus.emit("session:logout", this.sessionStatus());
+    return this.sessionStatus();
+  }
+
+  loginSessionUser(userName, options = {}) {
+    const method = String(options.method || "session-placeholder");
+    if (method === "password") throw new Error("login: password auth is a placeholder in this browser runtime");
+    if (method === "passkey") throw new Error("login: passkey auth is a placeholder until WebAuthn trusted login is implemented");
+    if (method !== "session-placeholder") throw new Error(`login: unsupported auth method: ${method}`);
+    const status = this.switchSessionUser(userName, { sessionId: options.sessionId });
+    Object.assign(this.sessionAuth, {
+      state: "authenticated",
+      locked: false,
+      lockedAt: "",
+      unlockedAt: new Date().toISOString(),
+      loggedOutAt: "",
+      authMethod: method,
+      lastLoginAt: new Date().toISOString(),
+      reason: "",
+    });
+    this.writeSessionStatus();
+    this.bus.emit("session:login", this.sessionStatus());
+    return this.sessionStatus();
+  }
+
+  resetGuestSession(context = {}) {
+    const principal = context.principal || this.permissions.principal({ user: this.session.user, groups: this.session.groups });
+    if (principal.user !== "guest") this.assertAdminOperation("session:guest-reset", { principal, target: "guest" });
+    const system = this.permissions.systemPrincipal();
+    const guestHome = "/home/guest";
+    [
+      guestHome,
+      "/var/lib/dindbos/app-state/guest",
+      "/var/lib/dindbos/shell-history/guest.json",
+      "/var/lib/dindbos/package-preferences/guest.json",
+    ].forEach((path) => {
+      if (this.fs.exists(path)) this.fs.remove(path, "/", { recursive: true }, system);
+    });
+    this.cache.clearUser?.("guest");
+    this.ensureUserHome("guest", "users", guestHome);
+    this.auditSecurity("session:guest-reset", "allowed", { principal, target: "guest" });
+    this.bus.emit("session:guest-reset", { user: "guest", by: principal.user || "guest" });
+    return { user: "guest", home: guestHome, reset: true };
   }
 
   switchSessionUser(userName, options = {}) {
@@ -2395,6 +2479,8 @@ export class DindbOS {
       state: "authenticated",
       locked: false,
       unlockedAt: new Date().toISOString(),
+      authMethod: options.authMethod || this.sessionAuth.authMethod || "session-placeholder",
+      lastLoginAt: this.sessionAuth.lastLoginAt || new Date().toISOString(),
       reason: "",
     });
     this.ensureSessionHome();
@@ -2405,7 +2491,8 @@ export class DindbOS {
   }
 
   assertSessionUnlocked(action = "session") {
-    if (!this.sessionAuth.locked) return;
+    if (!this.sessionAuth.locked && this.sessionAuth.state === "authenticated") return;
+    if (this.sessionAuth.state === "logged-out") throw new Error(`${action}: session logged out for ${this.session.user}; login required`);
     throw new Error(`${action}: session locked for ${this.session.user}; unlock session to continue`);
   }
 
