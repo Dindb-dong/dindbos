@@ -72,6 +72,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-readdir.wasm", wasiReaddirWas
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-mkdir.wasm", wasiMkdirWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFile("/home/guest/bin/wasi-file.txt", "opened read\n", "/", {
   owner: "guest",
   group: "users",
@@ -158,7 +164,14 @@ const wasiReaddir = await os.wasm.runFile("/home/guest/bin/wasi-readdir.wasm", "
 });
 assert(wasiReaddir.status === 0, `wasi fd_readdir status mismatch: ${wasiReaddir.status} ${wasiReaddir.stderr}`);
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir process");
+const wasiMkdir = await os.wasm.runFile("/home/guest/bin/wasi-mkdir.wasm", "/home/guest/bin", {
+  argv: ["wasi-mkdir.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiMkdir.status === 0, `wasi path_create_directory status mismatch: ${wasiMkdir.status} ${wasiMkdir.stderr}`);
+assert(os.fs.stat("/home/guest/bin/wasi-made-dir")?.type === "directory", "wasi path_create_directory did not create directory");
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir mkdir process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -456,6 +469,28 @@ function wasiReaddirWasm() {
       0x0b,
     ],
     data: new Uint8Array(),
+  });
+}
+
+function wasiMkdirWasm() {
+  const path = bytes("wasi-made-dir");
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "path_create_directory", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 1 },
+    ],
+    startType: 2,
+    body: [
+      0x41, 0x03, 0x41, 0x00, 0x41, ...i32(path.length), 0x10, 0x00,
+      0x10, 0x01,
+      0x0b,
+    ],
+    data: path,
   });
 }
 
