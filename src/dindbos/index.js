@@ -2043,7 +2043,13 @@ export class DindbOS {
   }
 
   listCompanionPermissions() {
-    return Object.values(this.companionPermissions().companions)
+    const permissions = this.companionPermissions();
+    let changed = false;
+    Object.values(permissions.companions).forEach((record) => {
+      changed = this.ensureCompanionSessionObject(record) || changed;
+    });
+    const source = changed ? this.writeCompanionPermissions(permissions).companions : permissions.companions;
+    return Object.values(source)
       .sort((left, right) => left.identity.localeCompare(right.identity))
       .map((entry) => ({ ...entry, capabilities: [...entry.capabilities] }));
   }
@@ -2051,7 +2057,11 @@ export class DindbOS {
   companionPermissionStatus(identity) {
     const id = sanitizeIdentifier(identity, "");
     if (!id) return null;
-    const record = this.companionPermissions().companions[id] || null;
+    const permissions = this.companionPermissions();
+    let record = permissions.companions[id] || null;
+    if (record && this.ensureCompanionSessionObject(record)) {
+      record = this.writeCompanionPermissions(permissions).companions[id] || record;
+    }
     return record ? { ...record, capabilities: [...record.capabilities] } : null;
   }
 
@@ -2062,6 +2072,7 @@ export class DindbOS {
     if (!protocol) throw new Error("companion: protocol version is required");
     this.assertAdminOperation("companion-permission:grant", { principal: context.principal, target: id });
     const permissions = this.companionPermissions();
+    this.revokeCompanionSessionObject(permissions.companions[id], "companion-permission-regrant");
     permissions.companions[id] = normalizeCompanionPermission(id, {
       identity: id,
       protocolVersion: protocol,
@@ -2071,6 +2082,7 @@ export class DindbOS {
       grantedAt: new Date().toISOString(),
       revokedAt: "",
     });
+    this.ensureCompanionSessionObject(permissions.companions[id]);
     return this.writeCompanionPermissions(permissions).companions[id];
   }
 
@@ -2080,9 +2092,12 @@ export class DindbOS {
     this.assertAdminOperation("companion-permission:revoke", { principal: context.principal, target: id });
     const permissions = this.companionPermissions();
     const existing = permissions.companions[id] || normalizeCompanionPermission(id, { identity: id });
+    this.revokeCompanionSessionObject(existing, "companion-permission-revoked");
     permissions.companions[id] = {
       ...existing,
       approved: false,
+      objectId: "",
+      handleId: "",
       revokedBy: context.principal?.user || this.session.user || "guest",
       revokedAt: new Date().toISOString(),
     };
@@ -2093,8 +2108,83 @@ export class DindbOS {
     const record = this.companionPermissionStatus(identity);
     if (!record || !record.approved) return false;
     if (protocolVersion && record.protocolVersion !== String(protocolVersion || "").trim()) return false;
-    if (capability) return hasCompanionCapability(record.capabilities, capability);
-    return true;
+    if (capability && !hasCompanionCapability(record.capabilities, capability)) return false;
+    const rights = capability ? [String(capability || "").trim().toLowerCase()] : ["connect"];
+    return Boolean(this.assertCompanionSessionHandle(record, rights));
+  }
+
+  ensureCompanionSessionObject(record) {
+    if (!record?.approved || !this.objects) return false;
+    let changed = false;
+    let object = record.objectId ? this.objects.get(record.objectId) : null;
+    if (object?.status === "revoked") object = null;
+    if (!object) {
+      record.objectId = "";
+      record.handleId = "";
+      object = this.objects.register("companion-session", {
+        ref: `companion:${record.identity}:${record.protocolVersion}`,
+        name: record.identity,
+        ownerPid: 0,
+        user: "root",
+        rights: companionSessionRights(record),
+        metadata: companionSessionMetadata(record),
+      });
+      record.objectId = object?.id || "";
+      changed = true;
+    } else {
+      this.objects.update(object.id, {
+        rights: companionSessionRights(record),
+        metadata: companionSessionMetadata(record),
+      });
+    }
+    if (!record.handleId && record.objectId) {
+      const handle = this.objects.createHandle(record.objectId, {
+        ownerPid: 0,
+        user: "root",
+        groups: ["root"],
+        rights: companionSessionRights(record),
+        closeOnExec: false,
+        transferPolicy: "none",
+        metadata: companionSessionHandleMetadata(record),
+      });
+      record.handleId = handle?.id || "";
+      changed = true;
+    } else if (record.handleId) {
+      try {
+        this.objects.assertHandle(record.handleId, {
+          ownerPid: 0,
+          objectType: "companion-session",
+          rights: ["connect"],
+        });
+        this.objects.updateHandle(record.handleId, {
+          rights: companionSessionRights(record),
+          metadata: companionSessionHandleMetadata(record),
+        });
+      } catch {
+        if (!object) record.handleId = "";
+      }
+    }
+    return changed;
+  }
+
+  assertCompanionSessionHandle(record = {}, rights = []) {
+    if (!record.handleId || !this.objects) return null;
+    try {
+      return this.objects.assertHandle(record.handleId, {
+        ownerPid: 0,
+        objectType: "companion-session",
+        rights,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  revokeCompanionSessionObject(record, reason = "companion-session-revoked") {
+    if (!record || !this.objects) return null;
+    if (record.objectId) return this.objects.revoke(record.objectId, reason);
+    if (record.handleId) return this.objects.revokeHandle(record.handleId, reason);
+    return null;
   }
 
   writeCompanionPermissions(record) {
@@ -3320,10 +3410,39 @@ function normalizeCompanionPermission(identity, value = {}) {
     protocolVersion: String(value.protocolVersion || "").trim(),
     capabilities: normalizeCompanionCapabilities(value.capabilities),
     approved: Boolean(value.approved),
+    objectId: String(value.objectId || ""),
+    handleId: String(value.handleId || ""),
     grantedBy: String(value.grantedBy || ""),
     grantedAt: String(value.grantedAt || ""),
     revokedBy: String(value.revokedBy || ""),
     revokedAt: String(value.revokedAt || ""),
+  };
+}
+
+function companionSessionRights(record = {}) {
+  return [
+    "connect",
+    "inspect",
+    ...normalizeCompanionCapabilities(record.capabilities).map((capability) => capability.toLowerCase()),
+  ];
+}
+
+function companionSessionMetadata(record = {}) {
+  return {
+    identity: record.identity || "",
+    protocolVersion: record.protocolVersion || "",
+    capabilities: normalizeCompanionCapabilities(record.capabilities),
+    approved: Boolean(record.approved),
+    grantedBy: record.grantedBy || "",
+    grantedAt: record.grantedAt || "",
+  };
+}
+
+function companionSessionHandleMetadata(record = {}) {
+  return {
+    identity: record.identity || "",
+    protocolVersion: record.protocolVersion || "",
+    capabilities: normalizeCompanionCapabilities(record.capabilities),
   };
 }
 
