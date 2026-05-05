@@ -345,6 +345,27 @@ export class DindbOS {
     };
   }
 
+  backgroundMaintenanceStatus() {
+    const serviceWorkerSupported = Boolean(globalThis.navigator?.serviceWorker);
+    const periodicSyncSupported = Boolean(
+      globalThis.PeriodicSyncManager
+      || globalThis.ServiceWorkerRegistration?.prototype?.periodicSync,
+    );
+    return {
+      serviceWorkerSupported,
+      periodicSyncSupported,
+      registered: false,
+      permissionRequired: serviceWorkerSupported,
+      closedPagePersistence: false,
+      decision: serviceWorkerSupported
+        ? "available-but-not-registered"
+        : "unsupported-in-this-runtime",
+      reason: serviceWorkerSupported
+        ? "DindbOS only enables background maintenance after explicit service registration and permissioned browser support are implemented."
+        : "This runtime has no Service Worker controller, so DindbOS cannot claim closed-page service execution.",
+    };
+  }
+
   recoverPreviousShutdown() {
     const record = this.readLastShutdownRecord();
     if (!record?.dirtyShutdown || record.recoveredAt) return null;

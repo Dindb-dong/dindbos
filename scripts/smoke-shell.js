@@ -141,6 +141,8 @@ assert(result.status === 0, `doctor compat status mismatch: ${result.status}`);
 assert(result.output.includes("DindbOS compatibility"), `doctor compat heading missing: ${result.output}`);
 assert(result.output.includes("tier A supported dindbos-js"), `doctor compat tier A missing: ${result.output}`);
 assert(result.output.includes("tier C planned wasi-wasm"), `doctor compat tier C missing: ${result.output}`);
+assert(result.output.includes("serviceWorker=false periodicSync=false"), `doctor compat background browser probes missing: ${result.output}`);
+assert(result.output.includes("background serviceWorker=false periodicSync=false registered=false closedPagePersistent=false decision=unsupported-in-this-runtime"), `doctor compat background boundary missing: ${result.output}`);
 assert(result.output.includes("unsupported native=kernel-mode execution"), `doctor compat unsupported native boundary missing: ${result.output}`);
 
 result = await shell.executeAsync("mount-local --helper");
@@ -280,7 +282,14 @@ function bootOs() {
         { id: "A", key: "dindbos-js", name: "DindbOS JavaScript GUI/CLI apps", status: "supported" },
         { id: "C", key: "wasi-wasm", name: "WASI-style WASM CLI programs", status: "planned" },
       ],
-      browser: { workers: false, webAssembly: true, opfs: false, indexedDB: false, cacheApi: false, fileSystemAccess: false },
+      browser: { workers: false, webAssembly: true, opfs: false, indexedDB: false, cacheApi: false, fileSystemAccess: false, serviceWorker: false, periodicSync: false },
+      backgroundMaintenance: {
+        serviceWorkerSupported: false,
+        periodicSyncSupported: false,
+        registered: false,
+        closedPagePersistence: false,
+        decision: "unsupported-in-this-runtime",
+      },
       storage: { backend: "memory", structuredBackend: "memory", persisted: false, buckets: "fallback" },
       companions: { browserProviderUrl: "ws://127.0.0.1:8787/browser", localMounts: 0 },
       unsupportedNative: ["kernel-mode execution"],
