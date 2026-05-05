@@ -34,6 +34,7 @@ const BUILTIN_MANUALS = {
   storage: "storage [persist|flush] - show quota status, request persistence, or flush pending writes",
   su: "su [user] - unsupported browser-native privilege boundary placeholder",
   sudo: "sudo <command> - unsupported browser-native privilege boundary placeholder",
+  syscall: "syscall <name> [json] - call the DindbOS syscall ABI and print structured JSON",
   touch: "touch <path> - create or update a file",
   tree: "tree [path] - render a directory tree",
   umount: "umount [--forget] <path> - unmount a local folder",
@@ -53,6 +54,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "stat",
   "su",
   "sudo",
+  "syscall",
   "tree",
   "umount",
   "which",
@@ -255,6 +257,7 @@ export class ShellSession {
     if (command === "ps") return this.os.processes.table();
     if (command === "kill") return this.kill(args);
     if (command === "storage") return this.storage(args);
+    if (command === "syscall") return this.syscall(args);
     if (command === "resetfs") return this.resetFileSystem();
     if (command === "su" || command === "sudo") return this.privilegeEscalation(command);
     if (command === "whoami") return this.env.USER;
@@ -643,6 +646,14 @@ export class ShellSession {
       `companions browserProvider=${companions.browserProviderUrl || "ws://127.0.0.1:8787/browser"} localMounts=${companions.localMounts || 0}`,
       `unsupported native=${(snapshot.unsupportedNative || []).join("; ")}`,
     ].join("\n");
+  }
+
+  syscall(args) {
+    const [name, ...jsonParts] = args;
+    if (!name) return "syscall: usage: syscall <name> [json]";
+    const payload = jsonParts.length ? parseJsonArgument(jsonParts.join(" "), "syscall") : {};
+    const result = this.os.syscall(name, payload, { principal: this.principal });
+    return JSON.stringify(result, null, 2);
   }
 
   node(args) {
@@ -1115,6 +1126,14 @@ function shellStatus(command, output) {
   const text = String(output ?? "");
   if (command === "grep" && text === "") return 1;
   if (command === "which" && text === "") return 1;
+  if (command === "syscall") {
+    try {
+      const result = JSON.parse(text);
+      if (result?.ok === false) return result.error?.code === "EINVAL" ? 2 : 1;
+    } catch {
+      return text.startsWith("syscall: usage") ? 2 : 1;
+    }
+  }
   if (!STATUS_PREFIX_COMMANDS.has(command)) return 0;
   if (text.startsWith(`${command}: usage`)) return 2;
   if (new RegExp(`^${escapeRegExp(command)}: missing(\\s|$)`).test(text)) return 2;
@@ -1129,6 +1148,16 @@ function shellStatus(command, output) {
   if (command === "manifest" && text.startsWith("manifest:") && text.includes("no such app")) return 1;
   if (command === "mount-local" && text.includes("not available in this browser")) return 1;
   return 0;
+}
+
+function parseJsonArgument(text, command) {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("expected object");
+    return parsed;
+  } catch (error) {
+    throw new Error(`${command}: invalid JSON argument: ${error.message}`);
+  }
 }
 
 function formatStat(stat) {

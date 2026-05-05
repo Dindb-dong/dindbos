@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { ShellSession } from "../src/dindbos/shell.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
+import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 
 const shell = new ShellSession(bootOs());
@@ -131,6 +132,16 @@ assert(result.status === 0, `mount helper status mismatch: ${result.status}`);
 assert(result.output.includes("protocol=dindbos-file-helper-v1"), `mount helper protocol missing: ${result.output}`);
 assert(result.output.includes("rename=false"), `mount helper rename output missing: ${result.output}`);
 
+result = await shell.executeAsync("syscall fs.writeText '{\"path\":\"syscall-note.txt\",\"content\":\"via syscall\"}'");
+assert(result.status === 0, `syscall write status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value.path === "/home/guest/syscall-note.txt", `syscall write path mismatch: ${result.output}`);
+result = await shell.executeAsync("syscall fs.readText '{\"path\":\"syscall-note.txt\"}'");
+assert(result.status === 0, `syscall read status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value === "via syscall", `syscall read output mismatch: ${result.output}`);
+result = await shell.executeAsync("syscall future.native '{}'");
+assert(result.status === 1, `unsupported syscall status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).error.code === "ENOSYS", `unsupported syscall errno mismatch: ${result.output}`);
+
 const trustKey = "ed25519-pub:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 result = await shell.executeAsync(`pkg trust add com.example ${trustKey} Example Publisher`);
 assert(result.status === 0, `pkg trust add status mismatch: ${result.status}`);
@@ -201,7 +212,7 @@ function bootOs() {
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
-  return {
+  const os = {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
@@ -262,6 +273,9 @@ function bootOs() {
     },
     openPath: () => null,
   };
+  os.syscalls = new SyscallDispatcher(os);
+  os.syscall = (name, args = {}, context = {}) => os.syscalls.call(name, args, context);
+  return os;
 }
 
 function assert(condition, message) {
