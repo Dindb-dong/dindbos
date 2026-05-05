@@ -29,6 +29,8 @@ export class ProcessManager {
       activitySamples: [],
       windowId: "",
       windowState: "starting",
+      crashReportPath: "",
+      crashIndexPath: "",
     };
     this.processes.set(process.pid, process);
     this.history.push({ ...process });
@@ -92,7 +94,9 @@ export class ProcessManager {
     process.lastActiveAt = process.endedAt;
     this.log(process.pid, `crash ${error?.message || String(error)}`, "error");
     this.sampleActivity(process.pid, "crash", 4);
-    this.writeCrashReport(process, error);
+    const report = this.writeCrashReport(process, error);
+    process.crashReportPath = report.path;
+    process.crashIndexPath = report.indexPath;
     this.syncProcfs();
     this.os.bus.emit("process:crash", process);
     this.emitAppLifecycle("crash", process, { error: error?.message || String(error) });
@@ -211,6 +215,8 @@ export class ProcessManager {
       activityScore: process.activityScore,
       activitySamples: process.activitySamples,
       activityLastSampleAt: process.activityLastSampleAt,
+      crashReportPath: process.crashReportPath || "",
+      crashIndexPath: process.crashIndexPath || "",
     })), null, 2);
     this.os.fs.writeOrCreateFile("/proc/processes.json", `${payload}\n`, "/", {
       mime: "application/json",
@@ -304,6 +310,7 @@ export class ProcessManager {
       group: "root",
       permissions: "-rw-r--r--",
     }, system);
+    return { path, indexPath };
   }
 
   withRuntimeMetrics(process) {
@@ -375,6 +382,7 @@ function formatProcessStatus(process) {
     `ActivityScore:\t${process.activityScore}`,
     `ActivitySamples:\t${process.activitySamples}`,
     `ActivityLastSample:\t${process.activityLastSampleAt || "-"}`,
+    `CrashReport:\t${process.crashReportPath || "-"}`,
   ].join("\n");
 }
 
