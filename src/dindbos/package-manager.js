@@ -376,7 +376,9 @@ export class PackageManager {
   checkIntegrity(options = {}) {
     this.ensurePackageRoots();
     const dryRun = options.dryRun !== false;
+    const repair = Boolean(options.repair);
     const problems = [];
+    const repairs = [];
     const recordsByInstallPath = new Map();
     let checkedPackages = 0;
     this.packageRecordNodes().forEach((node) => {
@@ -403,18 +405,22 @@ export class PackageManager {
       .forEach((node) => {
         const installPath = this.os.fs.join(PACKAGE_INSTALL_ROOT, node.name);
         if (!recordsByInstallPath.has(installPath)) {
-          problems.push(packageFsckProblem("package-record-missing", installPath, "pkgfs root has no package DB record"));
+          problems.push(packageFsckProblem("package-record-missing", installPath, "pkgfs root has no package DB record", true));
+          if (repair) {
+            repairs.push(packageFsckRepair("remove-orphan-pkgfs", installPath, "present", "removed", dryRun));
+            if (!dryRun) this.os.fs.remove(installPath, "/", { recursive: true }, this.system);
+          }
         }
       });
     return {
       ok: problems.length === 0,
       dryRun,
-      repaired: false,
+      repaired: repair && !dryRun && repairs.length > 0,
       checkedPackages,
       problemCount: problems.length,
-      repairCount: 0,
+      repairCount: repairs.length,
       problems,
-      repairs: [],
+      repairs,
     };
   }
 
@@ -1972,8 +1978,12 @@ function normalizePackageId(value) {
   return id;
 }
 
-function packageFsckProblem(code, path, message) {
-  return { code, path, message, repairable: false };
+function packageFsckProblem(code, path, message, repairable = false) {
+  return { code, path, message, repairable };
+}
+
+function packageFsckRepair(kind, path, from, to, dryRun) {
+  return { kind, path, from, to, dryRun };
 }
 
 function normalizeOptionalRelativePath(value) {
