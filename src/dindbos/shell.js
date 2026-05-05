@@ -24,7 +24,7 @@ const BUILTIN_MANUALS = {
   node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
-  pkg: "pkg list|info|install|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
+  pkg: "pkg list|info|install|run|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -580,6 +580,13 @@ export class ShellSession {
       if (!operand) return "pkg: usage: pkg deps <package>";
       return formatDependencies(this.os.packages.dependencies(operand));
     }
+    if (action === "run") {
+      if (!operand) return "pkg: usage: pkg run <package> [args...]";
+      return this.os.packages.runCli(operand, rest, { cwd: this.cwd })
+        .then((result) => result.status
+          ? [`pkg: ${result.packageId}: exit ${result.status}`, result.output].filter(Boolean).join("\n")
+          : result.output);
+    }
     if (action === "npm") {
       return this.pkgNpm(operand, rest);
     }
@@ -588,7 +595,7 @@ export class ShellSession {
       const record = this.os.packages.remove(operand);
       return `removed ${record.id}`;
     }
-    return "pkg: usage: pkg list | info | install | search | registry | trust | update | deps | npm | remove";
+    return "pkg: usage: pkg list | info | install | run | search | registry | trust | update | deps | npm | remove";
   }
 
   pkgRegistry(action, args) {
@@ -1298,6 +1305,7 @@ function shellStatus(command, output) {
   if (text.startsWith(`${command}:`) && text.includes("no such")) return 1;
   if (text.startsWith(`${command}:`) && text.includes("package not installed")) return 1;
   if (text.startsWith(`${command}:`) && text.includes("registry not found")) return 1;
+  if (text.startsWith(`${command}:`) && text.includes(": exit ")) return 1;
   if (command === "man" && text.includes(": no manual entry")) return 1;
   if (command === "stat" && text.startsWith("stat: no such")) return 1;
   if (command === "manifest" && text.startsWith("manifest:") && text.includes("no such app")) return 1;
@@ -1511,6 +1519,7 @@ function formatPackage(record) {
     `app.id=${record.app.id}`,
     `app.title=${record.app.title}`,
     `app.entry=${record.app.entryPath || "-"}`,
+    `cli.entry=${record.cli?.entry || (record.files?.some((file) => file.path === "bin/cli.js") ? "bin/cli.js" : "-")}`,
     `capabilities=${record.permissions?.capabilities?.join(",") || record.app.capabilities?.join(",") || "-"}`,
     `fs.read=${record.permissions?.fileSystem?.read?.join(",") || record.app.fileSystem?.read?.join(",") || "-"}`,
     `fs.write=${record.permissions?.fileSystem?.write?.join(",") || record.app.fileSystem?.write?.join(",") || "-"}`,

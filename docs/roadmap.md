@@ -1000,9 +1000,10 @@ Implementation tasks:
 
 - Already present: package records include first-pass namespace metadata for package root, private state root, private cache root, private temp root, process group, dependency root, device grants, network grants, IPC endpoints, and child-process limit.
 - Already present: ProcessManager inherits parent namespaces for child process launches, package WASM entries pass package namespace into their child process manifest, and `/proc/<pid>/status` plus `/proc/processes.json` expose process namespace metadata.
-- Add namespace inheritance for worker executor tasks, package CLI tools, and service units launched by a package.
+- Already present: package CLI tools run as `nodecompat-cli` DindbOS processes with package namespace metadata, package filesystem scopes, declared dependency allowlists, process history, and shell `pkg run <package> [args...]` handoff.
+- Add namespace inheritance for worker executor tasks and service units launched by a package.
 - Already present: AppSandbox NodeCompat execution inherits package filesystem scopes and a first-pass declared npm dependency allowlist, so package code cannot `require()` undeclared package-local dependency trees through NodeCompat.
-- Add per-package dependency views so SDK resolution, WASM entries, CLI tools, services, and future package child processes cannot read undeclared dependency trees by default.
+- Add per-package dependency views so SDK resolution, WASM entries, services, and future package child processes cannot read undeclared dependency trees by default.
 - Already present: Process procfs writes namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics, including package root, synthetic state/cache/temp/dependency namespace mounts, and namespace limits.
 - Already present: AppSandbox exposes a first-pass IPC facade backed by an in-runtime broker; package namespaces can register declared IPC endpoints, cross-package sends are denied unless the sender namespace declares the endpoint, and process exit/crash unregisters owned endpoints.
 - Already present: package manifests support a normalized `sandbox` section for root policy, state policy, cache policy, temp policy, device grants, network hosts, IPC endpoints, and child-process limits; package records, app manifests, package public records, and namespace metadata expose the resolved policy.
@@ -1019,7 +1020,8 @@ Verification:
 - Already present: `npm run smoke:packages` verifies denied cross-package IPC against a real package-registered endpoint.
 - Already present: `npm run smoke:packages` verifies package sandbox manifest policy normalization and exposure through package records, app manifests, and namespace metadata.
 - Already present: `npm run smoke:packages` verifies package uninstall cleans running package app processes, inherited child processes, IPC endpoints, and state/cache/temp namespace roots.
-- Add tests proving namespace restrictions apply identically to GUI apps, CLI apps, WASM entries, NodeCompat tools, and background services.
+- Already present: `npm run smoke:packages` verifies package CLI execution through `packages.runCli()` and shell `pkg run`, including inherited package namespace metadata, cross-package root denial, undeclared dependency denial, output/status capture, and process history.
+- Add tests proving namespace restrictions apply identically to background services and worker executor tasks launched by packages.
 
 Completion criteria:
 

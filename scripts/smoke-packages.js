@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createDindbOSTestRuntime, waitForRuntime as waitFor } from "./helpers/dindbos-test-runtime.js";
 import { base64UrlFromBytes, canonicalPackageManifestPayload } from "../src/dindbos/package-manager.js";
+import { ShellSession } from "../src/dindbos/shell.js";
 
 const os = createDindbOSTestRuntime();
 const packages = os.packages;
@@ -141,6 +142,39 @@ os.processes.kill(namespaceTargetWindow.pid, "namespace-test-cleanup");
 assert(!os.ipcEndpoints.has("namespace-target.echo"), "package IPC endpoint remained after owner process exit");
 packages.remove("namespace-probe");
 packages.remove("namespace-target");
+
+packages.install(packageManifest("cli-namespace", "0.1.0", [
+  {
+    path: "bin/cli.js",
+    mime: "text/javascript",
+    content: [
+      "import fs from 'fs';",
+      "export async function main(argv = []) {",
+      "  let rootIsolation = 'not-denied';",
+      "  try { fs.readFileSync('/opt/rollback-demo/app.js', 'utf8'); }",
+      "  catch (error) { rootIsolation = error.message.includes('sandbox denied') ? 'root-denied' : error.message; }",
+      "  let dependencyIsolation = 'not-denied';",
+      "  try { await import('secret-lib'); }",
+      "  catch (error) { dependencyIsolation = error.message.includes('dependency not declared') ? 'dependency-denied' : error.message; }",
+      "  console.log(`argv=${argv.join(':')}`);",
+      "  return `cli=${argv.join(':')}:${rootIsolation}:${dependencyIsolation}`;",
+      "}",
+    ].join("\n"),
+  },
+  { path: "node_modules/secret-lib/index.js", mime: "text/javascript", content: "export default 'undeclared secret';\n" },
+]));
+const cliRun = await packages.runCli("cli-namespace", ["alpha", "beta"]);
+assert(cliRun.output.includes("argv=alpha:beta"), `package CLI did not capture console output: ${cliRun.output}`);
+assert(cliRun.output.includes("cli=alpha:beta:root-denied:dependency-denied"), `package CLI namespace policy mismatch: ${cliRun.output}`);
+assert(cliRun.namespace.processGroup === "package:cli-namespace", "package CLI result did not expose namespace");
+const cliHistory = os.processes.history.filter((process) => process.appId === "package:cli-namespace:cli").pop();
+assert(cliHistory?.manifest?.namespace?.processGroup === "package:cli-namespace", `package CLI process history missing namespace: ${JSON.stringify(cliHistory)}`);
+assert(cliHistory.executorKind === "package-cli", "package CLI process history missing executor kind");
+const shell = new ShellSession(os);
+const cliShellRun = await shell.executeAsync("pkg run cli-namespace shell");
+assert(cliShellRun.status === 0, `pkg run shell status mismatch: ${JSON.stringify(cliShellRun)}`);
+assert(cliShellRun.output.includes("cli=shell:root-denied:dependency-denied"), `pkg run did not execute package CLI in namespace: ${cliShellRun.output}`);
+packages.remove("cli-namespace");
 
 packages.install(packageManifest("cleanup-demo", "0.1.0", [
   {
@@ -392,6 +426,8 @@ await guiTemplateWindow.rendered;
 await waitFor(() => guiTemplateWindow.content.innerHTML.includes("data-template-gui"), "GUI template did not render");
 const cliTemplate = packages.installFromManifestPath("/opt/dindbos/templates/template-cli-app/dindbos.app.json");
 assert(os.fs.exists("/opt/template-cli-app/bin/cli.js"), "CLI template did not install bin/cli.js");
+const cliTemplateRun = await packages.runCli("template-cli-app", ["ready"]);
+assert(cliTemplateRun.output.includes("template cli ready"), `CLI template did not run through package CLI: ${cliTemplateRun.output}`);
 const cliTemplateWindow = os.apps.launch("template-cli-app");
 await cliTemplateWindow.rendered;
 await waitFor(() => cliTemplateWindow.content.innerHTML.includes("data-template-cli"), "CLI template did not render");

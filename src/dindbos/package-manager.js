@@ -1,5 +1,6 @@
 import { removeAppState } from "./app-sandbox.js?v=20260422-browserd";
 import { apiRequirementForManifest, compatibilityRequirementForManifest } from "./compat.js?v=20260422-browserd";
+import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
 import { createDindbOSSDK } from "./sdk.js?v=20260422-browserd";
 
 const APPLICATION_DIR = "/usr/share/applications";
@@ -454,6 +455,57 @@ export class PackageManager {
     return cloneJson(record.dependencies || { packages: {}, npm: {} });
   }
 
+  async runCli(packageId, argv = [], options = {}) {
+    const record = this.info(packageId);
+    if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    const entry = resolvePackageCliEntry(this.os, record, options.entry);
+    const process = this.os.processes.spawn({
+      id: `package:${record.id}:cli`,
+      name: `${record.name} CLI`,
+      manifest: {
+        version: record.version,
+        entry,
+        runtime: "nodecompat-cli",
+        sandbox: cloneJson(record.sandbox || {}),
+        namespace: cloneJson(record.namespace || {}),
+        capabilities: unique([...(record.app.capabilities || []), "node.execute"]),
+        fileSystem: cloneJson(record.app.fileSystem || { read: [record.installPath], write: [] }),
+      },
+    }, {
+      argv: [entry, ...argv],
+      cwd: options.cwd || record.installPath,
+      executable: entry,
+      parentPid: options.parentPid || 0,
+      runtime: "nodecompat-cli",
+      source: "package-manager",
+      executorKind: "package-cli",
+      namespace: cloneJson(record.namespace || {}),
+    });
+    try {
+      this.os.processes.markReady(process.pid);
+      const node = new NodeCompat(this.os, {
+        fileSystem: record.app.fileSystem,
+        allowedPackages: record.namespace?.dependencyAllowlist,
+      });
+      const result = await node.runMain(entry, record.installPath, { argv, inputType: record.cli?.inputType || "module" });
+      const valueOutput = result.value === undefined ? "" : stringifyCliValue(result.value);
+      const output = [result.output, valueOutput].filter(Boolean).join("\n");
+      this.os.processes.kill(process.pid, result.status ? `exit-${result.status}` : "completed");
+      return {
+        packageId: record.id,
+        pid: process.pid,
+        entry,
+        status: result.status || 0,
+        output,
+        value: result.value,
+        namespace: cloneJson(record.namespace || {}),
+      };
+    } catch (error) {
+      this.os.processes.crash(process.pid, error);
+      throw error;
+    }
+  }
+
   packageImageMounts() {
     return this.packageRecordNodes()
       .map((node) => this.readPackageRecord(node.path))
@@ -721,6 +773,7 @@ export class PackageManager {
     const fileSystem = app.fileSystem || manifest.fileSystem || manifest.permissions?.fileSystem || {};
     const dependencies = normalizeDependencies(manifest.dependencies || app.dependencies || {});
     const sandbox = normalizePackageSandbox(manifest.sandbox || manifest.namespace || {});
+    const cli = normalizePackageCli(manifest.cli || app.cli || manifest.bin || app.bin || {});
     return {
       id,
       name,
@@ -736,6 +789,7 @@ export class PackageManager {
       files: [],
       dependencies,
       sandbox,
+      cli,
       namespace: packageNamespace(id, appId, installPath, sandbox, dependencies),
       app: {
         id: appId,
@@ -1319,6 +1373,37 @@ function createImportFacade(record) {
   };
 }
 
+function resolvePackageCliEntry(os, record, requestedEntry = "") {
+  const candidates = [
+    requestedEntry,
+    record.cli?.entry,
+    record.bin?.dindbos,
+    record.bin?.[record.id],
+    "bin/cli.js",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const relative = normalizeOptionalRelativePath(candidate);
+    if (!relative) continue;
+    const resolved = os.fs.normalize(relative, record.installPath);
+    if (resolved !== record.installPath && resolved.startsWith(`${record.installPath}/`) && os.fs.exists(resolved)) {
+      return resolved;
+    }
+  }
+  throw new Error(`pkg: ${record.id}: CLI entry not found`);
+}
+
+function stringifyCliValue(value) {
+  if (typeof value === "string") return value;
+  if (value === undefined) return "";
+  if (value === null) return "null";
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function packagePublicRecord(record) {
   return Object.freeze({
     id: record.id,
@@ -1334,6 +1419,7 @@ function packagePublicRecord(record) {
     lifecycle: cloneJson(record.lifecycle || {}),
     trust: cloneJson(record.trust || {}),
     sandbox: cloneJson(record.sandbox || {}),
+    cli: cloneJson(record.cli || {}),
     namespace: cloneJson(record.namespace || {}),
   });
 }
@@ -1349,6 +1435,14 @@ function normalizePackageSandbox(sandbox = {}) {
     ipcEndpoints: [...(sandbox.ipcEndpoints || sandbox.ipc || [])].map(String),
     childProcessLimit: Math.max(0, Number(sandbox.childProcessLimit || 0)),
   };
+}
+
+function normalizePackageCli(cli = {}) {
+  if (typeof cli === "string") return { entry: normalizeOptionalRelativePath(cli), inputType: "module" };
+  if (typeof cli !== "object" || !cli) return { entry: "" };
+  const entry = cli.entry || cli.path || cli.dindbos || Object.values(cli)[0] || "";
+  const inputType = cli.inputType === "commonjs" ? "commonjs" : "module";
+  return { entry: normalizeOptionalRelativePath(entry), inputType };
 }
 
 function packageNamespace(packageId, appId, installPath, sandbox = {}, dependencies = {}) {
