@@ -45,6 +45,8 @@ Offline sync merge rules are exposed before full snapshot apply. `os.remoteSyncM
 
 `os.applyRemoteSyncSnapshot({ passphrase, snapshot, dryRun })` decrypts an encrypted snapshot, runs the merge planner for each file, writes safe remote or merged files, writes unsafe remote document/app-state versions under `.sync-conflicts`, refuses package metadata mutation, and records apply conflicts/refusals in `os.remoteSyncStatus().lastAppliedSnapshot`. A dry run returns the same action plan without mutating the VFS.
 
+Conflict repair is explicit. `os.listRemoteSyncConflicts()` scans `.sync-conflicts` folders and returns target paths, while `os.resolveRemoteSyncConflict(path, { action })` supports `use-conflict`, `keep-local`, and `delete-conflict`. The shell exposes the same boundary through `sync status`, `sync conflicts`, and `sync resolve <action> <conflict-path>`.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed

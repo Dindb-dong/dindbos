@@ -34,6 +34,7 @@ const BUILTIN_MANUALS = {
   storage: "storage [persist|flush] - show quota status, request persistence, or flush pending writes",
   su: "su [user] - unsupported browser-native privilege boundary placeholder",
   sudo: "sudo <command> - unsupported browser-native privilege boundary placeholder",
+  sync: "sync [status|conflicts|resolve] - inspect and repair remote sync conflicts",
   syscall: "syscall <name> [json] - call the DindbOS syscall ABI and print structured JSON",
   touch: "touch <path> - create or update a file",
   tree: "tree [path] - render a directory tree",
@@ -55,6 +56,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "stat",
   "su",
   "sudo",
+  "sync",
   "syscall",
   "tree",
   "umount",
@@ -270,6 +272,7 @@ export class ShellSession {
     if (command === "ps") return this.os.processes.table();
     if (command === "kill") return this.kill(args);
     if (command === "storage") return this.storage(args);
+    if (command === "sync") return this.sync(args);
     if (command === "syscall") return this.syscall(args);
     if (command === "resetfs") return this.resetFileSystem();
     if (command === "su" || command === "sudo") return this.privilegeEscalation(command);
@@ -654,6 +657,31 @@ export class ShellSession {
     }
     if (args[0] === "persist") return this.os.storage.persist().then((status) => formatStorage(this.withPersistenceStatus(status)));
     return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
+  }
+
+  sync(args) {
+    const [action, operand, target] = args;
+    if (!action || action === "status") {
+      const status = safeRead(() => this.os.remoteSyncStatus?.(), null);
+      const conflicts = safeRead(() => this.os.listRemoteSyncConflicts?.(), []);
+      return [
+        `backend=${status?.backend || "unavailable"} encrypted=${Boolean(status?.encrypted)} rules=${Number(status?.mergeRuleCount || 0)}`,
+        `lastSnapshot=${status?.lastSuccessfulSnapshot?.createdAt || "-"}`,
+        `lastApplied=${status?.lastAppliedSnapshot?.appliedAt || "-"} conflicts=${Number(status?.lastAppliedSnapshot?.conflicts || 0)} refused=${Number(status?.lastAppliedSnapshot?.refused || 0)}`,
+        `pendingConflicts=${Array.isArray(conflicts) ? conflicts.length : 0}`,
+      ].join("\n");
+    }
+    if (action === "conflicts") {
+      const conflicts = safeRead(() => this.os.listRemoteSyncConflicts?.(), []);
+      if (!conflicts.length) return "sync: no pending conflicts";
+      return conflicts.map((conflict) => `${conflict.path} -> ${conflict.targetPath} bytes=${conflict.bytes}`).join("\n");
+    }
+    if (action === "resolve") {
+      if (!operand || !target) return "sync: usage: sync resolve <use-conflict|keep-local|delete-conflict> <conflict-path>";
+      const result = this.os.resolveRemoteSyncConflict(target, { action: operand });
+      return `sync: resolved ${result.path} action=${result.action} target=${result.targetPath} remaining=${result.remainingConflicts}`;
+    }
+    return "sync: usage: sync status | conflicts | resolve <use-conflict|keep-local|delete-conflict> <conflict-path>";
   }
 
   async doctor(args = []) {

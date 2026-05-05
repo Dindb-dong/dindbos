@@ -139,6 +139,10 @@ const os = {
         conflicts: 1,
         refused: 2,
       },
+      lastRepair: {
+        resolvedAt: "2026-05-05T00:04:00.000Z",
+        remainingConflicts: 0,
+      },
       lastError: "",
     };
   },
@@ -205,6 +209,7 @@ assert(markup.includes("<dt>Session Recovery</dt><dd>recovered · conflicts=2</d
 assert(markup.includes("<dt>Sync</dt><dd>storage-value encrypted=true") && markup.includes("files=4 cache=1 settings=2</dd>"), "settings markup did not render sync summary");
 assert(markup.includes("<dt>Last Snapshot</dt><dd>") && markup.includes("· files=4 · cache=1 · settings=2</dd>"), "settings markup did not render remote sync panel");
 assert(markup.includes("<dt>Last Applied</dt><dd>") && markup.includes("· conflicts=1 · refused=2</dd>"), "settings markup did not render remote sync apply status");
+assert(markup.includes("<dt>Last Repair</dt><dd>") && markup.includes("· remaining=0</dd>"), "settings markup did not render remote sync repair status");
 assert(markup.includes("<dt>Merge Rules</dt><dd>6</dd>"), "settings markup did not render remote sync merge rules");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");

@@ -164,6 +164,7 @@ export class DindbOS {
       encrypted: true,
       lastSuccessfulSnapshot: null,
       lastAppliedSnapshot: null,
+      lastRepair: null,
       lastError: "",
     };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
@@ -1124,6 +1125,59 @@ export class DindbOS {
   writeRemoteSyncApplyFile(path, bytes, mime) {
     this.ensureDirectoryPath(this.fs.dirname(path), { principal: this.permissions.systemPrincipal() });
     this.fs.writeOrCreateFileBytes(path, bytes, "/", { mime }, this.permissions.systemPrincipal());
+  }
+
+  listRemoteSyncConflicts(root = "/") {
+    const start = this.fs.normalize(root || "/", "/");
+    const conflicts = [];
+    const system = this.permissions.systemPrincipal();
+    const visit = (path) => {
+      const node = this.fs.resolve(path);
+      if (!node || node.type !== "directory") return;
+      if (this.fs.basename(path) === ".sync-conflicts") {
+        this.fs.list(path, "/", system)
+          .filter((entry) => entry.type === "file")
+          .forEach((entry) => {
+            conflicts.push({
+              path: entry.path,
+              targetPath: targetPathFromSyncConflict(entry.path, this.fs),
+              bytes: Number(entry.size || 0),
+              modified: entry.modified || "",
+              status: "pending",
+            });
+          });
+        return;
+      }
+      this.fs.list(path, "/", system)
+        .filter((entry) => entry.type === "directory")
+        .forEach((entry) => visit(entry.path));
+    };
+    visit(start);
+    return conflicts.sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  resolveRemoteSyncConflict(conflictPath, options = {}) {
+    const normalized = this.fs.normalize(conflictPath || "", "/");
+    const action = normalizeSyncConflictAction(options.action || "use-conflict");
+    const conflict = this.listRemoteSyncConflicts().find((entry) => entry.path === normalized);
+    if (!conflict) throw new Error(`remote sync conflict not found: ${conflictPath}`);
+    const system = this.permissions.systemPrincipal();
+    if (action === "use-conflict") {
+      const node = this.fs.stat(conflict.path, "/", system);
+      const bytes = this.fs.readFileBytes(conflict.path, "/", system);
+      this.writeRemoteSyncApplyFile(conflict.targetPath, bytes, node.mime || "application/octet-stream");
+    }
+    this.fs.remove(conflict.path, "/", {}, system);
+    const repair = {
+      path: conflict.path,
+      targetPath: conflict.targetPath,
+      action,
+      resolvedAt: new Date().toISOString(),
+      remainingConflicts: this.listRemoteSyncConflicts().length,
+    };
+    this.remoteSync.lastRepair = { ...repair };
+    this.bus.emit("sync:repair", repair);
+    return repair;
   }
 
   async createRemoteSyncSnapshot(options = {}) {
@@ -2279,6 +2333,19 @@ function syncConflictPath(path, modified = "") {
   const directory = slash > 0 ? normalized.slice(0, slash) : "/";
   const name = slash >= 0 ? normalized.slice(slash + 1) : normalized;
   return `${directory === "/" ? "" : directory}/.sync-conflicts/${name}.${stamp}.remote`;
+}
+
+function targetPathFromSyncConflict(conflictPath, fs) {
+  const directory = fs.dirname(fs.dirname(conflictPath));
+  const conflictName = fs.basename(conflictPath);
+  const targetName = conflictName.replace(/\.\d{4}-\d{2}-\d{2}T.*Z\.remote$/, "");
+  return fs.join(directory, targetName || conflictName);
+}
+
+function normalizeSyncConflictAction(action) {
+  const value = String(action || "use-conflict").toLowerCase();
+  if (["use-conflict", "keep-local", "delete-conflict"].includes(value)) return value;
+  return "use-conflict";
 }
 
 async function encryptRemoteSyncPayload(payload, passphrase) {

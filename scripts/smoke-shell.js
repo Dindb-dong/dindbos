@@ -154,6 +154,14 @@ assert(result.status === 0, `mount helper status mismatch: ${result.status}`);
 assert(result.output.includes("protocol=dindbos-file-helper-v1"), `mount helper protocol missing: ${result.output}`);
 assert(result.output.includes("rename=false"), `mount helper rename output missing: ${result.output}`);
 
+result = await shell.executeAsync("sync status");
+assert(result.status === 0, `sync status mismatch: ${result.status}`);
+assert(result.output.includes("pendingConflicts=1"), `sync status did not show pending conflicts: ${result.output}`);
+result = await shell.executeAsync("sync conflicts");
+assert(result.status === 0 && result.output.includes("/home/guest/Documents/.sync-conflicts/note.txt.2026.remote -> /home/guest/Documents/note.txt"), `sync conflicts output mismatch: ${result.output}`);
+result = await shell.executeAsync("sync resolve keep-local /home/guest/Documents/.sync-conflicts/note.txt.2026.remote");
+assert(result.status === 0 && result.output.includes("action=keep-local"), `sync resolve output mismatch: ${result.output}`);
+
 result = await shell.executeAsync("syscall fs.writeText '{\"path\":\"syscall-note.txt\",\"content\":\"via syscall\"}'");
 assert(result.status === 0, `syscall write status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).value.path === "/home/guest/syscall-note.txt", `syscall write path mismatch: ${result.output}`);
@@ -317,6 +325,17 @@ function bootOs() {
         { scope: "settings" },
         { scope: "cache-metadata" },
       ],
+    }),
+    listRemoteSyncConflicts: () => [{
+      path: "/home/guest/Documents/.sync-conflicts/note.txt.2026.remote",
+      targetPath: "/home/guest/Documents/note.txt",
+      bytes: 12,
+    }],
+    resolveRemoteSyncConflict: (path, options = {}) => ({
+      path,
+      targetPath: "/home/guest/Documents/note.txt",
+      action: options.action || "use-conflict",
+      remainingConflicts: 0,
     }),
     compatibilitySnapshot: () => ({
       runtime: "DindbOS.js",
