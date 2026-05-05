@@ -6,7 +6,9 @@ const MAX_SHELL_HISTORY = 200;
 const BUILTIN_MANUALS = {
   cat: "cat <file> - print file contents",
   cd: "cd [path] - change current directory",
+  chgrp: "chgrp <group> <path> - change file group metadata where supported",
   chmod: "chmod <mode> <path> - change mode bits, for example chmod 644 note.txt",
+  chown: "chown <owner[:group]> <path> - change file owner/group metadata as an administrator",
   clear: "clear - clear terminal output",
   companion: "companion list|grant|revoke - inspect or administer companion permissions",
   cp: "cp [-r] <source> <destination> - copy files or directories",
@@ -274,6 +276,8 @@ export class ShellSession {
     if (command === "cp") return this.cp(args);
     if (command === "mv") return this.mv(args);
     if (command === "chmod") return this.chmod(args);
+    if (command === "chown") return this.chown(args);
+    if (command === "chgrp") return this.chgrp(args);
     if (command === "stat") return this.stat(args[0] || this.cwd);
     if (command === "readlink") return this.os.fs.lstat(args[0] || this.cwd, this.cwd, this.principal)?.target || "";
     if (command === "find") return this.find(args);
@@ -660,6 +664,19 @@ export class ShellSession {
   chmod(args) {
     if (args.length < 2) throw new Error("chmod: usage: chmod <mode> <path>");
     this.os.fs.chmod(args[1], args[0], this.cwd, this.principal);
+    return "";
+  }
+
+  chown(args) {
+    if (args.length < 2) throw new Error("chown: usage: chown <owner[:group]> <path>");
+    const [owner, group = ""] = args[0].split(":");
+    this.os.fs.chown(args[1], owner, group, this.cwd, this.principal);
+    return "";
+  }
+
+  chgrp(args) {
+    if (args.length < 2) throw new Error("chgrp: usage: chgrp <group> <path>");
+    this.os.fs.chgrp(args[1], args[0], this.cwd, this.principal);
     return "";
   }
 

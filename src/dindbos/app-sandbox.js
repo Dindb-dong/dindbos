@@ -159,6 +159,16 @@ export class AppSandbox {
         this.assertFileSystem(normalized, "write");
         return this.os.fs.chmod(normalized, permissions, "/", this.principal);
       },
+      chown: (path, owner, group = "", cwd = this.process.cwd) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.chown(normalized, owner, group, "/", this.principal);
+      },
+      chgrp: (path, group, cwd = this.process.cwd) => {
+        const normalized = this.os.fs.normalize(path, cwd);
+        this.assertFileSystem(normalized, "write");
+        return this.os.fs.chgrp(normalized, group, "/", this.principal);
+      },
       stat: (path, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
