@@ -5,14 +5,134 @@ export class NetworkBroker {
     this.os = os;
     this.fetchAdapter = options.fetch || null;
     this.webSocketAdapter = options.webSocket || null;
+    this.rtcPeerConnectionAdapter = options.rtcPeerConnection || null;
     this.requests = new Map();
     this.webSocketSessions = new Map();
     this.webSocketHistory = [];
+    this.dataChannelSessions = new Map();
+    this.dataChannelHistory = [];
     this.history = [];
     this.deniedHosts = [];
     this.nextRequestId = 1;
     this.bytesReceived = 0;
     this.bytesSent = 0;
+  }
+
+  openDataChannel(peer, options = {}, context = {}) {
+    const target = normalizePeerTarget(peer);
+    this.assertAllowed(target, "net.webrtc", context);
+    const PeerConnection = this.rtcPeerConnectionAdapter || this.os.networkPeerConnection || globalThis.RTCPeerConnection;
+    if (typeof PeerConnection !== "function") throw new Error("net: WebRTC unavailable in this browser");
+    const id = this.nextId();
+    const label = String(options.label || "dindbos");
+    const openedAt = new Date().toISOString();
+    const peerConnection = new PeerConnection(options.configuration || {});
+    const channel = peerConnection.createDataChannel(label, options.channel || {});
+    const record = {
+      id,
+      peer: target.hostname,
+      label,
+      requester: requesterId(context),
+      state: "connecting",
+      openedAt,
+      closedAt: "",
+      closeReason: "",
+      messagesSent: 0,
+      messagesReceived: 0,
+      bytesSent: 0,
+      bytesReceived: 0,
+      signaling: "external-required",
+    };
+    this.dataChannelSessions.set(id, { record, peerConnection, channel });
+    this.attachDataChannelEvents(id, channel);
+    this.writeProcfs();
+    return {
+      id,
+      peer: record.peer,
+      label,
+      state: record.state,
+      send: (data) => this.sendDataChannel(id, data),
+      close: (reason = "closed") => this.closeDataChannel(id, reason),
+    };
+  }
+
+  sendDataChannel(id, data = "") {
+    const session = this.dataChannelSessions.get(id);
+    if (!session) throw new Error(`net: datachannel ${id}: no such session`);
+    const text = typeof data === "string" ? data : JSON.stringify(data);
+    session.channel.send?.(text);
+    session.record.messagesSent += 1;
+    session.record.bytesSent += byteLength(text);
+    this.bytesSent += byteLength(text);
+    this.writeProcfs();
+    return { id, bytes: byteLength(text), messagesSent: session.record.messagesSent };
+  }
+
+  closeDataChannel(id, reason = "closed") {
+    const session = this.dataChannelSessions.get(id);
+    if (!session) throw new Error(`net: datachannel ${id}: no such session`);
+    session.channel.close?.();
+    session.peerConnection.close?.();
+    if (session.record.state !== "closed") this.finishDataChannel(id, reason);
+    return cloneRecord(session.record);
+  }
+
+  attachDataChannelEvents(id, channel) {
+    const onOpen = () => {
+      const session = this.dataChannelSessions.get(id);
+      if (!session) return;
+      session.record.state = "open";
+      this.writeProcfs();
+    };
+    const onMessage = (event = {}) => {
+      const session = this.dataChannelSessions.get(id);
+      if (!session) return;
+      const size = byteLength(event.data || "");
+      session.record.messagesReceived += 1;
+      session.record.bytesReceived += size;
+      this.bytesReceived += size;
+      this.writeProcfs();
+    };
+    const onClose = () => this.finishDataChannel(id, "closed");
+    const onError = (event = {}) => {
+      const session = this.dataChannelSessions.get(id);
+      if (!session) return;
+      session.record.state = "error";
+      session.record.closeReason = String(event.message || "error");
+      this.writeProcfs();
+    };
+    if (typeof channel.addEventListener === "function") {
+      channel.addEventListener("open", onOpen);
+      channel.addEventListener("message", onMessage);
+      channel.addEventListener("close", onClose);
+      channel.addEventListener("error", onError);
+    } else {
+      channel.onopen = onOpen;
+      channel.onmessage = onMessage;
+      channel.onclose = onClose;
+      channel.onerror = onError;
+    }
+  }
+
+  finishDataChannel(id, reason = "closed") {
+    const session = this.dataChannelSessions.get(id);
+    if (!session) return;
+    session.record.state = "closed";
+    session.record.closedAt = new Date().toISOString();
+    session.record.closeReason = String(reason || "");
+    this.dataChannelSessions.delete(id);
+    this.dataChannelHistory.push(cloneRecord(session.record));
+    this.dataChannelHistory = this.dataChannelHistory.slice(-200);
+    this.appendLog({
+      finishedAt: session.record.closedAt,
+      requester: session.record.requester,
+      host: session.record.peer,
+      status: "webrtc-datachannel-closed",
+      bytesReceived: session.record.bytesReceived,
+      url: `webrtc://${session.record.peer}/${session.record.label}`,
+      reason: session.record.closeReason,
+    });
+    this.writeProcfs();
   }
 
   openWebSocket(url, options = {}, context = {}) {
@@ -236,6 +356,12 @@ export class NetworkBroker {
         supported: Boolean(this.webSocketAdapter || this.os.networkWebSocket || globalThis.WebSocket),
         reason: "browser WebSocket broker",
       },
+      webrtc: {
+        dataChannels: [...this.dataChannelSessions.values()].map((session) => cloneRecord(session.record)),
+        history: this.dataChannelHistory.slice(-50).map(cloneRecord),
+        supported: Boolean(this.rtcPeerConnectionAdapter || this.os.networkPeerConnection || globalThis.RTCPeerConnection),
+        reason: "browser WebRTC data channel broker; signaling remains external",
+      },
       companion: {
         rawTcpUdp: "unsupported-browser-only",
       },
@@ -351,6 +477,12 @@ function normalizeSocketUrl(value) {
   return parsed;
 }
 
+function normalizePeerTarget(value) {
+  const peer = String(value || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9.-]{0,127}$/i.test(peer)) throw new Error(`net: invalid WebRTC peer: ${value || ""}`);
+  return new URL(`webrtc://${peer}`);
+}
+
 function redactedUrl(url) {
   const safe = new URL(url.toString());
   [...safe.searchParams.keys()].forEach((key) => {
@@ -407,6 +539,8 @@ function formatRequests(status) {
     ...status.activeRequests.map((entry) => `${entry.id} active ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
     ...status.websocket.sessions.map((entry) => `${entry.id} websocket-${entry.state} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
     ...status.websocket.history.slice(-20).map((entry) => `${entry.id} websocket-${entry.state} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
+    ...status.webrtc.dataChannels.map((entry) => `${entry.id} webrtc-${entry.state} ${entry.peer} ${entry.requester} ${entry.bytesReceived || 0} ${entry.label}`),
+    ...status.webrtc.history.slice(-20).map((entry) => `${entry.id} webrtc-${entry.state} ${entry.peer} ${entry.requester} ${entry.bytesReceived || 0} ${entry.label}`),
     ...status.history.slice(-20).map((entry) => `${entry.id} ${entry.status} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
     ...status.deniedHosts.slice(-20).map((entry) => `- denied ${entry.host} ${entry.requester} 0 ${entry.url}`),
   ].join("\n");
