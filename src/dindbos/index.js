@@ -2870,7 +2870,7 @@ function mountDriverForDiskArea(area) {
 function normalizeVirtualMountDriver(driver) {
   const value = String(driver || "memfs").toLowerCase();
   if (value === "memfs") return "memfs";
-  throw new Error(`mount: unsupported driver: ${value}`);
+  throw codedError("ENOTSUP", `mount: unsupported driver: ${value}`);
 }
 
 function formatMountTableLine(entry) {
@@ -2886,6 +2886,12 @@ function formatMountTableLine(entry) {
     `quota=${entry.quotaPolicy || "unknown"}`,
     `caps=${caps}`,
   ].join(" ");
+}
+
+function codedError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
 }
 
 async function encryptRemoteSyncPayload(payload, passphrase) {

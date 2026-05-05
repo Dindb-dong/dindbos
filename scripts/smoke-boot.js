@@ -65,6 +65,13 @@ async function verifySuccessfulBootPhases() {
   assert(os.mountTable().some((entry) => entry.root === "/proc" && entry.driver === "procfs" && entry.readonly), "mount table missing readonly procfs entry");
   assert(os.fs.readFile("/proc/mounts").includes("disk:/opt /opt pkgfs"), "/proc/mounts missing package filesystem entry");
   assert(JSON.parse(os.fs.readFile("/proc/mounts.json")).mounts.some((entry) => entry.root === "/var/cache" && entry.driver === "cachefs"), "/proc/mounts.json missing cachefs entry");
+  const readonlyMount = os.syscall("mount.mount", { path: "/mnt/readonly-smoke", driver: "memfs", readonly: true });
+  assert(readonlyMount.ok && readonlyMount.value.root === "/mnt/readonly-smoke", `readonly memfs mount failed: ${JSON.stringify(readonlyMount)}`);
+  const readonlyWrite = os.syscall("fs.writeText", { path: "/mnt/readonly-smoke/blocked.txt", content: "blocked" });
+  assert(readonlyWrite.ok === false && readonlyWrite.error.code === "EACCES", `readonly memfs write was not denied with EACCES: ${JSON.stringify(readonlyWrite)}`);
+  const unsupportedMount = os.syscall("mount.mount", { path: "/mnt/zip-smoke", driver: "zipfs" });
+  assert(unsupportedMount.ok === false && unsupportedMount.error.code === "ENOTSUP", `unsupported mount driver was not normalized to ENOTSUP: ${JSON.stringify(unsupportedMount)}`);
+  assert(unsupportedMount.error.message.includes("unsupported driver: zipfs"), `unsupported mount driver message mismatch: ${JSON.stringify(unsupportedMount)}`);
   assert(os.diskPolicyForPath("/tmp/payload.bin").bucket === "session", "/tmp did not report session bucket policy");
   assert(os.diskPolicyForPath("/var/cache/npm").bucket === "cache", "/var/cache did not report cache bucket policy");
   const bucketPolicy = os.storageBucketPolicy();
