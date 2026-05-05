@@ -16,6 +16,8 @@ Executable `.wasm` files can be launched directly through the shell when the exe
 
 Package apps can also use WASM entry points by declaring `"runtime": "wasm"` or an `.wasm` `app.entry` in `dindbos.app.json`. AppRegistry launches the package window, then the package manager runs the WASM entry through the same runner with the package's declared filesystem and capability scopes.
 
+Toolchain notes for C, Rust, Zig, and TinyGo examples are in [wasm-toolchains.md](./wasm-toolchains.md).
+
 ## Imports
 
 Current modules can import from `dindbos`:
@@ -97,7 +99,6 @@ Direct `runFile` callers can broaden a process beyond the executable-directory d
 - no broad WASI metadata edge-case coverage yet
 - worker isolation currently covers stdout/stderr-only DindbOS ABI and basic WASI modules, not syscall-heavy WASM
 - timeout, abort, and grow-time memory guards are cooperative after `_start`, so modules must call `checkDeadline()`
-- no compiler toolchain integration docs yet
 
 ## Verification
 
