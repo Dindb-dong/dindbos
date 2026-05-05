@@ -244,7 +244,7 @@ Implementation tasks:
 - Already present: first-pass `maxMemoryPages` guards stop oversized WASM runs before `_start` in the main runner and worker output backend.
 - Already present: WASM modules can opt into cooperative `checkDeadline()` timeout and abort handling in the main runner and worker output backend.
 - Already present: `checkDeadline()` also rechecks `maxMemoryPages`, so modules can opt into grow-time memory enforcement after `memory.grow`.
-- Add developer docs for compiling small C/Rust/Zig examples to the supported WASM/WASI target.
+- Already present: `docs/wasm-toolchains.md` documents C, Rust, Zig, and TinyGo examples for the supported WASM/WASI target shape.
 
 Verification:
 
@@ -256,6 +256,7 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies explicit direct-run filesystem scopes can allow a WASM syscall write outside the executable directory while the default scope denies it.
 - Already present: `npm run smoke:wasm` verifies cooperative `checkDeadline()` timeout and abort handling in the main runner plus worker abort denial.
 - Already present: `npm run smoke:wasm` verifies cooperative grow-time memory enforcement after `memory.grow` in the main runner and worker output backend.
+- Already present: WASM toolchain docs describe compatible C/Rust/Zig/TinyGo CLI examples, scoped files, package manifests, and cooperative limits.
 - Already present: `npm run smoke:packages` verifies a WASM-backed package install, AppRegistry launch, stdout rendering, package-scoped syscall write, and package removal.
 
 Completion criteria:
@@ -531,7 +532,7 @@ Why it matters:
 Implementation tasks:
 
 - Publish JavaScript/TypeScript SDK wrappers around the syscall ABI.
-- Add WASM SDK examples for C/Rust/Zig/TinyGo where toolchains can produce compatible WASI modules.
+- Already present: `docs/wasm-toolchains.md` gives first-pass C/Rust/Zig/TinyGo examples for toolchains that produce compatible WASI modules.
 - Add package templates for GUI app, CLI app, WASM CLI, and background worker.
 - Add app testing helpers that run inside the DindbOS runtime instead of mocking private internals.
 - Add API version negotiation so old packages can run when the runtime evolves.
