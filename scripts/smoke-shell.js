@@ -47,11 +47,15 @@ result = await shell.executeAsync(`handlectl list ${handleProcess.pid}`);
 assert(result.status === 0 && result.output.includes(handleDescriptor.handleId), `handlectl list missing handle: ${result.output}`);
 result = await shell.executeAsync(`handlectl stat ${handleDescriptor.handleId}`);
 assert(result.status === 0 && result.output.includes(`Handle:\t${handleDescriptor.handleId}`) && result.output.includes("ObjectStatus:\tactive"), `handlectl stat mismatch: ${result.output}`);
+result = await shell.executeAsync(`lsof ${handleProcess.pid}`);
+assert(result.status === 0 && result.output.includes(handleDescriptor.handleId) && result.output.includes("descriptor"), `lsof missing descriptor handle: ${result.output}`);
 result = await shell.executeAsync("handlectl stat kh-missing");
 assert(result.status === 1 && result.output.includes("no such handle"), `handlectl missing status mismatch: ${result.output}`);
 shell.os.processes.kill(handleProcess.pid, "handlectl-smoke-exit");
 result = await shell.executeAsync(`handlectl list ${handleProcess.pid} --all`);
 assert(result.status === 0 && result.output.includes(handleDescriptor.handleId) && result.output.includes("revoked"), `handlectl all missing revoked handle: ${result.output}`);
+result = await shell.executeAsync(`lsof ${handleProcess.pid} --all`);
+assert(result.status === 0 && result.output.includes(handleDescriptor.handleId) && result.output.includes("revoked"), `lsof all missing revoked handle: ${result.output}`);
 
 result = await shell.executeAsync('echo "left;right"; echo done');
 assert(result.status === 0, `quoted semicolon command status mismatch: ${result.status}`);
