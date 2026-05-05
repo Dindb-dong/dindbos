@@ -16,6 +16,7 @@ Current implementation:
 - VFS metadata is stored through `PersistentStorage`.
 - OPFS is preferred when available. It stores a tiny root manifest, separate inode metadata records, and content-addressed file records.
 - Saves compare record hashes and only rewrite dirty inode/content records.
+- OPFS filesystem-save transactions write a replay manifest before final commit so an interrupted save can be promoted on the next load instead of only reported.
 - OPFS inode-record loads validate manifest inode/file hashes against actual records and report inode/content mismatches through storage status and the journal.
 - Filesystem changes are debounced and coalesced so bursts of writes produce one persisted snapshot.
 - VFS exposes binary-safe byte read/write APIs while keeping text APIs compatible.

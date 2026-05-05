@@ -10,6 +10,7 @@ const binary = new Uint8Array([3, 9, 27, 81, 128, 255]);
 await verifySnapshotAdapterFallback();
 await verifyOpfsTransactionGroupJournal();
 await verifyInterruptedOpfsTransactionRecoveryDecision();
+await verifyInterruptedOpfsTransactionReplay();
 await verifyInodeContentMismatchDiagnostics();
 await verifyQuotaReservationDeniesBeforeMutation();
 await verifyOpfsFailureFallsBackToSnapshot();
@@ -142,6 +143,49 @@ async function verifyInterruptedOpfsTransactionRecoveryDecision() {
   assert(recovery?.transactionId === "storage-tx-interrupted", `recovery transaction id mismatch: ${JSON.stringify(recovery)}`);
   assert(recovery.decision === "load-last-complete-manifest", `recovery decision mismatch: ${JSON.stringify(recovery)}`);
   assert(reloadedStorage.journal().some((entry) => entry.action === "write-recovery" && entry.transactionId === "storage-tx-interrupted"), "recovery journal entry missing");
+}
+
+async function verifyInterruptedOpfsTransactionReplay() {
+  const opfsRoot = createOpfsRoot();
+  const storage = new PersistentStorage({
+    key: "smoke:opfs-replay",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: async () => opfsRoot,
+  });
+  const fs = bootVfs();
+  fs.writeOrCreateFileBytes(binaryPath, binary, "/", { mime: "application/octet-stream" });
+  storage.saveFileSystem(fs.snapshot());
+  await storage.flush();
+
+  fs.writeOrCreateFile(binaryPath, "replayed content", "/", { mime: "text/plain" });
+  const replayTransaction = {
+    transactionId: "storage-tx-replay",
+    transactionKind: "filesystem-save",
+    storageFormat: "opfs-inode-records",
+    replayManifestKey: storage.replayStorageTransactionKey("storage-tx-replay"),
+    state: "active",
+  };
+  const replayPayload = storage.createInodeRecordPayload(fs.snapshot());
+  replayPayload.fileRecords.forEach((record) => opfsRoot.files.set(opfsFileName(record.key), record.content));
+  replayPayload.inodeRecords.forEach((record) => opfsRoot.files.set(opfsFileName(record.key), record.metadata));
+  opfsRoot.files.set(opfsFileName(replayTransaction.replayManifestKey), replayPayload.manifest);
+  opfsRoot.files.set(opfsFileName(storage.activeStorageTransactionKey()), JSON.stringify(replayTransaction));
+
+  const reloadedStorage = new PersistentStorage({
+    key: "smoke:opfs-replay",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: async () => opfsRoot,
+  });
+  const reloadedRoot = await reloadedStorage.loadFileSystem();
+  const reloaded = new VirtualFileSystem(reloadedRoot, { home: "/home/guest" });
+  assert(reloaded.readFile(binaryPath) === "replayed content", "interrupted transaction replay did not apply pending manifest");
+  const recovery = reloadedStorage.status().storageRecoveryDecision;
+  assert(recovery?.decision === "replay-pending-manifest", `replay recovery decision mismatch: ${JSON.stringify(recovery)}`);
+  assert(reloadedStorage.journal().some((entry) => entry.action === "write-recovery" && entry.transactionId === "storage-tx-replay"), "replay recovery journal entry missing");
+  assert(!opfsRoot.files.has(opfsFileName(storage.activeStorageTransactionKey())), "replayed transaction did not clear active marker");
+  assert(!opfsRoot.files.has(opfsFileName(replayTransaction.replayManifestKey)), "replayed transaction did not clear replay manifest");
 }
 
 async function verifyInodeContentMismatchDiagnostics() {
