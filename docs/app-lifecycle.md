@@ -35,7 +35,7 @@ Settings and `doctor` expose lifecycle/recovery diagnostics, including the last 
 
 Each runtime has an `instanceId` and participates in a storage-backed session lock. The first active instance becomes `primary`; later instances report `secondary` with readonly fallback diagnostics. Expired locks can be recovered by a new primary, and `/proc/sessions`, Settings, and `doctor` show the current lock owner and role.
 
-When BroadcastChannel is available, DindbOS publishes VFS file-change messages to peer runtimes and emits them as `session:file-change` events. Same-path edits from different runtime instances are recorded as pending session conflicts and surfaced through `/proc/sessions` plus Settings. Package/app-state/storage-flush coordination and package DB conflict policy still need explicit handling.
+When BroadcastChannel is available, DindbOS publishes VFS file-change messages to peer runtimes and emits them as `session:file-change` events. Same-path edits from different runtime instances are recorded as pending session conflicts and surfaced through `/proc/sessions` plus Settings. Storage flush start/complete/error phases are also broadcast as `session:storage-flush` diagnostics so peer runtimes can see active persistence work. Package/app-state coordination and package DB conflict policy still need explicit handling.
 
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 

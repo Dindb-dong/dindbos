@@ -142,8 +142,13 @@ tabB.fs.writeOrCreateFile("/home/guest/Documents/cross-tab.txt", "peer edit", "/
 assert(tabB.sessionCoordinationStatus().conflicts.pending === 1, "local same-path session conflict was not recorded");
 assert(conflicts.some((event) => event.includes("/home/guest/Documents/cross-tab.txt:tab-a->tab-b")), "peer same-path session conflict was not delivered");
 assert(JSON.parse(tabB.fs.readFile("/proc/sessions")).conflicts.pending === 1, "/proc/sessions did not expose pending session conflicts");
+const flushEvents = [];
+tabB.bus.on("session:storage-flush", (event) => flushEvents.push(`${event.source}:${event.phase}`));
+await tabA.flushPersistentFileSystem();
+assert(flushEvents.includes("tab-a:start") && flushEvents.includes("tab-a:complete"), "peer storage flush events were not delivered");
+assert(tabB.sessionCoordinationStatus().storageFlush.lastPeerPhase === "complete", "peer storage flush status was not recorded");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush");
 
 function createStorage(values = new Map()) {
   return {
