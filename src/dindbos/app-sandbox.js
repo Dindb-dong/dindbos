@@ -284,6 +284,10 @@ export class AppSandbox {
         this.assertCapability("service.read");
         return this.os.services?.readLog?.(serviceId) || [];
       },
+      manifest: (serviceId) => {
+        this.assertCapability("service.read");
+        return this.os.services?.manifest?.(serviceId) || null;
+      },
       start: (serviceId) => {
         this.assertCapability("service.manage");
         return this.os.services.start(serviceId, { principal: this.os.permissions.systemPrincipal() });

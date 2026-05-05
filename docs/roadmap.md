@@ -572,7 +572,7 @@ Implementation tasks:
 - Already present: scheduled service runs are represented by `runScheduled()`, run counters, last-run timestamps, service logs under `/var/log/dindbos/services.log`, and `service:scheduled-run` / `service:degraded` events.
 - Already present: Settings reads `os.services.list()` and renders service status plus restart/disable controls through the sandboxed `service.read` / `service.manage` facade.
 - Already present: Activity Monitor detects selected `service:<id>` processes and renders service metadata, service logs, restart controls, and disable controls through the sandboxed `service.read` / `service.manage` facade.
-- Add Activity Monitor permission review for service manifests beyond the existing service process/detail surfaces.
+- Already present: Activity Monitor service detail includes a permission review of service manifest capabilities, filesystem read/write scope, and schedule metadata.
 - Already present: first-pass service `suspend(reason)` and `resume(reason)` hooks emit lifecycle events; `DindbOS.installServiceLifecycleHooks()` wires `visibilitychange`, `pagehide`, and `pageshow` so browser page lifecycle events suspend/resume service records before persistence lifecycle flushes run.
 - Already present: `docs/services.md` documents service manifests, state transitions, process boundary, permission boundary, and closed-page browser lifecycle limits.
 
@@ -582,7 +582,7 @@ Verification:
 - Already present: `npm run smoke:settings` verifies Settings snapshot/markup coverage for service counts, status, restart, and disable controls.
 - Already present: `npm run smoke:processes` verifies Activity Monitor service detail markup for service metadata, logs, restart controls, and disable controls.
 - Already present: `npm run smoke:services` verifies browser `pagehide`/`pageshow` and hidden/visible `visibilitychange` service suspend/resume wiring.
-- Add smoke coverage for Activity Monitor service permission review once implemented.
+- Already present: `npm run smoke:processes` verifies Activity Monitor service permission review markup for capabilities, write scope, and schedule metadata.
 
 Completion criteria:
 

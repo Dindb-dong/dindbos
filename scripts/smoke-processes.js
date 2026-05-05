@@ -113,10 +113,21 @@ const serviceDetail = renderActivityDetail(
   "process ready",
   { id: "search-indexer", name: "Search Indexer", state: "running", runCount: 2, lastRunAt: new Date().toISOString() },
   [{ at: "2026-05-05T00:00:00.000Z", level: "info", message: "indexed" }],
+  {
+    id: "search-indexer",
+    name: "Search Indexer",
+    schedule: { everyMs: 60000 },
+    capabilities: ["storage.read"],
+    fileSystem: { read: ["/home/guest"], write: ["/var/lib/dindbos/search"] },
+  },
 );
 assert(serviceDetail.includes("Service ID"), "activity service detail did not render service metadata");
 assert(serviceDetail.includes("data-service-action=\"restart\""), "activity service detail did not expose restart action");
 assert(serviceDetail.includes("data-service-action=\"disable\""), "activity service detail did not expose disable action");
+assert(serviceDetail.includes("Permission Review"), "activity service detail did not render service permission review");
+assert(serviceDetail.includes("storage.read"), "activity service detail did not render service capabilities");
+assert(serviceDetail.includes("/var/lib/dindbos/search"), "activity service detail did not render service write scope");
+assert(serviceDetail.includes("every 60000ms"), "activity service detail did not render service schedule");
 assert(serviceDetail.includes("indexed"), "activity service detail did not render service log");
 
 const workerStartedAt = Date.now();

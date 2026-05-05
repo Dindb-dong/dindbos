@@ -44,6 +44,21 @@ export class ServiceManager {
     return [...(this.logs.get(serviceId) || [])];
   }
 
+  manifest(serviceId) {
+    const service = this.requireDefinition(serviceId);
+    return {
+      id: service.id,
+      name: service.name,
+      enabled: service.enabled,
+      schedule: cloneSchedule(service.schedule),
+      capabilities: [...service.capabilities],
+      fileSystem: {
+        read: [...service.fileSystem.read],
+        write: [...service.fileSystem.write],
+      },
+    };
+  }
+
   enable(serviceId, context = {}) {
     this.assertManage(context);
     const record = this.requireRecord(serviceId);
@@ -264,6 +279,10 @@ function normalizeService(definition = {}) {
     stop: definition.stop || null,
     run: definition.run || null,
   };
+}
+
+function cloneSchedule(schedule) {
+  return schedule && typeof schedule === "object" ? { ...schedule } : schedule || null;
 }
 
 function ensureDirectory(os, path, principal) {

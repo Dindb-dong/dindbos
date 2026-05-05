@@ -43,7 +43,7 @@ Current service states:
 
 Settings.app reads `os.services.list()` and renders service state, run count, restart controls, and disable controls through the sandboxed `service.read` / `service.manage` facade.
 
-Activity Monitor shows service-managed processes as `service:<id>` rows. Selecting one renders service metadata, service logs, restart controls, and disable controls next to the normal process detail.
+Activity Monitor shows service-managed processes as `service:<id>` rows. Selecting one renders service metadata, service logs, restart controls, disable controls, and a permission review of the service manifest capabilities, filesystem read/write scope, and schedule.
 
 ## Process Boundary
 
