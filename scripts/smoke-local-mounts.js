@@ -209,6 +209,16 @@ const mounted = await mounts.mountLocal("disk", { handle, persist: false });
 assert(mounted.path === "/mnt/disk", `mounted path mismatch: ${mounted.path}`);
 assert(os.mountTableWrites.includes("local-mount"), "local mount did not refresh mount table procfs");
 assert(await mounts.readFile("/mnt/disk/note.txt") === "external v1", "initial local mount mirror did not read external file");
+const fileMetadata = await mounts.stat("/mnt/disk/note.txt");
+assert(fileMetadata.metadataSource === "browser-file-handle", `local file metadata source mismatch: ${fileMetadata.metadataSource}`);
+assert(fileMetadata.size === "external v1".length, `local file size metadata mismatch: ${fileMetadata.size}`);
+assert(fileMetadata.modified === "1970-01-01T00:00:01.000Z", `local file modified metadata mismatch: ${fileMetadata.modified}`);
+assert(fileMetadata.metadata.hostRepresented.includes("size") && fileMetadata.metadata.hostRepresented.includes("modified"), "local file metadata did not mark browser-represented fields");
+assert(fileMetadata.metadata.hostUnsupported.includes("owner") && fileMetadata.metadata.ownership === "dindbos-session-local", "local file metadata did not mark unsupported host ownership");
+const directoryMetadata = await mounts.stat("/mnt/disk/source");
+assert(directoryMetadata.metadataSource === "browser-directory-handle", `local directory metadata source mismatch: ${directoryMetadata.metadataSource}`);
+assert(directoryMetadata.metadata.hostRepresented.join(",") === "name,kind", `local directory represented metadata mismatch: ${directoryMetadata.metadata.hostRepresented.join(",")}`);
+assert(directoryMetadata.metadata.hostUnsupported.includes("modified") && directoryMetadata.metadata.hostUnsupported.includes("permissions"), "local directory metadata did not expose browser limitations");
 await assertRejects(
   () => mounts.move("/mnt/disk/rename-me.txt", "/mnt/disk/renamed.txt"),
   "local mount rename requires a file helper companion",
@@ -251,7 +261,7 @@ assert(mounts.operationStatus().some((operation) => operation.kind === "sync-con
 const status = await mounts.status();
 assert(status[0].conflicts.length === 1, "mount status did not expose sync conflict");
 
-console.log("local mounts smoke ok permission-denied directory-copy-policy native-rename sync-conflict");
+console.log("local mounts smoke ok permission-denied metadata-limits directory-copy-policy native-rename sync-conflict");
 
 function bootOs() {
   const permissions = new PermissionPolicy();

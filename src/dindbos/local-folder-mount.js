@@ -690,10 +690,13 @@ export class LocalFolderMountManager {
         permissions: "drwxrwxrwx",
         owner: this.os.session.user || "guest",
         group: "users",
+        metadataSource: "browser-directory-handle",
+        metadata: localMountMetadata("directory"),
         children: [],
       };
     }
     const file = await handle.getFile();
+    const modified = new Date(file.lastModified || Date.now()).toISOString();
     return {
       name,
       type: "file",
@@ -703,10 +706,16 @@ export class LocalFolderMountManager {
       external: true,
       mime: file.type || mimeFromName(name),
       size: file.size,
-      modified: new Date(file.lastModified || Date.now()).toISOString(),
+      modified,
       permissions: "-rw-rw-rw-",
       owner: this.os.session.user || "guest",
       group: "users",
+      metadataSource: "browser-file-handle",
+      metadata: localMountMetadata("file", {
+        mime: file.type || mimeFromName(name),
+        size: file.size,
+        modified,
+      }),
     };
   }
 
@@ -720,8 +729,10 @@ export class LocalFolderMountManager {
       permissions: node.permissions || "-rw-rw-rw-",
       owner: node.owner || this.os.session.user || "guest",
       group: node.group || "users",
-      size: node.size || 0,
-      modified: node.modified || new Date().toISOString(),
+      size: node.size ?? 0,
+      modified: node.modified ?? "",
+      metadataSource: node.metadataSource || "dindbos-vfs",
+      metadata: node.metadata || {},
     };
   }
 
@@ -917,6 +928,20 @@ function nodeChangedSinceSnapshot(node, snapshot) {
   return current.type !== snapshot.type
     || current.size !== snapshot.size
     || current.modified !== snapshot.modified;
+}
+
+function localMountMetadata(kind, values = {}) {
+  const fileFields = ["name", "kind", "mime", "size", "modified"];
+  const directoryFields = ["name", "kind"];
+  return {
+    kind,
+    hostRepresented: kind === "file" ? fileFields : directoryFields,
+    hostUnsupported: kind === "file"
+      ? ["owner", "group", "permissions", "inode", "created"]
+      : ["owner", "group", "permissions", "inode", "created", "modified", "size"],
+    ownership: "dindbos-session-local",
+    ...values,
+  };
 }
 
 async function requestDirectoryPermission(handle, mode) {
