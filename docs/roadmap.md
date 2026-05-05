@@ -1001,7 +1001,8 @@ Implementation tasks:
 - Already present: package records include first-pass namespace metadata for package root, private state root, private cache root, private temp root, process group, dependency root, device grants, network grants, IPC endpoints, and child-process limit.
 - Already present: ProcessManager inherits parent namespaces for child process launches, package WASM entries pass package namespace into their child process manifest, and `/proc/<pid>/status` plus `/proc/processes.json` expose process namespace metadata.
 - Already present: package CLI tools run as `nodecompat-cli` DindbOS processes with package namespace metadata, package filesystem scopes, declared dependency allowlists, process history, and shell `pkg run <package> [args...]` handoff.
-- Add namespace inheritance for worker executor tasks and service units launched by a package.
+- Already present: package apps can launch worker executor CPU tasks through the app sandbox; `ProcessExecutor` records parent pid and inherited package namespace metadata for worker-backed tasks.
+- Add namespace inheritance for service units launched by a package.
 - Already present: AppSandbox NodeCompat execution inherits package filesystem scopes and a first-pass declared npm dependency allowlist, so package code cannot `require()` undeclared package-local dependency trees through NodeCompat.
 - Add per-package dependency views so SDK resolution, WASM entries, services, and future package child processes cannot read undeclared dependency trees by default.
 - Already present: Process procfs writes namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics, including package root, synthetic state/cache/temp/dependency namespace mounts, and namespace limits.
@@ -1021,7 +1022,8 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package sandbox manifest policy normalization and exposure through package records, app manifests, and namespace metadata.
 - Already present: `npm run smoke:packages` verifies package uninstall cleans running package app processes, inherited child processes, IPC endpoints, and state/cache/temp namespace roots.
 - Already present: `npm run smoke:packages` verifies package CLI execution through `packages.runCli()` and shell `pkg run`, including inherited package namespace metadata, cross-package root denial, undeclared dependency denial, output/status capture, and process history.
-- Add tests proving namespace restrictions apply identically to background services and worker executor tasks launched by packages.
+- Already present: `npm run smoke:packages` verifies package-launched worker executor tasks inherit parent pid, package namespace metadata, and worker executor history.
+- Add tests proving namespace restrictions apply identically to background services launched by packages.
 
 Completion criteria:
 

@@ -5,6 +5,7 @@ import { DescriptorManager } from "../../src/dindbos/descriptors.js";
 import { EventBus } from "../../src/dindbos/event-bus.js";
 import { PackageManager } from "../../src/dindbos/package-manager.js";
 import { PermissionPolicy } from "../../src/dindbos/permission-policy.js";
+import { ProcessExecutor } from "../../src/dindbos/process-executor.js";
 import { ProcessManager } from "../../src/dindbos/process-manager.js";
 import { ServiceManager } from "../../src/dindbos/service-manager.js";
 import { SyscallDispatcher } from "../../src/dindbos/syscalls.js";
@@ -32,6 +33,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
     processes: null,
     services: null,
     descriptors: null,
+    executor: null,
     syscalls: null,
     wasm: null,
     session,
@@ -48,6 +50,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
   os.windows = createTestWindowManager();
   os.descriptors = new DescriptorManager(os);
   os.processes = new ProcessManager(os);
+  os.executor = new ProcessExecutor(os);
   os.services = new ServiceManager(os);
   os.syscalls = new SyscallDispatcher(os);
   os.syscall = (name, args = {}, context = {}) => {
