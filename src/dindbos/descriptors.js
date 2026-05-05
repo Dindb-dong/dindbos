@@ -58,6 +58,8 @@ export class DescriptorManager {
     const fd = table.nextFd;
     table.nextFd += 1;
     descriptor.fd = fd;
+    descriptor.rights = normalizeDescriptorRights(args.rights, descriptor);
+    descriptor.wasi = args.wasi || null;
     table.descriptors.set(fd, descriptor);
     this.writeProcfs(process.pid);
     return publicDescriptor(descriptor);
@@ -104,6 +106,7 @@ export class DescriptorManager {
   read(process, args = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (!descriptor.readable) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor is not readable`);
+    if (descriptor.rights && !descriptor.rights.read) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor lacks read rights`);
     const length = readLength(args.length);
     let data = "";
     if (descriptor.kind === "file") data = this.readFileDescriptor(descriptor, length);
@@ -120,6 +123,7 @@ export class DescriptorManager {
   write(process, args = {}, context = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (!descriptor.writable) throw descriptorError("EBADF", `fd.write: ${descriptor.fd}: descriptor is not writable`);
+    if (descriptor.rights && !descriptor.rights.write) throw descriptorError("EBADF", `fd.write: ${descriptor.fd}: descriptor lacks write rights`);
     const data = String(args.data ?? args.content ?? "");
     let bytes = 0;
     if (descriptor.kind === "file") bytes = this.writeFileDescriptor(descriptor, data, context);
@@ -368,6 +372,16 @@ function publicDescriptor(descriptor) {
     offset: Number(descriptor.offset || 0),
     flags: descriptor.flags || "",
     preopen: Boolean(descriptor.preopen),
+    rights: descriptor.rights ? { ...descriptor.rights } : null,
+    wasi: descriptor.wasi ? { ...descriptor.wasi } : null,
+  };
+}
+
+function normalizeDescriptorRights(rights, descriptor) {
+  if (!rights) return null;
+  return {
+    read: Boolean(rights.read) && Boolean(descriptor.readable),
+    write: Boolean(rights.write) && Boolean(descriptor.writable),
   };
 }
 
