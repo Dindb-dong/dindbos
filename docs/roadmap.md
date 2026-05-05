@@ -237,14 +237,15 @@ Implementation tasks:
 - Support fuller WASI-style imports where possible, mapped to the DindbOS syscall ABI.
 - Mount process-local descriptors for files, pipes, and terminal streams.
 - Broaden process filesystem scopes beyond the first-pass executable-directory policy.
-- Add memory and execution guards: max memory pages, cooperative timeout, abort handling, and crash report capture.
+- Already present: WASM trap paths flow through process crash handling and return crash report paths for `/var/log/dindbos/crash-<pid>.log` diagnostics.
+- Add memory and execution guards: max memory pages, cooperative timeout, and abort handling.
 - Add package manifest support for WASM entry points.
 - Add developer docs for compiling small C/Rust/Zig examples to the supported WASM/WASI target.
 
 Verification:
 
 - Already present: `npm run smoke:wasm` verifies shell execution, argv/env stdout, syscall-backed file write, syscall tracing, nonzero exit status, and process tracking.
-- Add smoke fixture programs for permission denial and crash reporting.
+- Already present: `npm run smoke:wasm` verifies permission-denied syscall behavior, EACCES syscall tracing, trap crash report files, and crash index entries.
 - Add package install smoke coverage for a WASM-backed app launched through AppRegistry.
 
 Completion criteria:

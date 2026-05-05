@@ -24,6 +24,18 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/exit7.wasm", exitWasm(), "/", {
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/denied.wasm", deniedWriteWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/trap.wasm", trapWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 
 const shell = new ShellSession(os);
 let result = await shell.executeAsync("export PATH=$PATH:/home/guest/bin && hello.wasm max");
@@ -43,7 +55,24 @@ const exitRun = await os.wasm.runFile("/home/guest/bin/exit7.wasm", "/home/guest
 });
 assert(exitRun.status === 7, `wasm exit status mismatch: ${exitRun.status}`);
 
-console.log("wasm smoke ok shell argv env syscall exit process");
+const deniedRun = await os.wasm.runFile("/home/guest/bin/denied.wasm", "/home/guest/bin", {
+  principal: os.permissions.principal(os.session),
+});
+assert(deniedRun.status === 13, `wasm denied syscall status mismatch: ${deniedRun.status}`);
+assert(!os.fs.exists("/root/wasm-denied.txt"), "wasm denied syscall mutated a root-owned path");
+assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("fs.writeText EACCES"), "wasm denied syscall did not write EACCES trace");
+
+const trapRun = await os.wasm.runFile("/home/guest/bin/trap.wasm", "/home/guest/bin", {
+  principal: os.permissions.principal(os.session),
+});
+assert(trapRun.status === 1, `wasm trap status mismatch: ${trapRun.status}`);
+assert(trapRun.crashed === true, "wasm trap did not report crashed=true");
+assert(trapRun.crashReportPath === `/var/log/dindbos/crash-${trapRun.pid}.log`, `wasm trap crash path mismatch: ${trapRun.crashReportPath}`);
+assert(os.fs.exists(trapRun.crashReportPath), "wasm trap crash report was not written");
+assert(os.fs.readFile(trapRun.crashReportPath).includes("unreachable"), "wasm trap crash report missing trap message");
+assert(os.fs.readFile("/var/log/dindbos/crashes.log").includes(`pid=${trapRun.pid} app=wasm:trap.wasm`), "wasm trap crash index missing pid/app");
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -100,6 +129,38 @@ function exitWasm() {
     imports: [{ name: "exit", type: 0 }],
     startType: 1,
     body: [0x41, 0x07, 0x10, 0x00, 0x0b],
+    data: new Uint8Array(),
+  });
+}
+
+function deniedWriteWasm() {
+  const request = bytes(JSON.stringify({
+    name: "fs.writeText",
+    args: { path: "/root/wasm-denied.txt", content: "denied" },
+  }));
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32"], results: ["i32"] },
+      { params: [], results: ["i32"] },
+    ],
+    imports: [{ name: "syscall", type: 0 }],
+    startType: 1,
+    body: [
+      0x41, 0x00, 0x41, ...i32(request.length), 0x10, 0x00,
+      0x0b,
+    ],
+    data: request,
+  });
+}
+
+function trapWasm() {
+  return wasmModule({
+    types: [
+      { params: [], results: [] },
+    ],
+    imports: [],
+    startType: 0,
+    body: [0x00, 0x0b],
     data: new Uint8Array(),
   });
 }

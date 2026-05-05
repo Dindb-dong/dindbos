@@ -32,6 +32,8 @@ export class WasmRunner {
     const stdout = [];
     const stderr = [];
     let instance = null;
+    let crashed = false;
+    let crashReportPath = "";
     const env = this.environment(options, process);
     const context = {
       process,
@@ -80,8 +82,10 @@ export class WasmRunner {
         this.os.processes.log(process.pid, `wasm exit ${status}`);
       } else {
         status = 1;
+        crashed = true;
         stderr.push(error.message || String(error));
         this.os.processes.crash(process.pid, error);
+        crashReportPath = process.crashReportPath || "";
       }
     } finally {
       if (this.os.processes.get(process.pid)) this.os.processes.kill(process.pid, status === 0 ? "exited" : `exited-${status}`);
@@ -94,6 +98,8 @@ export class WasmRunner {
       stdout: stdout.join(""),
       stderr: stderr.join(""),
       status,
+      crashed,
+      crashReportPath,
     };
   }
 
