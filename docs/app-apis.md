@@ -57,6 +57,8 @@ export function mount({ content, pkg, sdk }) {
 
 Current helper groups cover `clock`, `entropy`, `fs`, `fd`, `env`, `apps`, `packages`, `storage`, `localMounts`, and `processes`. These helpers do not grant extra permission; package manifest capabilities and filesystem scopes are still enforced by the runtime.
 
+TypeScript consumers can use `src/dindbos/sdk.d.ts` for the declared SDK surface. The declaration file is checked by `npm run smoke:sdk` against the current helper groups so package examples do not drift from the runtime wrapper.
+
 ## Filesystem
 
 Available as `os.fs`.
