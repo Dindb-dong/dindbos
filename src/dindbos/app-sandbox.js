@@ -8,7 +8,7 @@ export class AppSandbox {
   constructor(os, process) {
     this.os = os;
     this.process = process;
-    this.principal = os.permissions.principal({ user: process.user, groups: os.session.groups });
+    this.principal = os.permissions.principal({ user: process.user, groups: process.groups || process.credentials?.groups || os.session.groups });
     this.fs = this.createFileSystemFacade();
     this.apps = this.createAppFacade();
     this.processes = this.createProcessFacade();
