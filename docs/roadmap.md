@@ -482,15 +482,16 @@ Implementation tasks:
 - Extend storage transaction groups into full interrupted-write replay instead of only recovery decision reporting.
 - Add atomic rename/write semantics for package installs, editor saves, and archive imports.
 - Add filesystem snapshots and rollback points for package updates and user-triggered restore.
-- Add quota reservation before large writes and package installs.
+- Already present: persistent storage can reserve estimated write bytes before browser persistence mutation and deny quota-exceeding writes without touching the backing adapter.
+- Extend quota reservation to package installs and large app/import writes.
 - Add `fsck`-style integrity checks for inode/content mismatches, orphaned content records, broken mount metadata, and package DB drift.
 - Add optional per-user encrypted volumes using WebCrypto-derived keys.
 - Add storage pressure handling that can evict cache volumes without touching durable user files.
 
 Verification:
 
-- Already present: `npm run smoke:persistent-storage` verifies storage write journal records for snapshot fallback writes, OPFS write-failure fallback, matching OPFS multi-record transaction groups, and interrupted transaction recovery decisions.
-- Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, quota denial before mutation, and repair of orphaned records.
+- Already present: `npm run smoke:persistent-storage` verifies storage write journal records for snapshot fallback writes, OPFS write-failure fallback, matching OPFS multi-record transaction groups, interrupted transaction recovery decisions, and quota denial before adapter mutation.
+- Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, package install quota denial before mutation, and repair of orphaned records.
 
 Completion criteria:
 

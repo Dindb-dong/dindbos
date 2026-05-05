@@ -9,10 +9,11 @@ const binary = new Uint8Array([3, 9, 27, 81, 128, 255]);
 await verifySnapshotAdapterFallback();
 await verifyOpfsTransactionGroupJournal();
 await verifyInterruptedOpfsTransactionRecoveryDecision();
+await verifyQuotaReservationDeniesBeforeMutation();
 await verifyOpfsFailureFallsBackToSnapshot();
 await verifyLifecyclePendingWriteFlushes();
 
-console.log(`persistent storage smoke ok binaryBytes=${binary.byteLength} journal=write`);
+console.log(`persistent storage smoke ok binaryBytes=${binary.byteLength} journal=write quota=reservation`);
 
 async function verifySnapshotAdapterFallback() {
   const adapter = createAdapter();
@@ -138,6 +139,34 @@ async function verifyInterruptedOpfsTransactionRecoveryDecision() {
   assert(recovery?.transactionId === "storage-tx-interrupted", `recovery transaction id mismatch: ${JSON.stringify(recovery)}`);
   assert(recovery.decision === "load-last-complete-manifest", `recovery decision mismatch: ${JSON.stringify(recovery)}`);
   assert(reloadedStorage.journal().some((entry) => entry.action === "write-recovery" && entry.transactionId === "storage-tx-interrupted"), "recovery journal entry missing");
+}
+
+async function verifyQuotaReservationDeniesBeforeMutation() {
+  const adapter = createAdapter();
+  const storage = new PersistentStorage({
+    key: "smoke:quota",
+    adapter,
+    indexedDB: null,
+    opfsProvider: null,
+    quotaBytes: 24,
+  });
+  const fs = bootVfs();
+  fs.writeOrCreateFile("/home/guest/Documents/large.txt", "this write should exceed the tiny quota", "/", { mime: "text/plain" });
+  await assertRejects(() => storage.saveFileSystem(fs.snapshot()), "storage quota exceeded");
+  assert(adapter.getItem("smoke:quota") === "", "quota denial mutated adapter storage");
+  const reservation = storage.status().lastQuotaReservation;
+  assert(reservation?.allowed === false && reservation.reason === "quota-exceeded", `quota denial status mismatch: ${JSON.stringify(reservation)}`);
+  assert(storage.journal().some((entry) => entry.action === "quota-denied" && entry.error === "quota-exceeded"), "quota denial journal entry missing");
+}
+
+async function assertRejects(action, expectedMessage) {
+  try {
+    await action();
+  } catch (error) {
+    if (String(error?.message || error).includes(expectedMessage)) return;
+    throw new Error(`expected rejection containing ${expectedMessage}, got ${error?.message || error}`);
+  }
+  throw new Error(`expected rejection containing ${expectedMessage}`);
 }
 
 async function verifyLifecyclePendingWriteFlushes() {
