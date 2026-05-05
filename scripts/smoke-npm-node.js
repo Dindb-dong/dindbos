@@ -183,6 +183,21 @@ const fsPromisesImport = await node.evaluate(
 assert(fsPromisesImport.status === 0, `fs promises import exited with ${fsPromisesImport.status}`);
 assert(fsPromisesImport.output.trim() === "async note note.txt true []", `unexpected fs promises import output: ${fsPromisesImport.output}`);
 assert(os.storageReservations.some((entry) => entry.scope === "nodecompat-fs-write" && entry.path === `${cwd}/async-dir/note.txt` && entry.operation === "writeFileSync"), "NodeCompat fs.promises.writeFile did not reserve storage before VFS write");
+os.denyNextStorageReservation("simulated NodeCompat quota denial");
+const fsQuotaDenied = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "try {",
+    "  fs.writeFileSync('./quota-denied.txt', 'blocked');",
+    "} catch (error) {",
+    "  console.log(error.message);",
+    "}",
+  ].join("\n"),
+  cwd,
+);
+assert(fsQuotaDenied.status === 0, `NodeCompat quota denial script exited with ${fsQuotaDenied.status}`);
+assert(fsQuotaDenied.output.trim() === "simulated NodeCompat quota denial", `NodeCompat quota denial output mismatch: ${fsQuotaDenied.output}`);
+assert(!os.fs.exists(`${cwd}/quota-denied.txt`), "NodeCompat quota denial mutated the VFS");
 
 const beforePromiseFsyncFlushes = os.storageFlushes;
 const fsPromisesFsyncImport = await node.evaluate(
@@ -1077,6 +1092,7 @@ function bootOs() {
   const system = permissions.systemPrincipal();
   let storageFlushes = 0;
   const storageReservations = [];
+  let nextStorageDenial = "";
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/tmp", "/", { owner: "root", group: "root", permissions: "drwxrwxrwx" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
@@ -1093,6 +1109,11 @@ function bootOs() {
     storage: {
       status: () => ({ backend: "memory", bytes: 0 }),
       reserveStorageBytes(bytes, details = {}) {
+        if (nextStorageDenial) {
+          const message = nextStorageDenial;
+          nextStorageDenial = "";
+          throw new Error(message);
+        }
         storageReservations.push({ bytes, ...details });
         return true;
       },
@@ -1106,6 +1127,9 @@ function bootOs() {
     },
     get storageReservations() {
       return storageReservations;
+    },
+    denyNextStorageReservation(message) {
+      nextStorageDenial = message || "simulated storage quota denial";
     },
     async syscallAsync(name) {
       if (name !== "storage.sync") return { ok: false, error: { code: "ENOSYS", message: `syscall: ${name}: not implemented`, syscall: name } };
