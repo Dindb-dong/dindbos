@@ -41,6 +41,7 @@ export class PersistentStorage {
       lastStorageJournalAction: "",
       lastStorageTransactionId: "",
       storageRecoveryDecision: null,
+      storageIntegrityMismatches: [],
       quotaLimitBytes: this.quotaBytes,
       storageClassQuotas: { ...this.storageClassQuotas },
       storageClassUsage: {},
@@ -58,6 +59,7 @@ export class PersistentStorage {
       const payload = JSON.parse(raw);
       if (payload.version !== STORAGE_VERSION) return null;
       if (payload.format === INODE_RECORD_FORMAT) {
+        await this.validateInodeRecordPayload(payload);
         this.rememberRecordHashes(payload);
         this.lastStatus = {
           ...this.lastStatus,
@@ -466,6 +468,72 @@ export class PersistentStorage {
   rememberRecordHashes(payload) {
     this.savedInodeHashes = new Map((payload.inodeRecords || []).map((record) => [record.ref, record.hash]));
     this.savedContentHashes = new Map((payload.fileRecords || []).map((record) => [record.ref, record.hash]));
+  }
+
+  async validateInodeRecordPayload(payload = {}) {
+    const mismatches = [];
+    for (const record of payload.inodeRecords || []) {
+      try {
+        const raw = await this.opfsGet(record.key);
+        const actualHash = hashString(raw);
+        if (actualHash !== record.hash) {
+          mismatches.push({
+            kind: "inode-record",
+            path: record.path || "",
+            ref: record.ref || "",
+            expected: record.hash || "",
+            actual: actualHash,
+          });
+        }
+      } catch {
+        mismatches.push({
+          kind: "inode-record-missing",
+          path: record.path || "",
+          ref: record.ref || "",
+          expected: record.hash || "",
+          actual: "missing",
+        });
+      }
+    }
+    for (const record of payload.fileRecords || []) {
+      try {
+        const raw = await this.opfsGet(record.key);
+        const actualRef = contentRecordRef(raw);
+        if (actualRef !== record.hash || actualRef !== record.ref) {
+          mismatches.push({
+            kind: "file-content-record",
+            path: record.path || "",
+            ref: record.ref || "",
+            expected: record.hash || record.ref || "",
+            actual: actualRef,
+          });
+        }
+      } catch {
+        mismatches.push({
+          kind: "file-content-record-missing",
+          path: record.path || "",
+          ref: record.ref || "",
+          expected: record.hash || record.ref || "",
+          actual: "missing",
+        });
+      }
+    }
+    if (!mismatches.length) {
+      this.lastStatus = { ...this.lastStatus, storageIntegrityMismatches: [] };
+      return [];
+    }
+    this.recordStorageJournal("storage-integrity-mismatch", {
+      storageFormat: INODE_RECORD_FORMAT,
+      transactionKind: "filesystem-load",
+      error: "inode-content-mismatch",
+      inodeRecords: mismatches.filter((entry) => entry.kind.startsWith("inode")).length,
+      fileRecords: mismatches.filter((entry) => entry.kind.startsWith("file")).length,
+    });
+    this.lastStatus = {
+      ...this.lastStatus,
+      storageIntegrityMismatches: mismatches.slice(0, 25),
+    };
+    return mismatches;
   }
 
   createFileRecordPayload(root) {

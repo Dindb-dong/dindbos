@@ -16,6 +16,7 @@ Current implementation:
 - VFS metadata is stored through `PersistentStorage`.
 - OPFS is preferred when available. It stores a tiny root manifest, separate inode metadata records, and content-addressed file records.
 - Saves compare record hashes and only rewrite dirty inode/content records.
+- OPFS inode-record loads validate manifest inode/file hashes against actual records and report inode/content mismatches through storage status and the journal.
 - Filesystem changes are debounced and coalesced so bursts of writes produce one persisted snapshot.
 - VFS exposes binary-safe byte read/write APIs while keeping text APIs compatible.
 - In-memory binary file nodes use native `Uint8Array`; base64 is only used at persistence/export boundaries.
