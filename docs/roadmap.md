@@ -1054,7 +1054,7 @@ Why it matters:
 Implementation tasks:
 
 - Already present: first-pass OS lifecycle states include `booting`, `active`, `idle`, `suspending`, `suspended`, `resuming`, `shutting-down`, `crashed`, and `recovered`, exposed through `os.lifecycleStatus()`, `os:lifecycle`, `/var/run/dindbos/lifecycle.json`, and `/var/log/dindbos/lifecycle.log`.
-- Add per-process lifecycle callbacks for prepare-suspend, suspend, resume, prepare-shutdown, and recovery inspection.
+- Already present: per-process lifecycle callbacks record and optionally invoke `prepare-suspend`, `suspend`, `resume`, `prepare-shutdown`, and `recovery-inspection`; results emit `process:lifecycle` and surface in `/proc/<pid>/status` plus `/proc/processes.json`.
 - Already present: browser event integration covers storage persistence prompts/unload-safe flush windows plus service suspend/resume on `visibilitychange`, `pagehide`, and `pageshow`.
 - Already present: browser `pagehide`, `pageshow`, hidden/visible `visibilitychange`, and `beforeunload` drive first-pass OS transitions around `suspending`, `suspended`, `resuming`, `active`, and `shutting-down`.
 - Already present: dirty shutdown records are written to `/var/run/dindbos/recovery/last-shutdown.json`, and the next boot acknowledges unrecovered dirty shutdowns with `/var/run/dindbos/recovery/last-recovery.json` plus an `os:lifecycle` transition to `recovered`.
@@ -1068,6 +1068,7 @@ Implementation tasks:
 Verification:
 
 - Already present: smoke coverage verifies pending-write lifecycle flushes, boot-time lifecycle diagnostics, service visibility/pagehide suspend/resume wiring, OS lifecycle transitions for pagehide/pageshow/visibility/beforeunload, dirty shutdown recovery records after reload, and service degradation after pagehide.
+- Already present: `npm run smoke:processes` verifies per-process lifecycle callback invocation, `process:lifecycle` events, and `/proc` callback diagnostics.
 - Add smoke coverage for richer recovery diagnostics after reload.
 - Add tests proving unsupported background persistence is reported as unsupported instead of silently promised.
 
