@@ -58,6 +58,12 @@ assert(reloaded.readFile(atomicCreatePath) === "created atomically", "atomic wri
 
 const corruptNode = reloaded.resolve(atomicCreatePath);
 corruptNode.size = 9_999;
+corruptNode.owner = "guest";
+corruptNode.group = "users";
+corruptNode.permissions = "-rw-------";
+corruptNode.securityLabel = "user-private";
+corruptNode.quarantine = { state: "held", reason: "fixture" };
+corruptNode.encryptedVolumeLocked = true;
 const fsckDryRun = reloaded.checkIntegrity({ repair: true, dryRun: true });
 assert(!fsckDryRun.ok, "fsck dry-run did not detect corrupt file size");
 assert(fsckDryRun.repairs.some((entry) => entry.kind === "size" && entry.dryRun), "fsck dry-run did not report planned size repair");
@@ -65,6 +71,13 @@ assert(reloaded.stat(atomicCreatePath).size === 9_999, "fsck dry-run mutated fil
 const fsckRepair = reloaded.checkIntegrity({ repair: true, dryRun: false });
 assert(fsckRepair.repaired, "fsck repair did not report repaired state");
 assert(reloaded.stat(atomicCreatePath).size === "created atomically".length, "fsck repair did not restore file size");
+const fsckRepairedStat = reloaded.stat(atomicCreatePath);
+assert(fsckRepairedStat.owner === "guest", "fsck repair changed owner");
+assert(fsckRepairedStat.group === "users", "fsck repair changed group");
+assert(fsckRepairedStat.permissions === "-rw-------", "fsck repair weakened permissions");
+assert(corruptNode.securityLabel === "user-private", "fsck repair changed security label");
+assert(corruptNode.quarantine?.state === "held", "fsck repair changed quarantine state");
+assert(corruptNode.encryptedVolumeLocked === true, "fsck repair changed encrypted volume lock state");
 
 console.log(`storage smoke ok textBytes=${text.length} binaryBytes=${bytes.byteLength}`);
 

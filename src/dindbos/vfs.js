@@ -594,6 +594,21 @@ export class VirtualFileSystem {
     const repairs = [];
     let checkedNodes = 0;
     const linkCounts = new Map();
+    const queueProtectedRepair = (kind, path, node, from, to, apply) => {
+      const record = repairRecord(kind, path, from, to, dryRun);
+      if (!dryRun) {
+        const protectedBefore = protectedRepairMetadata(node);
+        apply();
+        const violations = protectedRepairMetadataViolations(protectedBefore, node);
+        if (violations.length) {
+          restoreProtectedRepairMetadata(node, protectedBefore);
+          record.refused = true;
+          record.reason = `protected metadata changed: ${violations.join(",")}`;
+          problems.push(problem("repair-policy-refused", path, record.reason, false));
+        }
+      }
+      repairs.push(record);
+    };
     const visit = (node, path = "/") => {
       checkedNodes += 1;
       if (!node || typeof node !== "object") {
@@ -605,8 +620,9 @@ export class VirtualFileSystem {
         if (Number(node.size || 0) !== actualSize) {
           problems.push(problem("size-mismatch", path, `size=${node.size || 0} actual=${actualSize}`, true));
           if (repair) {
-            repairs.push(repairRecord("size", path, node.size || 0, actualSize, dryRun));
-            if (!dryRun) node.size = actualSize;
+            queueProtectedRepair("size", path, node, node.size || 0, actualSize, () => {
+              node.size = actualSize;
+            });
           }
         }
         if (node.linkId) linkCounts.set(node.linkId, (linkCounts.get(node.linkId) || 0) + 1);
@@ -618,8 +634,9 @@ export class VirtualFileSystem {
       if (!Array.isArray(node.children)) {
         problems.push(problem("invalid-children", path, "directory children is not an array", true));
         if (repair) {
-          repairs.push(repairRecord("children", path, "invalid", "[]", dryRun));
-          if (!dryRun) node.children = [];
+          queueProtectedRepair("children", path, node, "invalid", "[]", () => {
+            node.children = [];
+          });
         }
         return;
       }
@@ -647,7 +664,7 @@ export class VirtualFileSystem {
     return {
       ok: problems.length === 0,
       dryRun,
-      repaired: repair && !dryRun,
+      repaired: repair && !dryRun && repairs.some((entry) => !entry.refused),
       checkedNodes,
       problemCount: problems.length,
       repairCount: repairs.length,
@@ -858,6 +875,45 @@ function repairRecord(kind, path, from, to, dryRun) {
     to,
     dryRun: Boolean(dryRun),
   };
+}
+
+const PROTECTED_REPAIR_METADATA = [
+  "owner",
+  "group",
+  "permissions",
+  "securityLabel",
+  "securityLabels",
+  "quarantine",
+  "quarantined",
+  "encrypted",
+  "volumeLocked",
+  "encryptedVolumeLocked",
+  "lockState",
+];
+
+function protectedRepairMetadata(node) {
+  return Object.fromEntries(PROTECTED_REPAIR_METADATA.map((key) => [key, {
+    present: Object.hasOwn(node, key),
+    value: cloneProtectedValue(node[key]),
+  }]));
+}
+
+function protectedRepairMetadataViolations(before, node) {
+  return Object.entries(before)
+    .filter(([key, entry]) => entry.present !== Object.hasOwn(node, key) || JSON.stringify(entry.value) !== JSON.stringify(node[key]))
+    .map(([key]) => key);
+}
+
+function restoreProtectedRepairMetadata(node, before) {
+  Object.entries(before).forEach(([key, entry]) => {
+    if (!entry.present) delete node[key];
+    else node[key] = cloneProtectedValue(entry.value);
+  });
+}
+
+function cloneProtectedValue(value) {
+  if (Array.isArray(value) || (value && typeof value === "object")) return JSON.parse(JSON.stringify(value));
+  return value;
 }
 
 function safeResolveLink(fs, node, path) {
