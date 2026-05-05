@@ -6,6 +6,7 @@ import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
 const fetchCalls = [];
 const sockets = [];
 const peerConnections = [];
+const rawCompanionCalls = [];
 let slowReject = null;
 class FakeWebSocket {
   constructor(url, protocols = undefined) {
@@ -114,7 +115,7 @@ assert(result.status === 0 && result.output.includes("raw ICMP unsupported"), `p
 result = await shell.executeAsync("dig shell.example.test");
 assert(result.status === 0 && result.output.includes("browser-policy-only"), `dig policy probe mismatch: ${JSON.stringify(result)}`);
 
-const allowedProcess = processFor("network-app", ["net.fetch", "net.websocket", "net.webrtc", "net.dns"], { networkHosts: ["api.example.test"] });
+const allowedProcess = processFor("network-app", ["net.fetch", "net.websocket", "net.webrtc", "net.dns", "net.rawTcp", "net.rawUdp"], { networkHosts: ["api.example.test"] });
 const allowedSandbox = new AppSandbox(os, allowedProcess);
 const response = await allowedSandbox.net.fetch("https://api.example.test/data?token=package-secret");
 assert(response.text === "ok:api.example.test:/data", "sandbox net.fetch did not return broker response");
@@ -136,8 +137,28 @@ assert(os.network.status().webrtc.dataChannels.some((entry) => entry.id === rtc.
 rtc.close("done");
 assert(os.network.status().webrtc.history.some((entry) => entry.id === rtc.id && entry.state === "closed"), "WebRTC data channel close was not recorded");
 await assertRejects(() => allowedSandbox.net.openDataChannel("blocked.example.test"), "host denied");
+await assertRejects(() => allowedSandbox.net.openRawSocket("tcp", "api.example.test", 443), "requires approved networkd companion");
+os.network.rawSocketCompanion = {
+  identity: "networkd",
+  protocolVersion: "dindbos-networkd-v1",
+  approved: true,
+  capabilities: ["rawTcp", "rawUdp"],
+  openRaw: (request) => {
+    rawCompanionCalls.push({ action: "open", ...request });
+    return { id: `companion-${request.id}` };
+  },
+  closeRaw: (id, reason) => rawCompanionCalls.push({ action: "close", id, reason }),
+};
+const rawTcp = allowedSandbox.net.openRawSocket("tcp", "api.example.test", 443);
+assert(os.network.status().rawSockets.sessions.some((entry) => entry.id === rawTcp.id && entry.companion === "networkd"), "raw TCP session did not open through companion boundary");
+rawTcp.close("done");
+const rawUdp = allowedSandbox.net.openRawSocket("udp", "api.example.test", 53);
+rawUdp.close("done");
+assert(os.network.status().rawSockets.history.some((entry) => entry.protocol === "udp" && entry.state === "closed"), "raw UDP close was not recorded");
+await assertRejects(() => allowedSandbox.net.openRawSocket("tcp", "blocked.example.test", 443), "host denied");
+assert(rawCompanionCalls.some((entry) => entry.action === "open" && entry.protocol === "tcp") && rawCompanionCalls.some((entry) => entry.action === "close"), "raw companion adapter was not called");
 const netStatusSyscall = allowedSandbox.syscall("net.status");
-assert(netStatusSyscall.ok && netStatusSyscall.value.websocket.history.length > 0 && netStatusSyscall.value.webrtc.history.length > 0, "net.status syscall did not expose broker status");
+assert(netStatusSyscall.ok && netStatusSyscall.value.websocket.history.length > 0 && netStatusSyscall.value.webrtc.history.length > 0 && netStatusSyscall.value.rawSockets.history.length > 0, "net.status syscall did not expose broker status");
 const netPolicySyscall = allowedSandbox.syscall("net.policy", { url: "https://api.example.test/data" });
 assert(netPolicySyscall.ok && netPolicySyscall.value.allowed === true, "net.policy syscall did not allow declared host");
 const netDnsSyscall = allowedSandbox.syscall("net.dns", { host: "api.example.test" });
@@ -148,6 +169,7 @@ const deniedSandbox = new AppSandbox(os, deniedProcess);
 await assertRejects(() => deniedSandbox.net.fetch("https://api.example.test/data"), "capability denied");
 await assertRejects(() => deniedSandbox.net.openWebSocket("wss://api.example.test/socket"), "capability denied");
 await assertRejects(() => deniedSandbox.net.openDataChannel("api.example.test"), "capability denied");
+await assertRejects(() => deniedSandbox.net.openRawSocket("tcp", "api.example.test", 443), "capability denied");
 assert(deniedSandbox.syscall("net.status").ok === false, "net.status syscall allowed app without network capability");
 
 os.packages.install({
@@ -195,10 +217,12 @@ const netStatus = JSON.parse(os.fs.readFile("/proc/net/status.json"));
 assert(netStatus.deniedHosts.some((entry) => entry.host === "blocked.example.test"), "/proc/net status missing denied host");
 assert(netStatus.websocket.history.some((entry) => entry.host === "api.example.test" && entry.state === "closed"), "/proc/net status missing WebSocket history");
 assert(netStatus.webrtc.history.some((entry) => entry.peer === "api.example.test" && entry.state === "closed"), "/proc/net status missing WebRTC data channel history");
+assert(netStatus.rawSockets.history.some((entry) => entry.host === "api.example.test" && entry.state === "closed"), "/proc/net status missing raw socket companion history");
+assert(netStatus.companion.approved === true && netStatus.companion.rawTcpUdp === "companion-gated", "/proc/net status missing approved raw socket companion");
 assert(netStatus.totals.bytesReceived > 0, "/proc/net status missing bandwidth estimate");
 assert(fetchCalls.some((call) => call.url.includes("api.example.test")), "network fetch adapter was not called for allowed host");
 
-console.log("network smoke ok broker fetch websocket webrtc policy procfs syscalls shell package cancellation");
+console.log("network smoke ok broker fetch websocket webrtc raw policy procfs syscalls shell package cancellation");
 
 function processFor(appId, capabilities, namespace = {}) {
   return {

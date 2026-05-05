@@ -241,6 +241,7 @@ export class DindbOS {
       fetch: options.networkFetch || options.fetch,
       webSocket: options.networkWebSocket,
       rtcPeerConnection: options.networkPeerConnection,
+      rawSocketCompanion: options.networkRawSocketCompanion,
     });
     this.npm = new NpmInstaller(this);
     this.node = new NodeCompat(this);

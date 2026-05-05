@@ -6,16 +6,105 @@ export class NetworkBroker {
     this.fetchAdapter = options.fetch || null;
     this.webSocketAdapter = options.webSocket || null;
     this.rtcPeerConnectionAdapter = options.rtcPeerConnection || null;
+    this.rawSocketCompanion = options.rawSocketCompanion || null;
     this.requests = new Map();
     this.webSocketSessions = new Map();
     this.webSocketHistory = [];
     this.dataChannelSessions = new Map();
     this.dataChannelHistory = [];
+    this.rawSocketSessions = new Map();
+    this.rawSocketHistory = [];
     this.history = [];
     this.deniedHosts = [];
     this.nextRequestId = 1;
     this.bytesReceived = 0;
     this.bytesSent = 0;
+  }
+
+  openRawSocket(protocol, host, port, options = {}, context = {}) {
+    const normalizedProtocol = normalizeRawProtocol(protocol);
+    const normalizedHost = normalizeHost(host);
+    const normalizedPort = normalizePort(port);
+    this.assertHostAllowed(normalizedHost, normalizedProtocol === "tcp" ? "net.rawTcp" : "net.rawUdp", context, `${normalizedProtocol}://${normalizedHost}:${normalizedPort}`);
+    const companion = this.rawSocketCompanion || this.os.networkRawSocketCompanion || null;
+    const companionStatus = this.companionStatus(companion);
+    if (!companionStatus.approved || !companionStatus.capabilities.includes(normalizedProtocol === "tcp" ? "rawTcp" : "rawUdp")) {
+      throw new Error(`net: raw ${normalizedProtocol.toUpperCase()} requires approved networkd companion`);
+    }
+    if (typeof companion.openRaw !== "function") throw new Error("net: networkd companion does not implement raw socket open");
+    const id = this.nextId();
+    const openedAt = new Date().toISOString();
+    const companionSession = companion.openRaw({
+      id,
+      protocol: normalizedProtocol,
+      host: normalizedHost,
+      port: normalizedPort,
+      mode: options.mode || "connect",
+    });
+    const record = {
+      id,
+      companionSessionId: companionSession?.id || companionSession?.sessionId || id,
+      protocol: normalizedProtocol,
+      host: normalizedHost,
+      port: normalizedPort,
+      requester: requesterId(context),
+      state: "open",
+      openedAt,
+      closedAt: "",
+      closeReason: "",
+      bytesSent: 0,
+      bytesReceived: 0,
+      companion: companionStatus.identity,
+    };
+    this.rawSocketSessions.set(id, { record, companion });
+    this.writeProcfs();
+    return {
+      id,
+      protocol: normalizedProtocol,
+      host: normalizedHost,
+      port: normalizedPort,
+      state: record.state,
+      close: (reason = "closed") => this.closeRawSocket(id, reason),
+    };
+  }
+
+  closeRawSocket(id, reason = "closed") {
+    const session = this.rawSocketSessions.get(id);
+    if (!session) throw new Error(`net: raw socket ${id}: no such session`);
+    session.companion.closeRaw?.(session.record.companionSessionId, reason);
+    this.finishRawSocket(id, reason);
+    return cloneRecord(session.record);
+  }
+
+  finishRawSocket(id, reason = "closed") {
+    const session = this.rawSocketSessions.get(id);
+    if (!session) return;
+    session.record.state = "closed";
+    session.record.closedAt = new Date().toISOString();
+    session.record.closeReason = String(reason || "");
+    this.rawSocketSessions.delete(id);
+    this.rawSocketHistory.push(cloneRecord(session.record));
+    this.rawSocketHistory = this.rawSocketHistory.slice(-200);
+    this.appendLog({
+      finishedAt: session.record.closedAt,
+      requester: session.record.requester,
+      host: session.record.host,
+      status: `raw-${session.record.protocol}-closed`,
+      bytesReceived: session.record.bytesReceived,
+      url: `${session.record.protocol}://${session.record.host}:${session.record.port}`,
+      reason: session.record.closeReason,
+    });
+    this.writeProcfs();
+  }
+
+  companionStatus(companion = this.rawSocketCompanion || this.os.networkRawSocketCompanion || null) {
+    return {
+      identity: companion?.identity || "",
+      protocolVersion: companion?.protocolVersion || "",
+      approved: Boolean(companion?.approved && companion?.identity === "networkd" && companion?.protocolVersion === "dindbos-networkd-v1"),
+      capabilities: [...(companion?.capabilities || [])].map(String),
+      rawTcpUdp: companion ? "companion-gated" : "unsupported-browser-only",
+    };
   }
 
   openDataChannel(peer, options = {}, context = {}) {
@@ -362,21 +451,29 @@ export class NetworkBroker {
         supported: Boolean(this.rtcPeerConnectionAdapter || this.os.networkPeerConnection || globalThis.RTCPeerConnection),
         reason: "browser WebRTC data channel broker; signaling remains external",
       },
+      rawSockets: {
+        sessions: [...this.rawSocketSessions.values()].map((session) => cloneRecord(session.record)),
+        history: this.rawSocketHistory.slice(-50).map(cloneRecord),
+      },
       companion: {
-        rawTcpUdp: "unsupported-browser-only",
+        ...this.companionStatus(),
       },
     };
   }
 
   assertAllowed(url, capability, context = {}) {
+    return this.assertHostAllowed(url.hostname, capability, context, redactedUrl(url));
+  }
+
+  assertHostAllowed(host, capability, context = {}, url = host) {
     if (isShellOrSystem(context)) return true;
     if (typeof context.assertCapability === "function") context.assertCapability(capability);
     const hosts = allowedHosts(context);
-    if (hosts.includes("*") || hosts.some((host) => hostMatches(url.hostname, host))) return true;
+    if (hosts.includes("*") || hosts.some((rule) => hostMatches(host, rule))) return true;
     const record = {
       at: new Date().toISOString(),
-      url: redactedUrl(url),
-      host: url.hostname,
+      url: String(url || host),
+      host,
       capability,
       requester: requesterId(context),
       reason: hosts.length ? "host-not-allowed" : "no-network-hosts",
@@ -385,7 +482,7 @@ export class NetworkBroker {
     this.deniedHosts = this.deniedHosts.slice(-200);
     this.appendLog({ ...record, status: "denied" });
     this.writeProcfs();
-    throw new Error(`net: ${url.hostname}: host denied by network policy`);
+    throw new Error(`net: ${host}: host denied by network policy`);
   }
 
   completeRequest(id, record) {
@@ -483,6 +580,24 @@ function normalizePeerTarget(value) {
   return new URL(`webrtc://${peer}`);
 }
 
+function normalizeRawProtocol(value) {
+  const protocol = String(value || "").trim().toLowerCase();
+  if (protocol !== "tcp" && protocol !== "udp") throw new Error(`net: unsupported raw socket protocol: ${value || ""}`);
+  return protocol;
+}
+
+function normalizeHost(value) {
+  const host = String(value || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9.-]{0,253}$/i.test(host)) throw new Error(`net: invalid host: ${value || ""}`);
+  return host;
+}
+
+function normalizePort(value) {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`net: invalid port: ${value || ""}`);
+  return port;
+}
+
 function redactedUrl(url) {
   const safe = new URL(url.toString());
   [...safe.searchParams.keys()].forEach((key) => {
@@ -541,6 +656,8 @@ function formatRequests(status) {
     ...status.websocket.history.slice(-20).map((entry) => `${entry.id} websocket-${entry.state} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
     ...status.webrtc.dataChannels.map((entry) => `${entry.id} webrtc-${entry.state} ${entry.peer} ${entry.requester} ${entry.bytesReceived || 0} ${entry.label}`),
     ...status.webrtc.history.slice(-20).map((entry) => `${entry.id} webrtc-${entry.state} ${entry.peer} ${entry.requester} ${entry.bytesReceived || 0} ${entry.label}`),
+    ...status.rawSockets.sessions.map((entry) => `${entry.id} raw-${entry.protocol}-${entry.state} ${entry.host}:${entry.port} ${entry.requester} ${entry.bytesReceived || 0} companion=${entry.companion}`),
+    ...status.rawSockets.history.slice(-20).map((entry) => `${entry.id} raw-${entry.protocol}-${entry.state} ${entry.host}:${entry.port} ${entry.requester} ${entry.bytesReceived || 0} companion=${entry.companion}`),
     ...status.history.slice(-20).map((entry) => `${entry.id} ${entry.status} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
     ...status.deniedHosts.slice(-20).map((entry) => `- denied ${entry.host} ${entry.requester} 0 ${entry.url}`),
   ].join("\n");
