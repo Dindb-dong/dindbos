@@ -159,6 +159,10 @@ function installFakeDom() {
   globalThis.document = {
     createElement: (tag) => new FakeElement(tag),
     createDocumentFragment: () => new FakeElement("fragment"),
+    exitedPointerLock: false,
+    exitPointerLock() {
+      this.exitedPointerLock = true;
+    },
   };
 }
 
@@ -326,6 +330,12 @@ async function runLiveWindowStateSmoke() {
     liveManager.activeWindowId = "browser";
     const clipboardStatus = JSON.parse(liveOs.fs.readFile("/proc/compositor")).clipboardRouter;
     assert(clipboardStatus.copied === 1 && clipboardStatus.pasted === 1 && clipboardStatus.denied >= 1, "/proc/compositor did not expose clipboard router state");
+    const lockTarget = { locked: false, requestPointerLock() { this.locked = true; } };
+    const lockResult = liveManager.requestPointerLock("browser", { target: lockTarget });
+    assert(lockResult.handled && lockTarget.locked, "focused window pointer-lock request did not route");
+    const deniedLock = liveManager.requestPointerLock("missing-window");
+    assert(!deniedLock.handled && deniedLock.deniedReason === "window-not-found", "missing pointer-lock target was not denied");
+    assert(JSON.parse(liveOs.fs.readFile("/proc/compositor")).pointerLock.activeWindowId === "browser", "/proc/compositor did not expose active pointer lock");
     task.titlebar.listeners.pointerdown({
       pointerId: 7,
       clientX: 10,
@@ -334,8 +344,11 @@ async function runLiveWindowStateSmoke() {
     });
     assert(liveManager.compositorStatus().captureOwner === "browser", "compositor did not record pointer capture owner");
     liveManager.close("browser");
+    assert(globalThis.document.exitedPointerLock === true, "window close did not exit active pointer lock");
     assert(task.titlebar.releasedPointerIds.includes(7), "window close did not release active pointer capture");
-    assert(JSON.parse(liveOs.fs.readFile("/proc/compositor")).captureOwner === "", "/proc/compositor kept stale capture owner after close");
+    const closeCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
+    assert(closeCompositor.captureOwner === "", "/proc/compositor kept stale capture owner after close");
+    assert(closeCompositor.pointerLock.activeWindowId === "" && closeCompositor.pointerLock.releaseReason === "window-close", "/proc/compositor kept stale pointer lock owner after close");
     liveManager.open({
       id: "browser",
       appId: "browser",
