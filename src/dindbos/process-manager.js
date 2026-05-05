@@ -65,8 +65,12 @@ export class ProcessManager {
       lifecycleLastAt: "",
       lifecycleLastResult: "",
       lifecycleLastError: "",
+      objectId: "",
     };
     this.processes.set(process.pid, process);
+    const object = this.registerProcessObject(process);
+    process.objectId = object?.id || "";
+    if (parent) this.syncProcessObject(parent);
     this.history.push({ ...process });
     this.logs.set(process.pid, []);
     this.os.descriptors?.initProcess?.(process, context);
@@ -86,6 +90,7 @@ export class ProcessManager {
     process.lastActiveAt = new Date().toISOString();
     this.log(process.pid, `attach-window ${windowId}`);
     this.sampleActivity(process.pid, "attach-window", 1);
+    this.syncProcessObject(process);
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
   }
@@ -98,6 +103,7 @@ export class ProcessManager {
     process.lastActiveAt = new Date().toISOString();
     this.log(process.pid, `window-${state}${details.windowId ? ` ${details.windowId}` : ""}`);
     this.sampleActivity(process.pid, `window-${state}`, state === "focused" || state === "ready" ? 2 : 1);
+    this.syncProcessObject(process);
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
     if (state === "focused") this.emitAppLifecycle("focus", process, details);
@@ -117,6 +123,7 @@ export class ProcessManager {
     process.lastActiveAt = new Date().toISOString();
     this.log(process.pid, "ready");
     this.sampleActivity(process.pid, "ready", 2);
+    this.syncProcessObject(process);
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
     this.emitAppLifecycle("ready", process);
@@ -133,6 +140,7 @@ export class ProcessManager {
     process.lastActiveAt = new Date().toISOString();
     this.log(process.pid, `executor ${process.executionBackend} ${process.executorState}${process.executorDetail ? ` ${process.executorDetail}` : ""}`);
     this.sampleActivity(process.pid, "executor", 1);
+    this.syncProcessObject(process);
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
     return { ...this.withRuntimeMetrics(process) };
@@ -153,6 +161,7 @@ export class ProcessManager {
     this.os.windows?.releaseProcessCapture?.(process.pid, "process-crash");
     this.os.descriptors?.closeProcess?.(process.pid);
     this.os.unregisterIpcEndpointsForPid?.(process.pid, "process-crash");
+    this.revokeProcessObjects(process, "process-crash");
     this.syncProcfs();
     this.os.bus.emit("process:crash", process);
     this.emitAppLifecycle("crash", process, { error: error?.message || String(error) });
@@ -202,6 +211,7 @@ export class ProcessManager {
     this.processes.delete(process.pid);
     this.os.descriptors?.closeProcess?.(process.pid);
     this.os.unregisterIpcEndpointsForPid?.(process.pid, reason);
+    this.revokeProcessObjects(process, reason);
     this.history.push({ ...this.withRuntimeMetrics(process) });
     this.syncProcfs();
     if (process.windowId && this.os.windows.has(process.windowId)) {
@@ -305,6 +315,53 @@ export class ProcessManager {
     return this.formatTable();
   }
 
+  registerProcessObject(process) {
+    return this.os.objects?.register?.("process", {
+      ref: `pid:${process.pid}`,
+      name: process.name,
+      ownerPid: process.pid,
+      namespace: process.manifest?.namespace || null,
+      user: process.user,
+      rights: ["signal", "inspect", "wait"],
+      metadata: this.processObjectMetadata(process),
+    }) || null;
+  }
+
+  syncProcessObject(process) {
+    if (!process?.objectId) return null;
+    return this.os.objects?.update?.(process.objectId, {
+      name: process.name,
+      namespace: process.manifest?.namespace || null,
+      user: process.user,
+      metadata: this.processObjectMetadata(process),
+    }) || null;
+  }
+
+  revokeProcessObjects(process, reason = "process-exit") {
+    this.syncProcessObject(process);
+    return this.os.objects?.revokeOwnedByPid?.(process.pid, reason) || [];
+  }
+
+  processObjectMetadata(process) {
+    return {
+      pid: process.pid,
+      parentPid: process.parentPid || 0,
+      childPids: this.childPids(process.pid),
+      appId: process.appId,
+      runtime: process.runtime || "",
+      state: process.state,
+      windowId: process.windowId || "",
+      windowState: process.windowState || "",
+      executionBackend: process.executionBackend || "",
+      executorState: process.executorState || "",
+      cwd: process.cwd || "/",
+      startedAt: process.startedAt,
+      endedAt: process.endedAt || "",
+      lastActiveAt: process.lastActiveAt || "",
+      crashReportPath: process.crashReportPath || "",
+    };
+  }
+
   syncProcfs() {
     this.ensureProcfs();
     const processes = this.list();
@@ -313,6 +370,7 @@ export class ProcessManager {
       parentPid: process.parentPid,
       parentAppId: process.parentAppId,
       childPids: process.childPids,
+      objectId: process.objectId || "",
       appId: process.appId,
       state: process.state,
       runtime: process.runtime || "",
@@ -522,6 +580,7 @@ function formatProcessStatus(process) {
   return [
     `Name:\t${process.name}`,
     `Pid:\t${process.pid}`,
+    `ObjectId:\t${process.objectId || "-"}`,
     `ParentPid:\t${process.parentPid || 0}`,
     `ParentApp:\t${process.parentAppId || "-"}`,
     `ChildPids:\t${process.childPids?.join(",") || "-"}`,

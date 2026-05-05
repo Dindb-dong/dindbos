@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { EventBus } from "../src/dindbos/event-bus.js";
+import { KernelObjectRegistry } from "../src/dindbos/kernel-objects.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { ProcessExecutor } from "../src/dindbos/process-executor.js";
 import { ProcessManager } from "../src/dindbos/process-manager.js";
@@ -46,11 +47,18 @@ assert(Number(os.processes.get(process.pid)?.runtimeBytes) > 0, "runtime byte es
 assert(Number(os.processes.get(process.pid)?.activityScore) > 0, "activity score was not populated");
 assert(Number(os.processes.get(process.pid)?.activitySamples) >= 3, "activity sample count was not populated");
 assert(os.fs.exists(`/proc/${process.pid}/status`), "/proc status was not written");
+assert(process.objectId, "process kernel object id missing");
 assert(os.fs.readFile(`/proc/${process.pid}/status`).includes("Activity Monitor"), "/proc status missing process name");
+assert(os.fs.readFile(`/proc/${process.pid}/status`).includes(`ObjectId:\t${process.objectId}`), "/proc status missing process kernel object id");
 assert(os.fs.readFile(`/proc/${process.pid}/status`).includes("RuntimeBytes:"), "/proc status missing runtime byte estimate");
 assert(os.fs.readFile(`/proc/${process.pid}/status`).includes("ActivityScore:"), "/proc status missing activity score");
 assert(os.fs.readFile(`/proc/${process.pid}/status`).includes("ExecutionBackend:\tmain-thread"), "/proc status missing main-thread backend");
 assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === process.pid && entry.activityScore > 0), "/proc processes JSON missing activity score");
+assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === process.pid && entry.objectId === process.objectId), "/proc processes JSON missing object id");
+const processObject = JSON.parse(os.fs.readFile("/proc/objects.json")).find((entry) => entry.id === process.objectId);
+assert(processObject?.type === "process", "/proc objects missing process object type");
+assert(processObject?.ownerPid === process.pid, "/proc objects missing process object owner pid");
+assert(processObject?.status === "active", "/proc objects did not mark process object active");
 assert(os.processes.log(process.pid).includes("ready"), "log read did not include ready entry");
 assert(lifecycleEvents.includes("launch:activity-monitor:"), "app:launch lifecycle event missing");
 assert(lifecycleEvents.includes("ready:activity-monitor:"), "app:ready lifecycle event missing");
@@ -70,6 +78,7 @@ assert(os.processes.get(child.pid).parentAppId === process.appId, "child process
 assert(os.processes.get(process.pid).childPids.includes(child.pid), "parent process missing child pid");
 assert(os.fs.readFile(`/proc/${child.pid}/status`).includes(`ParentPid:\t${process.pid}`), "child /proc status missing parent pid");
 assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === child.pid && entry.parentPid === process.pid), "/proc processes JSON missing parent pid");
+assert(os.objects.get(process.objectId).metadata.childPids.includes(child.pid), "parent process object metadata missing child pid");
 
 const beforeLog = os.processes.readLog(process.pid);
 os.processes.log(process.pid);
@@ -114,6 +123,8 @@ assert(os.fs.readFile(crashReportPath).includes("boom smoke"), "crash report mis
 assert(os.fs.readFile("/var/log/dindbos/crashes.log").includes(`pid=${crashed.pid}`), "crash index missing crashed pid");
 assert(lifecycleEvents.includes("crash:crashy:boom smoke"), "app:crash lifecycle event missing");
 assert(captureReleases.includes(`${crashed.pid}:process-crash`), "crashed process did not release compositor capture");
+assert(os.objects.get(crashed.objectId).status === "revoked", "crashed process object was not revoked");
+assert(os.objects.get(crashed.objectId).revocationReason === "process-crash", "crashed process object revocation reason mismatch");
 
 const restartTarget = os.processes.get(process.pid);
 const relaunched = os.processes.restart(process.pid);
@@ -125,6 +136,8 @@ assert(closedWindow?.options?.skipOnClose === true, "kill did not close window w
 assert(launched[0] === "activity-monitor", "restart did not relaunch original app");
 assert(relaunched.appId === restartTarget.appId, "restart returned wrong app launch");
 assert(lifecycleEvents.includes("close:activity-monitor:restarting"), "app:close lifecycle event missing");
+assert(os.objects.get(process.objectId).status === "revoked", "killed process object was not revoked");
+assert(os.objects.get(process.objectId).revocationReason === "restarting", "killed process object revocation reason mismatch");
 
 const filtered = filterAndSortActivityProcesses([
   { pid: 301, appId: "browser", name: "Browser", state: "running", windowState: "focused", uptimeMs: 5000, runtimeBytes: 400 },
@@ -247,6 +260,7 @@ function bootOs() {
     bus: new EventBus(),
     windows: null,
   };
+  os.objects = new KernelObjectRegistry(os);
   os.processes = new ProcessManager(os);
   os.syscalls = new SyscallDispatcher(os);
   os.syscall = (name, args = {}, context = {}) => {
