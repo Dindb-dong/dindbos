@@ -1010,7 +1010,7 @@ Implementation tasks:
 - Already present: package manifests support a normalized `sandbox` section for root policy, state policy, cache policy, temp policy, device grants, network hosts, IPC endpoints, and child-process limits; package records, app manifests, package public records, and namespace metadata expose the resolved policy.
 - Already present: package uninstall kills running package namespace processes, which closes their descriptors and unregisters owned IPC endpoints, then removes package root, app state, package record, launcher, and private state/cache/temp namespace roots.
 - Add namespace cleanup for cache eviction and future non-process IPC endpoints.
-- Add developer tooling that can run a package in strict namespace mode before publishing.
+- Already present: developer tooling can run `pkg strict <manifest-path|package>` or `packages.strictNamespaceCheckFromManifestPath()` before publishing to validate package root, private roots, dependency allowlist, read/write scopes, CLI entry, and package service ids without installing the manifest.
 
 Verification:
 
@@ -1024,6 +1024,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package CLI execution through `packages.runCli()` and shell `pkg run`, including inherited package namespace metadata, cross-package root denial, undeclared dependency denial, output/status capture, and process history.
 - Already present: `npm run smoke:packages` verifies package-launched worker executor tasks inherit parent pid, package namespace metadata, and worker executor history.
 - Already present: `npm run smoke:packages` verifies package-declared service units register with package id, expose namespace in service manifest, start service processes with package namespace metadata, and unregister/stop on package uninstall.
+- Already present: `npm run smoke:packages` verifies strict namespace tooling succeeds for installed packages and pre-publish manifest paths, and fails broad read/write scopes with shell status 1.
 
 Completion criteria:
 

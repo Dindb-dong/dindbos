@@ -457,6 +457,33 @@ export class PackageManager {
     return cloneJson(record.dependencies || { packages: {}, npm: {} });
   }
 
+  strictNamespaceCheck(target, cwd = "/") {
+    const value = String(target || "").trim();
+    if (!value) throw new Error("pkg: strict namespace target is required");
+    const installed = safeRead(() => this.info(value), null);
+    if (installed) return strictNamespaceReport(this.os, installed, { source: "installed" });
+    return this.strictNamespaceCheckFromManifestPath(value, cwd);
+  }
+
+  strictNamespaceCheckFromManifestPath(path, cwd = "/") {
+    const manifestPath = this.os.fs.normalize(path, cwd);
+    const node = this.os.fs.resolve(manifestPath);
+    if (!node || node.type !== "file") throw new Error(`pkg: ${path}: manifest not found`);
+    const manifest = parseJson(this.os.fs.readFile(manifestPath, "/", this.system), manifestPath);
+    const record = this.normalizePackage(manifest, {
+      sourcePath: manifestPath,
+      sourceDirectory: this.os.fs.dirname(manifestPath),
+    });
+    record.files = (manifest.files || []).map((file) => ({
+      path: this.resolvePackageFilePath(record, file.path),
+      mime: file.mime || mimeFromName(file.path || ""),
+      sourceUrl: file.url || "",
+      integrity: file.integrity || "",
+      size: contentByteLength(inlineFilePayload({ ...file, content: file.content || file.base64 || "" })),
+    }));
+    return strictNamespaceReport(this.os, record, { source: "manifest" });
+  }
+
   async runCli(packageId, argv = [], options = {}) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
@@ -1496,6 +1523,79 @@ function normalizePackageServices(services = [], packageId, installPath, package
       },
     };
   });
+}
+
+function strictNamespaceReport(os, record, options = {}) {
+  const checks = [];
+  const add = (id, status, detail) => checks.push({ id, status, detail });
+  const namespace = record.namespace || {};
+  const expected = packageNamespace(record.id, record.app?.id || record.id, record.installPath, record.sandbox || {}, record.dependencies || {});
+  add("package-root", namespace.packageRoot === record.installPath && namespace.processGroup === `package:${record.id}`
+    ? "pass"
+    : "fail", `root=${namespace.packageRoot || "-"} group=${namespace.processGroup || "-"}`);
+  add("private-roots", namespace.stateRoot === expected.stateRoot && namespace.cacheRoot === expected.cacheRoot && namespace.tempRoot === expected.tempRoot
+    ? "pass"
+    : "fail", `state=${namespace.stateRoot || "-"} cache=${namespace.cacheRoot || "-"} temp=${namespace.tempRoot || "-"}`);
+  const declaredDeps = Object.keys(record.dependencies?.npm || {}).sort();
+  const allowedDeps = [...(namespace.dependencyAllowlist || [])].sort();
+  add("dependency-allowlist", sameList(declaredDeps, allowedDeps)
+    ? "pass"
+    : "fail", allowedDeps.length ? allowedDeps.join(",") : "-");
+  const readScopes = (record.app?.fileSystem?.read || []).map((path) => os.fs.normalize(path));
+  const writeScopes = (record.app?.fileSystem?.write || []).map((path) => os.fs.normalize(path));
+  add("read-scopes", readScopes.every((path) => strictReadScope(path, record, namespace))
+    ? "pass"
+    : "fail", readScopes.join(",") || "-");
+  add("write-scopes", writeScopes.every((path) => strictWriteScope(path, record, namespace))
+    ? "pass"
+    : "fail", writeScopes.join(",") || "-");
+  const cliEntry = record.cli?.entry || ((record.files || []).some((file) => file.path === `${record.installPath}/bin/cli.js`) ? "bin/cli.js" : "");
+  add("cli-entry", !cliEntry || packageRelativePathStaysInside(os, record, cliEntry)
+    ? "pass"
+    : "fail", cliEntry || "-");
+  const services = record.services || [];
+  add("services", services.every((service) => String(service.id || "").startsWith(`package:${record.id}:`))
+    ? "pass"
+    : "fail", services.length ? services.map((service) => service.id).join(",") : "-");
+  return {
+    strict: !checks.some((check) => check.status === "fail"),
+    source: options.source || "package",
+    packageId: record.id,
+    appId: record.app?.id || "",
+    namespace: cloneJson(namespace),
+    checks,
+  };
+}
+
+function strictReadScope(path, record, namespace = {}) {
+  if (!path || path === "/" || path === "/opt") return false;
+  if (path === record.installPath || path.startsWith(`${record.installPath}/`)) return true;
+  if (path === namespace.stateRoot || path.startsWith(`${namespace.stateRoot}/`)) return true;
+  if (path === namespace.cacheRoot || path.startsWith(`${namespace.cacheRoot}/`)) return true;
+  if (path === namespace.tempRoot || path.startsWith(`${namespace.tempRoot}/`)) return true;
+  if (path === namespace.dependencyRoot || path.startsWith(`${namespace.dependencyRoot}/`)) return true;
+  if (path.startsWith("/home/") || path.startsWith("/mnt/")) return true;
+  return false;
+}
+
+function strictWriteScope(path, record, namespace = {}) {
+  if (!path || path === "/" || path === "/opt") return false;
+  if (path === record.installPath || path.startsWith(`${record.installPath}/`)) return false;
+  if (path === namespace.stateRoot || path.startsWith(`${namespace.stateRoot}/`)) return true;
+  if (path === namespace.cacheRoot || path.startsWith(`${namespace.cacheRoot}/`)) return true;
+  if (path === namespace.tempRoot || path.startsWith(`${namespace.tempRoot}/`)) return true;
+  if (path.startsWith("/home/") || path.startsWith("/mnt/")) return true;
+  return false;
+}
+
+function packageRelativePathStaysInside(os, record, relativePath) {
+  const path = normalizeOptionalRelativePath(relativePath);
+  const resolved = os.fs.normalize(path, record.installPath);
+  return resolved !== record.installPath && resolved.startsWith(`${record.installPath}/`);
+}
+
+function sameList(left = [], right = []) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function packageNamespace(packageId, appId, installPath, sandbox = {}, dependencies = {}) {

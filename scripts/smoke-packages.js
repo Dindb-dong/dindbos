@@ -171,6 +171,17 @@ const cliHistory = os.processes.history.filter((process) => process.appId === "p
 assert(cliHistory?.manifest?.namespace?.processGroup === "package:cli-namespace", `package CLI process history missing namespace: ${JSON.stringify(cliHistory)}`);
 assert(cliHistory.executorKind === "package-cli", "package CLI process history missing executor kind");
 const shell = new ShellSession(os);
+const strictCli = packages.strictNamespaceCheck("cli-namespace");
+assert(strictCli.strict === true, `installed package strict namespace check failed: ${JSON.stringify(strictCli)}`);
+const strictShellRun = await shell.executeAsync("pkg strict cli-namespace");
+assert(strictShellRun.status === 0 && strictShellRun.output.includes("strict=ok package=cli-namespace"), `pkg strict installed package mismatch: ${JSON.stringify(strictShellRun)}`);
+os.fs.writeOrCreateFile("/home/guest/strict-broad.json", JSON.stringify(packageManifest("strict-broad", "0.1.0", [
+  { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+], { permissions: { fileSystem: { read: ["/"], write: ["/opt/strict-broad"] } } })), "/", {}, os.permissions.systemPrincipal());
+const strictBroad = packages.strictNamespaceCheckFromManifestPath("/home/guest/strict-broad.json");
+assert(strictBroad.strict === false, "strict namespace check did not reject broad manifest scopes");
+const strictBroadShell = await shell.executeAsync("pkg strict /home/guest/strict-broad.json");
+assert(strictBroadShell.status === 1 && strictBroadShell.output.includes("pkg: strict failed"), `pkg strict broad manifest status mismatch: ${JSON.stringify(strictBroadShell)}`);
 const cliShellRun = await shell.executeAsync("pkg run cli-namespace shell");
 assert(cliShellRun.status === 0, `pkg run shell status mismatch: ${JSON.stringify(cliShellRun)}`);
 assert(cliShellRun.output.includes("cli=shell:root-denied:dependency-denied"), `pkg run did not execute package CLI in namespace: ${cliShellRun.output}`);
@@ -416,6 +427,8 @@ assert(os.fs.exists("/opt/dindbos/templates/template-gui-app/dindbos.app.json"),
 assert(os.fs.exists("/opt/dindbos/templates/template-cli-app/dindbos.app.json"), "CLI app template manifest was not bootstrapped");
 assert(os.fs.exists("/opt/dindbos/templates/template-wasm-cli/dindbos.app.json"), "WASM CLI template manifest was not bootstrapped");
 assert(os.fs.exists("/opt/dindbos/templates/template-background-worker/dindbos.app.json"), "Background worker template manifest was not bootstrapped");
+const cliTemplateStrict = packages.strictNamespaceCheckFromManifestPath("/opt/dindbos/templates/template-cli-app/dindbos.app.json");
+assert(cliTemplateStrict.strict === true, `CLI template strict namespace check failed: ${JSON.stringify(cliTemplateStrict)}`);
 const localSamples = await packages.search("sample");
 assert(localSamples.some((entry) => entry.id === "paint-sample"), "local registry search did not include Paint sample");
 assert(localSamples.some((entry) => entry.id === "pdf-viewer-sample"), "local registry search did not include PDF Viewer sample");

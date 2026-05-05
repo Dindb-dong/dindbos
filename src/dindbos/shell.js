@@ -24,7 +24,7 @@ const BUILTIN_MANUALS = {
   node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
-  pkg: "pkg list|info|install|run|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
+  pkg: "pkg list|info|install|run|strict|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -587,6 +587,12 @@ export class ShellSession {
           ? [`pkg: ${result.packageId}: exit ${result.status}`, result.output].filter(Boolean).join("\n")
           : result.output);
     }
+    if (action === "strict") {
+      if (!operand) return "pkg: usage: pkg strict <manifest-path|package>";
+      const report = this.os.packages.strictNamespaceCheck(operand, this.cwd);
+      const output = formatStrictNamespaceReport(report);
+      return report.strict ? output : `pkg: strict failed\n${output}`;
+    }
     if (action === "npm") {
       return this.pkgNpm(operand, rest);
     }
@@ -595,7 +601,7 @@ export class ShellSession {
       const record = this.os.packages.remove(operand);
       return `removed ${record.id}`;
     }
-    return "pkg: usage: pkg list | info | install | run | search | registry | trust | update | deps | npm | remove";
+    return "pkg: usage: pkg list | info | install | run | strict | search | registry | trust | update | deps | npm | remove";
   }
 
   pkgRegistry(action, args) {
@@ -1306,6 +1312,7 @@ function shellStatus(command, output) {
   if (text.startsWith(`${command}:`) && text.includes("package not installed")) return 1;
   if (text.startsWith(`${command}:`) && text.includes("registry not found")) return 1;
   if (text.startsWith(`${command}:`) && text.includes(": exit ")) return 1;
+  if (text.startsWith(`${command}:`) && text.includes("strict failed")) return 1;
   if (command === "man" && text.includes(": no manual entry")) return 1;
   if (command === "stat" && text.startsWith("stat: no such")) return 1;
   if (command === "manifest" && text.startsWith("manifest:") && text.includes("no such app")) return 1;
@@ -1533,6 +1540,12 @@ function formatPackageSearch(results) {
   return results
     .map((entry) => `${entry.id} ${entry.version} ${entry.registry} ${entry.manifestUrl}`)
     .join("\n");
+}
+
+function formatStrictNamespaceReport(report) {
+  const header = `strict=${report.strict ? "ok" : "fail"} package=${report.packageId} source=${report.source}`;
+  const lines = report.checks.map((check) => `${check.status} ${check.id} ${check.detail}`);
+  return [header, ...lines].join("\n");
 }
 
 function formatDependencies(dependencies) {
