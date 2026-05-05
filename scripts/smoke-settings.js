@@ -7,8 +7,10 @@ const calls = {
   mounts: 0,
   packages: 0,
   processes: 0,
+  recovery: 0,
   services: 0,
   status: 0,
+  lifecycle: 0,
 };
 
 const os = {
@@ -79,6 +81,24 @@ const os = {
       ];
     },
   },
+  lifecycleStatus() {
+    calls.lifecycle += 1;
+    return {
+      state: "recovered",
+      reason: "dirty-shutdown",
+      updatedAt: "2026-05-05T00:00:00.000Z",
+    };
+  },
+  recoveryStatus() {
+    calls.recovery += 1;
+    return {
+      lastRecovery: { recoveredAt: "2026-05-05T00:00:00.000Z" },
+      lastShutdown: { recordedAt: "2026-05-04T23:59:59.000Z" },
+      closedPagePersistence: false,
+      unsupportedAfterClose: ["worker execution"],
+      supportedWhileHidden: ["best-effort filesystem flush"],
+    };
+  },
   fs: {
     join(base, name) {
       return `${base}/${name}`;
@@ -95,6 +115,8 @@ assert(calls.services === 1, "settings snapshot did not read service state");
 assert(calls.status === 1, "settings snapshot did not read storage status");
 assert(calls.estimate === 1, "settings snapshot did not read storage estimate");
 assert(calls.mounts === 1, "settings snapshot did not read local mount status");
+assert(calls.lifecycle === 1, "settings snapshot did not read lifecycle status");
+assert(calls.recovery === 1, "settings snapshot did not read recovery status");
 
 assert(snapshot.user === "guest", "settings snapshot user mismatch");
 assert(snapshot.home === "/home/guest", "settings snapshot home mismatch");
@@ -105,6 +127,8 @@ assert(snapshot.services.length === 1, "settings snapshot service count mismatch
 assert(snapshot.storage.backend === "opfs", "settings snapshot storage backend mismatch");
 assert(snapshot.storage.writePending === true, "settings snapshot storage pending state mismatch");
 assert(snapshot.mounts[0].path === "/mnt/project", "settings snapshot mount path mismatch");
+assert(snapshot.lifecycle.state === "recovered", "settings snapshot lifecycle state mismatch");
+assert(snapshot.recovery.lastRecovery.recoveredAt, "settings snapshot recovery status missing");
 
 const markup = settingsRuntimeMarkup(snapshot);
 
@@ -113,6 +137,9 @@ assert(markup.includes("<dt>Apps</dt><dd>2</dd>"), "settings markup did not rend
 assert(markup.includes("<dt>Packages</dt><dd>1</dd>"), "settings markup did not render package count");
 assert(markup.includes("<dt>Processes</dt><dd>3</dd>"), "settings markup did not render process count");
 assert(markup.includes("<dt>Services</dt><dd>1</dd>"), "settings markup did not render service count");
+assert(markup.includes("<dt>Lifecycle</dt><dd>recovered</dd>"), "settings markup did not render lifecycle state");
+assert(markup.includes("recovered"), "settings markup did not render recovery summary");
+assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");
 assert(markup.includes("pending=true"), "settings markup did not render pending storage state");
 assert(markup.includes("/home/guest/Desktop"), "settings markup did not render desktop path");

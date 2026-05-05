@@ -29,6 +29,8 @@ Page lifecycle exits write `/var/run/dindbos/recovery/last-shutdown.json` with p
 
 Process lifecycle callbacks are recorded per process. `suspending` runs `prepare-suspend`, `suspended` runs `suspend`, `resuming` runs `resume`, `shutting-down` runs `prepare-shutdown`, and `recovered` runs `recovery-inspection`. Callback results are emitted as `process:lifecycle` events and surfaced in `/proc/<pid>/status` plus `/proc/processes.json`.
 
+Settings and `doctor` expose lifecycle/recovery diagnostics, including the last shutdown/recovery record and a closed-page boundary list. DindbOS reports closed-page persistence as unsupported unless a future browser-supported background API explicitly owns that work.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed

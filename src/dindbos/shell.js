@@ -663,6 +663,8 @@ export class ShellSession {
     const mounts = await safeAsync(() => this.os.localMounts?.status?.(), []);
     const packages = safeRead(() => this.os.packages?.list?.(), []);
     const processes = safeRead(() => this.os.processes?.list?.(), []);
+    const lifecycle = safeRead(() => this.os.lifecycleStatus?.(), null);
+    const recovery = safeRead(() => this.os.recoveryStatus?.(), null);
     const groups = this.os.session.groups || ["users"];
     const localMountSupported = Boolean(safeRead(() => this.os.localMounts?.supported?.(), false));
     const mounted = Array.isArray(mounts) ? mounts.filter((mount) => mount.status !== "forgotten").length : 0;
@@ -676,6 +678,8 @@ export class ShellSession {
       `localMounts supported=${localMountSupported} mounted=${mounted} persisted=${persistedMounts} errors=${mountErrors} helper=${helper?.status || "unavailable"} rename=${helper?.renameSupported || false}`,
       `packages installed=${Array.isArray(packages) ? packages.length : 0}`,
       `processes running=${Array.isArray(processes) ? processes.length : 0}`,
+      `lifecycle state=${lifecycle?.state || "unknown"} reason=${lifecycle?.reason || "-"} updated=${lifecycle?.updatedAt || "-"}`,
+      `recovery lastShutdown=${recovery?.lastShutdown?.recordedAt || "-"} lastRecovery=${recovery?.lastRecovery?.recoveredAt || "-"} closedPagePersistent=${Boolean(recovery?.closedPagePersistence)}`,
       "troubleshooting docs=docs/support.md command=storage|mount-local --list|ps|pkg list",
     ].join("\n");
   }

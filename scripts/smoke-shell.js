@@ -132,6 +132,8 @@ assert(result.output.includes("localMounts supported=false mounted=0"), `doctor 
 assert(result.output.includes("helper=unavailable rename=false"), `doctor helper output missing: ${result.output}`);
 assert(result.output.includes("packages installed=1"), `doctor package output missing: ${result.output}`);
 assert(result.output.includes("processes running=0"), `doctor process output missing: ${result.output}`);
+assert(result.output.includes("lifecycle state=active"), `doctor lifecycle output missing: ${result.output}`);
+assert(result.output.includes("closedPagePersistent=false"), `doctor recovery output missing: ${result.output}`);
 assert(result.output.includes("docs/support.md"), `doctor troubleshooting output missing: ${result.output}`);
 
 result = await shell.executeAsync("doctor compat");
@@ -264,6 +266,12 @@ function bootOs() {
       estimate: async () => ({ backend: "memory", bytes: 0 }),
     },
     sessionStatus: () => ({ locked: false }),
+    lifecycleStatus: () => ({ state: "active", reason: "boot-complete", updatedAt: "2026-05-05T00:00:00.000Z" }),
+    recoveryStatus: () => ({
+      lastShutdown: { recordedAt: "2026-05-04T23:59:59.000Z" },
+      lastRecovery: null,
+      closedPagePersistence: false,
+    }),
     compatibilitySnapshot: () => ({
       runtime: "DindbOS.js",
       version: "0.2.0",

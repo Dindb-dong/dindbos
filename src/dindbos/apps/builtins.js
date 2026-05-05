@@ -3432,6 +3432,8 @@ export async function settingsRuntimeSnapshot(os) {
   const packages = safeRead(() => os.packages.list(), []);
   const services = safeRead(() => os.services?.list?.(), []);
   const mounts = await safeReadAsync(() => os.localMounts.status(), []);
+  const lifecycle = safeRead(() => os.lifecycleStatus?.(), null);
+  const recovery = safeRead(() => os.recoveryStatus?.(), null);
   return {
     user,
     home,
@@ -3442,6 +3444,8 @@ export async function settingsRuntimeSnapshot(os) {
     storage: { ...storageStatus, ...storage },
     desktop: safeRead(() => os.fs.join(home, "Desktop"), `${home}/Desktop`),
     mounts,
+    lifecycle,
+    recovery,
   };
 }
 
@@ -3457,6 +3461,8 @@ export function settingsRuntimeMarkup(snapshot) {
         <div><dt>Packages</dt><dd>${snapshot.packages.length}</dd></div>
         <div><dt>Processes</dt><dd>${snapshot.processes.length}</dd></div>
         <div><dt>Services</dt><dd>${snapshot.services.length}</dd></div>
+        <div><dt>Lifecycle</dt><dd>${escapeHtml(snapshot.lifecycle?.state || "unknown")}</dd></div>
+        <div><dt>Recovery</dt><dd>${escapeHtml(formatRecoverySummary(snapshot.recovery))}</dd></div>
         <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(snapshot.storage)}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(snapshot.desktop)}</dd></div>
         <div><dt>Local Mounts</dt><dd>${snapshot.mounts.length ? `${snapshot.mounts.length} folder${snapshot.mounts.length === 1 ? "" : "s"}` : "none"}</dd></div>
@@ -3476,6 +3482,12 @@ export function settingsRuntimeMarkup(snapshot) {
       </section>
       <section class="settings-panel">
         <header>
+          <h3>Lifecycle</h3>
+        </header>
+        ${renderSettingsLifecycle(snapshot.lifecycle, snapshot.recovery)}
+      </section>
+      <section class="settings-panel">
+        <header>
           <h3>Local Folders</h3>
           <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
         </header>
@@ -3483,6 +3495,34 @@ export function settingsRuntimeMarkup(snapshot) {
       </section>
     </section>
   `;
+}
+
+function renderSettingsLifecycle(lifecycle, recovery) {
+  const unsupported = recovery?.unsupportedAfterClose || [];
+  const supported = recovery?.supportedWhileHidden || [];
+  return `
+    <dl>
+      <div><dt>State</dt><dd>${escapeHtml(lifecycle?.state || "unknown")}</dd></div>
+      <div><dt>Reason</dt><dd>${escapeHtml(lifecycle?.reason || "-")}</dd></div>
+      <div><dt>Updated</dt><dd>${escapeHtml(shortTime(lifecycle?.updatedAt))}</dd></div>
+      <div><dt>Last Recovery</dt><dd>${escapeHtml(shortTime(recovery?.lastRecovery?.recoveredAt))}</dd></div>
+      <div><dt>Closed Page</dt><dd>${recovery?.closedPagePersistence ? "persistent" : "not persistent"}</dd></div>
+    </dl>
+    <p>${escapeHtml(formatClosedPageDiagnostics(unsupported, supported))}</p>
+  `;
+}
+
+function formatRecoverySummary(recovery) {
+  if (!recovery) return "unknown";
+  if (recovery.lastRecovery?.recoveredAt) return `recovered ${shortTime(recovery.lastRecovery.recoveredAt)}`;
+  if (recovery.lastShutdown?.recordedAt) return `last shutdown ${shortTime(recovery.lastShutdown.recordedAt)}`;
+  return "no recovery records";
+}
+
+function formatClosedPageDiagnostics(unsupported = [], supported = []) {
+  const unsupportedText = unsupported.length ? `unsupported-after-close=${unsupported.join(",")}` : "unsupported-after-close=-";
+  const supportedText = supported.length ? `hidden-tab-support=${supported.join(",")}` : "hidden-tab-support=-";
+  return `${unsupportedText} · ${supportedText}`;
 }
 
 function renderSettingsStorageStatus(storage) {
