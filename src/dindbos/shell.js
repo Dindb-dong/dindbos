@@ -163,24 +163,34 @@ export class ShellSession {
     const pipeline = splitPipeline(commandLine);
     let stdin = "";
     let result = { output: "", clear: false, reload: false, status: 0 };
-    for (const segment of pipeline) {
-      result = this.executeSegment(segment, stdin);
-      stdin = result.output;
-      if (result.clear || result.reload) return result;
+    const pipeProcess = pipeline.length > 1 ? this.spawnPipelineProcess() : null;
+    try {
+      for (const segment of pipeline) {
+        result = this.executeSegment(segment, stdin);
+        stdin = this.pipeThroughDescriptor(pipeProcess, result.output);
+        if (result.clear || result.reload) return result;
+      }
+      return result;
+    } finally {
+      this.closePipelineProcess(pipeProcess);
     }
-    return result;
   }
 
   async executePipelineAsync(commandLine) {
     const pipeline = splitPipeline(commandLine);
     let stdin = "";
     let result = { output: "", clear: false, reload: false, status: 0 };
-    for (const segment of pipeline) {
-      result = await this.executeSegmentAsync(segment, stdin);
-      stdin = result.output;
-      if (result.clear || result.reload) return result;
+    const pipeProcess = pipeline.length > 1 ? this.spawnPipelineProcess() : null;
+    try {
+      for (const segment of pipeline) {
+        result = await this.executeSegmentAsync(segment, stdin);
+        stdin = this.pipeThroughDescriptor(pipeProcess, result.output);
+        if (result.clear || result.reload) return result;
+      }
+      return result;
+    } finally {
+      this.closePipelineProcess(pipeProcess);
     }
-    return result;
   }
 
   executeSegment(segment, stdin = "") {
@@ -281,6 +291,42 @@ export class ShellSession {
     if (script?.path.endsWith(".wasm")) return this.executeWasm(script.path, args, stdin);
     if (script) return this.executeScript(script.path, args, stdin, options.scriptDepth || 0);
     throw new Error(this.commandNotFound(command));
+  }
+
+  spawnPipelineProcess() {
+    if (!this.os.processes?.spawn || !this.os.descriptors?.pipe) return null;
+    return this.os.processes.spawn({
+      id: "shell:pipeline",
+      name: "Shell Pipeline",
+      manifest: {
+        version: "0.1.0",
+        entry: "shell:pipeline",
+        capabilities: [],
+        fileSystem: {
+          read: [this.cwd],
+          write: [this.cwd],
+        },
+      },
+    }, {
+      cwd: this.cwd,
+      runtime: "shell",
+    });
+  }
+
+  closePipelineProcess(process) {
+    if (!process?.pid || !this.os.processes?.get?.(process.pid)) return;
+    this.os.processes.kill(process.pid, "pipeline-exit");
+  }
+
+  pipeThroughDescriptor(process, output = "") {
+    if (!process?.pid || !this.os.descriptors?.pipe) return output;
+    const text = String(output ?? "");
+    const pipe = this.os.descriptors.pipe(process);
+    this.os.descriptors.write(process, { fd: pipe.writeFd, data: text }, { principal: this.principal });
+    this.os.descriptors.close(process, { fd: pipe.writeFd });
+    const result = this.os.descriptors.read(process, { fd: pipe.readFd, length: text.length });
+    this.os.descriptors.close(process, { fd: pipe.readFd });
+    return result.data;
   }
 
   commandNotFound(command) {
@@ -920,12 +966,17 @@ export class ShellSession {
     const pipeline = splitPipeline(commandLine);
     let nextStdin = stdin;
     let result = { output: "", clear: false, reload: false, status: 0 };
-    for (const segment of pipeline) {
-      result = await this.executeSegmentAsyncWithDepth(segment, nextStdin, depth);
-      nextStdin = result.output;
-      if (result.clear || result.reload) return result;
+    const pipeProcess = pipeline.length > 1 ? this.spawnPipelineProcess() : null;
+    try {
+      for (const segment of pipeline) {
+        result = await this.executeSegmentAsyncWithDepth(segment, nextStdin, depth);
+        nextStdin = this.pipeThroughDescriptor(pipeProcess, result.output);
+        if (result.clear || result.reload) return result;
+      }
+      return result;
+    } finally {
+      this.closePipelineProcess(pipeProcess);
     }
-    return result;
   }
 
   async executeSegmentAsyncWithDepth(segment, stdin = "", depth = 0) {

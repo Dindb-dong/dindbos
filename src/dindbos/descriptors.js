@@ -2,6 +2,7 @@ const STDIN_FD = 0;
 const STDOUT_FD = 1;
 const STDERR_FD = 2;
 const DEFAULT_READ_SIZE = 4096;
+let nextPipeId = 1;
 
 export class DescriptorManager {
   constructor(os) {
@@ -68,6 +69,38 @@ export class DescriptorManager {
     return this.open(process, { ...args, path, cwd: directory.path }, context);
   }
 
+  pipe(process, input = "") {
+    const table = this.tableFor(process.pid);
+    const pipe = { id: nextPipeId++, buffer: String(input || "") };
+    const readFd = table.nextFd;
+    const writeFd = table.nextFd + 1;
+    table.nextFd += 2;
+    table.descriptors.set(readFd, {
+      fd: readFd,
+      kind: "pipe",
+      path: `pipe:${pipe.id}:read`,
+      name: "pipe-read",
+      readable: true,
+      writable: false,
+      offset: 0,
+      flags: "r",
+      pipe,
+    });
+    table.descriptors.set(writeFd, {
+      fd: writeFd,
+      kind: "pipe",
+      path: `pipe:${pipe.id}:write`,
+      name: "pipe-write",
+      readable: false,
+      writable: true,
+      offset: byteLength(pipe.buffer),
+      flags: "w",
+      pipe,
+    });
+    this.writeProcfs(process.pid);
+    return { readFd, writeFd };
+  }
+
   read(process, args = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (!descriptor.readable) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor is not readable`);
@@ -76,6 +109,7 @@ export class DescriptorManager {
     if (descriptor.kind === "file") data = this.readFileDescriptor(descriptor, length);
     else if (descriptor.kind === "stream") data = readBufferedDescriptor(descriptor, length);
     else if (descriptor.kind === "device") data = this.readDeviceDescriptor(process, descriptor, length);
+    else if (descriptor.kind === "pipe") data = readPipeDescriptor(descriptor, length);
     else throw descriptorError("EINVAL", `fd.read: ${descriptor.fd}: unsupported descriptor kind`);
     this.writeProcfs(process.pid);
     return { fd: descriptor.fd, data, bytes: byteLength(data), offset: descriptor.offset || 0, eof: data.length < length };
@@ -92,6 +126,11 @@ export class DescriptorManager {
       descriptor.offset = byteLength(descriptor.buffer);
       bytes = byteLength(data);
     } else if (descriptor.kind === "device") bytes = this.writeDeviceDescriptor(process, descriptor, data);
+    else if (descriptor.kind === "pipe") {
+      descriptor.pipe.buffer = `${descriptor.pipe.buffer || ""}${data}`;
+      descriptor.offset = byteLength(descriptor.pipe.buffer);
+      bytes = byteLength(data);
+    }
     else throw descriptorError("EINVAL", `fd.write: ${descriptor.fd}: unsupported descriptor kind`);
     this.writeProcfs(process.pid);
     return { fd: descriptor.fd, bytes, offset: descriptor.offset || 0 };
@@ -269,6 +308,13 @@ function streamDescriptor(fd, name, path, options = {}) {
 function readBufferedDescriptor(descriptor, length) {
   const offset = Number(descriptor.offset || 0);
   const data = String(descriptor.buffer || "").slice(offset, offset + length);
+  descriptor.offset = offset + data.length;
+  return data;
+}
+
+function readPipeDescriptor(descriptor, length) {
+  const offset = Number(descriptor.offset || 0);
+  const data = String(descriptor.pipe?.buffer || "").slice(offset, offset + length);
   descriptor.offset = offset + data.length;
   return data;
 }
