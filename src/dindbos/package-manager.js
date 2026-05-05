@@ -404,6 +404,7 @@ export class PackageManager {
     });
     const previous = this.info(record.id);
     record.lifecycle = packageLifecycle(record, previous);
+    this.reservePackageInstallQuota(record, manifest.files || [], { remote: true });
     return this.runPackageTransactionAsync(record, previous ? "update" : "install", async () => {
       this.ensurePackageRoots();
       this.ensurePackageDirectory(record);
@@ -774,23 +775,26 @@ export class PackageManager {
     });
   }
 
-  reservePackageInstallQuota(record, files = []) {
+  reservePackageInstallQuota(record, files = [], options = {}) {
     if (typeof this.os.storage?.reserveStorageBytes !== "function") return null;
-    const estimatedBytes = this.estimateInlinePackageInstallBytes(record, files);
+    const estimatedBytes = this.estimatePackageInstallBytes(record, files, options);
     return this.os.storage.reserveStorageBytes(estimatedBytes, {
       key: `package:${record.id}`,
       storageFormat: "package-install",
       transactionKind: "package-install",
       packageId: record.id,
+      source: options.remote ? "remote" : "inline",
     });
   }
 
-  estimateInlinePackageInstallBytes(record, files = []) {
+  estimatePackageInstallBytes(record, files = [], options = {}) {
     const plannedFiles = files.map((file) => {
-      if (file.url) return {
-        path: this.resolvePackageFilePath(record, file.path),
-        size: 0,
-      };
+      if (file.url || options.remote) {
+        return {
+          path: this.resolvePackageFilePath(record, file.path),
+          size: Math.max(0, Number(file.size || file.bytes || 0)),
+        };
+      }
       const content = inlineFilePayload(file);
       return {
         path: this.resolvePackageFilePath(record, file.path),
