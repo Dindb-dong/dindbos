@@ -24,7 +24,7 @@ const BUILTIN_MANUALS = {
   node: "node [--input-type=module] [-e code] <file> - run JavaScript in the DindbOS runtime",
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
-  pkg: "pkg list|info|install|run|strict|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
+  pkg: "pkg list|info|install|run|strict|cache|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -593,6 +593,9 @@ export class ShellSession {
       const output = formatStrictNamespaceReport(report);
       return report.strict ? output : `pkg: strict failed\n${output}`;
     }
+    if (action === "cache") {
+      return this.pkgCache(operand, rest);
+    }
     if (action === "npm") {
       return this.pkgNpm(operand, rest);
     }
@@ -601,7 +604,7 @@ export class ShellSession {
       const record = this.os.packages.remove(operand);
       return `removed ${record.id}`;
     }
-    return "pkg: usage: pkg list | info | install | run | strict | search | registry | trust | update | deps | npm | remove";
+    return "pkg: usage: pkg list | info | install | run | strict | cache | search | registry | trust | update | deps | npm | remove";
   }
 
   pkgRegistry(action, args) {
@@ -651,6 +654,16 @@ export class ShellSession {
       return `npm dependency added ${packageId} ${dependency.name}@${dependency.version}`;
     }
     return "pkg: usage: pkg npm add <package> <npm-package[@version]>";
+  }
+
+  pkgCache(action, args) {
+    if (action === "clear" || action === "evict") {
+      const [packageId] = args;
+      if (!packageId) return "pkg: usage: pkg cache clear <package>";
+      const result = this.os.packages.evictNamespaceCache(packageId);
+      return `package cache cleared ${result.packageId} ${result.cacheRoot} bytes=${result.removedBytes}`;
+    }
+    return "pkg: usage: pkg cache clear <package>";
   }
 
   npm(args) {

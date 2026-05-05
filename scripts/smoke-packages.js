@@ -182,6 +182,15 @@ const strictBroad = packages.strictNamespaceCheckFromManifestPath("/home/guest/s
 assert(strictBroad.strict === false, "strict namespace check did not reject broad manifest scopes");
 const strictBroadShell = await shell.executeAsync("pkg strict /home/guest/strict-broad.json");
 assert(strictBroadShell.status === 1 && strictBroadShell.output.includes("pkg: strict failed"), `pkg strict broad manifest status mismatch: ${JSON.stringify(strictBroadShell)}`);
+const cliNamespaceRecord = packages.info("cli-namespace");
+os.fs.writeOrCreateFile(`${cliNamespaceRecord.namespace.cacheRoot}/cached.txt`, "cached", "/", {}, os.permissions.systemPrincipal());
+const cacheClearShell = await shell.executeAsync("pkg cache clear cli-namespace");
+assert(cacheClearShell.status === 0 && cacheClearShell.output.includes("package cache cleared cli-namespace"), `pkg cache clear output mismatch: ${JSON.stringify(cacheClearShell)}`);
+assert(os.fs.exists(cliNamespaceRecord.namespace.cacheRoot), "package cache clear removed namespace cache root");
+assert(!os.fs.exists(`${cliNamespaceRecord.namespace.cacheRoot}/cached.txt`), "package cache clear left cached file");
+assert(os.fs.exists(cliNamespaceRecord.namespace.stateRoot), "package cache clear removed namespace state root");
+assert(os.fs.exists(cliNamespaceRecord.namespace.tempRoot), "package cache clear removed namespace temp root");
+assert(os.fs.exists(cliNamespaceRecord.installPath), "package cache clear removed package root");
 const cliShellRun = await shell.executeAsync("pkg run cli-namespace shell");
 assert(cliShellRun.status === 0, `pkg run shell status mismatch: ${JSON.stringify(cliShellRun)}`);
 assert(cliShellRun.output.includes("cli=shell:root-denied:dependency-denied"), `pkg run did not execute package CLI in namespace: ${cliShellRun.output}`);
