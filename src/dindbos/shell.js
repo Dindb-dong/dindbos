@@ -1082,11 +1082,34 @@ export class ShellSession {
   fsck(args = []) {
     const repair = args.includes("--repair");
     const dryRun = !repair || args.includes("--dry-run");
+    const explain = args.includes("--explain") || args[0] === "explain";
     const result = mergeFsckResults(
       this.os.fs.checkIntegrity({ repair, dryRun }),
       safeRead(() => this.os.packages?.checkIntegrity?.({ repair, dryRun }), null),
     );
-    return formatFsck(result);
+    this.recordFsckLog(result);
+    return formatFsck(result, { explain });
+  }
+
+  recordFsckLog(result = {}) {
+    const principal = this.os.permissions?.systemPrincipal?.() || this.principal;
+    ["/var", "/var/log", "/var/log/dindbos"].forEach((path) => {
+      if (!this.os.fs.exists(path)) this.os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, principal);
+    });
+    const line = [
+      new Date().toISOString(),
+      `ok=${Boolean(result.ok)}`,
+      `dryRun=${Boolean(result.dryRun)}`,
+      `repaired=${Boolean(result.repaired)}`,
+      `checked=${Number(result.checkedNodes || 0)}`,
+      `packages=${Number(result.checkedPackages || 0)}`,
+      `problems=${Number(result.problemCount || 0)}`,
+      `repairs=${Number(result.repairCount || 0)}`,
+      `codes=${[...(result.problems || [])].map((entry) => entry.code).join(",") || "-"}`,
+    ].join(" ");
+    const path = "/var/log/dindbos/fsck.log";
+    if (this.os.fs.exists(path)) this.os.fs.appendFile(path, `${line}\n`, "/", principal);
+    else this.os.fs.writeOrCreateFile(path, `${line}\n`, "/", { owner: "root", group: "root", permissions: "-rw-r--r--", mime: "text/plain" }, principal);
   }
 
   sync(args) {
@@ -1803,17 +1826,34 @@ function formatStorage(status) {
   ].join("\n");
 }
 
-function formatFsck(result = {}) {
+function formatFsck(result = {}, options = {}) {
   const lines = [
     `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} packages=${Number(result.checkedPackages || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
   ];
   (result.problems || []).slice(0, 20).forEach((entry) => {
     lines.push(`${entry.code} ${entry.path} repairable=${Boolean(entry.repairable)} ${entry.message}`);
+    if (options.explain) lines.push(`explain ${entry.code}: ${fsckExplanation(entry.code, entry.repairable)}`);
   });
   (result.repairs || []).slice(0, 20).forEach((entry) => {
     lines.push(`repair ${entry.kind} ${entry.path} ${entry.from} -> ${entry.to} dryRun=${Boolean(entry.dryRun)}`);
   });
+  if (options.explain && !(result.problems || []).length) lines.push("explain ok: no integrity problems detected");
   return lines.join("\n");
+}
+
+function fsckExplanation(code, repairable = false) {
+  const suffix = repairable
+    ? "This repair is conservative and preserves ownership, permissions, and security policy."
+    : "This is reported without repair because automatic mutation could weaken runtime guarantees.";
+  const explanations = {
+    "size-mismatch": "File size metadata differs from content bytes; safe repair recalculates size only.",
+    "invalid-children": "Directory children metadata is malformed; safe repair replaces only invalid child lists.",
+    "package-record-missing": "A pkgfs root exists without a package DB record; safe repair can remove the orphan root.",
+    "package-root-missing": "A package DB record points at a missing package root; reinstall or restore is required.",
+    "package-root-invalid": "A package install path exists but is not mounted as pkgfs.",
+    "package-record-invalid": "A package DB JSON record cannot be parsed into a package id.",
+  };
+  return `${explanations[code] || "DindbOS detected an integrity invariant violation."} ${suffix}`;
 }
 
 function mergeFsckResults(base = {}, extra = null) {
