@@ -85,9 +85,19 @@ class WorkerWasmExit extends Error {
   }
 }
 
+class WorkerWasmAbort extends Error {
+  constructor(message) {
+    super(message);
+    this.code = "EABORT";
+  }
+}
+
 const handleWasmTask = async (message) => {
   const output = { stdout: "", stderr: "" };
   let instance = null;
+  const startedAt = Date.now();
+  const timeoutMs = Number(message.timeoutMs || 0);
+  const deadlineAt = Number.isFinite(Number(message.deadlineAt)) ? Number(message.deadlineAt) : (timeoutMs > 0 ? startedAt + timeoutMs : Infinity);
   const readMemory = (ptr, length) => {
     const memory = instance?.exports?.memory;
     if (!memory) throw new Error("wasm: module must export memory");
@@ -101,6 +111,15 @@ const handleWasmTask = async (message) => {
   const readString = (ptr, length) => new TextDecoder().decode(readMemory(ptr, length));
   const writeU32 = (ptr, value) => memoryView().setUint32(Number(ptr || 0), Number(value || 0), true);
   const writeMemory = (ptr, bytes) => readMemory(ptr, bytes.length).set(bytes);
+  const checkDeadline = () => {
+    if (message.aborted) {
+      throw new WorkerWasmAbort("wasm: aborted" + (message.abortReason ? ": " + String(message.abortReason) : ""));
+    }
+    if (Date.now() > deadlineAt) {
+      throw new WorkerWasmAbort("wasm: cooperative timeout after " + timeoutMs + "ms");
+    }
+    return 0;
+  };
   const assertMemoryLimit = () => {
     const limit = Number(message.maxMemoryPages);
     if (!Number.isFinite(limit) || limit < 0) return;
@@ -138,6 +157,7 @@ const handleWasmTask = async (message) => {
       writeArg: (index) => appendStdout(String(argv[Number(index)] ?? "")),
       writeEnv: (ptr, length) => appendStdout(String(env[readString(ptr, length)] ?? "")),
       syscall: () => 38,
+      checkDeadline,
       exit: (code) => {
         throw new WorkerWasmExit(code);
       },
@@ -607,6 +627,10 @@ export class ProcessExecutor {
         argv: options.argv || [],
         env: options.env || {},
         maxMemoryPages: options.maxMemoryPages,
+        timeoutMs: options.timeoutMs,
+        deadlineAt: options.deadlineAt,
+        aborted: Boolean(options.aborted || options.abortSignal?.aborted),
+        abortReason: options.abortReason || options.abortSignal?.reason || "",
       }, [bytes.buffer]);
     });
   }

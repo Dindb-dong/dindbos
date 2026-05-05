@@ -43,6 +43,18 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/trap.wasm", trapWasm(), "/", {
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/deadline.wasm", deadlineWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/slow-deadline.wasm", deadlineWasm(300000), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-hello.wasm", wasiHelloWasm(), "/", {
   owner: "guest",
   group: "users",
@@ -209,6 +221,23 @@ assert(memoryLimitRun.crashed === true, "wasm memory limit did not report crashe
 assert(memoryLimitRun.stderr.includes("memory pages 1 exceed limit 0"), "wasm memory limit stderr missing page detail");
 assert(os.fs.readFile(memoryLimitRun.crashReportPath).includes("memory pages 1 exceed limit 0"), "wasm memory limit crash report missing page detail");
 
+const abortRun = await os.wasm.runFile("/home/guest/bin/deadline.wasm", "/home/guest/bin", {
+  abortSignal: { aborted: true, reason: "smoke abort" },
+  principal: os.permissions.principal(os.session),
+});
+assert(abortRun.status === 1, `wasm cooperative abort status mismatch: ${abortRun.status}`);
+assert(abortRun.crashed === true, "wasm cooperative abort did not report crashed=true");
+assert(abortRun.stderr.includes("wasm: aborted: smoke abort"), "wasm cooperative abort stderr missing reason");
+
+const timeoutRun = await os.wasm.runFile("/home/guest/bin/slow-deadline.wasm", "/home/guest/bin", {
+  timeoutMs: 1,
+  deadlineAt: 0,
+  principal: os.permissions.principal(os.session),
+});
+assert(timeoutRun.status === 1, `wasm cooperative timeout status mismatch: ${timeoutRun.status}`);
+assert(timeoutRun.crashed === true, "wasm cooperative timeout did not report crashed=true");
+assert(timeoutRun.stderr.includes("cooperative timeout after 1ms"), "wasm cooperative timeout stderr missing detail");
+
 const wasiRun = await os.wasm.runFile("/home/guest/bin/wasi-hello.wasm", "/home/guest/bin", {
   argv: ["wasi-hello.wasm"],
   principal: os.permissions.principal(os.session),
@@ -244,6 +273,19 @@ try {
 }
 assert(workerMemoryLimitError?.code === "EIO", `worker wasm memory limit error code mismatch: ${workerMemoryLimitError?.code}`);
 assert(String(workerMemoryLimitError?.message || "").includes("memory pages 1 exceed limit 0"), "worker wasm memory limit error missing page detail");
+
+let workerAbortError = null;
+try {
+  await os.wasm.runFile("/home/guest/bin/deadline.wasm", "/home/guest/bin", {
+    executionBackend: "worker",
+    abortSignal: { aborted: true, reason: "worker smoke abort" },
+    principal: os.permissions.principal(os.session),
+  });
+} catch (error) {
+  workerAbortError = error;
+}
+assert(workerAbortError?.code === "EIO", `worker wasm cooperative abort error code mismatch: ${workerAbortError?.code}`);
+assert(String(workerAbortError?.message || "").includes("wasm: aborted: worker smoke abort"), "worker wasm cooperative abort error missing reason");
 
 const wasiCatRun = await os.wasm.runFile("/home/guest/bin/wasi-cat.wasm", "/home/guest/bin", {
   argv: ["wasi-cat.wasm"],
@@ -338,7 +380,7 @@ os.fs.remove("/home/guest/bin/wasi-hardlink-source.txt", "/", {}, os.permissions
 assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "changed through link\n", "wasi hard link did not survive source removal");
 assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 1, "wasi hard link count did not update after source removal");
 
-console.log("wasm smoke ok shell argv env syscall exit permission scopes crash memory wasi worker stdin path-open rights filestat readdir mkdir remove rename symlink hardlink process");
+console.log("wasm smoke ok shell argv env syscall exit permission scopes crash memory deadline wasi worker stdin path-open rights filestat readdir mkdir remove rename symlink hardlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -447,6 +489,23 @@ function trapWasm() {
     imports: [],
     startType: 0,
     body: [0x00, 0x0b],
+    data: new Uint8Array(),
+  });
+}
+
+function deadlineWasm(nopCount = 0) {
+  return wasmModule({
+    types: [
+      { params: [], results: ["i32"] },
+      { params: [], results: ["i32"] },
+    ],
+    imports: [{ name: "checkDeadline", type: 0 }],
+    startType: 1,
+    body: [
+      ...Array.from({ length: nopCount }, () => 0x01),
+      0x10, 0x00,
+      0x0b,
+    ],
     data: new Uint8Array(),
   });
 }
