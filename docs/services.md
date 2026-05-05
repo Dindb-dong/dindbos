@@ -55,4 +55,6 @@ Service management is privileged. Calls that mutate service state require a root
 
 ## Browser Lifecycle Limits
 
-The first pass exposes explicit `suspend(reason)` and `resume(reason)` hooks, but it does not claim closed-page persistence. Browser visibility, page lifecycle, service worker, and periodic background sync integration remain future work and must report unsupported behavior honestly when the browser cannot keep work alive.
+DindbOS wires browser `visibilitychange`, `pagehide`, and `pageshow` events into service `suspend(reason)` and `resume(reason)` transitions. Hidden tabs and pagehide move running services into `suspended`; visible tabs and pageshow restore suspended services to their previous running state.
+
+This still does not claim closed-page persistence. Service worker and periodic background sync integration remain future work and must report unsupported behavior honestly when the browser cannot keep work alive.

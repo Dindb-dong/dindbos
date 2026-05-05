@@ -64,6 +64,7 @@ export class DindbOS {
     this.persisting = false;
     this.persistRequestedDuringFlush = false;
     this.persistenceHooksInstalled = false;
+    this.serviceLifecycleHooksInstalled = false;
     this.persistenceStats = {
       scheduled: 0,
       coalesced: 0,
@@ -151,6 +152,7 @@ export class DindbOS {
       this.shell.renderDock();
       return "desktop shell, dock, and window layer ready";
     });
+    this.installServiceLifecycleHooks();
     this.installPersistenceLifecycleHooks();
     this.writeBootDiagnostics();
     this.bus.emit("boot", { session: this.session, phases: this.bootStatus() });
@@ -722,6 +724,26 @@ export class DindbOS {
     globalThis.window.addEventListener("beforeunload", flushBeforeUnload);
     globalThis.document?.addEventListener?.("visibilitychange", () => {
       if (globalThis.document.visibilityState === "hidden") flush();
+    });
+  }
+
+  installServiceLifecycleHooks() {
+    if (this.serviceLifecycleHooksInstalled || typeof globalThis.window === "undefined") return;
+    this.serviceLifecycleHooksInstalled = true;
+    const suspend = (reason) => {
+      this.services?.suspend?.(reason);
+    };
+    const resume = (reason) => {
+      this.services?.resume?.(reason);
+    };
+    globalThis.window.addEventListener("pagehide", () => suspend("pagehide"));
+    globalThis.window.addEventListener("pageshow", () => resume("pageshow"));
+    globalThis.document?.addEventListener?.("visibilitychange", () => {
+      if (globalThis.document.visibilityState === "hidden") {
+        suspend("visibility-hidden");
+        return;
+      }
+      if (globalThis.document.visibilityState === "visible") resume("visibility-visible");
     });
   }
 
