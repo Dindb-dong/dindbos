@@ -566,6 +566,7 @@ export class PackageManager {
         namespace: record.namespace || {},
       };
       try {
+        this.cleanupNamespaceRuntime(record);
         const launcher = this.launcherPath(record);
         if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
         if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
@@ -970,6 +971,23 @@ export class PackageManager {
     [namespace.tempRoot, namespace.cacheRoot, namespace.stateRoot].filter(Boolean).forEach((path) => {
       if (this.os.fs.exists(path)) this.os.fs.remove(path, "/", { recursive: true }, this.system);
     });
+  }
+
+  cleanupNamespaceRuntime(record) {
+    const namespace = record.namespace || {};
+    const processGroup = namespace.processGroup || "";
+    const packageId = namespace.packageId || record.id;
+    const running = this.os.processes?.list?.() || [];
+    running
+      .filter((process) => (
+        process.appId === record.app.id
+        || process.manifest?.namespace?.packageId === packageId
+        || (processGroup && process.manifest?.namespace?.processGroup === processGroup)
+      ))
+      .sort((left, right) => Number(right.pid || 0) - Number(left.pid || 0))
+      .forEach((process) => {
+        if (this.os.processes?.get?.(process.pid)) this.os.processes.kill(process.pid, "package-uninstall");
+      });
   }
 
   ensureDirectoryPath(path, options = {}) {

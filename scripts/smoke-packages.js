@@ -142,6 +142,33 @@ assert(!os.ipcEndpoints.has("namespace-target.echo"), "package IPC endpoint rema
 packages.remove("namespace-probe");
 packages.remove("namespace-target");
 
+packages.install(packageManifest("cleanup-demo", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export function mount({ content, os }) {",
+      "  os.ipc.register('cleanup-demo.echo', () => ({ ok: true }));",
+      "  const child = os.launch('namespace-child');",
+      "  content.innerHTML = `<main data-cleanup-demo data-child-pid=\"${child.pid}\">cleanup</main>`;",
+      "}",
+    ].join("\n"),
+  },
+], { permissions: { capabilities: ["app.launch"] }, namespace: { ipcEndpoints: ["cleanup-demo.echo"] } }));
+const cleanupWindow = os.apps.launch("cleanup-demo");
+await cleanupWindow.rendered;
+await waitFor(() => cleanupWindow.content.innerHTML.includes("data-cleanup-demo"), `cleanup demo did not render: ${cleanupWindow.content.innerHTML}`);
+const cleanupChild = os.processes.list().find((process) => process.parentPid === cleanupWindow.pid && process.appId === "namespace-child");
+assert(cleanupChild?.manifest?.namespace?.processGroup === "package:cleanup-demo", "cleanup child did not inherit package namespace");
+assert(os.ipcEndpoints.has("cleanup-demo.echo"), "cleanup demo IPC endpoint was not registered");
+packages.remove("cleanup-demo");
+assert(!os.processes.get(cleanupWindow.pid), "package uninstall left package app process running");
+assert(!os.processes.get(cleanupChild.pid), "package uninstall left namespace child process running");
+assert(!os.ipcEndpoints.has("cleanup-demo.echo"), "package uninstall left namespace IPC endpoint registered");
+assert(!os.fs.exists("/var/lib/dindbos/package-state/cleanup-demo"), "package uninstall left cleanup namespace state root");
+assert(!os.fs.exists("/var/cache/dindbos/packages/cleanup-demo"), "package uninstall left cleanup namespace cache root");
+assert(!os.fs.exists("/tmp/dindbos/packages/cleanup-demo"), "package uninstall left cleanup namespace temp root");
+
 await assertRejects(
   () => packages.install(packageManifest("wasm-future", "0.1.0", [
     { path: "app.wasm", mime: "application/wasm", base64: "AGFzbQEAAA==" },
