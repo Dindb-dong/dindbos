@@ -82,7 +82,20 @@ const pid = process.pid;
 os.processes.kill(pid, "smoke-exit");
 assert(!os.descriptors.tables.has(pid), "descriptor table remained after process kill");
 
-console.log("descriptors smoke ok open read write seek close devices cleanup");
+const crashProcess = os.processes.spawn(app, { cwd: "/home/guest" });
+const crashContext = {
+  ...context,
+  process: crashProcess,
+};
+result = os.syscall("fd.open", { path: "input.txt", flags: "r" }, crashContext);
+assert(result.ok && result.value.fd === 3, `crash fd.open mismatch: ${JSON.stringify(result)}`);
+assert(os.descriptors.tables.has(crashProcess.pid), "descriptor table missing before crash");
+os.processes.crash(crashProcess.pid, new Error("fd crash smoke"));
+assert(!os.descriptors.tables.has(crashProcess.pid), "descriptor table remained after process crash");
+assert(os.fs.exists(`/var/log/dindbos/crash-${crashProcess.pid}.log`), "descriptor crash smoke did not write crash report");
+assert(!os.fs.exists(`/proc/${crashProcess.pid}/fd.json`), "crashed process fd procfs remained after cleanup");
+
+console.log("descriptors smoke ok open read write seek close devices crash-cleanup");
 
 function memoryStorage() {
   return {

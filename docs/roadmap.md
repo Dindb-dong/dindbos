@@ -316,10 +316,10 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:descriptors` verifies descriptor open/read/write/seek/close, `/dev/null`, `/dev/zero`, `/proc/<pid>/fd.json`, and descriptor cleanup after process kill.
+- Already present: `npm run smoke:descriptors` verifies descriptor open/read/write/seek/close, `/dev/null`, `/dev/zero`, `/proc/<pid>/fd.json`, and descriptor cleanup after process kill or crash.
 - Already present: `npm run smoke:wasm` verifies WASI `fd_read` from stdin plus shell pipeline stdin delivery into executable `.wasm` files.
 - Already present: `npm run smoke:wasm` verifies WASI `path_open` read/write against scoped VFS files through opened descriptors.
-- Add smoke coverage for pipe chaining, entropy devices, TTY output, richer WASI descriptor rights/flags, and descriptor cleanup after crash.
+- Add smoke coverage for pipe chaining, entropy devices, TTY output, and richer WASI descriptor rights/flags.
 
 Completion criteria:
 
