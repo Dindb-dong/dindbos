@@ -369,7 +369,7 @@ Completion criteria:
 
 ### Convergence 5: Virtual Networking Stack
 
-Status: Later.
+Status: In progress.
 
 Goal: provide explicit network primitives without giving apps unrestricted browser fetch access.
 
@@ -567,16 +567,17 @@ Why it matters:
 
 Implementation tasks:
 
-- Add service manifests for runtime-managed background processes.
-- Add service states: disabled, enabled, starting, running, degraded, stopped, crashed.
-- Add scheduled jobs for cache cleanup, storage integrity checks, package update checks, and local mount sync checks.
+- Already present: `ServiceManager` registers runtime-managed service manifests and starts services as `service:<id>` DindbOS processes with `/proc` visibility and crash-report integration.
+- Already present: service states cover `disabled`, `stopped`, `starting`, `running`, `suspended`, `degraded`, and `crashed`, with records persisted under `/var/run/dindbos/services.json`.
+- Already present: scheduled service runs are represented by `runScheduled()`, run counters, last-run timestamps, service logs under `/var/log/dindbos/services.log`, and `service:scheduled-run` / `service:degraded` events.
 - Add Settings and Activity Monitor surfaces for service status, logs, restart, disable, and permission review.
-- Add wake/suspend behavior tied to browser visibility, page lifecycle, and storage flush state.
-- Add clear browser limitation docs for work that cannot continue after the page is closed.
+- Already present: first-pass service `suspend(reason)` and `resume(reason)` hooks emit lifecycle events; browser visibility, page lifecycle, and storage-flush wiring remains future work.
+- Already present: `docs/services.md` documents service manifests, state transitions, process boundary, permission boundary, and closed-page browser lifecycle limits.
 
 Verification:
 
-- Add smoke coverage for service start/stop/restart, crash reporting, scheduled job execution, visibility suspend/resume, and permission denial.
+- Already present: `npm run smoke:services` verifies service start/stop/restart, crash reporting, scheduled job execution, suspend/resume hooks, and permission denial.
+- Add smoke coverage for Settings/Activity Monitor service surfaces and browser visibility/page lifecycle wiring once implemented.
 
 Completion criteria:
 
