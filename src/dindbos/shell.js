@@ -33,7 +33,7 @@ const BUILTIN_MANUALS = {
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
   ping: "ping <host> - probe network policy; raw ICMP is unsupported in browser-only mode",
-  pkg: "pkg list|info|install|run|strict|cache|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
+  pkg: "pkg list|info|install|run|strict|cache|prefs|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -729,6 +729,9 @@ export class ShellSession {
     if (action === "cache") {
       return this.pkgCache(operand, rest);
     }
+    if (action === "prefs" || action === "preferences") {
+      return this.pkgPrefs(operand, rest);
+    }
     if (action === "npm") {
       return this.pkgNpm(operand, rest);
     }
@@ -737,7 +740,7 @@ export class ShellSession {
       const record = this.os.packages.remove(operand);
       return `removed ${record.id}`;
     }
-    return "pkg: usage: pkg list | info | install | run | strict | cache | search | registry | trust | update | deps | npm | remove";
+    return "pkg: usage: pkg list | info | install | run | strict | cache | prefs | search | registry | trust | update | deps | npm | remove";
   }
 
   pkgRegistry(action, args) {
@@ -952,6 +955,29 @@ export class ShellSession {
       return `package cache cleared ${result.packageId} ${result.cacheRoot} bytes=${result.removedBytes}`;
     }
     return "pkg: usage: pkg cache clear <package>";
+  }
+
+  pkgPrefs(action, args) {
+    if (!action || action === "list") {
+      const prefs = this.os.packagePreferences?.(this.env.USER);
+      const packages = Object.entries(prefs?.packages || {});
+      if (!packages.length) return "pkg: no package preferences";
+      return packages
+        .flatMap(([packageId, values]) => Object.entries(values).map(([key, value]) => `${packageId} ${key}=${JSON.stringify(value)}`))
+        .join("\n");
+    }
+    if (action === "set") {
+      const [packageId, key, ...valueParts] = args;
+      if (!packageId || !key || !valueParts.length) return "pkg: usage: pkg prefs set <package> <key> <value>";
+      const value = this.os.setPackagePreference(packageId, key, valueParts.join(" "), this.env.USER);
+      return `package preference set ${packageId} ${key}=${JSON.stringify(value)}`;
+    }
+    if (action === "remove" || action === "unset") {
+      const [packageId, key] = args;
+      if (!packageId || !key) return "pkg: usage: pkg prefs remove <package> <key>";
+      return `package preference removed ${packageId} ${key} existed=${this.os.removePackagePreference(packageId, key, this.env.USER)}`;
+    }
+    return "pkg: usage: pkg prefs list | set <package> <key> <value> | remove <package> <key>";
   }
 
   npm(args) {
