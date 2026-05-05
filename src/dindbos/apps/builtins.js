@@ -3581,6 +3581,7 @@ function renderSettingsSessionCoordination(coordination) {
       <div><dt>Peer App State</dt><dd>${coordination?.appState?.lastPeerAppId ? `${escapeHtml(coordination.appState.lastPeerAppId)} · ${escapeHtml(coordination.appState.lastPeerAction || "change")}` : "none"}</dd></div>
       <div><dt>Peer Package</dt><dd>${coordination?.packageOperation?.lastPeerPackageId ? `${escapeHtml(coordination.packageOperation.lastPeerPackageId)} · ${escapeHtml(coordination.packageOperation.lastPeerOperation || "package")} · ${escapeHtml(coordination.packageOperation.lastPeerPhase || "unknown")}` : "none"}</dd></div>
       <div><dt>Session Handoff</dt><dd>${formatSessionHandoff(coordination?.handoff)}</dd></div>
+      <div><dt>Handoff Relay</dt><dd>${formatSessionHandoffRelay(coordination?.handoff?.relay)}</dd></div>
       <div><dt>Session Recovery</dt><dd>${coordination?.recovery?.recovered ? `recovered · conflicts=${Number(coordination.recovery.pendingConflicts || 0)}` : "none"}</dd></div>
     </dl>
   `;
@@ -3598,6 +3599,14 @@ function formatSessionHandoff(handoff) {
     return `${escapeHtml(handoff.lastLocalAction || "offer")} · ${escapeHtml(handoff.lastLocalMode || "view")} · local`;
   }
   return "none";
+}
+
+function formatSessionHandoffRelay(relay) {
+  if (!relay) return "none";
+  const frames = Number(relay.framesSent || 0) + Number(relay.framesReceived || 0);
+  const inputs = Number(relay.inputsSent || 0) + Number(relay.inputsReceived || 0);
+  if (!frames && !inputs) return "idle";
+  return `frames=${frames} · inputs=${inputs} · transport=${escapeHtml(relay.lastTransport || "-")}`;
 }
 
 function formatSyncSummary(sync) {

@@ -128,7 +128,7 @@ assert(result.status === 0, `doctor status mismatch: ${result.status}`);
 assert(result.output.includes("DindbOS doctor"), `doctor heading missing: ${result.output}`);
 assert(result.output.includes("session user=guest"), `doctor session output missing: ${result.output}`);
 assert(result.output.includes("sessionCoord role=primary owner=runtime-smoke readonly=false"), `doctor session coordination output missing: ${result.output}`);
-assert(result.output.includes("sessionHandoff active=handoff-1 mode=control peer=remote-tab last=accept"), `doctor session handoff output missing: ${result.output}`);
+assert(result.output.includes("sessionHandoff active=handoff-1 mode=control peer=remote-tab last=accept relayFrames=3 relayInputs=2"), `doctor session handoff output missing: ${result.output}`);
 assert(result.output.includes("storage backend=memory"), `doctor storage output missing: ${result.output}`);
 assert(result.output.includes("localMounts supported=false mounted=0"), `doctor mount output missing: ${result.output}`);
 assert(result.output.includes("helper=unavailable rename=false"), `doctor helper output missing: ${result.output}`);
@@ -292,6 +292,12 @@ function bootOs() {
           activeMode: "control",
           activePeerInstanceId: "remote-tab",
           lastPeerAction: "accept",
+          relay: {
+            framesSent: 1,
+            framesReceived: 2,
+            inputsSent: 1,
+            inputsReceived: 1,
+          },
         },
       },
     }),
