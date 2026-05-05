@@ -16,6 +16,7 @@ export function normalizeAppManifest(app) {
     pinned: Boolean(app.pinned),
     accepts: [...(app.accepts || [])],
     capabilities: [...new Set([...(declared.capabilities || []), ...(app.capabilities || [])])],
+    shortcuts: normalizeShortcuts(declared.shortcuts || app.shortcuts || []),
     fileSystem: {
       read: [...(fileSystem.read || DEFAULT_FS_READ)],
       write: [...(fileSystem.write || DEFAULT_FS_WRITE)],
@@ -45,9 +46,31 @@ export function manifestToText(manifest) {
     `pinned=${manifest.pinned}`,
     `accepts=${manifest.accepts.join(",") || "-"}`,
     `capabilities=${manifest.capabilities.join(",") || "-"}`,
+    `shortcuts=${manifest.shortcuts.map((shortcut) => `${shortcut.scope}:${shortcut.key}`).join(",") || "-"}`,
     `fs.read=${manifest.fileSystem.read.join(",") || "-"}`,
     `fs.write=${manifest.fileSystem.write.join(",") || "-"}`,
   ].join("\n");
+}
+
+function normalizeShortcuts(shortcuts) {
+  const items = Array.isArray(shortcuts) ? shortcuts : [];
+  return items.map((shortcut) => {
+    if (typeof shortcut === "string") return { key: normalizeShortcutKey(shortcut), scope: "focused", command: normalizeShortcutKey(shortcut) };
+    return {
+      key: normalizeShortcutKey(shortcut.key || ""),
+      scope: normalizeShortcutScope(shortcut.scope || "focused"),
+      command: String(shortcut.command || shortcut.action || shortcut.key || "").trim(),
+    };
+  }).filter((shortcut) => shortcut.key);
+}
+
+function normalizeShortcutKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function normalizeShortcutScope(value) {
+  const scope = String(value || "focused").toLowerCase();
+  return ["global", "focused", "text-entry"].includes(scope) ? scope : "focused";
 }
 
 function isInsideAny(path, scopes) {
