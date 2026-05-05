@@ -389,17 +389,31 @@ export class AppSandbox {
       },
       get: (name) => {
         this.assertCapability("keychain.read");
-        return this.os.keychain.getSecret(name, context()).value;
+        return this.os.keychain.getSecret(this.resolveKeychainReference(name), context()).value;
       },
+      getDeclared: (name) => {
+        this.assertCapability("keychain.read");
+        return this.os.keychain.getSecret(this.resolveKeychainReference(name, true), context()).value;
+      },
+      references: () => cloneJson(this.process.manifest.secrets || []),
       set: (name, value, options = {}) => {
         this.assertCapability("keychain.write");
-        return this.os.keychain.setSecret(name, value, { ...cloneJson(options || {}), ownerAppId: this.process.appId }, context());
+        return this.os.keychain.setSecret(this.resolveKeychainReference(name), value, { ...cloneJson(options || {}), ownerAppId: this.process.appId }, context());
       },
       delete: (name) => {
         this.assertCapability("keychain.write");
-        return this.os.keychain.deleteSecret(name, context());
+        return this.os.keychain.deleteSecret(this.resolveKeychainReference(name), context());
       },
     };
+  }
+
+  resolveKeychainReference(name, declaredOnly = false) {
+    const requested = String(name || "").trim();
+    const references = this.process.manifest.secrets || [];
+    const match = references.find((entry) => entry.name === requested || entry.keychainName === requested);
+    if (match) return match.keychainName;
+    if (!references.length && !declaredOnly) return requested;
+    throw new Error(`${this.process.appId}: keychain secret not declared: ${requested}`);
   }
 
   createStorageFacade() {
@@ -679,6 +693,7 @@ function packageSummary(record, details = false) {
       },
     };
     summary.dependencies = JSON.parse(JSON.stringify(record.dependencies || { packages: {}, npm: {} }));
+    summary.secrets = JSON.parse(JSON.stringify(record.secrets || []));
   }
   return summary;
 }

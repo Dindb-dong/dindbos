@@ -1626,6 +1626,7 @@ function formatPackage(record) {
     `capabilities=${record.permissions?.capabilities?.join(",") || record.app.capabilities?.join(",") || "-"}`,
     `fs.read=${record.permissions?.fileSystem?.read?.join(",") || record.app.fileSystem?.read?.join(",") || "-"}`,
     `fs.write=${record.permissions?.fileSystem?.write?.join(",") || record.app.fileSystem?.write?.join(",") || "-"}`,
+    `secrets=${(record.secrets || []).map((secret) => `${secret.name}:${secret.kind}`).join(",") || "-"}`,
     `deps.packages=${Object.keys(record.dependencies?.packages || {}).join(",") || "-"}`,
     `deps.npm=${Object.entries(record.dependencies?.npm || {}).map(([name, dep]) => `${name}@${dep.version}`).join(",") || "-"}`,
   ].join("\n");
