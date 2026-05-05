@@ -1,17 +1,9 @@
 #!/usr/bin/env node
-import { base64UrlFromBytes, canonicalPackageManifestPayload, PackageManager } from "../src/dindbos/package-manager.js";
-import { AppRegistry } from "../src/dindbos/app-registry.js";
-import { AppSandbox } from "../src/dindbos/app-sandbox.js";
-import { RuntimeCacheStore } from "../src/dindbos/cache-store.js";
-import { EventBus } from "../src/dindbos/event-bus.js";
-import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
-import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
-import { VirtualFileSystem } from "../src/dindbos/vfs.js";
-import { WasmRunner } from "../src/dindbos/wasm-runner.js";
+import { createDindbOSTestRuntime, waitForRuntime as waitFor } from "./helpers/dindbos-test-runtime.js";
+import { base64UrlFromBytes, canonicalPackageManifestPayload } from "../src/dindbos/package-manager.js";
 
-const os = bootOs();
-const packages = new PackageManager(os);
-os.packages = packages;
+const os = createDindbOSTestRuntime();
+const packages = os.packages;
 const lifecycleEvents = [];
 let signedRemoteManifest = null;
 let trustedPublisher = null;
@@ -171,7 +163,7 @@ const firstRunEventCount = lifecycleEvents.filter((event) => event === "first-ru
 os.apps.launch("flow-demo");
 assert(lifecycleEvents.filter((event) => event === "first-run:flow-demo:flow-demo").length === firstRunEventCount, "app:first-run emitted more than once");
 assert(packages.info("flow-demo").lifecycle.firstRunAt, "first-run timestamp was not persisted");
-assert(os.processes.records.has(launched.pid), "package launch did not create process");
+assert(os.processes.get(launched.pid), "package launch did not create process");
 assert(launched.content.innerHTML.includes("data-flow-run"), "package app did not render mounted UI");
 const removedFlow = packages.remove("flow-demo");
 assert(removedFlow.id === "flow-demo", "flow package remove returned wrong id");
@@ -279,8 +271,7 @@ const apiWindow = os.apps.launch("api-lab");
 await apiWindow.rendered;
 await waitFor(() => apiWindow.content.innerHTML.includes("package=api-lab"), `API Lab sample did not render sandbox API report: ${apiWindow.content.innerHTML}`);
 assert(os.fs.readFile("/home/guest/DindbOS API Lab/report.txt").includes("launches=1"), "API Lab sample did not write first app-state value through sandbox fs");
-const apiProcess = os.processes.get(apiWindow.pid);
-assert(apiProcess.logs.some((entry) => entry.message.includes("api-lab wrote")), "API Lab sample did not log through process facade");
+assert(os.processes.readLog(apiWindow.pid).includes("api-lab wrote"), "API Lab sample did not log through process facade");
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("fs.writeText OK"), "API Lab sample did not write syscall trace under /proc");
 assert(os.fs.readFile(`/proc/${apiWindow.pid}/syscalls`).includes("package.info OK"), "API Lab sample did not read package info through syscall");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("process.log OK"), "API Lab sample did not write global syscall log");
@@ -288,9 +279,8 @@ assert(os.fs.readFile("/var/lib/dindbos/app-state/api-lab.json").includes('"laun
 const apiWindowAgain = os.apps.launch("api-lab");
 await apiWindowAgain.rendered;
 await waitFor(() => apiWindowAgain.content.innerHTML.includes("launches=2"), `API Lab sample did not restore app state on relaunch: ${apiWindowAgain.content.innerHTML}`);
-const reloadedOs = bootOs(os.fs.snapshot());
-const reloadedPackages = new PackageManager(reloadedOs);
-reloadedOs.packages = reloadedPackages;
+const reloadedOs = createDindbOSTestRuntime(os.fs.snapshot());
+const reloadedPackages = reloadedOs.packages;
 reloadedPackages.registerInstalledPackages();
 const reloadedApiWindow = reloadedOs.apps.launch("api-lab");
 await reloadedApiWindow.rendered;
@@ -299,36 +289,7 @@ const removedApiLab = packages.remove("api-lab");
 assert(removedApiLab.id === "api-lab", "API Lab package remove returned wrong id");
 assert(!os.fs.exists("/var/lib/dindbos/app-state/api-lab.json"), "API Lab app state remained after package remove");
 
-console.log("packages smoke ok transaction rollback launch run state remove");
-
-function bootOs(root = null) {
-  const permissions = new PermissionPolicy();
-  const fs = new VirtualFileSystem(root, { home: "/home/guest", policy: permissions });
-  const system = permissions.systemPrincipal();
-  if (!fs.exists("/home")) fs.createDirectory("/home", "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, system);
-  if (!fs.exists("/home/guest")) fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users", permissions: "drwxr-xr-x" }, system);
-  const os = {
-    fs,
-    permissions,
-    bus: new EventBus(),
-    cache: new RuntimeCacheStore({ cacheApi: null }),
-    apps: null,
-    packages: null,
-    windows: null,
-    processes: null,
-    session: { user: "guest", groups: ["users"], home: "/home/guest" },
-    createSandbox: (process) => new AppSandbox(os, process),
-    registerApp: (app) => os.apps.register(app),
-    unregisterApp: (appId) => os.apps.unregister(appId),
-  };
-  os.apps = new AppRegistry(os);
-  os.processes = fakeProcesses(os);
-  os.syscalls = new SyscallDispatcher(os);
-  os.syscall = (name, args = {}, context = {}) => os.syscalls.call(name, args, context);
-  os.wasm = new WasmRunner(os);
-  os.windows = fakeWindows();
-  return os;
-}
+console.log("packages smoke ok transaction rollback launch run state remove runtime-testbed");
 
 function packageManifest(id, version, files, extra = {}) {
   const title = titleFor(id);
@@ -352,83 +313,6 @@ function titleFor(id) {
   if (id === "flow-demo") return "Flow Demo.app";
   if (id === "remote-broken") return "Remote Broken.app";
   return "Broken Pkg.app";
-}
-
-function fakeProcesses(os) {
-  let nextPid = 100;
-  const records = new Map();
-  const system = os.permissions.systemPrincipal();
-  if (!os.fs.exists("/proc")) os.fs.createDirectory("/proc", "/", { owner: "root", group: "root" }, system);
-  return {
-    records,
-    spawn: (app, context) => {
-      const process = {
-        pid: nextPid++,
-        appId: app.id,
-        context,
-        cwd: context.cwd || "/home/guest",
-        parentPid: context.parentPid || 0,
-        logs: [],
-        manifest: app.manifest || {},
-        name: app.name || app.id,
-        state: "running",
-        user: "guest",
-      };
-      records.set(process.pid, process);
-      const procPath = `/proc/${process.pid}`;
-      if (!os.fs.exists(procPath)) os.fs.createDirectory(procPath, "/", { owner: "root", group: "root" }, system);
-      return process;
-    },
-    attachWindow: (pid, windowId) => {
-      const process = records.get(pid);
-      if (process) process.windowId = windowId;
-    },
-    kill: (pid, state = "killed") => {
-      const process = records.get(pid);
-      if (process) process.state = state;
-      records.delete(pid);
-      return process || { pid, appId: "unknown" };
-    },
-    markReady: (pid) => {
-      const process = records.get(pid);
-      if (process) process.windowState = "ready";
-      return process || null;
-    },
-    crash: (pid, error) => {
-      const process = records.get(pid);
-      if (process) process.error = error.message;
-    },
-    get: (pid) => records.get(pid) || null,
-    log: (pid, message, level = "info") => {
-      const process = records.get(pid);
-      if (process) process.logs.push({ level, message });
-    },
-  };
-}
-
-function fakeWindows() {
-  const records = new Map();
-  return {
-    has: (windowId) => records.has(windowId),
-    activate: (windowId) => records.get(windowId),
-    open: (options) => {
-      const content = { innerHTML: "" };
-      const windowApi = { setTitle: (title) => { options.title = title; } };
-      const windowRecord = { ...options, content };
-      records.set(options.id, windowRecord);
-      windowRecord.rendered = options.render(content, windowApi);
-      return windowRecord;
-    },
-  };
-}
-
-async function waitFor(check, label) {
-  const started = Date.now();
-  while (Date.now() - started < 3000) {
-    if (check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error(label);
 }
 
 async function fakeFetch(url) {
