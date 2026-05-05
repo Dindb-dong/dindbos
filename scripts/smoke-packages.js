@@ -7,6 +7,7 @@ import { EventBus } from "../src/dindbos/event-bus.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
+import { WasmRunner } from "../src/dindbos/wasm-runner.js";
 
 const os = bootOs();
 const packages = new PackageManager(os);
@@ -178,6 +179,52 @@ assert(!os.apps.has("flow-demo"), "flow package app remained registered after re
 assert(!os.fs.exists("/opt/flow-demo"), "flow package install path remained after remove");
 assert(!os.fs.exists("/usr/share/applications/Flow Demo.app"), "flow package launcher remained after remove");
 
+const wasmTool = packages.install({
+  id: "wasm-tool",
+  name: "WASM Tool",
+  version: "0.1.0",
+  description: "A package app rendered by a DindbOS ABI WebAssembly entry point.",
+  app: {
+    id: "wasm-tool",
+    name: "WASM Tool",
+    title: "WASM Tool.app",
+    icon: "app",
+    width: 560,
+    height: 360,
+    entry: "tool.wasm",
+    runtime: "wasm",
+  },
+  files: [
+    {
+      path: "tool.wasm",
+      mime: "application/wasm",
+      base64: Buffer.from(packageWasm()).toString("base64"),
+      permissions: "-rwxr-xr-x",
+    },
+  ],
+  permissions: {
+    capabilities: [],
+    fileSystem: {
+      read: ["/opt/wasm-tool"],
+      write: ["/home/guest"],
+    },
+  },
+});
+assert(wasmTool.app.runtime === "wasm", "WASM package runtime was not normalized");
+assert(os.apps.getManifest("wasm-tool").runtime === "wasm", "WASM package app manifest did not expose runtime");
+assert(os.fs.stat("/opt/wasm-tool/tool.wasm").mime === "application/wasm", "WASM package file mime mismatch");
+const wasmWindow = os.apps.launch("wasm-tool");
+await wasmWindow.rendered;
+await waitFor(() => wasmWindow.content.innerHTML.includes("data-wasm-package"), `WASM package did not render launch result: ${wasmWindow.content.innerHTML}`);
+assert(wasmWindow.content.innerHTML.includes("wasm package ok"), "WASM package stdout was not rendered");
+assert(os.fs.readFile("/home/guest/wasm-package-output.txt") === "from package wasm", "WASM package did not write through syscall-backed VFS");
+assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("app=package:wasm-tool:wasm fs.writeText OK"), "WASM package syscall trace missing package wasm app id");
+assert(lifecycleEvents.includes("first-run:wasm-tool:wasm-tool"), "WASM package did not emit app:first-run lifecycle event");
+const removedWasmTool = packages.remove("wasm-tool");
+assert(removedWasmTool.id === "wasm-tool", "WASM package remove returned wrong id");
+assert(!os.apps.has("wasm-tool"), "WASM package app remained registered after remove");
+assert(!os.fs.exists("/opt/wasm-tool"), "WASM package install path remained after remove");
+
 packages.bootstrap();
 assert(os.fs.exists("/opt/dindbos/packages/api-lab/dindbos.app.json"), "API Lab sample manifest was not bootstrapped");
 assert(os.fs.exists("/opt/dindbos/packages/paint-sample/dindbos.app.json"), "Paint sample manifest was not bootstrapped");
@@ -251,6 +298,7 @@ function bootOs(root = null) {
   os.processes = fakeProcesses(os);
   os.syscalls = new SyscallDispatcher(os);
   os.syscall = (name, args = {}, context = {}) => os.syscalls.call(name, args, context);
+  os.wasm = new WasmRunner(os);
   os.windows = fakeWindows();
   return os;
 }
@@ -291,7 +339,8 @@ function fakeProcesses(os) {
         pid: nextPid++,
         appId: app.id,
         context,
-        cwd: "/home/guest",
+        cwd: context.cwd || "/home/guest",
+        parentPid: context.parentPid || 0,
         logs: [],
         manifest: app.manifest || {},
         name: app.name || app.id,
@@ -312,6 +361,11 @@ function fakeProcesses(os) {
       if (process) process.state = state;
       records.delete(pid);
       return process || { pid, appId: "unknown" };
+    },
+    markReady: (pid) => {
+      const process = records.get(pid);
+      if (process) process.windowState = "ready";
+      return process || null;
     },
     crash: (pid, error) => {
       const process = records.get(pid);
@@ -404,6 +458,104 @@ async function signedPackageManifest(manifest) {
 async function sha256Integrity(content) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
   return `sha256-${Buffer.from(new Uint8Array(digest)).toString("base64")}`;
+}
+
+function packageWasm() {
+  const stdout = encodeText("wasm package ok\n");
+  const request = encodeText(JSON.stringify({
+    name: "fs.writeText",
+    args: { path: "/home/guest/wasm-package-output.txt", content: "from package wasm" },
+  }));
+  const data = new Uint8Array([...stdout, ...request]);
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32"], results: [] },
+      { params: ["i32", "i32"], results: ["i32"] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { name: "write", type: 0 },
+      { name: "syscall", type: 1 },
+    ],
+    startType: 2,
+    body: [
+      0x41, 0x00, 0x41, ...signedI32(stdout.length), 0x10, 0x00,
+      0x41, ...signedI32(stdout.length), 0x41, ...signedI32(request.length), 0x10, 0x01, 0x1a,
+      0x0b,
+    ],
+    data,
+  });
+}
+
+function wasmModule({ types, imports, startType, body, data }) {
+  const importCount = imports.length;
+  const sections = [
+    wasmSection(1, [types.length, ...types.flatMap(wasmTypeBytes)]),
+    wasmSection(2, [imports.length, ...imports.flatMap((entry) => [...wasmStringBytes("dindbos"), ...wasmStringBytes(entry.name), 0x00, ...unsignedI32(entry.type)])]),
+    wasmSection(3, [0x01, ...unsignedI32(startType)]),
+    wasmSection(5, [0x01, 0x00, 0x01]),
+    wasmSection(7, [
+      0x02,
+      ...wasmStringBytes("memory"), 0x02, 0x00,
+      ...wasmStringBytes("_start"), 0x00, ...unsignedI32(importCount),
+    ]),
+    wasmSection(10, [0x01, ...wasmVector([0x00, ...body])]),
+  ];
+  if (data.length) sections.push(wasmSection(11, [0x01, 0x00, 0x41, 0x00, 0x0b, ...unsignedI32(data.length), ...data]));
+  return new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, ...sections.flat()]);
+}
+
+function wasmTypeBytes(type) {
+  return [0x60, type.params.length, ...type.params.map(wasmValueType), type.results.length, ...type.results.map(wasmValueType)];
+}
+
+function wasmValueType(value) {
+  if (value === "i32") return 0x7f;
+  throw new Error(`unsupported wasm value type: ${value}`);
+}
+
+function wasmSection(id, payload) {
+  return [id, ...unsignedI32(payload.length), ...payload];
+}
+
+function wasmVector(payload) {
+  return [...unsignedI32(payload.length), ...payload];
+}
+
+function wasmStringBytes(value) {
+  const encoded = encodeText(value);
+  return [...unsignedI32(encoded.length), ...encoded];
+}
+
+function encodeText(value) {
+  return new TextEncoder().encode(String(value));
+}
+
+function unsignedI32(value) {
+  const out = [];
+  let cursor = Number(value >>> 0);
+  do {
+    let byte = cursor & 0x7f;
+    cursor >>>= 7;
+    if (cursor) byte |= 0x80;
+    out.push(byte);
+  } while (cursor);
+  return out;
+}
+
+function signedI32(value) {
+  const out = [];
+  let cursor = Number(value | 0);
+  let more = true;
+  while (more) {
+    let byte = cursor & 0x7f;
+    cursor >>= 7;
+    const signBit = byte & 0x40;
+    more = !((cursor === 0 && signBit === 0) || (cursor === -1 && signBit !== 0));
+    if (more) byte |= 0x80;
+    out.push(byte);
+  }
+  return out;
 }
 
 function countedFetch(fetcher) {
