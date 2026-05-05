@@ -897,6 +897,263 @@ Completion criteria:
 
 - A developer can create and ship a small DindbOS app from inside DindbOS itself.
 
+### Native-Like 13: Window Server, Compositor, And Input Router
+
+Status: Later.
+
+Goal: make windows, input, focus, accessibility, and rendering behave like OS services instead of app-local DOM conventions.
+
+Why it matters:
+
+- Native OSes have a window server or compositor that owns focus, input routing, surfaces, z-order, capture, and accessibility metadata.
+- DindbOS already has a window manager, but apps still mostly render directly into DOM containers.
+- A stronger compositor boundary lets apps be isolated, suspended, captured, resized, and inspected without relying on private app internals.
+
+Implementation tasks:
+
+- Define a compositor service that owns app surfaces, focus, z-order, modal state, capture state, and input routing.
+- Add a surface API for DOM-backed, canvas-backed, and worker-rendered windows.
+- Add optional `OffscreenCanvas` worker rendering for graphics-heavy apps where browser support allows it.
+- Add input routing for pointer, keyboard, IME composition, drag/drop, clipboard, shortcuts, and pointer lock through one broker.
+- Add app-declared shortcut scopes so global OS shortcuts, focused-app shortcuts, and text-entry shortcuts do not conflict.
+- Add screenshot/capture APIs for app windows and full desktop surfaces with user-visible permission checks.
+- Add accessibility metadata per window and control, exposed through a runtime tree that apps can update without direct access to other apps.
+- Add compositor diagnostics under `/proc/compositor`, including focused pid, capture owner, surface size, paint mode, and last input event.
+
+Verification:
+
+- Add smoke coverage for focus transfer, shortcut precedence, pointer capture release on crash, IME event delivery, drag/drop routing, and surface cleanup.
+- Add tests proving a crashed or suspended app cannot retain global input capture.
+- Add screenshot/capture tests for allowed own-window capture and denied cross-app capture.
+
+Completion criteria:
+
+- Apps render through a stable surface contract and receive input through the OS router.
+- Focus, capture, and shortcuts remain coherent when apps crash, suspend, or move between worker and DOM rendering.
+
+### Native-Like 14: Mountable Filesystem Drivers
+
+Status: Later.
+
+Goal: make the VFS support multiple filesystem backends through a mount table and driver interface.
+
+Why it matters:
+
+- Native OS filesystems are not one tree implementation. They mount different backends with different durability, metadata, and policy.
+- DindbOS already has VFS, `/proc`, `/dev`, local mounts, cache volumes, and package directories, but the boundaries should become formal mount drivers.
+- A mount driver layer makes zip files, package images, remote shares, snapshots, and generated pseudo-files behave consistently.
+
+Implementation tasks:
+
+- Add a mount table with mount id, root path, driver type, readonly flag, owner, durability, quota policy, and capability requirements.
+- Split VFS behavior into drivers such as `memfs`, `opfsfs`, `cachefs`, `procfs`, `devfs`, `pkgfs`, `zipfs`, `localfs`, and future `netfs`.
+- Add mount and unmount syscalls plus shell commands with explicit permission checks.
+- Add overlay mounts for package development, safe mode, and staged updates.
+- Add readonly package image mounts so installed packages can be verified and mounted before activation.
+- Add driver-level metadata normalization so stat, lstat, symlink, hard-link-like aliases, timestamps, and errors are stable across drivers where possible.
+- Add `/proc/mounts` and `mount`/`df` diagnostics that show driver, durability, used bytes, quota, and browser support limitations.
+
+Verification:
+
+- Add smoke coverage for mount/unmount, readonly denial, overlay precedence, package image mount, zip mount listing, `/proc/mounts`, and driver error normalization.
+- Add cross-driver tests proving shell, app APIs, NodeCompat, and WASI see the same path behavior for mounted trees.
+
+Completion criteria:
+
+- New storage backends can be added as filesystem drivers instead of special cases in app code.
+- Mounted filesystems are visible, permissioned, testable, and removable through OS APIs.
+
+### Native-Like 15: Package Namespaces And Container-Like Sandboxes
+
+Status: Later.
+
+Goal: isolate package roots, dependencies, writable state, network grants, devices, and child processes with namespace-like runtime policy.
+
+Why it matters:
+
+- Native OSes and modern app platforms isolate applications with namespaces, sandboxes, containers, jails, or profiles.
+- DindbOS has package permissions and filesystem scopes, but package execution should eventually have a clearer root, dependency, and resource namespace.
+- This would let stronger apps run without giving them broad access to shared runtime internals.
+
+Implementation tasks:
+
+- Add package namespaces with package root, writable state root, cache root, temp root, process group, IPC endpoints, device grants, and network grants.
+- Add namespace inheritance for child processes, WASM programs, NodeCompat commands, workers, and service units launched by a package.
+- Add per-package dependency views so NodeCompat and SDK resolution cannot read undeclared dependency trees by default.
+- Add namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics.
+- Add a package sandbox manifest section for root policy, state policy, cache policy, device access, network hosts, IPC endpoints, and child-process limits.
+- Add namespace cleanup for package uninstall, cache eviction, app state removal, temporary files, child processes, descriptors, and IPC endpoints.
+- Add developer tooling that can run a package in strict namespace mode before publishing.
+
+Verification:
+
+- Add smoke coverage for package root isolation, denied undeclared dependency read, child namespace inheritance, namespace cleanup on uninstall, and denied cross-package IPC.
+- Add tests proving namespace restrictions apply identically to GUI apps, CLI apps, WASM entries, NodeCompat tools, and background services.
+
+Completion criteria:
+
+- A package can be installed, launched, updated, and removed with its runtime namespace fully inspectable and cleanly disposable.
+- Package code cannot escape into another package's root, state, dependencies, IPC, devices, or network grants without explicit policy.
+
+### Native-Like 16: Credential, Keychain, And Secret Service
+
+Status: Later.
+
+Goal: provide a browser-native keychain for app secrets, tokens, signing keys, passkeys, and companion pairing credentials.
+
+Why it matters:
+
+- Native OSes provide credential stores so apps do not keep secrets in plain files.
+- DindbOS will need secrets for package signing, registry auth, companion pairing, remote sync, encrypted volumes, and developer publishing.
+- Browser APIs make this possible through WebCrypto, IndexedDB/OPFS storage, WebAuthn/passkeys, and user-mediated prompts.
+
+Implementation tasks:
+
+- Add a keychain service with per-user vaults, app-scoped secrets, access prompts, unlock state, audit records, and revocation.
+- Use WebCrypto for key wrapping, signing, verification, random generation, and optional encrypted secret blobs.
+- Add passkey/WebAuthn-backed unlock or reauthentication flows where supported, with password-derived fallback clearly marked as weaker.
+- Add secret references in package manifests so apps ask for named credentials instead of reading raw files.
+- Add signing key management for package authors, trusted publisher records, repository credentials, and companion pairing keys.
+- Add `keychain` shell commands for list, get, set, delete, lock, unlock, grant, revoke, and audit.
+- Add Settings UI for active grants, denied requests, stale credentials, and export/recovery warnings.
+
+Verification:
+
+- Add smoke coverage for app-scoped secret denial, temporary grant expiry, vault lock/unlock, package signing key lookup, revoked access, and audit log creation.
+- Add tests proving secrets are never exposed through ordinary VFS reads or package export unless explicitly exported by the keychain service.
+
+Completion criteria:
+
+- Apps can use credentials through a revocable OS service without persisting tokens in ordinary app files.
+- Package signing, companion pairing, and encrypted storage can share one auditable secret boundary.
+
+### Native-Like 17: Power, Lifecycle, And Page-Survival Policy
+
+Status: Later.
+
+Goal: model suspend, resume, shutdown, page visibility, background throttling, and recovery as OS lifecycle states.
+
+Why it matters:
+
+- Native OSes have power states and shutdown semantics. Browsers have page visibility, unload, storage persistence, background throttling, and service worker limits.
+- DindbOS should make those constraints explicit so services and apps do not pretend they can run forever after the tab closes.
+- A lifecycle policy lets work save state before suspension and recover predictably after reload.
+
+Implementation tasks:
+
+- Add OS lifecycle states: booting, active, idle, suspending, suspended, resuming, shutting-down, crashed, and recovered.
+- Add per-process lifecycle callbacks for prepare-suspend, suspend, resume, prepare-shutdown, and recovery inspection.
+- Add browser event integration for `visibilitychange`, `pagehide`, `pageshow`, storage persistence prompts, and unload-safe flush windows.
+- Add service policies for foreground-only, visible-tab-only, resumable, scheduled-when-visible, and companion-required work.
+- Add recovery records under `/var/run/dindbos/recovery` for dirty shutdown, pending writes, suspended services, and killed workers.
+- Add user-facing diagnostics explaining which background tasks cannot continue when the browser page closes.
+- Add optional service worker or periodic background sync integration only for browser-supported, permissioned, limited maintenance tasks.
+
+Verification:
+
+- Add smoke coverage for visibility suspend/resume, dirty shutdown recovery, pending-write flush, service degradation after pagehide, and recovery diagnostics after reload.
+- Add tests proving unsupported background persistence is reported as unsupported instead of silently promised.
+
+Completion criteria:
+
+- Apps and services can persist state, release resources, and recover from browser lifecycle interruptions through a common OS policy.
+- DindbOS clearly distinguishes active-tab behavior from closed-page impossibilities.
+
+### Native-Like 18: Multi-Tab, Multi-Device, And Remote Session Coordination
+
+Status: Later.
+
+Goal: make multiple browser contexts coordinate like sessions of the same OS installation.
+
+Why it matters:
+
+- Users may open DindbOS in multiple tabs, windows, profiles, or devices.
+- Native OSes coordinate shared disks, sessions, locks, and remote access. Browser-native DindbOS can approximate this with BroadcastChannel, SharedWorker, storage locks, WebRTC, and sync backends.
+- Coordination prevents two runtimes from corrupting the same VFS or presenting conflicting package/process state.
+
+Implementation tasks:
+
+- Add a runtime instance id, session lock, primary/secondary election, and stale-lock recovery for tabs sharing one browser profile.
+- Use BroadcastChannel or SharedWorker where available for local-tab coordination of file changes, package installs, app state, and storage flushes.
+- Add conflict policy for two active sessions modifying the same VFS paths or package DB records.
+- Add optional remote sync backend for encrypted snapshots, package cache indexes, settings, and selected user files.
+- Add remote desktop/session handoff protocol for viewing or controlling a running DindbOS instance from another tab or device.
+- Add `/proc/sessions` and Settings diagnostics for active tabs, lock owner, sync status, conflict queue, and last successful snapshot.
+- Add offline-first merge rules for user documents, app state, package metadata, and search indexes.
+
+Verification:
+
+- Add smoke coverage for primary election, secondary readonly fallback, stale lock recovery, cross-tab file event delivery, conflict detection, and reload-safe session recovery.
+- Add tests proving package install/update cannot run concurrently from two primary runtimes against the same storage root.
+
+Completion criteria:
+
+- Multiple tabs do not corrupt shared runtime state.
+- Remote or synced sessions are explicit, conflict-aware, and recoverable.
+
+### Native-Like 19: Portable System Images And Boot Profiles
+
+Status: Later.
+
+Goal: let users export, import, boot, repair, and clone DindbOS installations as portable system images.
+
+Why it matters:
+
+- Native operating systems have disk images, recovery images, user backups, and boot profiles.
+- DindbOS can expose the same concept through signed or checksummed VFS snapshots, package indexes, settings, and optional encrypted user data.
+- Portable images make testing, demos, recovery, and migration much more OS-like than ad hoc JSON exports.
+
+Implementation tasks:
+
+- Define a DindbOS image format containing VFS snapshot, package DB, mount table, users/groups, settings, service units, compatibility tier, and migration metadata.
+- Add image signing/checksum verification and explicit trust state before import.
+- Add boot profiles: normal, safe mode, clean guest, demo image, repair image, and developer image.
+- Add image import with dry-run validation for schema version, package compatibility, quota requirements, missing companions, and incompatible browser capabilities.
+- Add image export with options for full system, user home only, package cache excluded, encrypted, or public demo.
+- Add rollback boot from the last known good image after failed migration or failed staged update.
+- Add `image` shell commands for list, inspect, export, import, verify, boot, clone, and repair.
+
+Verification:
+
+- Add smoke coverage for image export/import round trip, checksum failure, safe-mode boot, repair-mode boot, quota refusal before import, and rollback after migration failure.
+- Add tests proving private keychain material is excluded or encrypted according to export policy.
+
+Completion criteria:
+
+- A DindbOS installation can be moved, cloned, tested, or recovered as an explicit system image with verifiable integrity.
+
+### Native-Like 20: Compatibility Virtualization And Emulation Tier
+
+Status: Later.
+
+Goal: support selected legacy or foreign workloads through explicit emulation or compatibility layers where browser performance allows it.
+
+Why it matters:
+
+- Native OSes often run older software through compatibility subsystems, emulators, or virtual machines.
+- Browser-native DindbOS should not pretend to run arbitrary native binaries directly, but it can host interpreters, WASM-compiled runtimes, CPU emulators, and compatibility shims for carefully scoped workloads.
+- This tier is useful for education, demos, old CLI tools, and portable userlands that accept slower execution.
+
+Implementation tasks:
+
+- Define a Tier F compatibility class for emulated or interpreted workloads with explicit performance and capability warnings.
+- Add runtime support for emulator processes that expose virtual disks, virtual serial/TTY, virtual network adapters, and controlled file exchange.
+- Explore WASM-hosted interpreters and emulators such as Lua, Python subsets, QuickJS, RISC-V user-mode experiments, or tiny teaching OS images.
+- Add import/export boundaries between emulated filesystems and DindbOS VFS with permission checks.
+- Add resource caps for emulator CPU time, memory, output, virtual disk size, and network access.
+- Add compatibility manifests that declare architecture/runtime, expected syscalls, virtual devices, disk image requirements, and unsupported host features.
+- Add developer docs that distinguish DindbOS-native packages, WASI packages, NodeCompat packages, and emulated workloads.
+
+Verification:
+
+- Add smoke coverage for launching a tiny interpreted or emulated CLI workload, virtual disk mount/import/export, resource-limit kill, denied host file access, and explicit unsupported feature reporting.
+- Add performance budget tests so emulation failures are reported as unsupported or too slow instead of freezing the desktop.
+
+Completion criteria:
+
+- Emulated workloads are visibly separate from native DindbOS apps and cannot escape their virtual devices or resource caps.
+- Compatibility claims are honest: supported, degraded, too slow, companion-required, or impossible.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
@@ -917,7 +1174,7 @@ The next practical sequence:
 3. Add WASM user processes on top of the syscall ABI with VFS, argv/env, stdio, permissions, and `/proc` visibility.
 4. Move heavy NodeCompat/WASM execution into worker-backed process executors with kill, timeout, crash, and descriptor cleanup behavior.
 5. Expand descriptor-backed IO from transient shell pipe descriptors into per-command process groups, pseudo-terminals, richer device nodes, and WASI rights/flags.
-6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, and native-adjacent companions only after the syscall/WASM/worker/descriptor base is verifiable.
+6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, native-adjacent companions, and the hard native-like backlog: compositor/input server, mountable filesystem drivers, package namespaces, keychain, lifecycle policy, session coordination, portable system images, and explicit emulation tiers.
 7. Continue Browser.app, document viewer, package, and UX work only when real workloads expose gaps in the already completed first-pass surfaces.
 
 ## 0. Immediate Carry-Over Work
