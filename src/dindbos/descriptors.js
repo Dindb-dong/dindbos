@@ -111,8 +111,10 @@ export class DescriptorManager {
     else if (descriptor.kind === "device") data = this.readDeviceDescriptor(process, descriptor, length);
     else if (descriptor.kind === "pipe") data = readPipeDescriptor(descriptor, length);
     else throw descriptorError("EINVAL", `fd.read: ${descriptor.fd}: unsupported descriptor kind`);
+    const readBytes = Number.isFinite(descriptor.readBytes) ? descriptor.readBytes : byteLength(data);
+    delete descriptor.readBytes;
     this.writeProcfs(process.pid);
-    return { fd: descriptor.fd, data, bytes: byteLength(data), offset: descriptor.offset || 0, eof: data.length < length };
+    return { fd: descriptor.fd, data, bytes: readBytes, offset: descriptor.offset || 0, eof: data.length < length };
   }
 
   write(process, args = {}, context = {}) {
@@ -283,17 +285,24 @@ export class DescriptorManager {
   readDeviceDescriptor(process, descriptor, length) {
     if (descriptor.path === "/dev/tty") {
       const stdin = this.descriptorFor(process.pid, STDIN_FD);
-      return readBufferedDescriptor(stdin, length);
+      const data = readBufferedDescriptor(stdin, length);
+      descriptor.readBytes = byteLength(data);
+      return data;
     }
-    if (descriptor.path === "/dev/zero") return "\0".repeat(length);
+    if (descriptor.path === "/dev/zero") {
+      descriptor.readBytes = length;
+      return "\0".repeat(length);
+    }
     if (descriptor.path === "/dev/random" || descriptor.path === "/dev/urandom") {
       const bytes = new Uint8Array(length);
       if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
       else {
         for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
       }
+      descriptor.readBytes = bytes.length;
       return new TextDecoder("latin1").decode(bytes);
     }
+    descriptor.readBytes = 0;
     return "";
   }
 

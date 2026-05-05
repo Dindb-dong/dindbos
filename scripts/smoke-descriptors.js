@@ -68,12 +68,17 @@ assert(result.ok && result.value.bytes === 9, `fd.write /dev/null mismatch: ${JS
 result = os.syscall("fd.open", { path: "/dev/zero", flags: "r" }, context);
 assert(result.ok, `fd.open /dev/zero mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: result.value.fd, length: 4 }, context);
-assert(result.ok && result.value.data === "\0\0\0\0", `fd.read /dev/zero mismatch: ${JSON.stringify(result)}`);
+assert(result.ok && result.value.data === "\0\0\0\0" && result.value.bytes === 4, `fd.read /dev/zero mismatch: ${JSON.stringify(result)}`);
+
+result = os.syscall("fd.open", { path: "/dev/random", flags: "r" }, context);
+assert(result.ok, `fd.open /dev/random mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.read", { fd: result.value.fd, length: 8 }, context);
+assert(result.ok && result.value.data.length === 8 && result.value.bytes === 8, `fd.read /dev/random byte count mismatch: ${JSON.stringify(result)}`);
 
 result = os.syscall("fd.open", { path: "/dev/urandom", flags: "r" }, context);
 assert(result.ok, `fd.open /dev/urandom mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: result.value.fd, length: 8 }, context);
-assert(result.ok && result.value.data.length === 8, `fd.read /dev/urandom mismatch: ${JSON.stringify(result)}`);
+assert(result.ok && result.value.data.length === 8 && result.value.bytes === 8, `fd.read /dev/urandom mismatch: ${JSON.stringify(result)}`);
 
 result = os.syscall("fd.open", { path: "/dev/tty", flags: "r+" }, context);
 assert(result.ok, `fd.open /dev/tty mismatch: ${JSON.stringify(result)}`);
