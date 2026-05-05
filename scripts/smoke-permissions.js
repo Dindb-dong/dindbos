@@ -67,9 +67,12 @@ syscallResult = sandbox.syscall("storage.status", {});
 assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied storage mismatch: ${JSON.stringify(syscallResult)}`);
 syscallResult = sandbox.syscall("mount.mount", { path: "/mnt/sandbox", driver: "memfs" });
 assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied mount mismatch: ${JSON.stringify(syscallResult)}`);
+const appStateAtomicEvents = [];
+os.fs.onChange = (event) => appStateAtomicEvents.push(event);
 sandbox.state.set("prefs", { theme: "dark", count: 1 });
 assert(sandbox.state.path() === "/var/lib/dindbos/app-state/guest/limited.json", "app state path was not namespaced by user and app id");
 assert(sandbox.state.get("prefs").theme === "dark", "app state did not read back its own value");
+assert(appStateAtomicEvents.some((event) => event.action === "atomic-create" && event.path === sandbox.state.path()), "app state did not atomically create its record");
 assert(sandbox.state.keys().includes("prefs"), "app state keys did not include saved key");
 const sameAppSandbox = new AppSandbox(os, { ...process, pid: 101 });
 assert(sameAppSandbox.state.get("prefs").count === 1, "app state did not persist across same-app sandbox instances");
@@ -80,6 +83,7 @@ assert(otherUserSandbox.state.path() === "/var/lib/dindbos/app-state/ada-lovelac
 assert(otherUserSandbox.state.get("prefs", "missing") === "missing", "app state leaked across users");
 assert(sandbox.state.remove("prefs") === true, "app state remove did not report existing key");
 assert(!sandbox.state.keys().includes("prefs"), "app state key remained after remove");
+assert(appStateAtomicEvents.some((event) => event.action === "atomic-replace" && event.path === sandbox.state.path()), "app state did not atomically replace its record");
 const broadSandbox = new AppSandbox(os, {
   ...process,
   pid: 103,
