@@ -427,7 +427,8 @@ Implementation tasks:
 - Already present: app sandbox state is separated by user and app id under `/var/lib/dindbos/app-state/<user>/<app>.json`, and package uninstall removes per-user app state records for the removed app.
 - Already present: shell command history is persisted per user under `/var/lib/dindbos/shell-history/<user>.json`, reloads into new shell sessions, and switches with `loginctl switch`.
 - Already present: package preferences are persisted per user under `/var/lib/dindbos/package-preferences/<user>.json` and are exposed through shell `pkg prefs`.
-- Add per-user cache and desktop layout.
+- Already present: window placement layout is persisted per user under `/var/lib/dindbos/window-placements/<user>.json`, restored by Window Manager, and isolated across session users.
+- Add per-user cache.
 - Already present: package trust changes through `pkg trust add/remove` require an administrator principal.
 - Already present: package trust allow/deny decisions are recorded in `/var/log/dindbos/security-audit.log`.
 - Add administrator-only operations for system settings and companion permissions.
@@ -440,6 +441,7 @@ Verification:
 - Already present: `npm run smoke:sessions` verifies per-user package preference persistence and no package preference leakage across `loginctl switch`.
 - Already present: `npm run smoke:permissions` verifies app state does not leak across users for the same app id, and `npm run smoke:packages` verifies package uninstall cleans the app's per-user state record.
 - Already present: `npm run smoke:sessions` and `npm run smoke:shell` verify non-admin package trust mutation denial, admin package trust mutation allowance, and security audit logging for both decisions.
+- Already present: `npm run smoke:window-manager` verifies per-user window placement persistence and no layout leakage across session users.
 
 Completion criteria:
 
@@ -3874,7 +3876,7 @@ Already present:
 - Viewport resize constraints keep windows reachable, covered by `npm run smoke:window-manager`.
 - Singleton and non-singleton launch behavior is covered by `npm run smoke:app-registry`.
 - Edge snap zones, Alt-Tab focus cycling, z-index focus promotion, active class toggling, and Ctrl/Meta keyboard shortcuts for minimize/close are covered by `npm run smoke:window-manager`.
-- Window placements persist under `/var/lib/dindbos/window-placements.json` and are clamped into the current viewport when restored; `npm run smoke:window-manager` verifies persistence and restore behavior.
+- Window placements persist under `/var/lib/dindbos/window-placements/<user>.json` and are clamped into the current viewport when restored; `npm run smoke:window-manager` verifies persistence, restore behavior, and per-user layout isolation.
 - Mobile viewport policy starts windows as a single reachable maximized panel instead of restoring cramped desktop coordinates; `npm run smoke:window-manager` verifies mobile viewport detection and placement.
 - Minimize uses a stable delayed-hide animation state instead of immediately removing the window from layout; `npm run smoke:window-manager` verifies the animation state, delayed hide, and focus restore behavior.
 
