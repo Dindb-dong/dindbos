@@ -109,11 +109,24 @@ assert(!result.ok && result.error.code === "EINVAL", `fd.sync /dev/null did not 
 
 result = os.syscall("fd.open", { path: "/dev/zero", flags: "r" }, context);
 assert(result.ok, `fd.open /dev/zero mismatch: ${JSON.stringify(result)}`);
-result = os.syscall("fd.read", { fd: result.value.fd, length: 4 }, context);
+const zeroFd = result.value.fd;
+const zeroDeviceObjectId = result.value.deviceObjectId;
+const zeroDeviceHandleId = result.value.deviceHandleId;
+assert(os.objects.get(zeroDeviceObjectId)?.type === "device", "/dev/zero device object was not registered");
+assert(os.objects.getHandle(zeroDeviceHandleId)?.rights.includes("read"), "/dev/zero device handle missing read right");
+result = os.syscall("fd.read", { fd: zeroFd, length: 4 }, context);
 assert(result.ok && result.value.data === "\0\0\0\0" && result.value.bytes === 4, `fd.read /dev/zero mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.close", { fd: zeroFd }, context);
+assert(result.ok && os.objects.get(zeroDeviceObjectId)?.status === "revoked", "/dev/zero close did not revoke device object");
 
 result = os.syscall("fd.open", { path: "/dev/random", flags: "r" }, context);
 assert(result.ok, `fd.open /dev/random mismatch: ${JSON.stringify(result)}`);
+const randomStaleFd = result.value.fd;
+os.objects.revokeHandle(result.value.deviceHandleId, "device-handle-smoke");
+result = os.syscall("fd.read", { fd: randomStaleFd, length: 1 }, context);
+assert(!result.ok && result.error.code === "ESTALE", `stale device handle did not return ESTALE: ${JSON.stringify(result)}`);
+result = os.syscall("fd.open", { path: "/dev/random", flags: "r" }, context);
+assert(result.ok, `fd.open /dev/random after stale mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: result.value.fd, length: 8 }, context);
 assert(result.ok && result.value.data.length === 8 && result.value.bytes === 8, `fd.read /dev/random byte count mismatch: ${JSON.stringify(result)}`);
 

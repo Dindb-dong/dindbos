@@ -132,7 +132,10 @@ export class DescriptorManager {
     let data = "";
     if (descriptor.kind === "file") data = this.readFileDescriptor(descriptor, length);
     else if (descriptor.kind === "stream") data = readBufferedDescriptor(descriptor, length);
-    else if (descriptor.kind === "device") data = this.readDeviceDescriptor(process, descriptor, length);
+    else if (descriptor.kind === "device") {
+      this.assertDeviceHandle(process, descriptor, ["read"]);
+      data = this.readDeviceDescriptor(process, descriptor, length);
+    }
     else if (descriptor.kind === "pipe") data = readPipeDescriptor(descriptor, length);
     else throw descriptorError("EINVAL", `fd.read: ${descriptor.fd}: unsupported descriptor kind`);
     const readBytes = Number.isFinite(descriptor.readBytes) ? descriptor.readBytes : byteLength(data);
@@ -155,7 +158,10 @@ export class DescriptorManager {
       descriptor.offset = byteLength(descriptor.buffer);
       writePtyOutput(this.os, descriptor, data);
       bytes = byteLength(data);
-    } else if (descriptor.kind === "device") bytes = this.writeDeviceDescriptor(process, descriptor, data);
+    } else if (descriptor.kind === "device") {
+      this.assertDeviceHandle(process, descriptor, ["write"]);
+      bytes = this.writeDeviceDescriptor(process, descriptor, data);
+    }
     else if (descriptor.kind === "pipe") {
       descriptor.pipe.buffer = `${descriptor.pipe.buffer || ""}${data}`;
       descriptor.offset = byteLength(descriptor.pipe.buffer);
@@ -230,6 +236,7 @@ export class DescriptorManager {
     if (!request) throw descriptorError("EINVAL", `fd.ioctl: ${descriptor.fd}: request is required`);
     if (!isTtyDescriptor(descriptor)) throw descriptorError("ENOTTY", `fd.ioctl: ${descriptor.fd}: descriptor is not a tty`);
     this.assertDescriptorHandle(process, descriptor, ["ioctl"]);
+    if (descriptor.kind === "device") this.assertDeviceHandle(process, descriptor, ["ioctl"]);
     if (request === "tty.getWindowSize") {
       return {
         fd: descriptor.fd,
@@ -319,6 +326,7 @@ export class DescriptorManager {
       metadata: descriptorHandleMetadata(descriptor),
     }) : null;
     descriptor.handleId = handle?.id || "";
+    this.registerDeviceKernelObject(process, descriptor);
     return object;
   }
 
@@ -335,12 +343,63 @@ export class DescriptorManager {
         metadata: descriptorHandleMetadata(descriptor),
       });
     }
+    this.syncDeviceKernelObject(process, descriptor);
     return object;
   }
 
   revokeDescriptorObject(descriptor, reason = "fd-close") {
+    this.revokeDeviceKernelObject(descriptor, reason);
     if (!descriptor?.objectId) return null;
     return this.os.objects?.revoke?.(descriptor.objectId, reason) || null;
+  }
+
+  registerDeviceKernelObject(process, descriptor) {
+    if (!process || descriptor?.kind !== "device" || descriptor.deviceObjectId) return null;
+    const object = this.os.objects?.register?.("device", {
+      ref: `device:${descriptor.path}:pid:${process.pid}:fd:${descriptor.fd}`,
+      name: descriptor.path,
+      ownerPid: process.pid,
+      namespace: process.manifest?.namespace || null,
+      user: process.user || this.os.session?.user || "",
+      rights: deviceRightsList(descriptor),
+      metadata: deviceObjectMetadata(descriptor),
+    }) || null;
+    descriptor.deviceObjectId = object?.id || "";
+    const handle = descriptor.deviceObjectId ? this.os.objects?.createHandle?.(descriptor.deviceObjectId, {
+      ownerPid: process.pid,
+      user: process.user || this.os.session?.user || "",
+      uid: process.uid || 0,
+      gid: process.gid || 0,
+      groups: process.groups || [],
+      namespace: process.manifest?.namespace || null,
+      rights: deviceRightsList(descriptor),
+      closeOnExec: true,
+      transferPolicy: "no-duplicate",
+      metadata: deviceHandleMetadata(descriptor),
+    }) : null;
+    descriptor.deviceHandleId = handle?.id || "";
+    return object;
+  }
+
+  syncDeviceKernelObject(process, descriptor) {
+    if (descriptor?.kind !== "device" || !descriptor.deviceObjectId) return null;
+    const object = this.os.objects?.update?.(descriptor.deviceObjectId, {
+      name: descriptor.path,
+      rights: deviceRightsList(descriptor),
+      metadata: deviceObjectMetadata(descriptor),
+    }) || null;
+    if (descriptor.deviceHandleId) {
+      this.os.objects?.updateHandle?.(descriptor.deviceHandleId, {
+        rights: deviceRightsList(descriptor),
+        metadata: deviceHandleMetadata(descriptor),
+      });
+    }
+    return object;
+  }
+
+  revokeDeviceKernelObject(descriptor, reason = "fd-close") {
+    if (descriptor?.kind !== "device" || !descriptor.deviceObjectId) return null;
+    return this.os.objects?.revoke?.(descriptor.deviceObjectId, reason) || null;
   }
 
   processFor(pid) {
@@ -353,6 +412,19 @@ export class DescriptorManager {
       return this.os.objects?.assertHandle?.(descriptor.handleId, {
         ownerPid: process.pid,
         objectType: "descriptor",
+        rights,
+      }) || null;
+    } catch (error) {
+      throw descriptorError(error.code || "EACCES", error.message);
+    }
+  }
+
+  assertDeviceHandle(process, descriptor, rights = []) {
+    if (descriptor?.kind !== "device" || !descriptor.deviceHandleId) return null;
+    try {
+      return this.os.objects?.assertHandle?.(descriptor.deviceHandleId, {
+        ownerPid: process.pid,
+        objectType: "device",
         rights,
       }) || null;
     } catch (error) {
@@ -552,6 +624,8 @@ function publicDescriptor(descriptor) {
     fd: descriptor.fd,
     objectId: descriptor.objectId || "",
     handleId: descriptor.handleId || "",
+    deviceObjectId: descriptor.deviceObjectId || "",
+    deviceHandleId: descriptor.deviceHandleId || "",
     kind: descriptor.kind,
     path: descriptor.path,
     name: descriptor.name || "",
@@ -611,6 +685,39 @@ function descriptorHandleMetadata(descriptor) {
     offset: Number(descriptor.offset || 0),
     objectId: descriptor.objectId || "",
     preopen: Boolean(descriptor.preopen),
+  };
+}
+
+function deviceRightsList(descriptor) {
+  return [
+    "open",
+    descriptorRightsAllow(descriptor, "read") ? "read" : "",
+    descriptorRightsAllow(descriptor, "write") ? "write" : "",
+    isTtyDescriptor(descriptor) ? "ioctl" : "",
+    "stat",
+    descriptor.fd >= 3 && !descriptor.preopen ? "close" : "",
+  ].filter(Boolean);
+}
+
+function deviceObjectMetadata(descriptor) {
+  return {
+    fd: descriptor.fd,
+    path: descriptor.path,
+    readable: Boolean(descriptor.readable),
+    writable: Boolean(descriptor.writable),
+    offset: Number(descriptor.offset || 0),
+    flags: descriptor.flags || "",
+    tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
+    descriptorObjectId: descriptor.objectId || "",
+  };
+}
+
+function deviceHandleMetadata(descriptor) {
+  return {
+    fd: descriptor.fd,
+    path: descriptor.path,
+    descriptorHandleId: descriptor.handleId || "",
+    descriptorObjectId: descriptor.objectId || "",
   };
 }
 
