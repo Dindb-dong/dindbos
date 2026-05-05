@@ -286,8 +286,11 @@ Implementation cuts:
 - Already present: companion permissions are registered as `companion-session` kernel objects with root session handles; approved companion checks validate protocol, capability, and active handle state, and stale or revoked companion handles deny access.
 - Already present: descriptor-backed VFS files are additionally registered as `file` kernel objects with direct file handles; file read/write/seek/stat/sync validate active file handles and fd close/process cleanup revokes the backing file object.
 - Already present: `/dev/*` opens are additionally registered as `device` kernel objects with device handles; device read/write/ioctl validate active device handles and fd close/process cleanup revokes the backing device object.
-- Continue defining kernel object ids beyond processes, descriptors, files, devices, windows, IPC endpoints, keychain grants, mounts, services, sockets, package namespaces, and companion sessions for timers and future storage transactions.
-- Route additional high-value APIs through handles first: timer handles, trusted prompt handles, storage transaction handles, and broader app/container handles.
+- Already present: runtime timers are registered as `timer` kernel objects with process-owned handles; `timer.sleep`, `timer.create`, and `timer.cancel` validate timer handles, expose `/proc/timers`, and process cleanup cancels owned timers.
+- Already present: persistence flushes are registered as `storage-transaction` kernel objects with root transaction handles; commit/failure validates transaction handles, revokes the object, and exposes `/proc/storage-transactions`.
+- Already present: trusted prompt records are registered as `trusted-prompt` kernel objects with requester and root control handles; prompt decisions validate the control handle, audit `/var/log/dindbos/trusted-ui.log`, expose `/proc/trusted-ui`, and revoke on grant/deny/timeout/process cleanup.
+- Continue defining kernel object ids beyond processes, descriptors, files, devices, windows, IPC endpoints, keychain grants, mounts, services, sockets, package namespaces, companion sessions, timers, storage transactions, and trusted prompts for app containers and future memory regions.
+- Route additional high-value APIs through handles first: broader app/container handles, memory-region handles, readiness watcher handles, and event queue handles.
 - Add process-exit, process-crash, logout, session-lock, package-uninstall, permission-revoke, and companion-disconnect cleanup that revokes owned handles.
 - Expose Activity Monitor resource views for `/proc/objects`, `/proc/handles`, `lsof`, and per-process handle tables.
 - Keep a compatibility shim while migrating high-level APIs so current apps do not break during the transition.
@@ -308,8 +311,11 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package namespace object/control handle ids, inherited process namespace handles, procfs handle visibility, and stale package namespace handle denial for dependency access.
 - Already present: `npm run smoke:sessions` verifies companion session object/handle ids, raw companion capability rights, stale companion-handle denial, regrant recovery, and revoke cleanup.
 - Already present: `npm run smoke:descriptors` verifies direct file object/handle ids, file metadata refresh, stale file-handle denial, file close revocation, device object/handle ids, stale device-handle denial, and device close revocation.
-- Add smoke coverage for duplicated handle cleanup across file, device, companion, and package namespace handles.
-- Add fuzz-style invalid handle tests for unknown id, wrong object type, double close, use-after-close, cross-user use, and package namespace escape.
+- Already present: `npm run smoke:timers` verifies timer object/handle ids, sleep wakeup, timer cancellation, stale timer-handle denial, `/proc/timers`, `timerctl`, and process-exit cleanup.
+- Already present: `npm run smoke:persistent-storage` verifies runtime storage transaction object/handle ids, commit revocation, `/proc/storage-transactions`, persistence status history, and `storage.transactions`.
+- Already present: `npm run smoke:trusted-ui` verifies trusted prompt object/control/requester handle ids, non-admin decision denial, admin grant, timeout cleanup, process-exit cleanup, `/proc/trusted-ui`, and trusted UI audit logs.
+- Already present: `npm run smoke:handle-boundaries` verifies unknown handle id, wrong object type, cross-process timer-handle denial, use-after-close, and stale storage/trusted-prompt handle denial.
+- Add smoke coverage for duplicated handle cleanup across file, device, companion, and package namespace handles plus package namespace escape.
 
 Completion criteria:
 
@@ -1661,18 +1667,21 @@ Why it matters:
 Implementation tasks:
 
 - Add a kernel event queue with typed events for timer, process, descriptor, pipe, device, network, storage, lifecycle, session, companion, and user-input interrupts.
-- Add monotonic timer handles, sleep syscalls, timeout syscalls, interval jobs, cancellation tokens, and ownership metadata.
+- Already present: first-pass timer handles support `timer.sleep`, `timer.create`, `timer.cancel`, ownership metadata, cancellation, process-exit cleanup, `/proc/timers`, and `timerctl` diagnostics.
+- Add interval jobs, cancellation-token composition, degraded hidden-tab timing reports, and event-queue delivery for timer wakeups.
 - Route existing page visibility, pagehide/pageshow, beforeunload, storage flush, service lifecycle, worker completion, descriptor readiness, and session BroadcastChannel events through the queue.
 - Add readiness notification for descriptors, pipes, virtual sockets, IPC endpoints, and pseudo-devices so processes do not poll private state.
 - Add priority and fairness rules for user-visible work, background services, maintenance tasks, and shutdown-critical flushes.
-- Add `/proc/interrupts`, `/proc/timers`, and `timerctl` or `events` shell diagnostics for active timers, pending events, dropped events, and last dispatch latency.
+- Already present: `/proc/timers` and `timerctl` expose active/fired/canceled timer diagnostics.
+- Add `/proc/interrupts` and `events` shell diagnostics for pending events, dropped events, and last dispatch latency.
 - Add event backpressure and event-drop policy so runaway publishers cannot freeze the desktop.
 - Expose app-facing and WASM-facing sleep/wakeup primitives through the syscall ABI.
 
 Verification:
 
-- Add smoke coverage for sleep/wakeup, timer cancellation, descriptor readiness wakeup, service lifecycle interrupt dispatch, dropped-event accounting, and shutdown-critical event priority.
-- Add tests proving a crashed process releases its timers and cannot keep receiving events.
+- Already present: `npm run smoke:timers` covers sleep/wakeup, timer cancellation, stale timer-handle denial, timer procfs diagnostics, and process cleanup of owned timers.
+- Add smoke coverage for descriptor readiness wakeup, service lifecycle interrupt dispatch, dropped-event accounting, and shutdown-critical event priority.
+- Add tests proving a crashed process cannot keep receiving non-timer events.
 - Add tests proving hidden-tab throttling is reported as degraded timing instead of pretending native timer precision exists.
 
 Completion criteria:
@@ -3190,15 +3199,18 @@ Implementation tasks:
 - Define trusted surface classes for login, lock/unlock, keychain unlock, permission grant, package install trust, companion pairing, remote admin approval, destructive file operations, update activation, and factory reset.
 - Add a compositor-owned trusted UI layer that ordinary apps cannot cover, embed, screenshot, spoof, or capture unless an explicit capture policy grants it.
 - Add a reserved secure-attention action, such as a command palette chord or trusted status strip action, that always moves focus to the OS-owned security surface.
-- Add trusted prompt records with prompt id, requester app id, pid, user, requested capability, target resource, policy source, timeout, decision, and audit digest.
+- Already present: first-pass trusted prompt records include prompt id, requester app id, pid, user, requested capability, target resource, timeout, decision state, kernel object/control/requester handles, procfs diagnostics, and trusted UI audit logs.
+- Add policy source, audit digest, denial cache metadata, and compositor surface provenance to trusted prompt records.
 - Add visual and programmatic provenance: every trusted prompt should expose OS issuer, requesting process, signed package identity where available, user scope, and whether a companion or remote admin is involved.
 - Add prompt throttling, coalescing, timeout, denial caching, and abuse detection so a package cannot spam security UI to trick the user.
-- Add `/proc/trusted-ui`, `/var/log/dindbos/trusted-ui.log`, `security prompt list`, `security prompt inspect`, and Settings security history.
+- Already present: `/proc/trusted-ui`, `/proc/trusted-ui.json`, and `/var/log/dindbos/trusted-ui.log` expose first-pass trusted prompt diagnostics and audit history.
+- Add `security prompt list`, `security prompt inspect`, and Settings security history.
 - Add rules that sensitive grants can only be created by the trusted UI service or managed policy, never by direct app state mutation.
 
 Verification:
 
-- Add smoke coverage for trusted prompt creation, user grant, user denial, timeout, requester attribution, prompt history, spoofed app dialog denial, and screenshot/capture policy around trusted surfaces.
+- Already present: `npm run smoke:trusted-ui` covers trusted prompt creation, requester/control handle attribution, non-admin spoofed decision denial, admin grant, timeout, prompt history through procfs/audit logs, and process cleanup.
+- Add smoke coverage for user denial, screenshot/capture policy around trusted surfaces, and compositor z-order protection.
 - Add tests proving package apps, sandboxed iframes, NodeCompat tools, WASM programs, services, and remote admin sessions cannot forge trusted prompt records.
 - Add browser interaction tests where feasible for focus trapping, reserved shortcut routing, and compositor z-order protection.
 
@@ -3508,8 +3520,9 @@ Implementation tasks:
 - Already present: keychain secret reads, mount read/write/sync calls, service control calls, and socket send/close calls validate active resource handles before reaching the underlying runtime service.
 - Already present: package namespaces, companion sessions, descriptor-backed files, and descriptor-backed device nodes now carry kernel object ids, handles, scoped rights, stale-handle denial, and close/revoke cleanup.
 - Already present: package dependency reads, companion approval checks, direct file IO, and `/dev/*` read/write/ioctl paths validate active handles before touching the backing runtime resource.
+- Already present: timers, storage transactions, and trusted prompts now carry kernel object ids, scoped handles, procfs diagnostics, stale-handle denial, and completion/timeout/process cleanup revocation.
 - Define kernel object types, ids, owners, lifetimes, refcounts, capabilities, namespace membership, and audit labels for remaining non-descriptor resources.
-- Add non-descriptor handles for timers, storage transactions, trusted prompts, app containers, and future memory regions.
+- Add non-descriptor handles for app containers, readiness watchers, event queues, and future memory regions.
 - Route app, shell, WASM, NodeCompat, service, and worker calls beyond descriptor/window/IPC/keychain/mount/service/socket paths through handle resolution instead of direct object references where practical.
 - Add handle inheritance rules for child processes, package namespaces, service processes, pipelines, app containers, and remote admin sessions.
 - Add weak reference behavior and broaden duplicate/close-on-exec/transfer handling beyond descriptor handles.
@@ -3524,8 +3537,9 @@ Verification:
 - Already present: window-manager, package, and shell smokes cover window handles, IPC endpoint handles, stale handle denial, close/process cleanup, procfs exports, and `lsof`.
 - Already present: keychain, local-mount, service, and network smokes cover grant, mount, service-control, and socket handles plus stale-handle denial and close/revoke cleanup.
 - Already present: package, session, and descriptor smokes cover inherited package namespace handles plus revoked package namespace, companion, file, and device behavior.
+- Already present: timer, persistent-storage, trusted-ui, and handle-boundary smokes cover timer handles, storage transaction handles, trusted prompt handles, wrong object type, cross-process ownership denial, stale handle denial, timeout cleanup, process cleanup, and procfs/audit diagnostics.
 - Add tests proving a sandboxed app cannot use an object id unless it owns a valid handle with the required capability.
-- Add fuzz-style tests for invalid handle ids, wrong object types, double close, duplicate close, and crash cleanup.
+- Extend fuzz-style tests for duplicate close, package namespace escape, object-id-only spoofing, and crash cleanup across all handle-backed resource classes.
 
 Completion criteria:
 
