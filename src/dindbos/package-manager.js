@@ -865,7 +865,7 @@ export class PackageManager {
   }
 
   writeRegistryConfig(registries) {
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       REGISTRY_CONFIG_PATH,
       `${JSON.stringify({ registries }, null, 2)}\n`,
       "/",
@@ -1010,7 +1010,7 @@ export class PackageManager {
       ? safeRead(() => this.os.fs.readFile(manifestPath, "/", this.system), "")
       : "";
     if (!currentManifest.includes(`"id": "${manifest.id}"`)) {
-      this.os.fs.writeOrCreateFile(
+      this.os.fs.atomicWriteOrCreateFile(
         manifestPath,
         `${JSON.stringify(manifest, null, 2)}\n`,
         "/",
@@ -1023,7 +1023,7 @@ export class PackageManager {
       const filePath = `${directory}/${file.path}`;
       this.ensureParentDirectories(filePath);
       if (!this.os.fs.exists(filePath)) {
-        this.os.fs.writeOrCreateFile(
+        this.os.fs.atomicWriteOrCreateFile(
           filePath,
           contentFromInlineFile(file),
           "/",
@@ -1034,7 +1034,7 @@ export class PackageManager {
     }
     const readmePath = `${directory}/README.md`;
     if (!this.os.fs.exists(readmePath)) {
-      this.os.fs.writeOrCreateFile(
+      this.os.fs.atomicWriteOrCreateFile(
         readmePath,
         readme,
         "/",
@@ -1046,7 +1046,7 @@ export class PackageManager {
 
   ensureRegistryConfig() {
     if (this.os.fs.exists(REGISTRY_CONFIG_PATH)) return;
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       REGISTRY_CONFIG_PATH,
       `${JSON.stringify({ registries: [{ name: "local", url: LOCAL_REGISTRY_PATH }] }, null, 2)}\n`,
       "/",
@@ -1061,7 +1061,7 @@ export class PackageManager {
   }
 
   writeTrustedPublishers(publishers) {
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       TRUSTED_PUBLISHERS_PATH,
       `${JSON.stringify({ publishers }, null, 2)}\n`,
       "/",
@@ -1096,7 +1096,7 @@ export class PackageManager {
       const hasAllSamples = payload.packages.every((entry) => current.includes(`"id": "${entry.id}"`));
       if (hasAllSamples) return;
     }
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       LOCAL_REGISTRY_PATH,
       `${JSON.stringify(payload, null, 2)}\n`,
       "/",
@@ -1126,14 +1126,14 @@ export class PackageManager {
       existing.transient = false;
       this.os.fs.emitChange?.("package-image-mount", record.installPath);
     }
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       `${record.installPath}/dindbos.app.json`,
       `${JSON.stringify(record.originalManifest, null, 2)}\n`,
       "/",
       { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
       this.system,
     );
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       `${record.installPath}/PACKAGE.md`,
       [`# ${record.name}`, "", record.description || "No package description.", ""].join("\n"),
       "/",
@@ -1194,7 +1194,7 @@ export class PackageManager {
     Object.entries(record.dependencies?.npm || {}).forEach(([name, dependency]) => {
       const path = this.resolvePackageFilePath(record, `node_modules/${name}/package.json`);
       this.ensureParentDirectories(path);
-      this.os.fs.writeOrCreateFile(
+      this.os.fs.atomicWriteOrCreateFile(
         path,
         `${JSON.stringify({
           name,
@@ -1242,8 +1242,8 @@ export class PackageManager {
       group: "root",
       permissions: file.permissions || "-rw-r--r--",
     };
-    if (content instanceof Uint8Array) this.os.fs.writeOrCreateFileBytes(path, content, "/", metadata, this.system);
-    else this.os.fs.writeOrCreateFile(path, content, "/", metadata, this.system);
+    if (content instanceof Uint8Array) this.os.fs.atomicWriteOrCreateFileBytes(path, content, "/", metadata, this.system);
+    else this.os.fs.atomicWriteOrCreateFile(path, content, "/", metadata, this.system);
     record.files.push({
       path,
       mime: file.mime || mimeFromName(path),
@@ -1340,7 +1340,7 @@ export class PackageManager {
   }
 
   writePackageRecord(record) {
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       this.packageRecordPath(record.id),
       `${JSON.stringify(record, null, 2)}\n`,
       "/",

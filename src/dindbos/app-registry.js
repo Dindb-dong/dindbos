@@ -109,7 +109,7 @@ export class AppRegistry {
     ["/usr/share/dindbos", "/usr/share/dindbos/manifests"].forEach((path) => {
       if (!this.os.fs.exists(path)) this.os.fs.createDirectory(path, "/", {}, system);
     });
-    this.os.fs.writeOrCreateFile(
+    this.os.fs.atomicWriteOrCreateFile(
       `/usr/share/dindbos/manifests/${manifest.id}.json`,
       `${JSON.stringify(manifest, null, 2)}\n`,
       "/",

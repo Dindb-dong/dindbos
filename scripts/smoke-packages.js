@@ -619,9 +619,13 @@ assert(pdfViewerSample.app.accepts.includes("application/pdf"), "PDF Viewer samp
 const pdfViewerWindow = os.apps.launch("pdf-viewer-sample");
 await pdfViewerWindow.rendered;
 await waitFor(() => pdfViewerWindow.content.innerHTML.includes("data-sample-pdf-viewer"), "PDF Viewer sample did not render packaged viewer UI");
+const packageAtomicEvents = [];
+os.fs.onChange = (event) => packageAtomicEvents.push(event);
 const apiLab = packages.installFromManifestPath("/opt/dindbos/packages/api-lab/dindbos.app.json");
 assert(apiLab.id === "api-lab", "API Lab sample install returned wrong id");
 assert(apiLab.app.capabilities.includes("package.read"), "API Lab sample did not declare package.read capability");
+assert(packageAtomicEvents.some((event) => event.action === "atomic-create" && event.path === "/var/lib/dindbos/packages/api-lab.json"), "package install did not atomically create package DB record");
+assert(packageAtomicEvents.some((event) => event.action === "atomic-create" && event.path === "/usr/share/dindbos/manifests/api-lab.json"), "package install did not atomically create app registry manifest");
 const apiSource = os.fs.readFile("/opt/api-lab/app.js");
 assert(apiSource.includes("sdk.packages.info"), "API Lab sample does not use the DindbOS syscall SDK fixture");
 assert(apiSource.includes("sdk.fs.writeText"), "API Lab sample does not use SDK-backed VFS writes");

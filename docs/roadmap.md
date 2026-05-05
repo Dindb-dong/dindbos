@@ -195,7 +195,8 @@ Implementation cuts:
 
 - Extend the existing write journal into replayable transaction records for package installs, editor saves, archive imports, remote sync apply, registry mutations, and image import.
 - Already present: VFS user-document writes support atomic write-then-rename semantics through staged sibling files, abort cleanup, metadata preservation, and AppSandbox/TextEdit access.
-- Extend atomic write-then-rename behavior to package files, package DB records, app registry entries, and service records.
+- Already present: package files, package DB records, AppRegistry manifest records, and ServiceManager state records use the same VFS atomic write-then-rename primitive.
+- Extend staged activation to package launcher/app registration/service registration groups so multi-record activation commits as one transaction boundary.
 - Add staged directories for package install/update so activation happens only after all files, integrity checks, quota reservations, launcher writes, and app registration are ready.
 - Add `fsync`-style barriers to Shell, SDK, WASM, and NodeCompat paths so programs can request durability before reporting success.
 - Add `fsck.dindbos check|repair|dry-run|explain` for orphaned nodes, broken package mounts, bad link counts, partial journals, stale local mount metadata, and package DB drift.
@@ -205,6 +206,7 @@ Implementation cuts:
 Verification:
 
 - Already present: `npm run smoke:storage` verifies failed VFS atomic writes preserve existing file bytes/metadata and clean staged temp files before successful atomic commit; `npm run smoke:packages` verifies a sandboxed package app can use the AppSandbox atomic VFS API.
+- Already present: `npm run smoke:packages` verifies package install atomically creates package DB records and AppRegistry manifest records; `npm run smoke:services` verifies service state records are atomically created.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, dry-run repair, real repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
@@ -755,7 +757,8 @@ Implementation tasks:
 - Already present: OPFS-backed filesystem saves write a durable active transaction marker, clear it on completion/fallback, and report an interrupted-write recovery decision on the next load when a marker remains.
 - Extend storage transaction groups into full interrupted-write replay instead of only recovery decision reporting.
 - Already present: VFS user-document writes and TextEdit saves use atomic write-then-rename semantics that stage bytes under a sibling temp file, clean up failed commits, and preserve existing bytes/metadata until commit.
-- Extend atomic rename/write semantics to package installs and archive imports.
+- Already present: package files, package DB JSON records, AppRegistry manifest JSON records, and ServiceManager state JSON records use VFS atomic write-then-rename semantics.
+- Extend atomic activation to whole package install/update groups and archive imports.
 - Add filesystem snapshots and rollback points for package updates and user-triggered restore.
 - Already present: persistent storage can reserve estimated write bytes before browser persistence mutation and deny quota-exceeding writes without touching the backing adapter.
 - Already present: inline package installs reserve estimated package file, package record, and launcher bytes before filesystem/app registry mutation, then fail closed on quota denial.
@@ -771,6 +774,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies inline package install quota denial happens before install directory, package record, or app registry mutation.
 - Already present: `npm run smoke:packages` verifies remote package install quota denial happens before package file fetch, install directory, package record, or app registry mutation.
 - Already present: `npm run smoke:storage` verifies VFS atomic write abort cleanup, existing file preservation, metadata preservation, and successful atomic commit; `npm run smoke:packages` verifies sandboxed package access to the atomic VFS API.
+- Already present: `npm run smoke:packages` verifies package DB and AppRegistry manifest atomic create events during package install; `npm run smoke:services` verifies service state atomic create events.
 - Add smoke coverage for simulated interrupted writes, package rollback, snapshot restore, large app/import quota denial before mutation, and repair of orphaned records.
 
 Completion criteria:
