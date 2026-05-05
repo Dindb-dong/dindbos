@@ -235,6 +235,28 @@ export class WasmRunner {
             return errnoNumber(error.code || errnoCodeFromMessage(error.message) || "EIO");
           }
         },
+        path_symlink: (targetPtr, targetLength, dirfd, pathPtr, pathLength) => {
+          try {
+            const target = readString(targetPtr, targetLength);
+            const linkPath = this.scopedDirectoryTarget(process, context, Number(dirfd), readString(pathPtr, pathLength));
+            this.os.fs.createSymlink(target, linkPath, "/", {}, context.principal);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || errnoCodeFromMessage(error.message) || "EIO");
+          }
+        },
+        path_readlink: (dirfd, pathPtr, pathLength, bufferPtr, bufferLength, nreadPtr) => {
+          try {
+            const linkPath = this.scopedDirectoryTarget(process, context, Number(dirfd), readString(pathPtr, pathLength), "read");
+            const target = this.os.fs.readlink(linkPath, "/", context.principal);
+            const bytes = new TextEncoder().encode(target).slice(0, Number(bufferLength || 0));
+            writeMemory(bufferPtr, bytes);
+            writeU32(nreadPtr, bytes.length);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || errnoCodeFromMessage(error.message) || "EIO");
+          }
+        },
         path_open: (dirfd, dirflags, pathPtr, pathLength, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) => {
           void dirflags;
           try {
@@ -374,7 +396,7 @@ export class WasmRunner {
     throw new Error(`wasm: capability denied: ${capability}`);
   }
 
-  scopedDirectoryTarget(process, context, dirfd, path) {
+  scopedDirectoryTarget(process, context, dirfd, path, access = "write") {
     const directory = this.os.descriptors.stat(process, { fd: dirfd }, context);
     if (directory.kind !== "directory") {
       const error = new Error(`wasi: fd ${dirfd}: descriptor is not a directory`);
@@ -382,7 +404,7 @@ export class WasmRunner {
       throw error;
     }
     const target = this.os.fs.normalize(path, directory.path);
-    context.assertFileSystem(target, "write");
+    context.assertFileSystem(target, access);
     return target;
   }
 }
@@ -404,7 +426,7 @@ function parseSyscallRequest(text) {
 }
 
 function errnoNumber(code) {
-  const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EBADF: 8, EEXIST: 20, EISDIR: 31, ENOTDIR: 54, EIO: 5 };
+  const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EBADF: 8, EEXIST: 20, EISDIR: 31, ELOOP: 62, ENOTDIR: 54, EIO: 5 };
   return values[code] || 1;
 }
 
@@ -415,6 +437,8 @@ function errnoCodeFromMessage(message = "") {
   if (text.includes("file exists")) return "EEXIST";
   if (text.includes("is a directory")) return "EISDIR";
   if (text.includes("not a directory")) return "ENOTDIR";
+  if (text.includes("Too many symbolic links")) return "ELOOP";
+  if (text.includes("symbolic link")) return "EINVAL";
   return "";
 }
 
