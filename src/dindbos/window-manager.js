@@ -127,8 +127,10 @@ export class WindowManager {
         task.title = title;
         this.renderTasks();
       },
+      setAccessibilityTree: (tree) => this.setAccessibilityTree(config.id, tree),
+      getAccessibilityTree: () => cloneState(task.accessibilityTree || null),
     };
-    const task = { ...config, frame, titlebar, content, api, state: {}, minimized: false, maximized: Boolean(placement.maximized) };
+    const task = { ...config, frame, titlebar, content, api, state: {}, accessibilityTree: null, minimized: false, maximized: Boolean(placement.maximized) };
     this.windows.set(config.id, task);
 
     titlebar.querySelector("[data-window-minimize]").addEventListener("click", () => this.minimize(config.id));
@@ -408,6 +410,24 @@ export class WindowManager {
     return { ...route };
   }
 
+  setAccessibilityTree(windowId, tree = {}) {
+    const task = this.windows.get(String(windowId || ""));
+    if (!task) throw new Error(`accessibility: unknown window ${windowId}`);
+    task.accessibilityTree = normalizeAccessibilityNode(tree, {
+      windowId: task.id,
+      appId: task.appId,
+      title: task.title,
+    });
+    this.writeCompositorProcfs("accessibility");
+    this.os.bus?.emit?.("compositor:accessibility", {
+      windowId: task.id,
+      appId: task.appId,
+      pid: task.pid,
+      tree: cloneState(task.accessibilityTree),
+    });
+    return cloneState(task.accessibilityTree);
+  }
+
   requestPointerLock(windowId = this.activeWindowId, options = {}) {
     const targetWindowId = String(windowId || "");
     const task = this.windows.get(targetWindowId);
@@ -516,6 +536,7 @@ export class WindowManager {
         zIndex: Number(task.frame.style.zIndex || 0),
         paintMode: "dom",
         rect,
+        accessibility: task.accessibilityTree ? summarizeAccessibilityTree(task.accessibilityTree) : null,
       };
     });
     const focused = surfaces.find((surface) => surface.focused) || null;
@@ -871,6 +892,50 @@ function normalizeClipboardAction(action) {
 
 function byteLength(value) {
   return new TextEncoder().encode(String(value ?? "")).byteLength;
+}
+
+function normalizeAccessibilityNode(node = {}, fallback = {}) {
+  const value = node && typeof node === "object" ? node : {};
+  const children = Array.isArray(value.children) ? value.children.slice(0, 100) : [];
+  return {
+    role: String(value.role || "window"),
+    name: String(value.name || fallback.title || fallback.appId || fallback.windowId || ""),
+    value: value.value === undefined ? "" : String(value.value),
+    bounds: normalizeAccessibilityBounds(value.bounds),
+    state: normalizeAccessibilityState(value.state),
+    actions: Array.isArray(value.actions) ? value.actions.map((action) => String(action || "")).filter(Boolean).slice(0, 20) : [],
+    focus: Boolean(value.focus),
+    children: children.map((child) => normalizeAccessibilityNode(child)),
+  };
+}
+
+function normalizeAccessibilityBounds(bounds = {}) {
+  const value = bounds && typeof bounds === "object" ? bounds : {};
+  return {
+    left: Number(value.left || 0),
+    top: Number(value.top || 0),
+    width: Number(value.width || 0),
+    height: Number(value.height || 0),
+  };
+}
+
+function normalizeAccessibilityState(state = {}) {
+  if (!state || typeof state !== "object") return {};
+  return Object.fromEntries(Object.entries(state).map(([key, value]) => [String(key), typeof value === "boolean" ? value : String(value)]));
+}
+
+function summarizeAccessibilityTree(tree) {
+  return {
+    role: tree.role,
+    name: tree.name,
+    focus: Boolean(tree.focus),
+    actions: Array.isArray(tree.actions) ? [...tree.actions] : [],
+    nodeCount: countAccessibilityNodes(tree),
+  };
+}
+
+function countAccessibilityNodes(node) {
+  return 1 + (Array.isArray(node?.children) ? node.children.reduce((total, child) => total + countAccessibilityNodes(child), 0) : 0);
 }
 
 function shortcutScopeRank(scope) {
