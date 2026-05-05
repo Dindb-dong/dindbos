@@ -73,6 +73,25 @@ assert(!os.fs.exists("/usr/share/applications/Broken Pkg.app"), "failed local in
 assert(!os.apps.apps.has("broken-pkg"), "failed local install registered app");
 assert(!lifecycleEvents.some((event) => event.includes("broken-pkg")), "failed local install emitted lifecycle event");
 
+const quotaOs = createDindbOSTestRuntime();
+const quotaReservations = [];
+quotaOs.storage = {
+  reserveStorageBytes(bytes, details = {}) {
+    quotaReservations.push({ bytes, details });
+    throw new Error(`storage quota exceeded: required=${bytes} available=1 quota=1`);
+  },
+};
+await assertRejects(
+  () => quotaOs.packages.install(packageManifest("quota-denied", "0.1.0", [
+    { path: "app.js", mime: "text/javascript", content: "export const quota = true;\n" },
+  ])),
+  "storage quota exceeded",
+);
+assert(quotaReservations.length === 1 && quotaReservations[0].details.packageId === "quota-denied", "package install did not reserve quota before mutation");
+assert(!quotaOs.fs.exists("/opt/quota-denied"), "quota-denied package mutated install directory");
+assert(!quotaOs.fs.exists("/var/lib/dindbos/packages/quota-denied.json"), "quota-denied package wrote package record");
+assert(!quotaOs.apps.apps.has("quota-denied"), "quota-denied package registered app");
+
 packages.install(packageManifest("namespace-target", "0.1.0", [
   {
     path: "app.js",

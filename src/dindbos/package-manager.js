@@ -421,6 +421,7 @@ export class PackageManager {
     const record = this.normalizePackage(manifest, options);
     const previous = this.info(record.id);
     record.lifecycle = packageLifecycle(record, previous);
+    this.reservePackageInstallQuota(record, manifest.files || []);
     return this.runPackageTransaction(record, previous ? "update" : "install", () => {
       this.ensurePackageRoots();
       this.ensurePackageDirectory(record);
@@ -771,6 +772,37 @@ export class PackageManager {
         throw error;
       }
     });
+  }
+
+  reservePackageInstallQuota(record, files = []) {
+    if (typeof this.os.storage?.reserveStorageBytes !== "function") return null;
+    const estimatedBytes = this.estimateInlinePackageInstallBytes(record, files);
+    return this.os.storage.reserveStorageBytes(estimatedBytes, {
+      key: `package:${record.id}`,
+      storageFormat: "package-install",
+      transactionKind: "package-install",
+      packageId: record.id,
+    });
+  }
+
+  estimateInlinePackageInstallBytes(record, files = []) {
+    const plannedFiles = files.map((file) => {
+      if (file.url) return {
+        path: this.resolvePackageFilePath(record, file.path),
+        size: 0,
+      };
+      const content = inlineFilePayload(file);
+      return {
+        path: this.resolvePackageFilePath(record, file.path),
+        size: contentByteLength(content),
+      };
+    });
+    const packageRecordEstimate = byteLength(JSON.stringify({
+      ...record,
+      files: plannedFiles.map((file) => ({ path: file.path, size: file.size })),
+    }));
+    const launcherEstimate = byteLength(`${this.launcherPath(record)}:${record.app.id}:${record.app.icon}`);
+    return plannedFiles.reduce((total, file) => total + file.size, 0) + packageRecordEstimate + launcherEstimate;
   }
 
   async runPackageTransactionAsync(record, operation, install) {
