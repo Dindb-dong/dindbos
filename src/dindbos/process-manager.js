@@ -23,6 +23,11 @@ export class ProcessManager {
       cwd: context.cwd || this.os.session.home || "/",
       manifest: app.manifest,
       context,
+      runtime: context.runtime || app.manifest?.runtime || "javascript",
+      executionBackend: context.executionBackend || "main-thread",
+      executorState: context.executorState || "attached",
+      executorKind: context.executorKind || "",
+      executorDetail: context.executorDetail || "",
       startedAt: now,
       endedAt: "",
       lastActiveAt: now,
@@ -83,6 +88,21 @@ export class ProcessManager {
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
     this.emitAppLifecycle("ready", process);
+    return { ...this.withRuntimeMetrics(process) };
+  }
+
+  updateExecutorState(pid, details = {}) {
+    const process = this.processes.get(Number(pid));
+    if (!process) return null;
+    if (details.executionBackend) process.executionBackend = details.executionBackend;
+    if (details.executorState) process.executorState = details.executorState;
+    if (details.executorKind !== undefined) process.executorKind = details.executorKind;
+    if (details.executorDetail !== undefined) process.executorDetail = details.executorDetail;
+    process.lastActiveAt = new Date().toISOString();
+    this.log(process.pid, `executor ${process.executionBackend} ${process.executorState}${process.executorDetail ? ` ${process.executorDetail}` : ""}`);
+    this.sampleActivity(process.pid, "executor", 1);
+    this.syncProcfs();
+    this.os.bus.emit("process:update", process);
     return { ...this.withRuntimeMetrics(process) };
   }
 
@@ -208,6 +228,11 @@ export class ProcessManager {
       childPids: process.childPids,
       appId: process.appId,
       state: process.state,
+      runtime: process.runtime || "",
+      executionBackend: process.executionBackend || "",
+      executorState: process.executorState || "",
+      executorKind: process.executorKind || "",
+      executorDetail: process.executorDetail || "",
       user: process.user,
       windowId: process.windowId,
       windowState: process.windowState,
@@ -376,6 +401,11 @@ function formatProcessStatus(process) {
     `User:\t${process.user}`,
     `State:\t${process.state}`,
     `App:\t${process.appId}`,
+    `Runtime:\t${process.runtime || "-"}`,
+    `ExecutionBackend:\t${process.executionBackend || "-"}`,
+    `ExecutorState:\t${process.executorState || "-"}`,
+    `ExecutorKind:\t${process.executorKind || "-"}`,
+    `ExecutorDetail:\t${process.executorDetail || "-"}`,
     `Window:\t${process.windowId || "-"}`,
     `WindowState:\t${process.windowState || "-"}`,
     `Started:\t${process.startedAt}`,
