@@ -42,6 +42,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-hello.wasm", wasiHelloWasm(),
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-cat.wasm", wasiCatWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 
 const shell = new ShellSession(os);
 let result = await shell.executeAsync("export PATH=$PATH:/home/guest/bin && hello.wasm max");
@@ -85,7 +91,19 @@ const wasiRun = await os.wasm.runFile("/home/guest/bin/wasi-hello.wasm", "/home/
 assert(wasiRun.status === 0, `wasi fd_write status mismatch: ${wasiRun.status} ${wasiRun.stderr}`);
 assert(wasiRun.stdout === "wasi hello\n", `wasi fd_write stdout mismatch: ${JSON.stringify(wasiRun.stdout)}`);
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi process");
+const wasiCatRun = await os.wasm.runFile("/home/guest/bin/wasi-cat.wasm", "/home/guest/bin", {
+  argv: ["wasi-cat.wasm"],
+  stdin: "stdin echo\n",
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiCatRun.status === 0, `wasi fd_read status mismatch: ${wasiCatRun.status} ${wasiCatRun.stderr}`);
+assert(wasiCatRun.stdout === "stdin echo\n", `wasi fd_read stdout mismatch: ${JSON.stringify(wasiCatRun.stdout)}`);
+
+result = await shell.executeAsync("echo pipe echo | /home/guest/bin/wasi-cat.wasm");
+assert(result.status === 0, `shell pipeline wasi status mismatch: ${result.status} ${result.output}`);
+assert(result.output === "pipe echo", `shell pipeline wasi output mismatch: ${JSON.stringify(result.output)}`);
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -200,6 +218,41 @@ function wasiHelloWasm() {
     body: [
       0x41, 0x01, 0x41, iovOffset, 0x41, 0x01, 0x41, writtenOffset, 0x10, 0x00, 0x1a,
       0x41, 0x00, 0x10, 0x01,
+      0x0b,
+    ],
+    data,
+  });
+}
+
+function wasiCatWasm() {
+  const readIovOffset = 16;
+  const writeIovOffset = 24;
+  const readCountOffset = 40;
+  const writtenOffset = 44;
+  const bufferOffset = 64;
+  const bufferLength = 64;
+  const data = new Uint8Array(bufferOffset + bufferLength);
+  data.set(u32le(bufferOffset), readIovOffset);
+  data.set(u32le(bufferLength), readIovOffset + 4);
+  data.set(u32le(bufferOffset), writeIovOffset);
+  data.set(u32le(0), writeIovOffset + 4);
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "fd_read", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "fd_write", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 1 },
+    ],
+    startType: 2,
+    body: [
+      0x41, 0x00, 0x41, readIovOffset, 0x41, 0x01, 0x41, readCountOffset, 0x10, 0x00, 0x1a,
+      0x41, writeIovOffset + 4, 0x41, readCountOffset, 0x28, 0x02, 0x00, 0x36, 0x02, 0x00,
+      0x41, 0x01, 0x41, writeIovOffset, 0x41, 0x01, 0x41, writtenOffset, 0x10, 0x01, 0x1a,
+      0x41, 0x00, 0x10, 0x02,
       0x0b,
     ],
     data,
