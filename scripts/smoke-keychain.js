@@ -23,6 +23,41 @@ assert(result.status === 1 && result.output.includes("vault locked"), `locked ke
 result = await shell.executeAsync("keychain unlock fallback-passphrase");
 assert(result.status === 0 && result.output.includes("password-derived-fallback"), `keychain unlock mismatch: ${JSON.stringify(result)}`);
 
+result = await shell.executeAsync("keychain grant registry.token secret-package 1000");
+assert(result.status === 0 && result.output === "keychain grant registry.token secret-package", `keychain grant package mismatch: ${JSON.stringify(result)}`);
+os.packages.install({
+  id: "secret-package",
+  name: "Secret Package",
+  version: "0.1.0",
+  secrets: [
+    { name: "registry", keychainName: "registry.token", kind: "repository-token", purpose: "registry auth" },
+  ],
+  permissions: { capabilities: ["keychain.read"] },
+  app: { id: "secret-package", name: "Secret Package", title: "Secret Package.app", entry: "app.js" },
+  files: [
+    {
+      path: "app.js",
+      mime: "text/javascript",
+      content: [
+        "export function mount({ content, os, pkg }) {",
+        "  const refs = os.keychain.references();",
+        "  let undeclared = 'not-denied';",
+        "  try { os.keychain.getDeclared('other.token'); }",
+        "  catch (error) { undeclared = error.message.includes('not declared') ? 'undeclared-denied' : error.message; }",
+        "  const token = os.keychain.getDeclared('registry');",
+        "  content.innerHTML = `<main data-secret-package>${refs[0].name}:${refs[0].kind}:${pkg.secrets[0].keychainName}:${token}:${undeclared}</main>`;",
+        "}",
+      ].join("\n"),
+    },
+  ],
+});
+assert(os.packages.info("secret-package").secrets[0].keychainName === "registry.token", "package record did not expose secret reference metadata");
+assert(os.apps.getManifest("secret-package").secrets[0].name === "registry", "app manifest did not expose package secret reference");
+assert(!os.fs.readFile("/var/lib/dindbos/packages/secret-package.json").includes("s3cr3t-token"), "package record exposed raw keychain secret value");
+const secretWindow = os.apps.launch("secret-package");
+await secretWindow.rendered;
+assert(secretWindow.content.innerHTML.includes("registry:repository-token:registry.token:s3cr3t-token:undeclared-denied"), `package secret reference render mismatch: ${secretWindow.content.innerHTML}`);
+
 const appProcess = processFor("credential-app", ["keychain.read", "keychain.write"]);
 const appSandbox = new AppSandbox(os, appProcess);
 appSandbox.keychain.set("api.token", "app-secret");

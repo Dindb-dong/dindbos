@@ -1052,7 +1052,7 @@ Implementation tasks:
 - Already present: first-pass keychain service exposes per-user vault metadata, app-scoped secrets, lock/unlock state, temporary grants, revocation, redacted metadata files, and audit records without storing raw secret values in ordinary VFS records.
 - Already present: keychain records use WebCrypto-backed random secret references and package signing key public identifiers for first-pass signing-key lookup; encrypted wrapping, verification, and passkey-backed unlock remain future hardening.
 - Add passkey/WebAuthn-backed unlock or reauthentication flows where supported, with password-derived fallback clearly marked as weaker.
-- Add secret references in package manifests so apps ask for named credentials instead of reading raw files.
+- Already present: package manifests can declare `secrets` references with alias, keychain name, kind, required flag, and purpose; package app manifests and runtime public records expose only references, and package apps can request declared credentials through the keychain facade.
 - Already present: first-pass signing key management creates auditable package-author signing key references and public key ids without exposing private key material through shell lookup.
 - Already present: `keychain` shell commands cover list, status, get, set, delete, lock, unlock, grant, revoke, audit, signing create, and signing lookup.
 - Add Settings UI for active grants, denied requests, stale credentials, and export/recovery warnings.
@@ -1060,6 +1060,7 @@ Implementation tasks:
 Verification:
 
 - Already present: `npm run smoke:keychain` verifies app-scoped secret denial, temporary grant expiry, vault lock/unlock, package signing key lookup, revoked access, and audit log creation.
+- Already present: `npm run smoke:keychain` verifies package manifest secret references are exposed as metadata, granted package apps can read declared credentials through `os.keychain.getDeclared()`, undeclared package secret requests are denied, and package DB records do not contain raw secret values.
 - Already present: `npm run smoke:keychain` verifies raw secret values are not exposed through ordinary keychain metadata VFS reads or keychain audit logs.
 - Add tests proving secrets are never exposed through package export unless explicitly exported by the keychain service.
 

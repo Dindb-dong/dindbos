@@ -861,6 +861,7 @@ export class PackageManager {
     ];
     const fileSystem = app.fileSystem || manifest.fileSystem || manifest.permissions?.fileSystem || {};
     const dependencies = normalizeDependencies(manifest.dependencies || app.dependencies || {});
+    const secrets = normalizePackageSecrets(manifest.secrets || app.secrets || {});
     const sandbox = normalizePackageSandbox(manifest.sandbox || manifest.namespace || {});
     const cli = normalizePackageCli(manifest.cli || app.cli || manifest.bin || app.bin || {});
     const services = normalizePackageServices(manifest.services || app.services || [], id, installPath, fileSystem);
@@ -878,6 +879,7 @@ export class PackageManager {
       originalManifest: manifest,
       files: [],
       dependencies,
+      secrets,
       sandbox,
       cli,
       services,
@@ -895,6 +897,7 @@ export class PackageManager {
         entryPath: entry ? `${installPath}/${entry}` : "",
         runtime,
         api,
+        secrets: cloneJson(secrets),
         content: String(app.content || manifest.content || ""),
         capabilities: unique(capabilities),
         fileSystem: {
@@ -1269,6 +1272,7 @@ export class PackageManager {
         api: record.api,
         sandbox: cloneJson(record.sandbox || {}),
         namespace: cloneJson(record.namespace || {}),
+        secrets: cloneJson(record.secrets || []),
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
       },
@@ -1529,6 +1533,7 @@ function packagePublicRecord(record) {
     compatibility: cloneJson(record.compatibility || { tier: "A", status: "supported" }),
     api: cloneJson(record.api || { targetVersion: 1, negotiatedVersion: 1, status: "matched" }),
     dependencies: cloneJson(record.dependencies || {}),
+    secrets: cloneJson(record.secrets || []),
     files: [...(record.files || [])],
     lifecycle: cloneJson(record.lifecycle || {}),
     trust: cloneJson(record.trust || {}),
@@ -1783,6 +1788,31 @@ function normalizeDependencies(dependencies) {
       : { version: declaration.version || "latest", manifestUrl: declaration.manifestUrl || "" };
   });
   return { packages, npm };
+}
+
+function normalizePackageSecrets(secrets = {}) {
+  const entries = Array.isArray(secrets)
+    ? secrets
+    : Object.entries(secrets).map(([name, declaration]) => (
+      typeof declaration === "string" ? { name, keychainName: declaration } : { name, ...declaration }
+    ));
+  return entries.map((entry) => {
+    const name = normalizeSecretReferenceName(entry.name || entry.id || entry.alias);
+    const keychainName = normalizeSecretReferenceName(entry.keychainName || entry.keychain || entry.secret || name);
+    return {
+      name,
+      keychainName,
+      kind: String(entry.kind || "generic"),
+      required: entry.required !== false,
+      purpose: String(entry.purpose || ""),
+    };
+  });
+}
+
+function normalizeSecretReferenceName(name) {
+  const value = String(name || "").trim();
+  if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/i.test(value)) throw new Error(`pkg: invalid secret reference: ${name || ""}`);
+  return value;
 }
 
 function normalizeNpmDependency(name, declaration) {
