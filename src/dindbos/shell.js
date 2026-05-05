@@ -229,6 +229,7 @@ export class ShellSession {
     const status = shellStatus(command, output);
     if (redirect.target) {
       const value = output.endsWith("\n") ? output : `${output}\n`;
+      reserveShellStorage(this.os, value, redirect.target, this.cwd, redirect.append ? "redirect-append" : "redirect-write");
       if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd, this.principal);
       else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd, {}, this.principal);
       output = "";
@@ -249,8 +250,11 @@ export class ShellSession {
       if (this.isLocalPath(redirect.target)) {
         if (redirect.append) await this.os.localMounts.appendFile(redirect.target, value, this.cwd);
         else await this.os.localMounts.writeFile(redirect.target, value, this.cwd);
-      } else if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd, this.principal);
-      else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd, {}, this.principal);
+      } else {
+        reserveShellStorage(this.os, value, redirect.target, this.cwd, redirect.append ? "redirect-append" : "redirect-write");
+        if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd, this.principal);
+        else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd, {}, this.principal);
+      }
       output = "";
     }
     return { output, clear: command === "clear", reload: command === "resetfs", status };
@@ -607,7 +611,9 @@ export class ShellSession {
     paths.forEach((path) => {
       const existing = this.os.fs.resolve(path, this.cwd);
       if (existing?.type === "directory") throw new Error(`touch: ${path}: is a directory`);
-      this.os.fs.writeOrCreateFile(path, existing ? this.os.fs.readFile(path, this.cwd, this.principal) : "", this.cwd, {}, this.principal);
+      const content = existing ? this.os.fs.readFile(path, this.cwd, this.principal) : "";
+      reserveShellStorage(this.os, content, path, this.cwd, "touch");
+      this.os.fs.writeOrCreateFile(path, content, this.cwd, {}, this.principal);
     });
     return "";
   }
@@ -1301,7 +1307,9 @@ export class ShellSession {
     }
     const existing = this.os.fs.resolve(path, this.cwd);
     if (existing?.type === "directory") throw new Error(`touch: ${path}: is a directory`);
-    this.os.fs.writeOrCreateFile(path, existing ? this.os.fs.readFile(path, this.cwd, this.principal) : "", this.cwd, {}, this.principal);
+    const content = existing ? this.os.fs.readFile(path, this.cwd, this.principal) : "";
+    reserveShellStorage(this.os, content, path, this.cwd, "touch");
+    this.os.fs.writeOrCreateFile(path, content, this.cwd, {}, this.principal);
   }
 
   async copyWithLocal(sourcePath, destinationPath, options = {}) {
@@ -1329,6 +1337,7 @@ export class ShellSession {
     const target = destination?.type === "directory"
       ? this.os.fs.join(destination.path, sourceName)
       : this.os.fs.normalize(destinationPath, this.cwd);
+    reserveShellStorage(this.os, content, target, "/", "copy");
     this.os.fs.writeOrCreateFileBytes(target, content, "/", {}, this.principal);
     return "";
   }
@@ -1577,8 +1586,11 @@ export class ShellSession {
       if (this.isLocalPath(redirect.target)) {
         if (redirect.append) await this.os.localMounts.appendFile(redirect.target, value, this.cwd);
         else await this.os.localMounts.writeFile(redirect.target, value, this.cwd);
-      } else if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd, this.principal);
-      else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd, {}, this.principal);
+      } else {
+        reserveShellStorage(this.os, value, redirect.target, this.cwd, redirect.append ? "redirect-append" : "redirect-write");
+        if (redirect.append) this.os.fs.appendFile(redirect.target, value, this.cwd, this.principal);
+        else this.os.fs.writeOrCreateFile(redirect.target, value, this.cwd, {}, this.principal);
+      }
       output = "";
     }
     return { output, clear: command === "clear", reload: command === "resetfs", status };
@@ -2140,4 +2152,22 @@ function formatBytes(value) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function reserveShellStorage(os, content, path, cwd, operation) {
+  if (typeof os.storage?.reserveStorageBytes !== "function") return;
+  os.storage.reserveStorageBytes(contentByteLength(content), {
+    scope: "shell-write",
+    runtime: "shell",
+    path: os.fs?.normalize ? os.fs.normalize(path, cwd) : String(path || ""),
+    cwd,
+    operation,
+  });
+}
+
+function contentByteLength(value) {
+  if (value instanceof Uint8Array) return value.byteLength;
+  if (ArrayBuffer.isView(value)) return value.byteLength;
+  if (value instanceof ArrayBuffer) return value.byteLength;
+  return new TextEncoder().encode(String(value ?? "")).byteLength;
 }

@@ -226,6 +226,7 @@ const syscallRun = await os.wasm.runFile("/home/guest/bin/syscall.wasm", "/home/
 });
 assert(syscallRun.status === 0, `wasm syscall run status mismatch: ${syscallRun.status} ${syscallRun.stderr}`);
 assert(os.fs.readFile("/home/guest/bin/wasm-syscall.txt") === "from wasm syscall", "wasm syscall did not write through DindbOS syscall ABI");
+assert(storage.reservations.some((entry) => entry.scope === "syscall-fs-write" && entry.path === "/home/guest/bin/wasm-syscall.txt"), "wasm syscall write did not reserve storage before VFS write");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("fs.writeText OK"), "wasm syscall did not write global syscall trace");
 
 const beforeAsyncStorageSyncFlushes = storage.flushes;
@@ -403,6 +404,7 @@ const wasiOpenWrite = await os.wasm.runFile("/home/guest/bin/wasi-open-write.was
 });
 assert(wasiOpenWrite.status === 0, `wasi path_open write status mismatch: ${wasiOpenWrite.status} ${wasiOpenWrite.stderr}`);
 assert(os.fs.readFile("/home/guest/bin/wasi-out.txt") === "opened write\n", "wasi path_open write did not persist file");
+assert(storage.reservations.some((entry) => entry.scope === "fd-write" && entry.path === "/home/guest/bin/wasi-out.txt"), "wasi fd write did not reserve storage before VFS write");
 
 const beforeWasiFdSyncFlushes = storage.flushes;
 const wasiSyncWrite = await os.wasm.runFile("/home/guest/bin/wasi-sync-write.wasm", "/home/guest/bin", {
@@ -1198,6 +1200,7 @@ function u32le(value) {
 
 function memoryStorage() {
   let flushes = 0;
+  const reservations = [];
   return {
     async loadFileSystem() {
       return null;
@@ -1207,8 +1210,15 @@ function memoryStorage() {
       flushes += 1;
       return { flushed: true, flushes };
     },
+    reserveStorageBytes(bytes, details = {}) {
+      reservations.push({ bytes, ...details });
+      return true;
+    },
     get flushes() {
       return flushes;
+    },
+    get reservations() {
+      return reservations;
     },
     status: () => ({ backend: "memory", bytes: 0 }),
     estimate: async () => ({ backend: "memory", bytes: 0 }),

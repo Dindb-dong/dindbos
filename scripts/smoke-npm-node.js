@@ -182,6 +182,7 @@ const fsPromisesImport = await node.evaluate(
 );
 assert(fsPromisesImport.status === 0, `fs promises import exited with ${fsPromisesImport.status}`);
 assert(fsPromisesImport.output.trim() === "async note note.txt true []", `unexpected fs promises import output: ${fsPromisesImport.output}`);
+assert(os.storageReservations.some((entry) => entry.scope === "nodecompat-fs-write" && entry.path === `${cwd}/async-dir/note.txt` && entry.operation === "writeFileSync"), "NodeCompat fs.promises.writeFile did not reserve storage before VFS write");
 
 const beforePromiseFsyncFlushes = os.storageFlushes;
 const fsPromisesFsyncImport = await node.evaluate(
@@ -1075,6 +1076,7 @@ function bootOs() {
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
   const system = permissions.systemPrincipal();
   let storageFlushes = 0;
+  const storageReservations = [];
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/tmp", "/", { owner: "root", group: "root", permissions: "drwxrwxrwx" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
@@ -1090,6 +1092,10 @@ function bootOs() {
     cache: new RuntimeCacheStore({ cacheApi: null }),
     storage: {
       status: () => ({ backend: "memory", bytes: 0 }),
+      reserveStorageBytes(bytes, details = {}) {
+        storageReservations.push({ bytes, ...details });
+        return true;
+      },
       flush: async () => {
         storageFlushes += 1;
         return { flushed: true };
@@ -1097,6 +1103,9 @@ function bootOs() {
     },
     get storageFlushes() {
       return storageFlushes;
+    },
+    get storageReservations() {
+      return storageReservations;
     },
     async syscallAsync(name) {
       if (name !== "storage.sync") return { ok: false, error: { code: "ENOSYS", message: `syscall: ${name}: not implemented`, syscall: name } };

@@ -507,14 +507,37 @@ class CommonJsRuntime {
       writeFileSync: (path, data) => {
         const resolved = this.node.resolveFsPath(path, this.processContext.cwd, "write");
         if (data instanceof Uint8Array) {
+          reserveStorageBytes(this.os, contentByteLength(data), {
+            scope: "nodecompat-fs-write",
+            runtime: "nodecompat",
+            path: resolved,
+            cwd: this.processContext.cwd,
+            operation: "writeFileSync",
+          });
           this.os.fs.writeOrCreateFileBytes(resolved, data, "/", {}, this.node.system);
           return;
         }
-        this.os.fs.writeOrCreateFile(resolved, stringifyFileData(data), "/", {}, this.node.system);
+        const content = stringifyFileData(data);
+        reserveStorageBytes(this.os, contentByteLength(content), {
+          scope: "nodecompat-fs-write",
+          runtime: "nodecompat",
+          path: resolved,
+          cwd: this.processContext.cwd,
+          operation: "writeFileSync",
+        });
+        this.os.fs.writeOrCreateFile(resolved, content, "/", {}, this.node.system);
       },
       appendFileSync: (path, data) => {
         const resolved = this.node.resolveFsPath(path, this.processContext.cwd, "write");
-        this.os.fs.appendFile(resolved, stringifyFileData(data), "/", this.node.system);
+        const content = stringifyFileData(data);
+        reserveStorageBytes(this.os, contentByteLength(content), {
+          scope: "nodecompat-fs-write",
+          runtime: "nodecompat",
+          path: resolved,
+          cwd: this.processContext.cwd,
+          operation: "appendFileSync",
+        });
+        this.os.fs.appendFile(resolved, content, "/", this.node.system);
       },
       existsSync: (path) => this.os.fs.exists(this.node.resolveFsPath(path, this.processContext.cwd, "read"), "/"),
       realpathSync: (path) => {
@@ -545,7 +568,16 @@ class CommonJsRuntime {
         if ((Number(mode) & fsModule.constants.COPYFILE_EXCL) && this.os.fs.exists(resolvedDestination, "/")) {
           throw new Error(`EEXIST: file already exists, copyfile '${source}' -> '${destination}'`);
         }
-        this.os.fs.writeOrCreateFileBytes(resolvedDestination, this.os.fs.readFileBytes(resolvedSource, "/", this.node.system), "/", {}, this.node.system);
+        const bytes = this.os.fs.readFileBytes(resolvedSource, "/", this.node.system);
+        reserveStorageBytes(this.os, contentByteLength(bytes), {
+          scope: "nodecompat-fs-write",
+          runtime: "nodecompat",
+          path: resolvedDestination,
+          sourcePath: resolvedSource,
+          cwd: this.processContext.cwd,
+          operation: "copyFileSync",
+        });
+        this.os.fs.writeOrCreateFileBytes(resolvedDestination, bytes, "/", {}, this.node.system);
       },
       fsyncSync: (fd) => {
         assertNodeFd(fd, "fsyncSync");
@@ -2727,6 +2759,18 @@ function normalizeStreamOptions(options = {}) {
 function measureChunkLength(chunk, buffer, encoding = "utf8") {
   if (chunk instanceof Uint8Array) return chunk.length;
   return buffer.byteLength(String(chunk ?? ""), encoding);
+}
+
+function contentByteLength(value) {
+  if (value instanceof Uint8Array) return value.byteLength;
+  if (ArrayBuffer.isView(value)) return value.byteLength;
+  if (value instanceof ArrayBuffer) return value.byteLength;
+  return new TextEncoder().encode(String(value ?? "")).byteLength;
+}
+
+function reserveStorageBytes(os, bytes, details = {}) {
+  if (typeof os.storage?.reserveStorageBytes !== "function") return;
+  os.storage.reserveStorageBytes(bytes, details);
 }
 
 function mergeStreamChunks(chunks, buffer, encoding = "utf8") {

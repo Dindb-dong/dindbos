@@ -327,6 +327,14 @@ export class DescriptorManager {
     const content = safeRead(() => this.os.fs.readFile(descriptor.path, "/", descriptor.principal), "");
     const offset = descriptor.append ? content.length : Number(descriptor.offset || 0);
     const next = `${content.slice(0, offset)}${data}${content.slice(offset + data.length)}`;
+    reserveStorageBytes(this.os, byteLength(data), {
+      scope: "fd-write",
+      appId: context.process?.appId || context.appId || "",
+      pid: context.process?.pid || context.pid || 0,
+      path: descriptor.path,
+      fd: descriptor.fd,
+      operation: descriptor.append ? "append" : "write",
+    });
     this.os.fs.writeOrCreateFile(descriptor.path, next, "/", {}, descriptor.principal);
     descriptor.offset = offset + data.length;
     return byteLength(data);
@@ -550,4 +558,9 @@ function safeRead(read, fallback) {
 
 function byteLength(value) {
   return new TextEncoder().encode(String(value ?? "")).byteLength;
+}
+
+function reserveStorageBytes(os, bytes, details = {}) {
+  if (typeof os.storage?.reserveStorageBytes !== "function") return;
+  os.storage.reserveStorageBytes(bytes, details);
 }

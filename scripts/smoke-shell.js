@@ -39,6 +39,7 @@ assert(result.output === "  tail", `empty string token output mismatch: ${JSON.s
 result = await shell.executeAsync("echo persisted > note.txt && cat note.txt");
 assert(result.status === 0, `redirection chain status mismatch: ${result.status}`);
 assert(result.output === "persisted\n", `redirection chain output mismatch: ${JSON.stringify(result.output)}`);
+assert(shell.os.storageReservations.some((entry) => entry.scope === "shell-write" && entry.path === "/home/guest/note.txt" && entry.operation === "redirect-write"), "shell redirection did not reserve storage before VFS write");
 
 result = await shell.executeAsync("echo alpha>compact.txt && grep alpha < compact.txt | grep alpha > filtered.txt && cat filtered.txt");
 assert(result.status === 0, `mixed redirection pipeline status mismatch: ${result.status}`);
@@ -349,6 +350,7 @@ function bootOs() {
   const trustedPublishers = [];
   let storageFlushes = 0;
   let storagePersists = 0;
+  const storageReservations = [];
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
@@ -414,6 +416,10 @@ function bootOs() {
       return record;
     },
     storage: {
+      reserveStorageBytes: (bytes, details = {}) => {
+        storageReservations.push({ bytes, ...details });
+        return true;
+      },
       status: () => ({ backend: "memory", bytes: 0 }),
       estimate: async () => ({ backend: "memory", bytes: 0 }),
       persist: async () => {
@@ -426,6 +432,9 @@ function bootOs() {
     },
     get storagePersists() {
       return storagePersists;
+    },
+    get storageReservations() {
+      return storageReservations;
     },
     flushPersistentFileSystem: async () => {
       storageFlushes += 1;

@@ -241,7 +241,7 @@ Verification:
 - Already present: `npm run smoke:files` verifies an interrupted TextEdit save through the app save helper preserves the existing file, cleans staged temp files, and still commits on the next successful save.
 - Already present: `npm run smoke:packages` verifies failed package-root repair fallback preserves the package DB record and audits the refused repair through shell fsck.
 - Already present: `npm run smoke:persistent-storage` verifies interrupted OPFS journal replay applies a pending manifest, records a replay recovery decision, and clears active/replay journal markers.
-- Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
+- Already present: Shell redirection/copy/touch, Files.app import paths, AppSandbox file writes, NodeCompat `fs` writes, and WASM syscall/WASI descriptor writes all reserve storage before VFS mutation; `npm run smoke:shell`, `npm run smoke:files`, `npm run smoke:permissions`, `npm run smoke:npm-node`, and `npm run smoke:wasm` cover the cross-runtime quota boundary.
 
 Completion criteria:
 

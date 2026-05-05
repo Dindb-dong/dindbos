@@ -22,7 +22,7 @@ Current implementation:
 - VFS exposes binary-safe byte read/write APIs while keeping text APIs compatible.
 - In-memory binary file nodes use native `Uint8Array`; base64 is only used at persistence/export boundaries.
 - Files.app supports browser file import, DindbOS archive export/import, and drag and drop upload.
-- AppSandbox file writes and Files.app imports reserve estimated bytes before VFS mutation; quota denial preserves existing files and stops archive staging before it starts.
+- Shell redirection/copy/touch, AppSandbox file writes, Files.app imports, NodeCompat `fs` writes, and WASM syscall/WASI descriptor writes reserve estimated bytes before VFS mutation; quota denial preserves existing files and stops archive staging before it starts.
 - PersistentStorage can arbitrate storage-class quotas for package roots, package state, cache, temp, snapshots, logs, backups, sync staging, recovery data, and user data before mutation.
 - Files.app shows local mount permission state, reconnect/sync/forget actions, and copy/move/import/export progress.
 - IndexedDB, localStorage, and memory remain fallbacks for snapshot storage.
