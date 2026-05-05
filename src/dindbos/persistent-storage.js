@@ -37,12 +37,15 @@ export class PersistentStorage {
       storageJournalRecords: 0,
       lastStorageJournalAction: "",
       lastStorageTransactionId: "",
+      storageRecoveryDecision: null,
     };
   }
 
   async loadFileSystem() {
+    const interruptedTransaction = await this.readActiveStorageTransaction();
     const raw = await this.read(this.key);
     this.updateStatus(raw);
+    if (interruptedTransaction) this.recordStorageRecoveryDecision(interruptedTransaction, raw);
     if (!raw) return null;
     try {
       const payload = JSON.parse(raw);
@@ -108,7 +111,7 @@ export class PersistentStorage {
       this.markWriteQueued(transaction);
       this.writeQueue = this.writeQueue
         .catch(() => {})
-        .then(() => this.writeInodeRecordPayload(recordPayload))
+        .then(() => this.writeInodeRecordPayload(recordPayload, transaction))
         .then(() => this.markWriteComplete(transaction))
         .catch((error) => {
           this.markWriteError(error, transaction);
@@ -434,7 +437,8 @@ export class PersistentStorage {
     };
   }
 
-  async writeInodeRecordPayload(payload) {
+  async writeInodeRecordPayload(payload, transaction = {}) {
+    await this.writeActiveStorageTransaction(transaction);
     for (const record of payload.dirtyFileRecords) {
       await this.opfsSet(record.key, record.content);
     }
@@ -446,6 +450,7 @@ export class PersistentStorage {
     await this.cleanupOpfsInodeRecords(new Set(payload.inodeRecords.map((record) => opfsFileName(record.key))));
     this.savedInodeHashes = new Map(payload.inodeRecords.map((record) => [record.ref, record.hash]));
     this.savedContentHashes = new Map(payload.fileRecords.map((record) => [record.ref, record.hash]));
+    await this.clearActiveStorageTransaction();
   }
 
   rememberRecordHashes(payload) {
@@ -550,6 +555,7 @@ export class PersistentStorage {
       await this.opfsDelete(this.key);
     } catch {}
     await this.writeDurableFallback(this.key, payload);
+    await this.clearActiveStorageTransaction().catch(() => {});
     this.markWriteComplete(fallbackTransaction);
   }
 
@@ -598,6 +604,56 @@ export class PersistentStorage {
       transactionKind: String(kind || "storage-write"),
       ...details,
     };
+  }
+
+  activeStorageTransactionKey() {
+    return `${this.key}:journal:active`;
+  }
+
+  async writeActiveStorageTransaction(transaction = {}) {
+    if (!transaction.transactionId) return;
+    await this.opfsSet(this.activeStorageTransactionKey(), JSON.stringify({
+      ...transaction,
+      state: "active",
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  async clearActiveStorageTransaction() {
+    if (!this.opfsProvider) return;
+    await this.opfsDelete(this.activeStorageTransactionKey());
+  }
+
+  async readActiveStorageTransaction() {
+    if (!this.opfsProvider) return null;
+    try {
+      const raw = await this.opfsGet(this.activeStorageTransactionKey());
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  recordStorageRecoveryDecision(transaction = {}, raw = "") {
+    const decision = raw ? "load-last-complete-manifest" : "no-complete-manifest";
+    const entry = this.recordStorageJournal("write-recovery", {
+      ...transaction,
+      transactionId: transaction.transactionId || "",
+      transactionKind: transaction.transactionKind || "filesystem-save",
+      error: "interrupted-write",
+    });
+    this.lastStatus = {
+      ...this.lastStatus,
+      storageRecoveryDecision: {
+        transactionId: entry.transactionId,
+        transactionKind: entry.transactionKind,
+        decision,
+        reason: "interrupted-write",
+        detectedAt: entry.at,
+      },
+    };
+    return this.lastStatus.storageRecoveryDecision;
   }
 
   recordStorageJournal(action, details = {}) {

@@ -8,6 +8,7 @@ const binary = new Uint8Array([3, 9, 27, 81, 128, 255]);
 
 await verifySnapshotAdapterFallback();
 await verifyOpfsTransactionGroupJournal();
+await verifyInterruptedOpfsTransactionRecoveryDecision();
 await verifyOpfsFailureFallsBackToSnapshot();
 await verifyLifecyclePendingWriteFlushes();
 
@@ -100,6 +101,43 @@ async function verifyOpfsTransactionGroupJournal() {
   assert(queued.dirtyInodes >= 4, `OPFS transaction dirty inode count too low: ${queued.dirtyInodes}`);
   assert(storage.status().lastStorageTransactionId === queued.transactionId, "storage status did not expose last transaction id");
   assert(opfsRoot.files.size > 2, "OPFS transaction did not write multiple records");
+}
+
+async function verifyInterruptedOpfsTransactionRecoveryDecision() {
+  const opfsRoot = createOpfsRoot();
+  const storage = new PersistentStorage({
+    key: "smoke:opfs-recovery",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: async () => opfsRoot,
+  });
+  const fs = bootVfs();
+  fs.writeOrCreateFileBytes(binaryPath, binary, "/", { mime: "application/octet-stream" });
+  storage.saveFileSystem(fs.snapshot());
+  await storage.flush();
+  const activeTransaction = {
+    transactionId: "storage-tx-interrupted",
+    transactionKind: "filesystem-save",
+    storageFormat: "opfs-inode-records",
+    dirtyFiles: 1,
+    dirtyInodes: 2,
+    state: "active",
+  };
+  opfsRoot.files.set(opfsFileName(storage.activeStorageTransactionKey()), JSON.stringify(activeTransaction));
+
+  const reloadedStorage = new PersistentStorage({
+    key: "smoke:opfs-recovery",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: async () => opfsRoot,
+  });
+  const reloadedRoot = await reloadedStorage.loadFileSystem();
+  const reloaded = new VirtualFileSystem(reloadedRoot, { home: "/home/guest" });
+  assertBytes(reloaded.readFileBytes(binaryPath), binary, "interrupted transaction recovery changed persisted bytes");
+  const recovery = reloadedStorage.status().storageRecoveryDecision;
+  assert(recovery?.transactionId === "storage-tx-interrupted", `recovery transaction id mismatch: ${JSON.stringify(recovery)}`);
+  assert(recovery.decision === "load-last-complete-manifest", `recovery decision mismatch: ${JSON.stringify(recovery)}`);
+  assert(reloadedStorage.journal().some((entry) => entry.action === "write-recovery" && entry.transactionId === "storage-tx-interrupted"), "recovery journal entry missing");
 }
 
 async function verifyLifecyclePendingWriteFlushes() {
@@ -239,6 +277,10 @@ function createOpfsRoot() {
       for (const name of files.keys()) yield [name, {}];
     },
   };
+}
+
+function opfsFileName(key) {
+  return `${String(key || "dindbos").replace(/[^A-Za-z0-9._-]+/g, "_")}.json`;
 }
 
 function assertBytes(actual, expected, message) {
