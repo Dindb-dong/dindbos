@@ -220,8 +220,15 @@ assert(JSON.parse(result.output).error.code === "ENOSYS", `unsupported syscall e
 
 const trustKey = "ed25519-pub:v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 result = await shell.executeAsync(`pkg trust add com.example ${trustKey} Example Publisher`);
+assert(result.status === 1, `non-admin pkg trust add status mismatch: ${result.status}`);
+assert(result.output.includes("administrator required"), `non-admin pkg trust add output mismatch: ${result.output}`);
+assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("decision=denied"), "security audit missing denied package trust change");
+shell.os.session.groups = ["users", "admins"];
+shell.principal = shell.os.permissions.principal(shell.os.session);
+result = await shell.executeAsync(`pkg trust add com.example ${trustKey} Example Publisher`);
 assert(result.status === 0, `pkg trust add status mismatch: ${result.status}`);
 assert(result.output === "trusted publisher added com.example", `pkg trust add output mismatch: ${result.output}`);
+assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("decision=allowed"), "security audit missing allowed package trust change");
 result = await shell.executeAsync("pkg trust list");
 assert(result.status === 0, `pkg trust list status mismatch: ${result.status}`);
 assert(result.output.includes("com.example"), `pkg trust list missing publisher: ${result.output}`);
@@ -465,6 +472,23 @@ function bootOs() {
         if (index >= 0) trustedPublishers.splice(index, 1);
         return idOrKey;
       },
+    },
+    assertAdminOperation(action, context = {}) {
+      const principal = context.principal || this.permissions.principal(this.session);
+      const allowed = principal.system || principal.user === "root" || (principal.groups || []).includes("admins");
+      this.auditSecurity(action, allowed ? "allowed" : "denied", { principal, target: context.target || "", reason: allowed ? "" : "admin-required" });
+      if (!allowed) throw new Error(`${action}: denied: administrator required`);
+      return true;
+    },
+    auditSecurity(action, decision, details = {}) {
+      const principal = details.principal || {};
+      ["/var", "/var/log", "/var/log/dindbos"].forEach((path) => {
+        if (!this.fs.exists(path)) this.fs.createDirectory(path, "/", { owner: "root", group: "root" }, system);
+      });
+      const line = `action=${action} decision=${decision} user=${principal.user || "guest"} groups=${(principal.groups || []).join(",") || "-"} target=${details.target || "-"}${details.reason ? ` reason=${details.reason}` : ""}\n`;
+      if (this.fs.exists("/var/log/dindbos/security-audit.log")) this.fs.appendFile("/var/log/dindbos/security-audit.log", line, "/", system);
+      else this.fs.writeOrCreateFile("/var/log/dindbos/security-audit.log", line, "/", { owner: "root", group: "root", permissions: "-rw-r--r--" }, system);
+      return { action, decision };
     },
     openPath: () => null,
   };

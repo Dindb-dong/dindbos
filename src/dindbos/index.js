@@ -1967,6 +1967,43 @@ export class DindbOS {
     };
   }
 
+  assertAdminOperation(action, context = {}) {
+    const principal = context.principal || this.permissions.principal({ user: this.session.user, groups: this.session.groups });
+    if (principal.system || principal.user === "root" || (principal.groups || []).includes("admins")) {
+      this.auditSecurity(action, "allowed", { principal, target: context.target || "" });
+      return true;
+    }
+    this.auditSecurity(action, "denied", { principal, target: context.target || "", reason: "admin-required" });
+    throw new Error(`${action}: denied: administrator required`);
+  }
+
+  auditSecurity(action, decision, details = {}) {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/log", "root", system);
+    this.ensureSystemDirectory("/var/log/dindbos", "root", system);
+    const principal = details.principal || {};
+    const entry = {
+      at: new Date().toISOString(),
+      action: String(action || "security"),
+      decision: String(decision || "recorded"),
+      user: String(principal.user || this.session.user || "guest"),
+      groups: [...(principal.groups || [])],
+      target: String(details.target || ""),
+      reason: String(details.reason || ""),
+    };
+    const line = `${entry.at} action=${entry.action} decision=${entry.decision} user=${entry.user} groups=${entry.groups.join(",") || "-"} target=${entry.target || "-"}${entry.reason ? ` reason=${entry.reason}` : ""}\n`;
+    const path = "/var/log/dindbos/security-audit.log";
+    if (this.fs.exists(path)) this.fs.appendFile(path, line, "/", system);
+    else this.fs.writeOrCreateFile(path, line, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "text/plain",
+    }, system);
+    return entry;
+  }
+
   sessionStatus() {
     return {
       instanceId: this.instanceId,

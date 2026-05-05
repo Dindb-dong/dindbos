@@ -86,6 +86,8 @@ assert(operators.group === "operators" && Number.isInteger(operators.gid), "crea
 const grace = os.createUser("Grace Hopper", { groups: ["users", "Operators"] });
 assert(grace.user === "grace-hopper", `createUser did not sanitize user: ${grace.user}`);
 assert(Number.isInteger(grace.uid), "createUser did not assign uid");
+const admin = os.createUser("Admin User", { groups: ["users", "admins"] });
+assert(admin.groups.includes("admins"), "admin user did not retain admins group");
 assert(os.fs.stat("/home/grace-hopper/Documents").owner === "grace-hopper", "createUser did not create owned home workspace");
 assert(os.listGroups().find((group) => group.group === "operators").members.includes("grace-hopper"), "createUser did not add user to group membership");
 const release = os.addUserToGroup("Grace Hopper", "Release Team");
@@ -132,6 +134,19 @@ assert(result.status === 0 && shell.env.USER === "ada-lovelace", "loginctl switc
 const graceHistory = JSON.parse(os.fs.readFile("/var/lib/dindbos/shell-history/grace-hopper.json"));
 assert(graceHistory.entries.includes("whoami") && graceHistory.entries.includes("cat Team/plan.txt"), "switched user's shell history was not persisted");
 assert(!JSON.parse(os.fs.readFile(adaHistoryPath)).entries.includes("cat Team/plan.txt"), "shell history leaked across users");
+const trustKey = "ed25519-pub:v1:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+result = await shell.executeAsync(`pkg trust add org.session ${trustKey} Session Publisher`);
+assert(result.status === 1 && result.output.includes("administrator required"), `non-admin package trust change was not denied: ${result.output}`);
+assert(os.fs.readFile("/var/log/dindbos/security-audit.log").includes("decision=denied"), "security audit did not record denied package trust change");
+result = await shell.executeAsync("loginctl switch admin-user");
+assert(result.status === 0 && shell.env.USER === "admin-user", "loginctl switch did not enter admin user");
+result = await shell.executeAsync(`pkg trust add org.session ${trustKey} Session Publisher`);
+assert(result.status === 0, `admin package trust add failed: ${result.output}`);
+assert(os.fs.readFile("/var/log/dindbos/security-audit.log").includes("decision=allowed"), "security audit did not record allowed package trust change");
+result = await shell.executeAsync("pkg trust remove org.session");
+assert(result.status === 0, `admin package trust remove failed: ${result.output}`);
+result = await shell.executeAsync("loginctl switch ada-lovelace");
+assert(result.status === 0 && shell.env.USER === "ada-lovelace", "loginctl switch did not return from admin user");
 
 const events = [];
 os.bus.on("session:lock", (event) => events.push(`lock:${event.state}:${event.reason}`));
@@ -410,7 +425,7 @@ assert(resumedApply.status === "complete" && resumedApply.startIndex === 1, "rem
 assert(resumeTarget.remoteSyncStatus().lastApplyRun.status === "complete", "remote sync status did not record completed resumed apply");
 assert(resumeTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync resumed apply did not restore remaining settings file");
 
-console.log("sessions smoke ok generated-home user-scopes ownership credentials session-switch login-lock coordination file-events conflicts storage-flush app-state packages handoff handoff-relay package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume sync-retry");
+console.log("sessions smoke ok generated-home user-scopes ownership credentials session-switch admin-audit login-lock coordination file-events conflicts storage-flush app-state packages handoff handoff-relay package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume sync-retry");
 
 function createStorage(values = new Map()) {
   return {
