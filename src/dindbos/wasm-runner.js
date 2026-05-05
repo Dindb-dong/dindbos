@@ -5,6 +5,13 @@ class WasmExit extends Error {
   }
 }
 
+class WasmAbort extends Error {
+  constructor(message) {
+    super(message);
+    this.code = "EABORT";
+  }
+}
+
 export class WasmRunner {
   constructor(os) {
     this.os = os;
@@ -50,6 +57,9 @@ export class WasmRunner {
     let crashed = false;
     let crashReportPath = "";
     let descriptorOutput = { stdout: "", stderr: "" };
+    const startedAt = Date.now();
+    const timeoutMs = Number(options.timeoutMs || 0);
+    const deadlineAt = Number.isFinite(Number(options.deadlineAt)) ? Number(options.deadlineAt) : (timeoutMs > 0 ? startedAt + timeoutMs : Infinity);
     const env = this.environment(options, process);
     const context = {
       process,
@@ -81,6 +91,15 @@ export class WasmRunner {
       }
     };
     const readString = (ptr, length) => new TextDecoder().decode(readMemory(ptr, length));
+    const checkDeadline = () => {
+      if (options.abortSignal?.aborted || options.aborted) {
+        throw new WasmAbort(`wasm: aborted${abortReason(options)}`);
+      }
+      if (Date.now() > deadlineAt) {
+        throw new WasmAbort(`wasm: cooperative timeout after ${timeoutMs || 0}ms`);
+      }
+      return 0;
+    };
     const envEntries = () => Object.entries(env).map(([key, value]) => `${key}=${value}`);
     const writeCStringArray = (pointersPtr, bufferPtr, values) => {
       let cursor = Number(bufferPtr || 0);
@@ -141,6 +160,7 @@ export class WasmRunner {
           const result = this.os.syscall(request.name, request.args || {}, context);
           return result.ok ? 0 : errnoNumber(result.error?.code);
         },
+        checkDeadline,
         exit: (code) => {
           throw new WasmExit(code);
         },
@@ -521,6 +541,11 @@ function assertWasmMemoryLimit(instance, maxMemoryPages) {
   const error = new Error(`wasm: memory pages ${pages} exceed limit ${limit}`);
   error.code = "ENOMEM";
   throw error;
+}
+
+function abortReason(options = {}) {
+  const reason = options.abortReason || options.abortSignal?.reason || "";
+  return reason ? `: ${String(reason)}` : "";
 }
 
 function scopedList(manifestScopes, optionScopes, fallback) {
