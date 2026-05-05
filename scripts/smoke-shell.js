@@ -154,6 +154,13 @@ result = await shell.executeAsync("mount");
 assert(result.status === 0, `mount status mismatch: ${result.status}`);
 assert(result.output.includes("rootfs / rootfs rw"), `mount output missing rootfs entry: ${result.output}`);
 assert(result.output.includes("procfs /proc procfs ro"), `mount output missing procfs entry: ${result.output}`);
+assert(result.output.includes("usedBytes="), `mount output missing used bytes: ${result.output}`);
+assert(result.output.includes("support="), `mount output missing support boundary: ${result.output}`);
+result = await shell.executeAsync("df");
+assert(result.status === 0, `df status mismatch: ${result.status}`);
+assert(result.output.includes("Filesystem     Driver"), `df mount-table header missing: ${result.output}`);
+assert(result.output.includes("browser-storage"), `df quota policy missing: ${result.output}`);
+assert(result.output.includes("browser-vfs"), `df support boundary missing: ${result.output}`);
 result = await shell.executeAsync("mount -t memfs /mnt/scratch --readonly");
 assert(result.status === 0, `memfs mount status mismatch: ${result.status}`);
 assert(result.output.includes("mounted /mnt/scratch memfs ro"), `memfs mount output mismatch: ${result.output}`);
@@ -303,13 +310,13 @@ function bootOs() {
     },
     mountTable() {
       return [
-        { id: "rootfs", root: "/", driver: "rootfs", readonly: false, owner: "root", durability: "persistent", quotaPolicy: "browser-storage", capabilities: [] },
-        { id: "procfs", root: "/proc", driver: "procfs", readonly: true, owner: "root", durability: "runtime", quotaPolicy: "generated", capabilities: [] },
+        { id: "rootfs", root: "/", driver: "rootfs", readonly: false, owner: "root", durability: "persistent", quotaPolicy: "browser-storage", capabilities: [], usedBytes: 0, support: "browser-vfs" },
+        { id: "procfs", root: "/proc", driver: "procfs", readonly: true, owner: "root", durability: "runtime", quotaPolicy: "generated", capabilities: [], usedBytes: 0, support: "generated" },
         ...virtualMounts.values(),
       ];
     },
     mountLines() {
-      return this.mountTable().map((entry) => `${entry.id} ${entry.root} ${entry.driver} ${entry.readonly ? "ro" : "rw"} owner=${entry.owner} durability=${entry.durability} quota=${entry.quotaPolicy} caps=${entry.capabilities?.join(",") || "-"}`);
+      return this.mountTable().map((entry) => `${entry.id} ${entry.root} ${entry.driver} ${entry.readonly ? "ro" : "rw"} owner=${entry.owner} durability=${entry.durability} quota=${entry.quotaPolicy} usedBytes=${Number(entry.usedBytes || 0)} support=${entry.support || "browser-vfs"} caps=${entry.capabilities?.join(",") || "-"}`);
     },
     mountVirtual(path, options = {}, principal = system) {
       const normalized = this.fs.normalize(path);
@@ -328,6 +335,8 @@ function bootOs() {
         durability: "runtime",
         quotaPolicy: "memory",
         capabilities: ["mount.manage"],
+        usedBytes: 0,
+        support: "browser-vfs",
       };
       virtualMounts.set(normalized, record);
       return record;

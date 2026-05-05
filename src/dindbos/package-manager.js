@@ -452,20 +452,25 @@ export class PackageManager {
   }
 
   packageImageMounts() {
-    return this.list().map((record) => ({
-      id: `pkg:${record.id}`,
-      root: record.installPath,
-      driver: "pkgfs",
-      readonly: true,
-      owner: "root",
-      durability: "persistent",
-      quotaPolicy: "package-storage",
-      capabilities: ["package.read"],
-      source: record.sourcePath || "package-db",
-      packageId: record.id,
-      version: record.version,
-      trust: record.trust?.trusted ? "trusted" : record.trust?.source || "local",
-    }));
+    return this.packageRecordNodes()
+      .map((node) => this.readPackageRecord(node.path))
+      .filter(Boolean)
+      .map((record) => ({
+        id: `pkg:${record.id}`,
+        root: record.installPath,
+        driver: "pkgfs",
+        readonly: true,
+        owner: "root",
+        durability: "persistent",
+        quotaPolicy: "package-storage",
+        capabilities: ["package.read"],
+        source: record.sourcePath || "package-db",
+        packageId: record.id,
+        version: record.version,
+        trust: record.trust?.trusted ? "trusted" : record.trust?.source || "local",
+        usedBytes: this.os.countBytes?.(record.installPath) || 0,
+        support: "package-image",
+      }));
   }
 
   installNpmDependency(packageId, specifier) {

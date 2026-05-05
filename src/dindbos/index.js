@@ -2229,6 +2229,8 @@ export class DindbOS {
         quotaPolicy: "browser-storage",
         capabilities: [],
         source: "runtime",
+        usedBytes: this.countBytes("/"),
+        support: "browser-vfs",
       },
       ...this.diskPolicyAreas().map((area) => ({
         id: `disk:${area.root}`,
@@ -2240,6 +2242,8 @@ export class DindbOS {
         quotaPolicy: area.bucket || this.storageBucketForArea(area),
         capabilities: area.root === "/mnt" ? ["localMount.manage"] : [],
         source: "disk-policy",
+        usedBytes: area.usedBytes,
+        support: this.storageBucketPolicy().decision,
       })),
       {
         id: "procfs",
@@ -2251,6 +2255,8 @@ export class DindbOS {
         quotaPolicy: "generated",
         capabilities: [],
         source: "runtime",
+        usedBytes: this.countBytes("/proc"),
+        support: "generated",
       },
       {
         id: "devfs",
@@ -2262,12 +2268,18 @@ export class DindbOS {
         quotaPolicy: "generated",
         capabilities: [],
         source: "runtime",
+        usedBytes: this.countBytes("/dev"),
+        support: "generated",
       },
     ];
     const localMounts = this.localMounts?.listMounts?.() || [];
     const packageMounts = this.packages?.packageImageMounts?.() || [];
     packageMounts.forEach((mount) => roots.push({ ...mount }));
-    [...this.virtualMounts.values()].forEach((mount) => roots.push({ ...mount }));
+    [...this.virtualMounts.values()].forEach((mount) => roots.push({
+      ...mount,
+      usedBytes: this.countBytes(mount.root),
+      support: "browser-vfs",
+    }));
     localMounts.forEach((mount) => {
       roots.push({
         id: `local:${mount.path}`,
@@ -2279,6 +2291,8 @@ export class DindbOS {
         quotaPolicy: "host-filesystem",
         capabilities: ["localMount.read", "localMount.manage"],
         source: mount.handleName || mount.name || "local-folder",
+        usedBytes: 0,
+        support: "file-system-access-api",
       });
     });
     return roots
@@ -2886,6 +2900,8 @@ function formatMountTableLine(entry) {
     `owner=${entry.owner || "root"}`,
     `durability=${entry.durability || "runtime"}`,
     `quota=${entry.quotaPolicy || "unknown"}`,
+    `usedBytes=${Number(entry.usedBytes || 0)}`,
+    `support=${entry.support || "browser-vfs"}`,
     `caps=${caps}`,
   ].join(" ");
 }

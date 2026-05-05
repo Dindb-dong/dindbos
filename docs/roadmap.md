@@ -964,7 +964,7 @@ Implementation tasks:
 - Add overlay mounts for package development, safe mode, and staged updates.
 - Already present: installed package roots are readonly `pkgfs` image mounts under `/opt/<package-id>`, visible through package image mount records and the shared mount table before app registration.
 - Add driver-level metadata normalization so stat, lstat, symlink, hard-link-like aliases, timestamps, and errors are stable across drivers where possible.
-- Add `/proc/mounts` and `mount`/`df` diagnostics that show driver, durability, used bytes, quota, and browser support limitations.
+- Already present: `/proc/mounts`, JSON mount records, `mount`, and `df` diagnostics show driver, durability, used bytes, quota policy, and browser support limitations from the shared mount table.
 
 Verification:
 
@@ -972,6 +972,7 @@ Verification:
 - Already present: `npm run smoke:shell` verifies shell `mount -t memfs`, shell `umount`, `mount.list`, `mount.mount`, and `mount.unmount`; `npm run smoke:permissions` verifies sandbox denial for mount management without capability.
 - Already present: `npm run smoke:boot` verifies readonly runtime `memfs` write denial with `EACCES` and unsupported driver normalization with `ENOTSUP`.
 - Already present: `npm run smoke:packages` verifies installed package roots are readonly directory-like `pkgfs` mounts and deny writes with `EACCES`; `npm run smoke:boot` verifies installed package image mounts appear in the shared mount table.
+- Already present: `npm run smoke:boot` verifies `/proc/mounts` includes used-byte and support diagnostics; `npm run smoke:shell` verifies `mount` and `df` render the same diagnostic fields.
 - Add smoke coverage for overlay precedence, zip mount listing, and cross-driver metadata/error normalization.
 - Add cross-driver tests proving shell, app APIs, NodeCompat, and WASI see the same path behavior for mounted trees.
 
