@@ -12,6 +12,7 @@ import {
   windowPlacementsPath,
   writeWindowPlacements,
 } from "../src/dindbos/window-manager.js";
+import { KernelObjectRegistry } from "../src/dindbos/kernel-objects.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 
@@ -116,12 +117,21 @@ assert(!manager.windows.has("two"), "ctrl-w did not close active window");
 
 function bootOs() {
   const permissions = new PermissionPolicy();
-  return {
+  const os = {
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
     fs: new VirtualFileSystem(null, { home: "/home/guest", policy: permissions }),
     clipboard: createTestClipboard(),
   };
+  os.objects = new KernelObjectRegistry(os);
+  return os;
+}
+
+function ensureProcPid(os, pid) {
+  const system = os.permissions.systemPrincipal();
+  if (!os.fs.exists("/proc")) os.fs.createDirectory("/proc", "/", { owner: "root", group: "root" }, system);
+  const path = `/proc/${pid}`;
+  if (!os.fs.exists(path)) os.fs.createDirectory(path, "/", { owner: "root", group: "root" }, system);
 }
 
 function createTestClipboard() {
@@ -273,9 +283,14 @@ async function runLiveWindowStateSmoke() {
   try {
     installFakeDom();
     const liveOs = bootOs();
+    [42, 43, 44].forEach((pid) => ensureProcPid(liveOs, pid));
     liveOs.processes = {
       markReady: () => {},
       updateWindowState: () => {},
+      get: (pid) => ({
+        pid: Number(pid),
+        credentials: { user: "guest", uid: 1000, gid: 100, groups: ["users"] },
+      }),
     };
     const liveManager = new WindowManager(liveOs);
     liveOs.windows = liveManager;
@@ -312,6 +327,13 @@ async function runLiveWindowStateSmoke() {
     const compositor = liveManager.compositorStatus();
     assert(compositor.activeWindowId === "browser" && compositor.focusedPid === 42, "compositor status did not expose focused surface");
     assert(compositor.surfaceCount === 1 && compositor.surfaces[0].rect.width === 640, "compositor status did not expose surface geometry");
+    assert(compositor.surfaces[0].objectId && compositor.surfaces[0].handleId, "compositor status did not expose window object and handle ids");
+    assert(task.objectId && task.handleId, "window task did not receive kernel object and handle ids");
+    assert(liveOs.objects.get(task.objectId)?.type === "window", "window kernel object was not registered");
+    assert(liveOs.objects.getHandle(task.handleId)?.rights.includes("capture-self"), "window handle missing capture-self right");
+    const windowProcfs = JSON.parse(liveOs.fs.readFile("/proc/42/window.json"));
+    assert(windowProcfs.objectId === task.objectId && windowProcfs.handleId === task.handleId, "/proc pid window record missing object or handle id");
+    assert(JSON.parse(liveOs.fs.readFile("/proc/42/handles.json")).some((entry) => entry.id === task.handleId && entry.objectType === "window"), "/proc pid handles missing window handle");
     const procCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
     assert(procCompositor.lastInputEvent.type === "pointerdown", "/proc/compositor did not expose last input event");
     const imeRoute = liveManager.routeInputEvent("compositionupdate", { data: "한" });
@@ -394,6 +416,10 @@ async function runLiveWindowStateSmoke() {
     assert(desktopCapture.handled && desktopCapture.scope === "desktop" && desktopCapture.surfaces.length >= 3, "capability-approved desktop capture did not include visible surfaces");
     const captureStatus = JSON.parse(liveOs.fs.readFile("/proc/compositor")).surfaceCapture;
     assert(captureStatus.captured === 2 && captureStatus.denied >= 2, "/proc/compositor did not expose surface capture policy state");
+    const recorderTask = liveManager.windows.get("recorder");
+    liveOs.objects.revokeHandle(recorderTask.handleId, "window-handle-smoke");
+    const staleDesktopCapture = recorderApi.captureDesktop({ userApproved: true });
+    assert(!staleDesktopCapture.handled && staleDesktopCapture.deniedReason === "handle-ESTALE", "stale window handle did not deny desktop capture");
     const lockTarget = { locked: false, requestPointerLock() { this.locked = true; } };
     const lockResult = liveManager.requestPointerLock("browser", { target: lockTarget });
     assert(lockResult.handled && lockTarget.locked, "focused window pointer-lock request did not route");
@@ -422,6 +448,8 @@ async function runLiveWindowStateSmoke() {
       target: { closest: () => null },
     });
     liveManager.close("browser");
+    assert(liveOs.objects.get(task.objectId).status === "revoked", "window close did not revoke window object");
+    assert(liveOs.objects.getHandle(task.handleId).status === "revoked", "window close did not revoke window handle");
     assert(globalThis.document.exitedPointerLock === true, "window close did not exit active pointer lock");
     assert(task.titlebar.releasedPointerIds.includes(8), "window close did not release active pointer capture");
     const closeCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));

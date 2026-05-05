@@ -137,6 +137,7 @@ export class WindowManager {
       setTitle: (title) => {
         titlebar.querySelector("strong").textContent = title;
         task.title = title;
+        this.syncWindowObject(task);
         this.renderTasks();
       },
       setAccessibilityTree: (tree) => this.setAccessibilityTree(config.id, tree),
@@ -144,8 +145,9 @@ export class WindowManager {
       captureSurface: (options = {}) => this.captureSurface({ ...options, requesterWindowId: config.id, scope: "window" }),
       captureDesktop: (options = {}) => this.captureSurface({ ...options, requesterWindowId: config.id, scope: "desktop" }),
     };
-    const task = { ...config, frame, titlebar, content, api, state: {}, accessibilityTree: null, minimized: false, maximized: Boolean(placement.maximized) };
+    const task = { ...config, frame, titlebar, content, api, state: {}, accessibilityTree: null, minimized: false, maximized: Boolean(placement.maximized), objectId: "", handleId: "" };
     this.windows.set(config.id, task);
+    this.registerWindowObject(task);
 
     titlebar.querySelector("[data-window-minimize]").addEventListener("click", () => this.minimize(config.id));
     titlebar.querySelector("[data-window-maximize]").addEventListener("click", () => this.maximize(config.id));
@@ -181,6 +183,7 @@ export class WindowManager {
     task.frame.style.zIndex = `${++this.z}`;
     this.windows.forEach((item) => item.frame.classList.toggle("is-active", item === task));
     this.os.processes.updateWindowState?.(task.pid, "focused", { windowId: id });
+    this.syncWindowObject(task);
     this.renderTasks();
     this.writeCompositorProcfs("focus");
   }
@@ -201,6 +204,7 @@ export class WindowManager {
       task.frame.classList.remove("is-minimizing");
     }, MINIMIZE_ANIMATION_MS);
     this.os.processes.updateWindowState?.(task.pid, "minimized", { windowId: id });
+    this.syncWindowObject(task);
     this.renderTasks();
     this.writeCompositorProcfs("minimize");
   }
@@ -220,6 +224,7 @@ export class WindowManager {
     task.frame.classList.toggle("is-maximized", task.maximized);
     this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, task.maximized ? "maximized" : "restored", { windowId: id });
+    this.syncWindowObject(task);
     this.focus(id);
     this.writeCompositorProcfs(task.maximized ? "maximize" : "restore");
   }
@@ -232,6 +237,7 @@ export class WindowManager {
     this.releaseWindowCapture(id, "window-close");
     this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, "closing", { windowId: id });
+    this.revokeWindowObject(task, "window-close");
     task.frame.remove();
     this.windows.delete(id);
     if (this.activeWindowId === id) this.activeWindowId = newestWindowId(this.windows);
@@ -455,6 +461,9 @@ export class WindowManager {
     const userApproved = Boolean(request.userApproved || request.approved);
     const system = Boolean(request.system || request.principal?.system);
     const hasCapability = system || Boolean(requester?.manifest && canUseCapability(requester.manifest, requiredCapability));
+    const handleCheck = requester && !system
+      ? this.assertWindowHandle(requester, [ownWindow ? "capture-self" : scope === "desktop" ? "capture-desktop" : "capture-window"])
+      : { ok: true, deniedReason: "" };
     const route = {
       requestId: captureRequestId(),
       scope,
@@ -475,6 +484,7 @@ export class WindowManager {
     else if (scope === "window" && !target) route.deniedReason = "target-window-not-found";
     else if (!ownWindow && !hasCapability) route.deniedReason = "capability-denied";
     else if (!ownWindow && !userApproved) route.deniedReason = "user-permission-required";
+    else if (!handleCheck.ok) route.deniedReason = handleCheck.deniedReason;
     else route.handled = true;
 
     if (!route.handled) {
@@ -521,6 +531,13 @@ export class WindowManager {
     };
     if (!task) request.deniedReason = "window-not-found";
     else if (targetWindowId !== this.activeWindowId) request.deniedReason = "window-not-focused";
+    else {
+      const handleCheck = this.assertWindowHandle(task, ["pointer-lock"]);
+      if (!handleCheck.ok) {
+        request.handled = false;
+        request.deniedReason = handleCheck.deniedReason;
+      }
+    }
     if (!request.handled) {
       this.pointerLock.denied += 1;
       this.pointerLock.lastRequest = request;
@@ -638,11 +655,103 @@ export class WindowManager {
     return { ...cleanup };
   }
 
+  registerWindowObject(task) {
+    if (!task || task.objectId) return null;
+    const rights = windowHandleRights(task);
+    const object = this.os.objects?.register?.("window", {
+      ref: `window:${task.id}`,
+      name: task.title || task.id,
+      ownerPid: task.pid,
+      namespace: task.manifest?.namespace || null,
+      user: this.processUser(task.pid),
+      rights,
+      metadata: windowObjectMetadata(task, this.activeWindowId),
+    }) || null;
+    task.objectId = object?.id || "";
+    const handle = task.objectId ? this.os.objects?.createHandle?.(task.objectId, {
+      ownerPid: task.pid,
+      user: this.processUser(task.pid),
+      uid: this.processCredentials(task.pid)?.uid || 0,
+      gid: this.processCredentials(task.pid)?.gid || 0,
+      groups: this.processCredentials(task.pid)?.groups || [],
+      namespace: task.manifest?.namespace || null,
+      rights,
+      closeOnExec: true,
+      transferPolicy: "no-duplicate",
+      metadata: windowHandleMetadata(task),
+    }) : null;
+    task.handleId = handle?.id || "";
+    this.writeWindowProcfs(task);
+    return object;
+  }
+
+  syncWindowObject(task) {
+    if (!task?.objectId) return null;
+    const rights = windowHandleRights(task);
+    const object = this.os.objects?.update?.(task.objectId, {
+      name: task.title || task.id,
+      rights,
+      metadata: windowObjectMetadata(task, this.activeWindowId),
+    }) || null;
+    if (task.handleId) {
+      this.os.objects?.updateHandle?.(task.handleId, {
+        rights,
+        metadata: windowHandleMetadata(task),
+      });
+    }
+    this.writeWindowProcfs(task);
+    return object;
+  }
+
+  revokeWindowObject(task, reason = "window-close") {
+    if (!task?.objectId) return null;
+    return this.os.objects?.revoke?.(task.objectId, reason) || null;
+  }
+
+  assertWindowHandle(task, rights = []) {
+    if (!task?.handleId) return { ok: true, deniedReason: "" };
+    try {
+      this.os.objects?.assertHandle?.(task.handleId, {
+        ownerPid: task.pid,
+        objectType: "window",
+        rights,
+      });
+      return { ok: true, deniedReason: "" };
+    } catch (error) {
+      return { ok: false, deniedReason: `handle-${error.code || "denied"}` };
+    }
+  }
+
+  processCredentials(pid) {
+    return this.os.processes?.get?.(pid)?.credentials || null;
+  }
+
+  processUser(pid) {
+    return this.processCredentials(pid)?.user || this.os.session?.user || "";
+  }
+
+  writeWindowProcfs(task) {
+    if (!task?.id || !this.os?.fs?.writeOrCreateFile || !this.os?.permissions) return null;
+    const system = this.os.permissions.systemPrincipal();
+    const pidPath = `/proc/${task.pid}`;
+    if (!this.os.fs.exists(pidPath)) return null;
+    this.os.fs.writeOrCreateFile(`${pidPath}/window.json`, `${JSON.stringify(windowProcfsRecord(task, this.activeWindowId), null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.os.objects?.writeProcessHandlesProcfs?.(task.pid);
+    return windowProcfsRecord(task, this.activeWindowId);
+  }
+
   compositorStatus() {
     const surfaces = [...this.windows.values()].map((task) => {
       const rect = surfaceRectForTask(task);
       return {
         windowId: task.id,
+        objectId: task.objectId || "",
+        handleId: task.handleId || "",
         appId: task.appId,
         pid: task.pid,
         title: task.title,
@@ -1040,6 +1149,8 @@ function captureSurfaceForTask(task, activeWindowId = "") {
   const rect = surfaceRectForTask(task);
   return {
     windowId: task.id,
+    objectId: task.objectId || "",
+    handleId: task.handleId || "",
     appId: task.appId,
     pid: task.pid,
     title: task.title,
@@ -1050,6 +1161,51 @@ function captureSurfaceForTask(task, activeWindowId = "") {
     rect,
     text: extractElementText(task.content),
     accessibility: task.accessibilityTree ? summarizeAccessibilityTree(task.accessibilityTree) : null,
+  };
+}
+
+function windowHandleRights(task) {
+  return [
+    "inspect",
+    "focus",
+    "minimize",
+    "maximize",
+    "close",
+    "capture-self",
+    "pointer-lock",
+    canUseCapability(task.manifest || {}, "compositor.captureWindow") ? "capture-window" : "",
+    canUseCapability(task.manifest || {}, "compositor.captureDesktop") ? "capture-desktop" : "",
+  ].filter(Boolean);
+}
+
+function windowObjectMetadata(task, activeWindowId = "") {
+  return {
+    windowId: task.id,
+    appId: task.appId || "",
+    pid: task.pid || 0,
+    title: task.title || "",
+    focused: task.id === activeWindowId,
+    minimized: Boolean(task.minimized),
+    maximized: Boolean(task.maximized),
+    hidden: Boolean(task.frame?.hidden),
+    rect: surfaceRectForTask(task),
+  };
+}
+
+function windowHandleMetadata(task) {
+  return {
+    windowId: task.id,
+    appId: task.appId || "",
+    objectId: task.objectId || "",
+    title: task.title || "",
+  };
+}
+
+function windowProcfsRecord(task, activeWindowId = "") {
+  return {
+    ...windowObjectMetadata(task, activeWindowId),
+    objectId: task.objectId || "",
+    handleId: task.handleId || "",
   };
 }
 
