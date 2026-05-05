@@ -51,6 +51,35 @@ assert(!os.fs.exists("/usr/share/applications/Broken Pkg.app"), "failed local in
 assert(!os.apps.apps.has("broken-pkg"), "failed local install registered app");
 assert(!lifecycleEvents.some((event) => event.includes("broken-pkg")), "failed local install emitted lifecycle event");
 
+packages.install(packageManifest("namespace-target", "0.1.0", [
+  { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+  { path: "secret.txt", mime: "text/plain", content: "target secret\n" },
+]));
+packages.install(packageManifest("namespace-probe", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export function mount({ content, os, pkg }) {",
+      "  let rootIsolation = 'not-denied';",
+      "  try { os.fs.readFile('/opt/namespace-target/secret.txt'); }",
+      "  catch (error) { rootIsolation = error.message.includes('sandbox denied') ? 'root-denied' : error.message; }",
+      "  let dependencyIsolation = 'not-denied';",
+      "  try { os.node.evaluate(\"const secret = require('secret-lib'); console.log(secret);\", pkg.installPath); }",
+      "  catch (error) { dependencyIsolation = error.message.includes('dependency not declared') ? 'dependency-denied' : error.message; }",
+      "  content.innerHTML = `<main data-namespace-probe>${rootIsolation}:${dependencyIsolation}</main>`;",
+      "}",
+    ].join("\n"),
+  },
+  { path: "node_modules/secret-lib/index.js", mime: "text/javascript", content: "module.exports = 'undeclared secret';\n" },
+], { permissions: { capabilities: ["node.execute"] } }));
+const namespaceProbeWindow = os.apps.launch("namespace-probe");
+await namespaceProbeWindow.rendered;
+await waitFor(() => namespaceProbeWindow.content.innerHTML.includes("data-namespace-probe"), `namespace probe did not render: ${namespaceProbeWindow.content.innerHTML}`);
+assert(namespaceProbeWindow.content.innerHTML.includes("root-denied:dependency-denied"), `package namespace isolation mismatch: ${namespaceProbeWindow.content.innerHTML}`);
+packages.remove("namespace-probe");
+packages.remove("namespace-target");
+
 await assertRejects(
   () => packages.install(packageManifest("wasm-future", "0.1.0", [
     { path: "app.wasm", mime: "application/wasm", base64: "AGFzbQEAAA==" },
@@ -350,6 +379,8 @@ function titleFor(id) {
   if (id === "flow-demo") return "Flow Demo.app";
   if (id === "api-compatible") return "API Compatible.app";
   if (id === "api-future") return "API Future.app";
+  if (id === "namespace-target") return "Namespace Target.app";
+  if (id === "namespace-probe") return "Namespace Probe.app";
   if (id === "remote-broken") return "Remote Broken.app";
   return "Broken Pkg.app";
 }
