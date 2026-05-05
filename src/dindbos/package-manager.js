@@ -451,6 +451,23 @@ export class PackageManager {
     return cloneJson(record.dependencies || { packages: {}, npm: {} });
   }
 
+  packageImageMounts() {
+    return this.list().map((record) => ({
+      id: `pkg:${record.id}`,
+      root: record.installPath,
+      driver: "pkgfs",
+      readonly: true,
+      owner: "root",
+      durability: "persistent",
+      quotaPolicy: "package-storage",
+      capabilities: ["package.read"],
+      source: record.sourcePath || "package-db",
+      packageId: record.id,
+      version: record.version,
+      trust: record.trust?.trusted ? "trusted" : record.trust?.source || "local",
+    }));
+  }
+
   installNpmDependency(packageId, specifier) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
@@ -881,8 +898,25 @@ export class PackageManager {
   }
 
   ensurePackageDirectory(record) {
-    if (!this.os.fs.exists(record.installPath)) {
-      this.os.fs.createDirectory(record.installPath, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, this.system);
+    const existing = this.os.fs.resolve(record.installPath);
+    if (!existing) {
+      this.os.fs.createMount(record.installPath, {
+        mountType: "pkgfs",
+        handleName: record.id,
+        owner: "root",
+        group: "root",
+        permissions: "dr-xr-xr-x",
+        transient: false,
+      }, this.system);
+    } else if (existing.type !== "mount") {
+      existing.type = "mount";
+      existing.mountType = "pkgfs";
+      existing.handleName = record.id;
+      existing.permissions = "dr-xr-xr-x";
+      existing.owner = "root";
+      existing.group = "root";
+      existing.transient = false;
+      this.os.fs.emitChange?.("package-image-mount", record.installPath);
     }
     this.os.fs.writeOrCreateFile(
       `${record.installPath}/dindbos.app.json`,

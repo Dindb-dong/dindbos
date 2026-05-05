@@ -962,7 +962,7 @@ Implementation tasks:
 - Split VFS behavior into drivers such as `memfs`, `opfsfs`, `cachefs`, `procfs`, `devfs`, `pkgfs`, `zipfs`, `localfs`, and future `netfs`.
 - Already present: `mount.list`, `mount.mount`, and `mount.unmount` syscalls expose the mount table and runtime `memfs` mount/unmount operations. Shell `mount -t memfs <path> [--readonly]` and `umount <path>` route through the syscall boundary, while sandboxed apps need `mount.read` / `mount.manage` capability checks.
 - Add overlay mounts for package development, safe mode, and staged updates.
-- Add readonly package image mounts so installed packages can be verified and mounted before activation.
+- Already present: installed package roots are readonly `pkgfs` image mounts under `/opt/<package-id>`, visible through package image mount records and the shared mount table before app registration.
 - Add driver-level metadata normalization so stat, lstat, symlink, hard-link-like aliases, timestamps, and errors are stable across drivers where possible.
 - Add `/proc/mounts` and `mount`/`df` diagnostics that show driver, durability, used bytes, quota, and browser support limitations.
 
@@ -971,7 +971,8 @@ Verification:
 - Already present: `npm run smoke:boot` verifies mount table entries for browser-backed user storage, package storage, cache storage, and procfs; `npm run smoke:shell` verifies `mount` output; `npm run smoke:local-mounts` verifies local mounts refresh mount table procfs.
 - Already present: `npm run smoke:shell` verifies shell `mount -t memfs`, shell `umount`, `mount.list`, `mount.mount`, and `mount.unmount`; `npm run smoke:permissions` verifies sandbox denial for mount management without capability.
 - Already present: `npm run smoke:boot` verifies readonly runtime `memfs` write denial with `EACCES` and unsupported driver normalization with `ENOTSUP`.
-- Add smoke coverage for overlay precedence, package image mount, zip mount listing, and cross-driver metadata/error normalization.
+- Already present: `npm run smoke:packages` verifies installed package roots are readonly directory-like `pkgfs` mounts and deny writes with `EACCES`; `npm run smoke:boot` verifies installed package image mounts appear in the shared mount table.
+- Add smoke coverage for overlay precedence, zip mount listing, and cross-driver metadata/error normalization.
 - Add cross-driver tests proving shell, app APIs, NodeCompat, and WASI see the same path behavior for mounted trees.
 
 Completion criteria:

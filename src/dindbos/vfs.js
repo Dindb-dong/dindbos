@@ -249,7 +249,7 @@ export class VirtualFileSystem {
       icon: options.icon || "folder",
       mountType: options.mountType || "local-folder",
       handleName: options.handleName || this.basename(normalized),
-      transient: true,
+      transient: options.transient ?? true,
       children: [],
       permissions: options.permissions || "drwxrwxrwx",
       owner: options.owner || ownerFromPrincipal(principal),

@@ -2265,6 +2265,8 @@ export class DindbOS {
       },
     ];
     const localMounts = this.localMounts?.listMounts?.() || [];
+    const packageMounts = this.packages?.packageImageMounts?.() || [];
+    packageMounts.forEach((mount) => roots.push({ ...mount }));
     [...this.virtualMounts.values()].forEach((mount) => roots.push({ ...mount }));
     localMounts.forEach((mount) => {
       roots.push({

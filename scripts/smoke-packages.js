@@ -18,6 +18,10 @@ const installed = packages.install(packageManifest("rollback-demo", "0.1.0", [
 assert(installed.id === "rollback-demo", "valid package install returned wrong id");
 assert(installed.compatibility.tier === "A", `default compatibility tier mismatch: ${installed.compatibility.tier}`);
 assert(os.fs.exists("/opt/rollback-demo/app.js"), "valid package file missing");
+const rollbackRoot = os.fs.stat("/opt/rollback-demo");
+assert(rollbackRoot.type === "mount" && rollbackRoot.resolvedType === "directory", `package root was not mounted as a directory: ${JSON.stringify(rollbackRoot)}`);
+assert(rollbackRoot.permissions === "dr-xr-xr-x", `package image mount permissions mismatch: ${rollbackRoot.permissions}`);
+assert(packages.packageImageMounts().some((entry) => entry.root === "/opt/rollback-demo" && entry.driver === "pkgfs" && entry.readonly), "package image mount table missing rollback-demo");
 assert(os.fs.exists("/var/lib/dindbos/packages/rollback-demo.json"), "valid package record missing");
 assert(os.fs.exists("/usr/share/applications/Rollback Demo.app"), "valid package launcher missing");
 assert(os.apps.apps.has("rollback-demo"), "valid package app was not registered");
@@ -171,6 +175,8 @@ const flow = packages.install(packageManifest("flow-demo", "1.0.0", [
   { path: "data.txt", mime: "text/plain", content: "runtime-ok" },
 ]));
 assert(flow.id === "flow-demo", "flow package install returned wrong id");
+const flowWrite = os.syscall("fs.writeText", { path: "/opt/flow-demo/blocked.txt", content: "blocked" });
+assert(flowWrite.ok === false && flowWrite.error.code === "EACCES", `package image mount write was not denied with EACCES: ${JSON.stringify(flowWrite)}`);
 const flowEntry = os.fs.stat("/opt/flow-demo/app.js");
 assert(flowEntry.permissions === "-rw-r--r--", `package JS entry permissions mismatch: ${flowEntry.permissions}`);
 assert(!flowEntry.permissions.includes("x"), "package JS entry unexpectedly has execute bits");

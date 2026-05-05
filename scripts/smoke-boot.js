@@ -62,6 +62,7 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.exists("/proc/mounts"), "/proc/mounts was not written");
   assert(os.fs.exists("/proc/mounts.json"), "/proc/mounts.json was not written");
   assert(os.mountTable().some((entry) => entry.root === "/home" && entry.driver === "browserfs"), "mount table missing /home browserfs entry");
+  assert(os.mountTable().some((entry) => entry.root === "/opt/hello-notes" && entry.driver === "pkgfs" && entry.readonly), "mount table missing readonly package image entry");
   assert(os.mountTable().some((entry) => entry.root === "/proc" && entry.driver === "procfs" && entry.readonly), "mount table missing readonly procfs entry");
   assert(os.fs.readFile("/proc/mounts").includes("disk:/opt /opt pkgfs"), "/proc/mounts missing package filesystem entry");
   assert(JSON.parse(os.fs.readFile("/proc/mounts.json")).mounts.some((entry) => entry.root === "/var/cache" && entry.driver === "cachefs"), "/proc/mounts.json missing cachefs entry");
