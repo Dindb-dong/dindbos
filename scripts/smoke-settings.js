@@ -127,6 +127,8 @@ const os = {
         createdAt: "2026-05-05T00:01:00.000Z",
         fileCount: 4,
         bytes: 128,
+        cacheRecords: 1,
+        settingsRecords: 2,
       },
       lastError: "",
     };
@@ -165,6 +167,8 @@ assert(snapshot.lifecycle.state === "recovered", "settings snapshot lifecycle st
 assert(snapshot.recovery.lastRecovery.recoveredAt, "settings snapshot recovery status missing");
 assert(snapshot.coordination.role === "secondary", "settings snapshot coordination role mismatch");
 assert(snapshot.sync.lastSuccessfulSnapshot.fileCount === 4, "settings snapshot sync status mismatch");
+assert(snapshot.sync.lastSuccessfulSnapshot.cacheRecords === 1, "settings snapshot sync cache coverage mismatch");
+assert(snapshot.sync.lastSuccessfulSnapshot.settingsRecords === 2, "settings snapshot sync settings coverage mismatch");
 
 const markup = settingsRuntimeMarkup(snapshot);
 
@@ -182,8 +186,8 @@ assert(markup.includes("<dt>Peer Flush</dt><dd>primary-tab · complete</dd>"), "
 assert(markup.includes("<dt>Peer App State</dt><dd>api-lab · set</dd>"), "settings markup did not render app-state diagnostics");
 assert(markup.includes("<dt>Peer Package</dt><dd>api-lab · install · complete</dd>"), "settings markup did not render package operation diagnostics");
 assert(markup.includes("<dt>Session Recovery</dt><dd>recovered · conflicts=2</dd>"), "settings markup did not render session recovery diagnostics");
-assert(markup.includes("<dt>Sync</dt><dd>storage-value encrypted=true") && markup.includes("files=4</dd>"), "settings markup did not render sync summary");
-assert(markup.includes("<dt>Last Snapshot</dt><dd>") && markup.includes("· files=4</dd>"), "settings markup did not render remote sync panel");
+assert(markup.includes("<dt>Sync</dt><dd>storage-value encrypted=true") && markup.includes("files=4 cache=1 settings=2</dd>"), "settings markup did not render sync summary");
+assert(markup.includes("<dt>Last Snapshot</dt><dd>") && markup.includes("· files=4 · cache=1 · settings=2</dd>"), "settings markup did not render remote sync panel");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");

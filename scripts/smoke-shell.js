@@ -135,7 +135,7 @@ assert(result.output.includes("packages installed=1"), `doctor package output mi
 assert(result.output.includes("processes running=0"), `doctor process output missing: ${result.output}`);
 assert(result.output.includes("lifecycle state=active"), `doctor lifecycle output missing: ${result.output}`);
 assert(result.output.includes("closedPagePersistent=false"), `doctor recovery output missing: ${result.output}`);
-assert(result.output.includes("sync backend=storage-value encrypted=true lastSnapshot=2026-05-05T00:02:00.000Z files=2"), `doctor sync output missing: ${result.output}`);
+assert(result.output.includes("sync backend=storage-value encrypted=true lastSnapshot=2026-05-05T00:02:00.000Z files=2 cache=1 settings=1"), `doctor sync output missing: ${result.output}`);
 assert(result.output.includes("docs/support.md"), `doctor troubleshooting output missing: ${result.output}`);
 
 result = await shell.executeAsync("doctor compat");
@@ -286,7 +286,12 @@ function bootOs() {
     remoteSyncStatus: () => ({
       backend: "storage-value",
       encrypted: true,
-      lastSuccessfulSnapshot: { createdAt: "2026-05-05T00:02:00.000Z", fileCount: 2 },
+      lastSuccessfulSnapshot: {
+        createdAt: "2026-05-05T00:02:00.000Z",
+        fileCount: 2,
+        cacheRecords: 1,
+        settingsRecords: 1,
+      },
     }),
     compatibilitySnapshot: () => ({
       runtime: "DindbOS.js",

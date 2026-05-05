@@ -1102,10 +1102,10 @@ Implementation tasks:
 - Already present: package DB install/update/remove mutations acquire a runtime operation lock so peer sessions cannot mutate package records while another package transaction owns the lock.
 - Already present: reload recovery records preserve previous session coordination, pending conflict count, and operation-lock context in recovery diagnostics.
 - Already present: an optional storage-backed remote sync snapshot backend creates WebCrypto-encrypted snapshots for selected runtime paths and exposes last-snapshot diagnostics.
-- Add broader remote sync coverage for package cache indexes and settings.
+- Already present: default remote sync snapshots cover package cache metadata under `/var/cache` and settings under `/etc/dindbos`, with cache/settings record counts exposed through snapshot status, Settings, and `doctor`.
 - Add remote desktop/session handoff protocol for viewing or controlling a running DindbOS instance from another tab or device.
 - Already present: `/proc/sessions`, Settings, and `doctor` expose the local runtime instance id, primary/secondary role, lock owner, readonly fallback, and stale-lock recovery state.
-- Already present: Settings exposes session channel connection state, received message count, pending conflict count, latest peer storage flush phase, latest peer app-state change, latest peer package operation, sync status, and last successful snapshot.
+- Already present: Settings exposes session channel connection state, received message count, pending conflict count, latest peer storage flush phase, latest peer app-state change, latest peer package operation, sync status, last successful snapshot, and package cache/settings sync coverage counts.
 - Add offline-first merge rules for user documents, app state, package metadata, and search indexes.
 
 Verification:
@@ -1119,6 +1119,7 @@ Verification:
 - Already present: `npm run smoke:sessions` verifies package DB operation locks deny concurrent peer package record mutation.
 - Already present: `npm run smoke:sessions` verifies reload-safe session recovery diagnostics after a dirty shutdown.
 - Already present: `npm run smoke:sessions` verifies encrypted remote sync snapshot creation and last-snapshot status.
+- Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify package cache/settings sync coverage counts in remote snapshot status, Settings, and `doctor`.
 
 Completion criteria:
 

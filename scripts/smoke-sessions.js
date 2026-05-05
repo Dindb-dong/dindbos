@@ -182,16 +182,37 @@ const reloadRecovery = reloadOs.recoveryStatus().lastRecovery;
 assert(reloadRecovery.sessionRecovery.pendingConflicts === 1, "reload recovery did not preserve pending conflict count");
 assert(reloadOs.sessionCoordinationStatus().recovery.pendingConflicts === 1, "session coordination did not expose reload recovery");
 assert(JSON.parse(reloadOs.fs.readFile("/proc/sessions")).recovery.recovered === true, "/proc/sessions did not expose reload recovery");
+ensureDirectory(tabB, "/var/cache/dindbos");
+ensureDirectory(tabB, "/etc/dindbos");
+tabB.fs.writeOrCreateFile(
+  "/var/cache/dindbos/package-index.json",
+  JSON.stringify({ packages: ["session-pkg"], marker: "cached package index" }),
+  "/",
+  { mime: "application/json" },
+  tabB.permissions.systemPrincipal(),
+);
+tabB.fs.writeOrCreateFile(
+  "/etc/dindbos/sync-settings.json",
+  JSON.stringify({ sync: true, marker: "settings coverage" }),
+  "/",
+  { mime: "application/json" },
+  tabB.permissions.systemPrincipal(),
+);
 const syncSnapshot = await tabB.createRemoteSyncSnapshot({
   passphrase: "session-sync-secret",
-  paths: ["/home/guest/Documents"],
 });
 assert(syncSnapshot.encrypted === true && syncSnapshot.ciphertext, "remote sync snapshot was not encrypted");
 assert(syncSnapshot.fileCount >= 1, "remote sync snapshot did not include selected files");
+assert(syncSnapshot.cacheRecords >= 1, "remote sync snapshot did not include package cache records");
+assert(syncSnapshot.settingsRecords >= 1, "remote sync snapshot did not include settings records");
 assert(!syncSnapshot.ciphertext.includes("peer edit"), "remote sync snapshot leaked plaintext content");
+assert(!syncSnapshot.ciphertext.includes("cached package index"), "remote sync snapshot leaked cache plaintext content");
+assert(!syncSnapshot.ciphertext.includes("settings coverage"), "remote sync snapshot leaked settings plaintext content");
 assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.fileCount === syncSnapshot.fileCount, "remote sync status did not record last snapshot");
+assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.cacheRecords === syncSnapshot.cacheRecords, "remote sync status did not record cache coverage");
+assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.settingsRecords === syncSnapshot.settingsRecords, "remote sync status did not record settings coverage");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages package-lock reload-recovery sync-snapshot");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages package-lock reload-recovery sync-snapshot sync-coverage");
 
 function createStorage(values = new Map()) {
   return {
@@ -242,6 +263,21 @@ function createBroadcastChannelFactory() {
       if (type === "message") this.listener = listener;
     }
   };
+}
+
+function ensureDirectory(os, path) {
+  const parts = path.split("/").filter(Boolean);
+  let cursor = "";
+  parts.forEach((part) => {
+    cursor = `${cursor}/${part}`;
+    if (!os.fs.exists(cursor)) {
+      os.fs.createDirectory(cursor, "/", {
+        owner: "root",
+        group: "root",
+        permissions: "drwxr-xr-x",
+      }, os.permissions.systemPrincipal());
+    }
+  });
 }
 
 function assert(condition, message) {

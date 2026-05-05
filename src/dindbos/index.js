@@ -648,7 +648,7 @@ export class DindbOS {
     const createdAt = new Date().toISOString();
     const paths = Array.isArray(options.paths) && options.paths.length
       ? options.paths.map((path) => this.fs.normalize(path, "/"))
-      : [this.session.home, "/var/lib/dindbos/app-state", "/var/lib/dindbos/packages", "/etc/dindbos"];
+      : [this.session.home, "/var/lib/dindbos/app-state", "/var/lib/dindbos/packages", "/var/cache", "/etc/dindbos"];
     const payload = this.collectRemoteSyncPayload(paths, createdAt);
     const encrypted = await encryptRemoteSyncPayload(payload, passphrase);
     const snapshot = {
@@ -665,6 +665,8 @@ export class DindbOS {
       bytes: byteLength(JSON.stringify(payload)),
       packageRecords: payload.files.filter((file) => file.path.startsWith("/var/lib/dindbos/packages/")).length,
       appStateRecords: payload.files.filter((file) => file.path.startsWith("/var/lib/dindbos/app-state/")).length,
+      cacheRecords: payload.files.filter((file) => file.path.startsWith("/var/cache/")).length,
+      settingsRecords: payload.files.filter((file) => file.path.startsWith("/etc/dindbos/")).length,
       salt: encrypted.salt,
       iv: encrypted.iv,
       ciphertext: encrypted.ciphertext,
@@ -1706,6 +1708,8 @@ function snapshotSummary(snapshot) {
     bytes: Number(snapshot.bytes || 0),
     packageRecords: Number(snapshot.packageRecords || 0),
     appStateRecords: Number(snapshot.appStateRecords || 0),
+    cacheRecords: Number(snapshot.cacheRecords || 0),
+    settingsRecords: Number(snapshot.settingsRecords || 0),
   };
 }
 
