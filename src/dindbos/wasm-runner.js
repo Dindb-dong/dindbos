@@ -382,16 +382,19 @@ export class WasmRunner {
     const cwd = options.cwd || this.os.session.home || "/";
     const manifest = options.manifest || {};
     const fileSystem = manifest.fileSystem || {};
+    const optionFileSystem = options.fileSystem || {};
+    const readScopes = scopedList(fileSystem.read, optionFileSystem.read, [cwd, options.path || ""]);
+    const writeScopes = scopedList(fileSystem.write, optionFileSystem.write, [cwd]);
     return {
       id: options.appId || `wasm:${basename}`,
       name: options.name || basename,
       manifest: {
         version: manifest.version || "0.1.0",
         entry: manifest.entry || options.path || "wasm",
-        capabilities: unique([...(manifest.capabilities || []), "process.read"]),
+        capabilities: unique([...(manifest.capabilities || []), ...(options.capabilities || []), "process.read"]),
         fileSystem: {
-          read: unique(fileSystem.read || [cwd, options.path || ""]),
-          write: unique(fileSystem.write || [cwd]),
+          read: readScopes,
+          write: writeScopes,
         },
       },
     };
@@ -448,6 +451,13 @@ function assertWasmMemoryLimit(instance, maxMemoryPages) {
   const error = new Error(`wasm: memory pages ${pages} exceed limit ${limit}`);
   error.code = "ENOMEM";
   throw error;
+}
+
+function scopedList(manifestScopes, optionScopes, fallback) {
+  if (Array.isArray(manifestScopes) || Array.isArray(optionScopes)) {
+    return unique([...(manifestScopes || []), ...(optionScopes || [])]);
+  }
+  return unique(fallback);
 }
 
 function parseSyscallRequest(text) {
