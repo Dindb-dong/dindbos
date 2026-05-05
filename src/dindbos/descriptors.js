@@ -78,6 +78,7 @@ export class DescriptorManager {
 
   openAt(process, dirFd, path, args = {}, context = {}) {
     const directory = this.descriptorFor(process.pid, dirFd);
+    this.assertDescriptorHandle(process, directory, ["list"]);
     if (directory.kind !== "directory") throw descriptorError("ENOTDIR", `fd.openAt: ${dirFd}: descriptor is not a directory`);
     return this.open(process, { ...args, path, cwd: directory.path }, context);
   }
@@ -124,6 +125,7 @@ export class DescriptorManager {
 
   read(process, args = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
+    this.assertDescriptorHandle(process, descriptor, ["read"]);
     if (!descriptor.readable) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor is not readable`);
     if (descriptor.rights && !descriptor.rights.read) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor lacks read rights`);
     const length = readLength(args.length);
@@ -142,6 +144,7 @@ export class DescriptorManager {
 
   write(process, args = {}, context = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
+    this.assertDescriptorHandle(process, descriptor, ["write"]);
     if (!descriptor.writable) throw descriptorError("EBADF", `fd.write: ${descriptor.fd}: descriptor is not writable`);
     if (descriptor.rights && !descriptor.rights.write) throw descriptorError("EBADF", `fd.write: ${descriptor.fd}: descriptor lacks write rights`);
     const data = String(args.data ?? args.content ?? "");
@@ -167,6 +170,7 @@ export class DescriptorManager {
   seek(process, args = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (!["file", "stream"].includes(descriptor.kind)) throw descriptorError("ESPIPE", `fd.seek: ${descriptor.fd}: descriptor is not seekable`);
+    this.assertDescriptorHandle(process, descriptor, ["seek"]);
     const offset = numberArg(args.offset, "offset");
     const whence = String(args.whence || "set");
     const size = descriptor.kind === "file" ? byteLength(safeRead(() => this.os.fs.readFile(descriptor.path, "/", descriptor.principal), "")) : byteLength(descriptor.buffer || "");
@@ -181,12 +185,15 @@ export class DescriptorManager {
   }
 
   stat(process, args = {}) {
-    return publicDescriptor(this.descriptorFor(process.pid, args.fd));
+    const descriptor = this.descriptorFor(process.pid, args.fd);
+    this.assertDescriptorHandle(process, descriptor, ["stat"]);
+    return publicDescriptor(descriptor);
   }
 
   async sync(process, args = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (descriptor.kind !== "file") throw descriptorError("EINVAL", `fd.sync: ${descriptor.fd}: descriptor is not a file`);
+    this.assertDescriptorHandle(process, descriptor, ["sync"]);
     const flush = typeof this.os.flushPersistentFileSystem === "function"
       ? await this.os.flushPersistentFileSystem()
       : await this.os.storage?.flush?.();
@@ -201,6 +208,7 @@ export class DescriptorManager {
   readDirectory(process, args = {}, context = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (descriptor.kind !== "directory") throw descriptorError("ENOTDIR", `fd.readdir: ${descriptor.fd}: descriptor is not a directory`);
+    this.assertDescriptorHandle(process, descriptor, ["list"]);
     assertFileSystem(descriptor.path, "list", context);
     const cookie = Math.max(0, numberArg(args.cookie || 0, "cookie"));
     const entries = this.os.fs.list(descriptor.path, "/", context.principal)
@@ -221,6 +229,7 @@ export class DescriptorManager {
     const request = String(args.request || args.command || "").trim();
     if (!request) throw descriptorError("EINVAL", `fd.ioctl: ${descriptor.fd}: request is required`);
     if (!isTtyDescriptor(descriptor)) throw descriptorError("ENOTTY", `fd.ioctl: ${descriptor.fd}: descriptor is not a tty`);
+    this.assertDescriptorHandle(process, descriptor, ["ioctl"]);
     if (request === "tty.getWindowSize") {
       return {
         fd: descriptor.fd,
@@ -255,6 +264,7 @@ export class DescriptorManager {
     if (!table.descriptors.has(fd)) throw descriptorError("EBADF", `fd.close: ${fd}: bad descriptor`);
     if (table.descriptors.get(fd)?.preopen) throw descriptorError("EINVAL", `fd.close: ${fd}: cannot close preopen descriptor yet`);
     const descriptor = table.descriptors.get(fd);
+    this.assertDescriptorHandle(process, descriptor, ["close"]);
     const pipeId = descriptor?.pipe?.id;
     this.revokeDescriptorObject(descriptor, "fd-close");
     table.descriptors.delete(fd);
@@ -296,16 +306,36 @@ export class DescriptorManager {
       metadata: descriptorObjectMetadata(descriptor),
     }) || null;
     descriptor.objectId = object?.id || "";
+    const handle = descriptor.objectId ? this.os.objects?.createHandle?.(descriptor.objectId, {
+      ownerPid: process.pid,
+      user: process.user || this.os.session?.user || "",
+      uid: process.uid || 0,
+      gid: process.gid || 0,
+      groups: process.groups || [],
+      namespace: process.manifest?.namespace || null,
+      rights: descriptorRightsList(descriptor),
+      closeOnExec: !descriptor.preopen,
+      transferPolicy: descriptor.kind === "stream" ? "no-duplicate" : "duplicate",
+      metadata: descriptorHandleMetadata(descriptor),
+    }) : null;
+    descriptor.handleId = handle?.id || "";
     return object;
   }
 
   syncDescriptorObject(process, descriptor) {
     if (!descriptor?.objectId) return null;
-    return this.os.objects?.update?.(descriptor.objectId, {
+    const object = this.os.objects?.update?.(descriptor.objectId, {
       name: `${process.pid}:${descriptor.fd}:${descriptor.kind}`,
       rights: descriptorRightsList(descriptor),
       metadata: descriptorObjectMetadata(descriptor),
     }) || null;
+    if (descriptor.handleId) {
+      this.os.objects?.updateHandle?.(descriptor.handleId, {
+        rights: descriptorRightsList(descriptor),
+        metadata: descriptorHandleMetadata(descriptor),
+      });
+    }
+    return object;
   }
 
   revokeDescriptorObject(descriptor, reason = "fd-close") {
@@ -315,6 +345,19 @@ export class DescriptorManager {
 
   processFor(pid) {
     return this.os.processes?.processes?.get(Number(pid)) || this.os.processes?.get?.(pid) || null;
+  }
+
+  assertDescriptorHandle(process, descriptor, rights = []) {
+    if (!descriptor?.handleId) return null;
+    try {
+      return this.os.objects?.assertHandle?.(descriptor.handleId, {
+        ownerPid: process.pid,
+        objectType: "descriptor",
+        rights,
+      }) || null;
+    } catch (error) {
+      throw descriptorError(error.code || "EACCES", error.message);
+    }
   }
 
   tableFor(pid) {
@@ -450,6 +493,7 @@ export class DescriptorManager {
       group: "root",
       permissions: "-rw-r--r--",
     }, this.os.permissions.systemPrincipal());
+    this.os.objects?.writeProcessHandlesProcfs?.(pid);
   }
 }
 
@@ -507,6 +551,7 @@ function publicDescriptor(descriptor) {
   return {
     fd: descriptor.fd,
     objectId: descriptor.objectId || "",
+    handleId: descriptor.handleId || "",
     kind: descriptor.kind,
     path: descriptor.path,
     name: descriptor.name || "",
@@ -522,17 +567,23 @@ function publicDescriptor(descriptor) {
 }
 
 function descriptorRightsList(descriptor) {
-  if (descriptor.rights) {
-    return Object.entries(descriptor.rights)
-      .filter(([, allowed]) => allowed)
-      .map(([right]) => right);
-  }
   return [
-    descriptor.readable ? "read" : "",
-    descriptor.writable ? "write" : "",
+    descriptorRightsAllow(descriptor, "read") ? "read" : "",
+    descriptorRightsAllow(descriptor, "write") ? "write" : "",
     descriptor.kind === "directory" ? "list" : "",
+    ["file", "stream"].includes(descriptor.kind) ? "seek" : "",
+    descriptor.kind === "file" ? "sync" : "",
+    "stat",
+    descriptor.fd >= 3 && !descriptor.preopen ? "close" : "",
     isTtyDescriptor(descriptor) ? "ioctl" : "",
   ].filter(Boolean);
+}
+
+function descriptorRightsAllow(descriptor, right) {
+  if (descriptor.rights) return Boolean(descriptor.rights[right]);
+  if (right === "read") return Boolean(descriptor.readable);
+  if (right === "write") return Boolean(descriptor.writable);
+  return false;
 }
 
 function descriptorObjectMetadata(descriptor) {
@@ -549,6 +600,17 @@ function descriptorObjectMetadata(descriptor) {
     wasi: descriptor.wasi ? { ...descriptor.wasi } : null,
     tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
     pipeId: descriptor.pipe?.id ? Number(descriptor.pipe.id) : 0,
+  };
+}
+
+function descriptorHandleMetadata(descriptor) {
+  return {
+    fd: descriptor.fd,
+    path: descriptor.path,
+    kind: descriptor.kind,
+    offset: Number(descriptor.offset || 0),
+    objectId: descriptor.objectId || "",
+    preopen: Boolean(descriptor.preopen),
   };
 }
 
