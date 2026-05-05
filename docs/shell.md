@@ -97,6 +97,18 @@ pkg trust remove <publisher-id|ed25519-public-key>
 
 Unsigned, invalid, or untrusted remote manifests fail before package files or launchers are written unless a runtime caller explicitly allows unsigned or untrusted installs.
 
+## WebAssembly
+
+Executable `.wasm` files run through the DindbOS WASM runtime:
+
+```text
+chmod 755 /home/guest/bin/hello.wasm
+/home/guest/bin/hello.wasm max
+wasm /home/guest/bin/hello.wasm max
+```
+
+The first-pass WASM runtime provides argv/env helpers, stdout/stderr helpers, syscall access, exit status handling, and process tracking. See `docs/wasm.md`.
+
 ## Troubleshooting
 
 `doctor` prints a compact runtime diagnostic snapshot for support and bug reports:
@@ -118,4 +130,4 @@ It reports the active session, current working directory, storage backend and di
 npm run smoke:shell
 ```
 
-The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, compatibility diagnostics, raw syscall ABI calls, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.
+The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, compatibility diagnostics, raw syscall ABI calls, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures. `npm run smoke:wasm` verifies executable `.wasm` shell integration.
