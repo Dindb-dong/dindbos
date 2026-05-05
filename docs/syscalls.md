@@ -75,11 +75,13 @@ app.launch
 
 Filesystem and descriptor syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process, package, storage, local mount, and app launch syscalls run through the same capability checks used by the existing high-level app facade.
 
-Descriptor syscalls require a process context. New processes receive standard descriptors `0` stdin, `1` stdout, and `2` stderr. `fd.open` currently supports text VFS files plus `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, and `/dev/tty`; descriptor state is exposed under `/proc/<pid>/fd.json` and cleaned up when the process exits or crashes.
+Descriptor syscalls require a process context. New processes receive standard descriptors `0` stdin, `1` stdout, and `2` stderr. `fd.open` currently supports text VFS files plus `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty`, and `/dev/clipboard`; descriptor state is exposed under `/proc/<pid>/fd.json` and cleaned up when the process exits or crashes.
 
 `fd.ioctl` is the structured control boundary for descriptors that need device-style operations. The first supported requests are `tty.getWindowSize`, `tty.setWindowSize`, and `tty.isatty` for `/dev/tty` plus standard stream descriptors. Non-TTY descriptors return `ENOTTY`.
 
 Entropy and zero devices report `fd.read.bytes` as the actual device byte count returned by the pseudo-device, not the UTF-8 byte length of the JSON string representation.
+
+`/dev/clipboard` maps to the DindbOS runtime clipboard service. It is a browser-native OS clipboard primitive inside the DindbOS session, not a promise that every descriptor write can synchronously mutate the host browser clipboard; host clipboard bridging remains subject to browser permission and user-gesture policy.
 
 ## Shell Usage
 
