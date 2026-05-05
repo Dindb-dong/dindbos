@@ -128,6 +128,16 @@ export class DindbOS {
       lastPeerPhase: "",
       lastPeerAt: "",
     };
+    this.sessionRecovery = {
+      recovered: false,
+      recoveredAt: "",
+      previousInstanceId: "",
+      previousRole: "",
+      previousLockOwner: "",
+      pendingConflicts: 0,
+      packageLockOwner: "",
+      lastPackageOperation: "",
+    };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
@@ -641,12 +651,15 @@ export class DindbOS {
     if (!record?.dirtyShutdown || record.recoveredAt) return null;
     const system = this.permissions.systemPrincipal();
     const recoveredAt = new Date().toISOString();
+    const sessionRecovery = this.sessionRecoveryFromShutdown(record, recoveredAt);
     const recovery = {
       recoveredAt,
       reason: "dirty-shutdown",
       previousShutdown: record,
+      sessionRecovery,
       action: "recorded browser-interrupted shutdown for user-visible diagnostics",
     };
+    this.sessionRecovery = sessionRecovery;
     this.ensureDirectoryPath(RECOVERY_DIR, {
       leafOwner: "root",
       leafGroup: "root",
@@ -671,7 +684,23 @@ export class DindbOS {
       mime: "application/json",
     }, system);
     this.transitionLifecycle("recovered", "dirty-shutdown");
+    this.writeSessionCoordinationStatus();
     return recovery;
+  }
+
+  sessionRecoveryFromShutdown(record, recoveredAt = new Date().toISOString()) {
+    const session = record.session || {};
+    const packageLock = record.operationLocks?.packageDb || null;
+    return {
+      recovered: true,
+      recoveredAt,
+      previousInstanceId: String(session.instanceId || ""),
+      previousRole: String(session.role || "unknown"),
+      previousLockOwner: String(session.lockOwner || ""),
+      pendingConflicts: Number(session.conflicts?.pending || 0),
+      packageLockOwner: String(packageLock?.owner || ""),
+      lastPackageOperation: String(session.packageOperation?.lastLocalOperation || session.packageOperation?.lastPeerOperation || ""),
+    };
   }
 
   writeRecoveryRecord(reason = "runtime", options = {}) {
@@ -691,6 +720,10 @@ export class DindbOS {
       lifecycle: { ...this.lifecycleState },
       persistence: this.persistenceStatus(),
       pendingPersistence: this.hasPendingPersistenceWork(),
+      session: this.sessionCoordinationStatus(),
+      operationLocks: {
+        packageDb: this.readRuntimeOperationLock("package-db"),
+      },
       suspendedServices: services
         .filter((service) => service.state === "suspended")
         .map((service) => ({ id: service.id, state: service.state, pid: service.pid })),
@@ -960,6 +993,7 @@ export class DindbOS {
         ...this.sessionPackageOperationStatus,
         peers: [...this.sessionPackageOperations.values()].map((entry) => ({ ...entry })),
       },
+      recovery: { ...this.sessionRecovery },
     };
   }
 

@@ -1100,6 +1100,7 @@ Implementation tasks:
 - Already present: app-state set/remove/clear/uninstall changes are broadcast to peer sessions and exposed through session coordination diagnostics.
 - Already present: package install/update/remove start/complete/error phases are broadcast to peer sessions and exposed through session coordination diagnostics.
 - Already present: package DB install/update/remove mutations acquire a runtime operation lock so peer sessions cannot mutate package records while another package transaction owns the lock.
+- Already present: reload recovery records preserve previous session coordination, pending conflict count, and operation-lock context in recovery diagnostics.
 - Add optional remote sync backend for encrypted snapshots, package cache indexes, settings, and selected user files.
 - Add remote desktop/session handoff protocol for viewing or controlling a running DindbOS instance from another tab or device.
 - Already present: `/proc/sessions`, Settings, and `doctor` expose the local runtime instance id, primary/secondary role, lock owner, readonly fallback, and stale-lock recovery state.
@@ -1116,7 +1117,7 @@ Verification:
 - Already present: `npm run smoke:sessions` verifies peer app-state event delivery and session coordination status updates.
 - Already present: `npm run smoke:sessions` verifies peer package install operation delivery and session coordination status updates.
 - Already present: `npm run smoke:sessions` verifies package DB operation locks deny concurrent peer package record mutation.
-- Add smoke coverage for reload-safe session recovery.
+- Already present: `npm run smoke:sessions` verifies reload-safe session recovery diagnostics after a dirty shutdown.
 
 Completion criteria:
 
