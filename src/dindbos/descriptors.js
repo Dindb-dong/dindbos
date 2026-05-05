@@ -8,6 +8,7 @@ export class DescriptorManager {
   constructor(os) {
     this.os = os;
     this.tables = new Map();
+    this.pipes = new Map();
   }
 
   initProcess(process, options = {}) {
@@ -28,7 +29,10 @@ export class DescriptorManager {
 
   closeProcess(pid) {
     const normalizedPid = Number(pid);
+    const table = this.tables.get(normalizedPid);
+    const pipeIds = table ? pipeIdsForTable(table) : [];
     this.tables.delete(normalizedPid);
+    pipeIds.forEach((pipeId) => this.cleanupPipe(pipeId));
     const path = `/proc/${normalizedPid}/fd.json`;
     if (this.os.fs.exists(path)) {
       this.os.fs.remove(path, "/", {}, this.os.permissions.systemPrincipal());
@@ -76,33 +80,35 @@ export class DescriptorManager {
   pipe(process, input = "") {
     const table = this.tableFor(process.pid);
     const pipe = { id: nextPipeId++, buffer: String(input || "") };
+    this.pipes.set(pipe.id, pipe);
     const readFd = table.nextFd;
     const writeFd = table.nextFd + 1;
     table.nextFd += 2;
-    table.descriptors.set(readFd, {
-      fd: readFd,
-      kind: "pipe",
-      path: `pipe:${pipe.id}:read`,
-      name: "pipe-read",
-      readable: true,
-      writable: false,
-      offset: 0,
-      flags: "r",
-      pipe,
-    });
-    table.descriptors.set(writeFd, {
-      fd: writeFd,
-      kind: "pipe",
-      path: `pipe:${pipe.id}:write`,
-      name: "pipe-write",
-      readable: false,
-      writable: true,
-      offset: byteLength(pipe.buffer),
-      flags: "w",
-      pipe,
-    });
+    table.descriptors.set(readFd, pipeDescriptor(readFd, pipe, "read"));
+    table.descriptors.set(writeFd, pipeDescriptor(writeFd, pipe, "write"));
     this.writeProcfs(process.pid);
-    return { readFd, writeFd };
+    return { readFd, writeFd, pipeId: pipe.id };
+  }
+
+  attachPipe(process, args = {}) {
+    const pipe = this.pipes.get(numberArg(args.pipeId, "pipeId"));
+    if (!pipe) throw descriptorError("ENOENT", `fd.pipe: ${args.pipeId}: no such pipe`);
+    const mode = String(args.mode || "read");
+    if (!["read", "write"].includes(mode)) throw descriptorError("EINVAL", `fd.pipe: unsupported mode: ${mode}`);
+    const table = this.tableFor(process.pid);
+    const fd = table.nextFd;
+    table.nextFd += 1;
+    table.descriptors.set(fd, pipeDescriptor(fd, pipe, mode));
+    this.writeProcfs(process.pid);
+    return publicDescriptor(table.descriptors.get(fd));
+  }
+
+  cleanupPipe(pipeId) {
+    const id = Number(pipeId);
+    const active = [...this.tables.values()].some((table) => (
+      [...table.descriptors.values()].some((descriptor) => descriptor.kind === "pipe" && Number(descriptor.pipe?.id) === id)
+    ));
+    if (!active) this.pipes.delete(id);
   }
 
   read(process, args = {}) {
@@ -216,7 +222,9 @@ export class DescriptorManager {
     const table = this.tableFor(process.pid);
     if (!table.descriptors.has(fd)) throw descriptorError("EBADF", `fd.close: ${fd}: bad descriptor`);
     if (table.descriptors.get(fd)?.preopen) throw descriptorError("EINVAL", `fd.close: ${fd}: cannot close preopen descriptor yet`);
+    const pipeId = table.descriptors.get(fd)?.pipe?.id;
     table.descriptors.delete(fd);
+    if (pipeId) this.cleanupPipe(pipeId);
     this.writeProcfs(process.pid);
     return { fd, closed: true };
   }
@@ -395,6 +403,27 @@ function readPipeDescriptor(descriptor, length) {
   const data = String(descriptor.pipe?.buffer || "").slice(offset, offset + length);
   descriptor.offset = offset + data.length;
   return data;
+}
+
+function pipeDescriptor(fd, pipe, mode) {
+  const readable = mode === "read";
+  return {
+    fd,
+    kind: "pipe",
+    path: `pipe:${pipe.id}:${mode}`,
+    name: `pipe-${mode}`,
+    readable,
+    writable: !readable,
+    offset: readable ? 0 : byteLength(pipe.buffer),
+    flags: readable ? "r" : "w",
+    pipe,
+  };
+}
+
+function pipeIdsForTable(table) {
+  return [...new Set([...table.descriptors.values()]
+    .filter((descriptor) => descriptor.kind === "pipe" && descriptor.pipe?.id)
+    .map((descriptor) => Number(descriptor.pipe.id)))];
 }
 
 function publicDescriptor(descriptor) {
