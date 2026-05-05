@@ -17,6 +17,7 @@ const BUILTIN_MANUALS = {
   grep: "grep <text> <file> - search lines in a text file",
   kill: "kill <pid> - terminate a process",
   keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing - manage DindbOS secrets",
+  loginctl: "loginctl status|users|switch|lock|unlock - inspect or change DindbOS session state",
   ls: "ls [-la] [path] - list directory contents",
   man: "man <command> - show command help",
   manifest: "manifest [app] - show app manifests",
@@ -54,6 +55,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "curl",
   "dig",
   "keychain",
+  "loginctl",
   "kill",
   "man",
   "manifest",
@@ -110,7 +112,7 @@ export class ShellSession {
   execute(commandLine) {
     const line = commandLine.trim();
     if (!line) return { output: "", clear: false, reload: false };
-    const locked = this.lockedSessionResult();
+    const locked = this.lockedSessionResult(line);
     if (locked) return locked;
     this.history.push(line);
     this.historyIndex = this.history.length;
@@ -138,7 +140,7 @@ export class ShellSession {
   async executeAsync(commandLine) {
     const line = commandLine.trim();
     if (!line) return { output: "", clear: false, reload: false };
-    const locked = this.lockedSessionResult();
+    const locked = this.lockedSessionResult(line);
     if (locked) return locked;
     this.history.push(line);
     this.historyIndex = this.history.length;
@@ -163,7 +165,8 @@ export class ShellSession {
     return { output: output.join("\n"), clear: false, reload: false, status: previousStatus };
   }
 
-  lockedSessionResult() {
+  lockedSessionResult(line = "") {
+    if (/^loginctl\s+(status|unlock)\b/.test(line)) return null;
     try {
       this.os.assertSessionUnlocked?.("shell");
       return null;
@@ -282,6 +285,7 @@ export class ShellSession {
     if (command === "ps") return this.os.processes.table();
     if (command === "kill") return this.kill(args);
     if (command === "keychain") return this.keychain(args);
+    if (command === "loginctl") return this.loginctl(args);
     if (command === "curl") return this.curl(args);
     if (command === "netstat") return this.netstat();
     if (command === "ping") return this.ping(args);
@@ -371,6 +375,55 @@ export class ShellSession {
       return `${gid}(${group})`;
     });
     return `uid=${credentials.uid}(${credentials.user}) gid=${credentials.gid}(${credentials.groups?.[0] || "users"}) groups=${groups.join(",")}`;
+  }
+
+  loginctl(args) {
+    const subcommand = args[0] || "status";
+    if (subcommand === "status") {
+      const status = this.os.sessionStatus?.() || {};
+      const credentials = this.os.credentialsForUser?.(status.user, status.groups) || {};
+      return [
+        `user=${status.user || this.env.USER}`,
+        `uid=${credentials.uid ?? "-"}`,
+        `gid=${credentials.gid ?? "-"}`,
+        `groups=${(status.groups || []).join(",")}`,
+        `home=${status.home || this.env.HOME}`,
+        `state=${status.state || "unknown"}`,
+        `locked=${Boolean(status.locked)}`,
+        `sessionId=${status.sessionId || "-"}`,
+      ].join(" ");
+    }
+    if (subcommand === "users") {
+      return (this.os.listUsers?.() || [])
+        .map((user) => `${String(user.uid ?? "-").padEnd(5)} ${user.user.padEnd(16)} ${(user.groups || []).join(",").padEnd(20)} ${user.home}`)
+        .join("\n");
+    }
+    if (subcommand === "switch") {
+      const user = args[1];
+      if (!user) return "loginctl: usage: loginctl switch <user>";
+      const status = this.os.switchSessionUser(user);
+      this.applySessionStatus(status);
+      return `switched to ${status.user} home=${status.home}`;
+    }
+    if (subcommand === "lock") {
+      const status = this.os.lockSession?.(args.slice(1).join(" ") || "shell") || {};
+      return `locked=${Boolean(status.locked)} user=${status.user || this.env.USER}`;
+    }
+    if (subcommand === "unlock") {
+      const status = this.os.unlockSession?.() || {};
+      this.applySessionStatus(status);
+      return `locked=${Boolean(status.locked)} user=${status.user || this.env.USER}`;
+    }
+    return `loginctl: unsupported subcommand: ${subcommand}`;
+  }
+
+  applySessionStatus(status = {}) {
+    if (!status.user) return;
+    this.env.USER = status.user;
+    this.env.HOME = status.home || `/home/${status.user}`;
+    this.cwd = this.env.HOME;
+    this.env.PWD = this.cwd;
+    this.principal = this.os.permissions?.principal?.({ user: this.env.USER, groups: status.groups || ["users"] }) || this.principal;
   }
 
   cd(path) {

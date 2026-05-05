@@ -419,6 +419,7 @@ Why it matters:
 Implementation tasks:
 
 - Already present: persistent user records are normalized under `/etc/dindbos/users.json`, group records are mirrored under `/etc/dindbos/groups.json`, and both carry first-pass numeric uid/gid identity metadata.
+- Already present: first-pass session switching can move the active runtime session between persisted users through `switchSessionUser()` and shell `loginctl switch`, while already-running processes keep their spawn-time credential snapshot.
 - Add full login, logout, password/passkey placeholder policy, and guest reset behavior.
 - Already present: session lock/unlock state is exposed through `sessionStatus()`, `/var/run/dindbos/session.json`, `/proc/sessions`, shell/app launch denial, and session lock/unlock events.
 - Already present: process credentials snapshot uid, gid, effective uid/gid, supplementary groups, and session id at spawn time, then expose the same credential record through `/proc/<pid>/status` and `/proc/processes.json`.
@@ -429,8 +430,8 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:sessions` verifies normalized session users/groups, per-user home creation, persistent user/group records, numeric uid/gid assignment, shell `id` output, session lock/unlock denial, process credential `/proc` reporting, and sandbox filesystem access through process supplementary groups.
-- Add smoke coverage for cross-user file denial, admin-only command denial, session switch, and per-user app state separation.
+- Already present: `npm run smoke:sessions` verifies normalized session users/groups, per-user home creation, persistent user/group records, numeric uid/gid assignment, shell `id` output, session switching through `loginctl`, cross-user private file denial, session lock/unlock denial, process credential `/proc` reporting, and sandbox filesystem access through process supplementary groups.
+- Add smoke coverage for admin-only command denial and per-user app state separation.
 
 Completion criteria:
 

@@ -110,6 +110,19 @@ assert(os.fs.readFile(`/proc/${credentialProcess.pid}/status`).includes("Groups:
 assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === credentialProcess.pid && entry.uid === credentialProcess.uid && entry.credentials.groups.includes("release-team")), "/proc processes JSON missing credentials");
 const credentialSandbox = new AppSandbox(os, credentialProcess);
 assert(credentialSandbox.fs.readFile("/home/grace-hopper/Team/plan.txt") === "release\n", "sandbox did not use process credential groups");
+const adaPrincipal = os.permissions.principal({ user: "ada-lovelace", groups: ["users", "research-team"] });
+assertRejects(() => os.fs.readFile("/home/grace-hopper/Team/plan.txt", "/", adaPrincipal), "permission denied");
+result = await shell.executeAsync("loginctl users");
+assert(result.status === 0 && result.output.includes("grace-hopper"), `loginctl users did not list created user: ${result.output}`);
+result = await shell.executeAsync("loginctl switch grace-hopper");
+assert(result.status === 0 && result.output.includes("switched to grace-hopper"), `loginctl switch failed: ${result.output}`);
+assert(shell.env.USER === "grace-hopper" && shell.cwd === "/home/grace-hopper", "shell did not adopt switched session user");
+result = await shell.executeAsync("whoami");
+assert(result.status === 0 && result.output === "grace-hopper", `switched whoami mismatch: ${result.output}`);
+result = await shell.executeAsync("cat Team/plan.txt");
+assert(result.status === 0 && result.output === "release\n", `switched user could not read group file: ${result.output}`);
+result = await shell.executeAsync("loginctl switch ada-lovelace");
+assert(result.status === 0 && shell.env.USER === "ada-lovelace", "loginctl switch did not return to original session user");
 
 const events = [];
 os.bus.on("session:lock", (event) => events.push(`lock:${event.state}:${event.reason}`));
@@ -120,9 +133,13 @@ assert(JSON.parse(os.fs.readFile("/var/run/dindbos/session.json")).state === "lo
 result = await shell.executeAsync("whoami");
 assert(result.status === 1, `locked shell status mismatch: ${result.status}`);
 assert(result.output.includes("session locked for ada-lovelace"), `locked shell output mismatch: ${result.output}`);
+result = await shell.executeAsync("loginctl status");
+assert(result.status === 0 && result.output.includes("locked=true"), `loginctl status did not work while locked: ${result.output}`);
 assertRejects(() => os.openPath("/home/ada-lovelace/.profile"), "open: session locked");
 assertRejects(() => os.apps.launch("settings"), "launch: session locked");
-const unlocked = os.unlockSession();
+result = await shell.executeAsync("loginctl unlock");
+assert(result.status === 0 && result.output.includes("locked=false"), `loginctl unlock did not unlock shell: ${result.output}`);
+const unlocked = os.sessionStatus();
 assert(unlocked.locked === false && unlocked.state === "authenticated", "unlockSession did not restore authenticated state");
 assert(events.join(",") === "lock:locked:smoke-test,unlock:authenticated", `session events mismatch: ${events.join(",")}`);
 result = await shell.executeAsync("whoami");
@@ -384,7 +401,7 @@ assert(resumedApply.status === "complete" && resumedApply.startIndex === 1, "rem
 assert(resumeTarget.remoteSyncStatus().lastApplyRun.status === "complete", "remote sync status did not record completed resumed apply");
 assert(resumeTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync resumed apply did not restore remaining settings file");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff handoff-relay package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume sync-retry");
+console.log("sessions smoke ok generated-home user-scopes ownership credentials session-switch login-lock coordination file-events conflicts storage-flush app-state packages handoff handoff-relay package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume sync-retry");
 
 function createStorage(values = new Map()) {
   return {

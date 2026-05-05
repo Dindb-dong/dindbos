@@ -2170,6 +2170,34 @@ export class DindbOS {
     return this.sessionStatus();
   }
 
+  switchSessionUser(userName, options = {}) {
+    const user = sanitizeUserName(userName);
+    const database = this.userGroupDatabase();
+    const record = database.users[user];
+    if (!record) throw new Error(`session: ${user}: no such user`);
+    this.session = normalizeSession({
+      ...this.session,
+      user,
+      groups: record.groups?.length ? record.groups : ["users"],
+      home: record.home || `/home/${user}`,
+      locked: false,
+      lockReason: "",
+    });
+    this.sessionId = String(options.sessionId || `${this.session.user}:${this.instanceId}:${Date.now().toString(36)}`);
+    this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
+    Object.assign(this.sessionAuth, {
+      state: "authenticated",
+      locked: false,
+      unlockedAt: new Date().toISOString(),
+      reason: "",
+    });
+    this.ensureSessionHome();
+    this.writeSessionStatus();
+    this.writeSessionCoordinationStatus();
+    this.bus.emit("session:switch", this.sessionStatus());
+    return this.sessionStatus();
+  }
+
   assertSessionUnlocked(action = "session") {
     if (!this.sessionAuth.locked) return;
     throw new Error(`${action}: session locked for ${this.session.user}; unlock session to continue`);
