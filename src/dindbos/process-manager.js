@@ -489,6 +489,7 @@ export class ProcessManager {
       permissions: "-rw-r--r--",
     }, system);
     this.os.descriptors?.writeProcfs?.(process.pid);
+    this.os.objects?.writeProcessHandlesProcfs?.(process.pid);
   }
 
   writeCrashReport(process, error) {

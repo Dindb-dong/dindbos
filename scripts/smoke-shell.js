@@ -2,6 +2,7 @@
 import { ShellSession } from "../src/dindbos/shell.js";
 import { DescriptorManager } from "../src/dindbos/descriptors.js";
 import { EventBus } from "../src/dindbos/event-bus.js";
+import { KernelObjectRegistry } from "../src/dindbos/kernel-objects.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { ProcessManager } from "../src/dindbos/process-manager.js";
 import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
@@ -23,6 +24,34 @@ const pipelineExit = shell.os.processes.history.find((entry) => entry.appId === 
 assert(pipelineExit, "shell pipeline process exit was not recorded");
 assert(!shell.os.descriptors.tables.has(pipelineExit.pid), "shell pipeline descriptor table remained after exit");
 assert(!shell.os.fs.exists(`/proc/${pipelineExit.pid}/fd.json`), "shell pipeline fd procfs remained after exit");
+
+shell.os.fs.writeOrCreateFile("/home/guest/handle-note.txt", "handle smoke", "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rw-r--r--",
+}, shell.os.permissions.systemPrincipal());
+const handleProcess = shell.os.processes.spawn({
+  id: "handle-smoke",
+  name: "Handle Smoke",
+  manifest: { capabilities: [], fileSystem: { read: ["/home/guest"], write: ["/home/guest"] } },
+}, { cwd: "/home/guest" });
+const handleDescriptor = shell.os.descriptors.open(handleProcess, { path: "handle-note.txt", flags: "r" }, {
+  process: handleProcess,
+  principal: shell.os.permissions.principal(shell.os.session),
+  assertFileSystem: (path) => {
+    if (path === "/home/guest" || path.startsWith("/home/guest/")) return;
+    throw new Error(`handle-smoke denied ${path}`);
+  },
+});
+result = await shell.executeAsync(`handlectl list ${handleProcess.pid}`);
+assert(result.status === 0 && result.output.includes(handleDescriptor.handleId), `handlectl list missing handle: ${result.output}`);
+result = await shell.executeAsync(`handlectl stat ${handleDescriptor.handleId}`);
+assert(result.status === 0 && result.output.includes(`Handle:\t${handleDescriptor.handleId}`) && result.output.includes("ObjectStatus:\tactive"), `handlectl stat mismatch: ${result.output}`);
+result = await shell.executeAsync("handlectl stat kh-missing");
+assert(result.status === 1 && result.output.includes("no such handle"), `handlectl missing status mismatch: ${result.output}`);
+shell.os.processes.kill(handleProcess.pid, "handlectl-smoke-exit");
+result = await shell.executeAsync(`handlectl list ${handleProcess.pid} --all`);
+assert(result.status === 0 && result.output.includes(handleDescriptor.handleId) && result.output.includes("revoked"), `handlectl all missing revoked handle: ${result.output}`);
 
 result = await shell.executeAsync('echo "left;right"; echo done');
 assert(result.status === 0, `quoted semicolon command status mismatch: ${result.status}`);
@@ -651,6 +680,7 @@ function bootOs() {
     openPath: () => null,
   };
   os.bus = new EventBus();
+  os.objects = new KernelObjectRegistry(os);
   os.windows = {
     has: () => false,
     close: () => null,
