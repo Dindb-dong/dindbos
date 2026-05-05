@@ -537,7 +537,7 @@ Implementation tasks:
 - Already present: installable GUI app, CLI app, WASM CLI, and background worker package templates are seeded under `/opt/dindbos/templates`.
 - Already present: `scripts/helpers/dindbos-test-runtime.js` creates reusable test runtimes with real VFS, AppRegistry, AppSandbox, PackageManager, ProcessManager, DescriptorManager, SyscallDispatcher, WasmRunner, EventBus, and in-memory window surfaces.
 - Already present: package manifests can declare exact API versions or `api.minVersion` / `api.targetVersion` / `api.maxVersion` ranges; PackageManager negotiates supported version 1 or fails before package mutation when no supported API version exists.
-- Add developer docs for permissions, filesystem scopes, process lifecycle, app state, package signing, and compatibility limits.
+- Already present: `docs/developer-guide.md` documents permissions, filesystem scopes, process lifecycle, app state, package signing/trust, SDK/syscalls, compatibility/API limits, browser/companion boundaries, and package-author verification steps.
 
 Verification:
 
@@ -547,6 +547,7 @@ Verification:
 - Already present: `npm run smoke:packages` boots package tests through the reusable DindbOS runtime test helper instead of local fake package/process/window internals.
 - Already present: `npm run smoke:packages` verifies API version range negotiation to runtime API v1 and unsupported exact future API refusal before package files, records, or app registration mutate.
 - Already present: `npm run smoke:sdk` verifies the TypeScript declaration covers the SDK helper groups and core syscall names.
+- Already present: `npm run smoke:docs` verifies the developer guide keeps the required package-author sections and key runtime terms.
 - Add smoke coverage that builds or loads broader SDK fixtures across app, CLI, worker, and WASM-adjacent callers.
 
 Completion criteria:
