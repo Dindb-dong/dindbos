@@ -2583,6 +2583,11 @@ export class DindbOS {
     return this.syscalls.call(name, args, { ...context, principal });
   }
 
+  syscallAsync(name, args = {}, context = {}) {
+    const principal = context.principal || this.permissions.principal({ user: this.session.user, groups: this.session.groups });
+    return this.syscalls.callAsync(name, args, { ...context, principal });
+  }
+
   diskPolicyForPath(path) {
     const normalized = this.fs.normalize(path);
     return this.diskPolicyAreas()

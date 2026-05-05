@@ -215,6 +215,11 @@ assert(JSON.parse(result.output).value[0].id === "calculator", `syscall app.list
 result = await shell.executeAsync("syscall storage.status '{}'");
 assert(result.status === 0, `syscall storage.status status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).value.backend === "memory", `syscall storage.status output mismatch: ${result.output}`);
+const beforeStorageSyncFlushes = shell.os.storageFlushes;
+result = await shell.executeAsync("syscall storage.sync '{}'");
+assert(result.status === 0, `syscall storage.sync status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).value.synced === true, `syscall storage.sync output mismatch: ${result.output}`);
+assert(shell.os.storageFlushes === beforeStorageSyncFlushes + 1, "syscall storage.sync did not reach runtime flush");
 shell.os.fs.resolve("/home/guest/syscall-note.txt").size = 12345;
 result = await shell.executeAsync("fsck --dry-run");
 assert(result.status === 0, `fsck dry-run status mismatch: ${result.status}`);
@@ -255,10 +260,11 @@ assert(result.output.includes("administrator required"), `non-admin pkg trust ad
 assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("decision=denied"), "security audit missing denied package trust change");
 shell.os.session.groups = ["users", "admins"];
 shell.principal = shell.os.permissions.principal(shell.os.session);
+const beforeAdminFlushes = shell.os.storageFlushes;
 result = await shell.executeAsync("storage flush");
 assert(result.status === 0, `admin storage flush status mismatch: ${result.status}`);
 assert(result.output.includes("backend=memory"), `admin storage flush output mismatch: ${result.output}`);
-assert(shell.os.storageFlushes === 1, "admin storage flush did not reach runtime");
+assert(shell.os.storageFlushes === beforeAdminFlushes + 1, "admin storage flush did not reach runtime");
 assert(shell.os.fs.readFile("/var/log/dindbos/security-audit.log").includes("action=system-settings:storage-flush decision=allowed"), "security audit missing allowed storage flush");
 result = await shell.executeAsync("storage persist");
 assert(result.status === 0, `admin storage persist status mismatch: ${result.status}`);
@@ -577,6 +583,7 @@ function bootOs() {
   os.descriptors = new DescriptorManager(os);
   os.syscalls = new SyscallDispatcher(os);
   os.syscall = (name, args = {}, context = {}) => os.syscalls.call(name, args, context);
+  os.syscallAsync = (name, args = {}, context = {}) => os.syscalls.callAsync(name, args, context);
   return os;
 }
 

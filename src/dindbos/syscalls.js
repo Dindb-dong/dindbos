@@ -29,6 +29,29 @@ export class SyscallDispatcher {
     }
   }
 
+  async callAsync(name, args = {}, context = {}) {
+    const syscall = String(name || "").trim();
+    const startedAt = Date.now();
+    try {
+      if (!syscall) throw syscallError("EINVAL", "syscall: missing name");
+      const value = await this.dispatchAsync(syscall, args || {}, context);
+      const result = { ok: true, value };
+      this.trace(syscall, args, result, context, startedAt);
+      return result;
+    } catch (error) {
+      const result = {
+        ok: false,
+        error: {
+          code: error.code || errnoForError(error),
+          message: error.message || String(error),
+          syscall,
+        },
+      };
+      this.trace(syscall || "unknown", args, result, context, startedAt);
+      return result;
+    }
+  }
+
   dispatch(name, args, context) {
     if (name === "clock.now") return { iso: new Date().toISOString(), ms: Date.now() };
     if (name === "entropy.randomBytes") return this.randomBytes(args);
@@ -51,6 +74,7 @@ export class SyscallDispatcher {
     if (name === "package.list") return this.packageList(context);
     if (name === "package.info") return this.packageInfo(args, context);
     if (name === "storage.status") return this.storageStatus(context);
+    if (name === "storage.sync") throw syscallError("EAGAIN", "syscall: storage.sync requires async syscall dispatch");
     if (name === "localMount.status") return this.localMountStatus(context);
     if (name === "mount.list") return this.mountList(context);
     if (name === "mount.mount") return this.mount(args, context);
@@ -63,6 +87,11 @@ export class SyscallDispatcher {
     if (name === "process.log") return this.processLog(args, context);
     if (name === "app.launch") return this.appLaunch(args, context);
     throw syscallError("ENOSYS", `syscall: ${name}: not implemented`);
+  }
+
+  async dispatchAsync(name, args, context) {
+    if (name === "storage.sync") return this.storageSync(context);
+    return this.dispatch(name, args, context);
   }
 
   randomBytes(args) {
@@ -198,6 +227,20 @@ export class SyscallDispatcher {
   storageStatus(context) {
     this.assertCapability("storage.read", context);
     return {
+      ...safeRead(() => this.os.storage.status(), {}),
+      ...safeRead(() => this.os.persistenceStatus?.(), {}),
+      bucketPolicy: safeRead(() => this.os.storageBucketPolicy?.(), null),
+    };
+  }
+
+  async storageSync(context) {
+    this.assertCapability("storage.read", context);
+    const flush = typeof this.os.flushPersistentFileSystem === "function"
+      ? await this.os.flushPersistentFileSystem()
+      : await this.os.storage.flush?.();
+    return {
+      synced: true,
+      flush: flush || null,
       ...safeRead(() => this.os.storage.status(), {}),
       ...safeRead(() => this.os.persistenceStatus?.(), {}),
       bucketPolicy: safeRead(() => this.os.storageBucketPolicy?.(), null),

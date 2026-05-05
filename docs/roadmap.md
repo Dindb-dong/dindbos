@@ -203,7 +203,8 @@ Implementation cuts:
 - Already present: AppRegistry register/unregister mutations group the in-memory app map, manifest file, and launcher file under one VFS snapshot rollback boundary.
 - Already present: ServiceManager register/unregister mutations group definitions, records, logs, and persisted service state under one VFS snapshot rollback boundary.
 - Extend staged activation to broader service lifecycle transaction groups.
-- Add `fsync`-style barriers to Shell, SDK, WASM, and NodeCompat paths so programs can request durability before reporting success.
+- Already present: first-pass `storage.sync` / `fsync`-style durability barrier is exposed through async syscalls, Shell raw syscall usage, SDK `storage.sync()`, and AppSandbox `os.storage.sync()` so programs can wait for the runtime persistence flush path before reporting success.
+- Extend durability barriers into WASM, NodeCompat, package services, descriptor-backed file writes, and future mapped-file writes.
 - Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
 - Already present: `fsck --dry-run` includes first-pass package DB drift checks for package records whose `/opt/<package>` root is missing and `pkgfs` roots with no package DB record.
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
@@ -226,6 +227,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package fsck repair removes orphan `pkgfs` roots and does not attempt unsafe repair of missing package roots.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Already present: `npm run smoke:shell` verifies `fsck --explain` prints repair policy explanations and `/var/log/dindbos/fsck.log` records dry-run and repaired runs.
+- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, and `npm run smoke:permissions` verify `storage.sync` succeeds through Shell, SDK async helpers, and AppSandbox storage facades, while sandboxed callers without `storage.read` are denied.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
@@ -4684,7 +4686,8 @@ Goal: make DindbOS storage behave less like a serialized JavaScript object and m
 Implementation tasks:
 
 - Add a storage transaction manager with explicit begin, stage, commit, rollback, replay, abort, and explain records.
-- Add `storage.sync` / `fsync`-style barriers for Shell, SDK, AppSandbox, WASM, NodeCompat, package services, and future descriptor-backed file writes.
+- Already present: first-pass `storage.sync` / `fsync`-style barrier covers Shell, SDK, and AppSandbox callers through the async syscall path.
+- Extend `storage.sync` / `fsync`-style barriers to WASM, NodeCompat, package services, and future descriptor-backed file writes.
 - Add a page-cache layer that tracks clean pages, dirty pages, pinned pages, mapped pages, eviction candidates, and writeback failures.
 - Add writeback policies for user documents, package roots, package DB, app registry, service state, logs, caches, temp files, snapshots, backups, and sync staging.
 - Add crash-replay records for interrupted editor saves, archive imports, package activation, registry mutation, local mount sync, package update, key rotation, and snapshot creation.
@@ -4694,7 +4697,8 @@ Implementation tasks:
 
 Verification:
 
-- Add smoke coverage for sync barrier success, sync barrier failure, dirty-page flush, interrupted write replay, quota-denied preflight, failed commit rollback, stale journal explanation, and salvage export.
+- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, and `npm run smoke:permissions` cover first-pass sync barrier success plus capability denial.
+- Add smoke coverage for sync barrier failure, dirty-page flush, interrupted write replay, quota-denied preflight, failed commit rollback, stale journal explanation, and salvage export.
 - Add cross-runtime tests proving Shell, Files.app, SDK apps, WASM, NodeCompat, and services all hit the same storage transaction boundary.
 - Add regression tests proving repair never weakens ownership, permission, encryption, quarantine, package trust, or local mount conflict state.
 
