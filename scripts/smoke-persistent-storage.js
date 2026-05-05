@@ -10,7 +10,7 @@ await verifySnapshotAdapterFallback();
 await verifyOpfsFailureFallsBackToSnapshot();
 await verifyLifecyclePendingWriteFlushes();
 
-console.log(`persistent storage smoke ok binaryBytes=${binary.byteLength}`);
+console.log(`persistent storage smoke ok binaryBytes=${binary.byteLength} journal=write`);
 
 async function verifySnapshotAdapterFallback() {
   const adapter = createAdapter();
@@ -24,6 +24,10 @@ async function verifySnapshotAdapterFallback() {
   fs.writeOrCreateFileBytes(binaryPath, binary, "/", { mime: "application/octet-stream" });
   storage.saveFileSystem(fs.snapshot());
   await storage.flush();
+  const journalActions = storage.journal().map((entry) => entry.action);
+  assert(journalActions.includes("write-queued"), "snapshot adapter journal missing write-queued");
+  assert(journalActions.includes("write-completed"), "snapshot adapter journal missing write-completed");
+  assert(storage.status().storageJournalRecords >= 2, "snapshot adapter status did not expose journal count");
 
   const reloadedRoot = await new PersistentStorage({
     key: "smoke:vfs",
@@ -56,6 +60,10 @@ async function verifyOpfsFailureFallsBackToSnapshot() {
   const status = storage.status();
   assert(status.storageFormat === "snapshot-fallback", `expected snapshot-fallback, got ${status.storageFormat}`);
   assert(status.lastWriteError.includes("simulated OPFS unavailable"), "OPFS failure was not recorded");
+  const journalActions = storage.journal().map((entry) => entry.action);
+  assert(journalActions.includes("write-error"), "OPFS fallback journal missing write-error");
+  assert(journalActions.includes("write-completed"), "OPFS fallback journal missing write-completed");
+  assert(status.lastStorageJournalAction === "write-completed", `OPFS fallback last journal action mismatch: ${status.lastStorageJournalAction}`);
 
   const reloadedRoot = await new PersistentStorage({
     key: "smoke:opfs-fallback",
