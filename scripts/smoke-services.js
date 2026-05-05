@@ -102,6 +102,9 @@ async function verifyBrowserServiceLifecycleHooks() {
     windowListeners.get("pagehide")({});
     assert(browserOs.services.get("lifecycle-sync").state === "suspended", "pagehide did not suspend service");
     assert(browserOs.lifecycleStatus().state === "suspended", "pagehide did not suspend OS lifecycle");
+    const pagehideRecord = JSON.parse(browserOs.fs.readFile("/var/run/dindbos/recovery/last-shutdown.json"));
+    assert(pagehideRecord.reason === "pagehide", "pagehide did not write a recovery shutdown record");
+    assert(pagehideRecord.suspendedServices.some((service) => service.id === "lifecycle-sync"), "pagehide recovery record missing suspended service");
     windowListeners.get("pageshow")({});
     assert(browserOs.services.get("lifecycle-sync").state === "running", "pageshow did not resume service");
     assert(browserOs.lifecycleStatus().state === "active", "pageshow did not reactivate OS lifecycle");
@@ -117,6 +120,8 @@ async function verifyBrowserServiceLifecycleHooks() {
     windowListeners.get("beforeunload")({});
     assert(browserOs.lifecycleStatus().state === "shutting-down", "beforeunload did not mark OS lifecycle shutting-down");
     assert(browserOs.fs.readFile("/var/run/dindbos/lifecycle.json").includes("shutting-down"), "lifecycle diagnostics missing shutting-down state");
+    const unloadRecord = JSON.parse(browserOs.fs.readFile("/var/run/dindbos/recovery/last-shutdown.json"));
+    assert(unloadRecord.reason === "beforeunload", "beforeunload did not write a recovery shutdown record");
 
     const messages = browserOs.services.readLog("lifecycle-sync").map((entry) => entry.message).join("\n");
     assert(messages.includes("suspended pagehide"), "service log missing pagehide suspend reason");

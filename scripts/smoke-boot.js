@@ -6,6 +6,7 @@ import { demoFileSystem, portfolioData } from "../src/demo/portfolio-demo.js";
 const restoreGlobals = installDomShim();
 try {
   await verifySuccessfulBootPhases();
+  await verifyDirtyShutdownRecoveryRecord();
   await verifyBootPhaseFailure();
 } finally {
   restoreGlobals();
@@ -72,6 +73,38 @@ async function verifySuccessfulBootPhases() {
   assert(lifecycleDiagnostics.state === "active", `boot lifecycle state mismatch: ${lifecycleDiagnostics.state}`);
   assert(lifecycleDiagnostics.transitions.some((entry) => entry.reason === "boot-complete"), "boot lifecycle transition missing boot-complete");
   assert(os.fs.readFile("/var/log/dindbos/lifecycle.log").includes("boot-complete"), "lifecycle log missing boot-complete");
+}
+
+async function verifyDirtyShutdownRecoveryRecord() {
+  const previousOs = new DindbOS({
+    root: createElement("root"),
+    fileSystem: demoFileSystem,
+    storage: createStorage(),
+    persistDelayMs: 0,
+  });
+  await previousOs.loadPersistentFileSystem();
+  previousOs.persistPending = true;
+  previousOs.persistenceStats.lastAction = "dirty-smoke";
+  previousOs.persistenceStats.lastPath = "/home/guest/Documents/recovery.txt";
+  const shutdownRecord = previousOs.writeRecoveryRecord("smoke-dirty", { dirty: true });
+  assert(shutdownRecord.dirtyShutdown, "dirty shutdown record did not mark dirty shutdown");
+  assert(shutdownRecord.pendingPersistence, "dirty shutdown record did not capture pending persistence");
+  assert(previousOs.fs.exists("/var/run/dindbos/recovery/last-shutdown.json"), "dirty shutdown record was not written");
+
+  const recoveredOs = new DindbOS({
+    root: createElement("root"),
+    fileSystem: previousOs.fs.snapshot(),
+    storage: createStorage(),
+    persistDelayMs: 0,
+  });
+  await recoveredOs.loadPersistentFileSystem();
+  assert(recoveredOs.lifecycleStatus().state === "recovered", "dirty shutdown did not transition OS lifecycle to recovered");
+  assert(recoveredOs.fs.exists("/var/run/dindbos/recovery/last-recovery.json"), "dirty shutdown recovery record was not written");
+  const recovery = JSON.parse(recoveredOs.fs.readFile("/var/run/dindbos/recovery/last-recovery.json"));
+  assert(recovery.previousShutdown.reason === "smoke-dirty", "recovery record did not include previous shutdown reason");
+  const acknowledged = JSON.parse(recoveredOs.fs.readFile("/var/run/dindbos/recovery/last-shutdown.json"));
+  assert(acknowledged.recoveredAt, "last shutdown record was not acknowledged");
+  assert(!acknowledged.dirtyShutdown, "acknowledged shutdown record still marked dirty");
 }
 
 async function verifyBootPhaseFailure() {
