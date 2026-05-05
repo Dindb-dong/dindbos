@@ -155,6 +155,35 @@ export class DescriptorManager {
     return publicDescriptor(this.descriptorFor(process.pid, args.fd));
   }
 
+  ioctl(process, args = {}) {
+    const descriptor = this.descriptorFor(process.pid, args.fd);
+    const request = String(args.request || args.command || "").trim();
+    if (!request) throw descriptorError("EINVAL", `fd.ioctl: ${descriptor.fd}: request is required`);
+    if (!isTtyDescriptor(descriptor)) throw descriptorError("ENOTTY", `fd.ioctl: ${descriptor.fd}: descriptor is not a tty`);
+    if (request === "tty.getWindowSize") {
+      return {
+        fd: descriptor.fd,
+        request,
+        path: descriptor.path,
+        ...ttySize(descriptor),
+      };
+    }
+    if (request === "tty.setWindowSize") {
+      descriptor.tty = ttySize({ tty: args });
+      this.writeProcfs(process.pid);
+      return {
+        fd: descriptor.fd,
+        request,
+        path: descriptor.path,
+        ...descriptor.tty,
+      };
+    }
+    if (request === "tty.isatty") {
+      return { fd: descriptor.fd, request, path: descriptor.path, tty: true };
+    }
+    throw descriptorError("EINVAL", `fd.ioctl: unsupported request: ${request}`);
+  }
+
   close(process, args = {}) {
     const fd = fdArg(args.fd);
     if (fd < 3) throw descriptorError("EINVAL", `fd.close: ${fd}: cannot close standard descriptor yet`);
@@ -331,6 +360,26 @@ function publicDescriptor(descriptor) {
     flags: descriptor.flags || "",
     preopen: Boolean(descriptor.preopen),
   };
+}
+
+function isTtyDescriptor(descriptor) {
+  return descriptor.path === "/dev/tty" || ["stdin", "stdout", "stderr"].includes(descriptor.path);
+}
+
+function ttySize(descriptor) {
+  const source = descriptor.tty || {};
+  return {
+    columns: boundedInteger(source.columns, 80, 1, 1000),
+    rows: boundedInteger(source.rows, 24, 1, 1000),
+    pixelWidth: boundedInteger(source.pixelWidth, 0, 0, 100000),
+    pixelHeight: boundedInteger(source.pixelHeight, 0, 0, 100000),
+  };
+}
+
+function boundedInteger(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(number)));
 }
 
 function normalizeFlags(value) {

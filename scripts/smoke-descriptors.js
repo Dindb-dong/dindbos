@@ -78,6 +78,16 @@ assert(result.ok && result.value.data.length === 8, `fd.read /dev/urandom mismat
 result = os.syscall("fd.open", { path: "/dev/tty", flags: "r+" }, context);
 assert(result.ok, `fd.open /dev/tty mismatch: ${JSON.stringify(result)}`);
 const ttyFd = result.value.fd;
+result = os.syscall("fd.ioctl", { fd: ttyFd, request: "tty.getWindowSize" }, context);
+assert(result.ok && result.value.columns === 80 && result.value.rows === 24, `fd.ioctl tty default size mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.ioctl", { fd: ttyFd, request: "tty.setWindowSize", columns: 132, rows: 43, pixelWidth: 990, pixelHeight: 640 }, context);
+assert(result.ok && result.value.columns === 132 && result.value.rows === 43, `fd.ioctl tty set size mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.ioctl", { fd: ttyFd, request: "tty.getWindowSize" }, context);
+assert(result.ok && result.value.columns === 132 && result.value.pixelWidth === 990, `fd.ioctl tty persisted size mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.ioctl", { fd: 1, request: "tty.isatty" }, context);
+assert(result.ok && result.value.tty === true, `fd.ioctl stdout isatty mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.ioctl", { fd: outputFd, request: "tty.getWindowSize" }, context);
+assert(!result.ok && result.error.code === "ENOTTY", `fd.ioctl non-tty did not return ENOTTY: ${JSON.stringify(result)}`);
 result = os.syscall("fd.write", { fd: ttyFd, data: "tty out" }, context);
 assert(result.ok && result.value.bytes === 7, `fd.write /dev/tty mismatch: ${JSON.stringify(result)}`);
 assert(os.descriptors.standardStreams(process.pid).stdout === "tty out", "/dev/tty did not write to process stdout stream");
@@ -104,7 +114,7 @@ assert(!os.descriptors.tables.has(crashProcess.pid), "descriptor table remained 
 assert(os.fs.exists(`/var/log/dindbos/crash-${crashProcess.pid}.log`), "descriptor crash smoke did not write crash report");
 assert(!os.fs.exists(`/proc/${crashProcess.pid}/fd.json`), "crashed process fd procfs remained after cleanup");
 
-console.log("descriptors smoke ok open read write seek close devices tty crash-cleanup");
+console.log("descriptors smoke ok open read write seek close devices tty ioctl crash-cleanup");
 
 function memoryStorage() {
   return {
