@@ -273,12 +273,12 @@ export class ShellSession {
     if (command === "which") return this.which(args[0]);
     if (command === "man") return BUILTIN_MANUALS[args[0]] || `man: ${args[0] || ""}: no manual entry`;
     if (command === "node") return this.node(args);
-    if (command === "wasm") return this.wasm(args);
+    if (command === "wasm") return this.wasm(args, stdin);
     if (command === "npm") return this.npm(args);
     if (command === "df") return this.df();
     if (command === "mount") return this.mount();
     const script = this.resolveExecutable(command);
-    if (script?.path.endsWith(".wasm")) return this.executeWasm(script.path, args);
+    if (script?.path.endsWith(".wasm")) return this.executeWasm(script.path, args, stdin);
     if (script) return this.executeScript(script.path, args, stdin, options.scriptDepth || 0);
     throw new Error(this.commandNotFound(command));
   }
@@ -672,15 +672,15 @@ export class ShellSession {
     return Promise.resolve(this.os.node.runFile(file, this.cwd, { argv, inputType })).then(formatNodeResult);
   }
 
-  wasm(args) {
+  wasm(args, stdin = "") {
     const [file, ...argv] = args;
     if (!file) return "wasm: usage: wasm <file> [args...]";
-    return this.executeWasm(this.os.fs.normalize(file, this.cwd), argv);
+    return this.executeWasm(this.os.fs.normalize(file, this.cwd), argv, stdin);
   }
 
-  async executeWasm(path, argv = []) {
+  async executeWasm(path, argv = [], stdin = "") {
     if (!this.os.wasm?.runFile) throw new Error("wasm: WebAssembly runner is unavailable");
-    const result = await this.os.wasm.runFile(path, "/", { argv, principal: this.principal });
+    const result = await this.os.wasm.runFile(path, "/", { argv, stdin, principal: this.principal });
     const output = [result.stdout, result.stderr].filter(Boolean).join(result.stdout && result.stderr ? "\n" : "");
     if (result.status) throw new Error(output || `wasm: ${path}: exited with status ${result.status}`);
     return output;
