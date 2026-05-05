@@ -1010,7 +1010,7 @@ Implementation tasks:
 - Already present: package manifests support a normalized `sandbox` section for root policy, state policy, cache policy, temp policy, device grants, network hosts, IPC endpoints, and child-process limits; package records, app manifests, package public records, and namespace metadata expose the resolved policy.
 - Already present: package uninstall kills running package namespace processes, which closes their descriptors and unregisters owned IPC endpoints, then removes package root, app state, package record, launcher, and private state/cache/temp namespace roots.
 - Already present: package namespace cache eviction is explicit through `packages.evictNamespaceCache()` and shell `pkg cache clear <package>`, removing only the private package cache root contents before recreating the cache root.
-- Add namespace cleanup for future non-process IPC endpoints.
+- Already present: package namespace cleanup removes both process-owned IPC endpoints and non-process namespace IPC endpoints through `unregisterIpcEndpointsForNamespace()` during package uninstall.
 - Already present: developer tooling can run `pkg strict <manifest-path|package>` or `packages.strictNamespaceCheckFromManifestPath()` before publishing to validate package root, private roots, dependency allowlist, read/write scopes, CLI entry, and package service ids without installing the manifest.
 
 Verification:
@@ -1027,6 +1027,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package-declared service units register with package id, expose namespace in service manifest, start service processes with package namespace metadata, and unregister/stop on package uninstall.
 - Already present: `npm run smoke:packages` verifies strict namespace tooling succeeds for installed packages and pre-publish manifest paths, and fails broad read/write scopes with shell status 1.
 - Already present: `npm run smoke:packages` verifies `pkg cache clear <package>` removes private cache contents while preserving the package root, state root, temp root, and recreated cache root.
+- Already present: `npm run smoke:packages` verifies package uninstall removes non-process namespace IPC endpoints in addition to process-owned endpoints.
 
 Completion criteria:
 

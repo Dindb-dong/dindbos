@@ -46,6 +46,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
   os.sendIpcMessage = (process, endpoint, payload = {}) => sendIpcMessage(os, process, endpoint, payload);
   os.listIpcEndpoints = (process = null) => listIpcEndpoints(os, process);
   os.unregisterIpcEndpointsForPid = (pid) => unregisterIpcEndpointsForPid(os, pid);
+  os.unregisterIpcEndpointsForNamespace = (namespace, reason) => unregisterIpcEndpointsForNamespace(os, namespace, reason);
 
   os.windows = createTestWindowManager();
   os.descriptors = new DescriptorManager(os);
@@ -74,6 +75,7 @@ function registerIpcEndpoint(os, process, endpoint, handler) {
     ownerPid: process?.pid || 0,
     ownerAppId: process?.appId || "",
     ownerNamespace: namespace.processGroup || "",
+    ownerPackageId: namespace.packageId || "",
     handler,
     createdAt: new Date().toISOString(),
   };
@@ -109,6 +111,20 @@ function unregisterIpcEndpointsForPid(os, pid) {
   [...os.ipcEndpoints.entries()].forEach(([endpoint, record]) => {
     if (Number(record.ownerPid || 0) === Number(pid || 0)) os.ipcEndpoints.delete(endpoint);
   });
+}
+
+function unregisterIpcEndpointsForNamespace(os, namespace = {}) {
+  const processGroup = String(namespace.processGroup || "").trim();
+  const packageId = String(namespace.packageId || "").trim();
+  const removed = [];
+  [...os.ipcEndpoints.entries()].forEach(([endpoint, record]) => {
+    const sameProcessGroup = processGroup && record.ownerNamespace === processGroup;
+    const samePackage = packageId && record.ownerPackageId === packageId;
+    if (!sameProcessGroup && !samePackage) return;
+    os.ipcEndpoints.delete(endpoint);
+    removed.push(publicIpcEndpoint(record));
+  });
+  return removed;
 }
 
 function normalizeIpcEndpoint(endpoint) {
@@ -147,6 +163,7 @@ function publicIpcEndpoint(record) {
     ownerPid: record.ownerPid,
     ownerAppId: record.ownerAppId,
     ownerNamespace: record.ownerNamespace,
+    ownerPackageId: record.ownerPackageId || "",
     createdAt: record.createdAt,
   };
 }

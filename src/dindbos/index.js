@@ -2521,6 +2521,7 @@ export class DindbOS {
       ownerPid: process?.pid || 0,
       ownerAppId: process?.appId || "",
       ownerNamespace: namespace.processGroup || "",
+      ownerPackageId: namespace.packageId || "",
       handler,
       createdAt: new Date().toISOString(),
     };
@@ -2531,6 +2532,7 @@ export class DindbOS {
       ownerPid: record.ownerPid,
       ownerAppId: record.ownerAppId,
       ownerNamespace: record.ownerNamespace,
+      ownerPackageId: record.ownerPackageId,
     });
     return publicIpcEndpoint(record);
   }
@@ -2570,6 +2572,27 @@ export class DindbOS {
       removed.push(publicIpcEndpoint(record));
     });
     if (removed.length) this.bus.emit("ipc:endpoint", { action: "unregister", reason, ownerPid, endpoints: removed });
+    return removed;
+  }
+
+  unregisterIpcEndpointsForNamespace(namespace = {}, reason = "namespace-cleanup") {
+    const processGroup = String(namespace.processGroup || "").trim();
+    const packageId = String(namespace.packageId || "").trim();
+    const removed = [];
+    [...this.ipcEndpoints.entries()].forEach(([endpoint, record]) => {
+      const sameProcessGroup = processGroup && record.ownerNamespace === processGroup;
+      const samePackage = packageId && record.ownerPackageId === packageId;
+      if (!sameProcessGroup && !samePackage) return;
+      this.ipcEndpoints.delete(endpoint);
+      removed.push(publicIpcEndpoint(record));
+    });
+    if (removed.length) this.bus.emit("ipc:endpoint", {
+      action: "unregister",
+      reason,
+      ownerNamespace: processGroup,
+      ownerPackageId: packageId,
+      endpoints: removed,
+    });
     return removed;
   }
 
@@ -3236,6 +3259,7 @@ function publicIpcEndpoint(record) {
     ownerPid: record.ownerPid,
     ownerAppId: record.ownerAppId,
     ownerNamespace: record.ownerNamespace,
+    ownerPackageId: record.ownerPackageId || "",
     createdAt: record.createdAt,
   };
 }
