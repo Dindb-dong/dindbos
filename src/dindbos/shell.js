@@ -21,7 +21,7 @@ const BUILTIN_MANUALS = {
   grep: "grep <text> <file> - search lines in a text file",
   kill: "kill <pid> - terminate a process",
   keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing - manage DindbOS secrets",
-  loginctl: "loginctl status|users|switch|lock|unlock - inspect or change DindbOS session state",
+  loginctl: "loginctl status|users|login|logout|switch|lock|unlock|policy|reset-guest - inspect or change DindbOS session state",
   ls: "ls [-la] [path] - list directory contents",
   man: "man <command> - show command help",
   manifest: "manifest [app] - show app manifests",
@@ -170,7 +170,7 @@ export class ShellSession {
   }
 
   lockedSessionResult(line = "") {
-    if (/^loginctl\s+(status|unlock)\b/.test(line)) return null;
+    if (/^loginctl\s+(status|unlock|login|policy|reset-guest)\b/.test(line)) return null;
     try {
       this.os.assertSessionUnlocked?.("shell");
       return null;
@@ -395,13 +395,36 @@ export class ShellSession {
         `home=${status.home || this.env.HOME}`,
         `state=${status.state || "unknown"}`,
         `locked=${Boolean(status.locked)}`,
+        `auth=${status.authMethod || "-"}`,
         `sessionId=${status.sessionId || "-"}`,
+      ].join(" ");
+    }
+    if (subcommand === "policy") {
+      const policy = this.os.authenticationPolicy?.() || {};
+      return [
+        `mode=${policy.mode || "unknown"}`,
+        `methods=${(policy.loginMethods || []).join(",") || "-"}`,
+        `password=${policy.password?.status || "unknown"}`,
+        `passkey=${policy.passkey?.status || "unknown"}`,
+        `guestReset=${Boolean(policy.guestReset?.supported)}`,
       ].join(" ");
     }
     if (subcommand === "users") {
       return (this.os.listUsers?.() || [])
         .map((user) => `${String(user.uid ?? "-").padEnd(5)} ${user.user.padEnd(16)} ${(user.groups || []).join(",").padEnd(20)} ${user.home}`)
         .join("\n");
+    }
+    if (subcommand === "login") {
+      const user = args[1];
+      const method = args[2] || "session-placeholder";
+      if (!user) return "loginctl: usage: loginctl login <user> [session-placeholder|password|passkey]";
+      const status = this.os.loginSessionUser?.(user, { method });
+      this.applySessionStatus(status);
+      return `logged in ${status.user} method=${status.authMethod || method} home=${status.home}`;
+    }
+    if (subcommand === "logout") {
+      const status = this.os.logoutSession?.(args.slice(1).join(" ") || "shell") || {};
+      return `loggedOut=${status.state === "logged-out"} user=${status.user || this.env.USER}`;
     }
     if (subcommand === "switch") {
       const user = args[1];
@@ -418,6 +441,10 @@ export class ShellSession {
       const status = this.os.unlockSession?.() || {};
       this.applySessionStatus(status);
       return `locked=${Boolean(status.locked)} user=${status.user || this.env.USER}`;
+    }
+    if (subcommand === "reset-guest") {
+      const result = this.os.resetGuestSession?.({ principal: this.principal }) || {};
+      return `guest reset=${Boolean(result.reset)} home=${result.home || "/home/guest"}`;
     }
     return `loginctl: unsupported subcommand: ${subcommand}`;
   }

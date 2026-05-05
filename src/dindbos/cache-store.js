@@ -19,6 +19,18 @@ export class RuntimeCacheStore {
     this.user = normalizeCacheUser(user || "guest");
   }
 
+  clearUser(user = this.user) {
+    const normalized = normalizeCacheUser(user || this.user);
+    const marker = `/user/${encodeURIComponent(normalized)}?`;
+    let removed = 0;
+    [...this.memory.keys()].forEach((key) => {
+      if (!String(key).includes(marker)) return;
+      this.memory.delete(key);
+      removed += 1;
+    });
+    return { user: normalized, removed };
+  }
+
   async fetchBytes(fetcher, url, options = {}) {
     const key = cacheKey(url, { ...options, user: options.user || this.user });
     const cached = await this.readBytes(key);

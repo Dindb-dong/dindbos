@@ -421,7 +421,9 @@ Implementation tasks:
 
 - Already present: persistent user records are normalized under `/etc/dindbos/users.json`, group records are mirrored under `/etc/dindbos/groups.json`, and both carry first-pass numeric uid/gid identity metadata.
 - Already present: first-pass session switching can move the active runtime session between persisted users through `switchSessionUser()` and shell `loginctl switch`, while already-running processes keep their spawn-time credential snapshot.
-- Add full login, logout, password/passkey placeholder policy, and guest reset behavior.
+- Already present: first-pass login/logout state is exposed through `loginSessionUser()`, `logoutSession()`, shell `loginctl login`, and shell `loginctl logout`.
+- Already present: password/passkey login policy is explicit placeholder behavior through `authenticationPolicy()` and shell `loginctl policy`, so DindbOS does not pretend to verify credentials before a trusted login UI exists.
+- Already present: guest reset behavior clears `/home/guest`, guest app state, guest shell history, guest package preferences, and guest Runtime Cache API entries, then recreates the guest home workspace.
 - Already present: session lock/unlock state is exposed through `sessionStatus()`, `/var/run/dindbos/session.json`, `/proc/sessions`, shell/app launch denial, and session lock/unlock events.
 - Already present: process credentials snapshot uid, gid, effective uid/gid, supplementary groups, and session id at spawn time, then expose the same credential record through `/proc/<pid>/status` and `/proc/processes.json`.
 - Expand chmod/chown/chgrp behavior across VFS and local mount metadata where possible.
@@ -441,6 +443,7 @@ Implementation tasks:
 Verification:
 
 - Already present: `npm run smoke:sessions` verifies normalized session users/groups, per-user home creation, persistent user/group records, numeric uid/gid assignment, shell `id` output, session switching through `loginctl`, cross-user private file denial, session lock/unlock denial, process credential `/proc` reporting, and sandbox filesystem access through process supplementary groups.
+- Already present: `npm run smoke:sessions` verifies shell `loginctl logout` blocks normal shell work, `loginctl login` restores authenticated state, password/passkey placeholder methods fail explicitly, `loginctl policy` exposes the placeholder policy, and `loginctl reset-guest` clears guest files/state/cache.
 - Already present: `npm run smoke:sessions` verifies per-user shell history persistence, reload into a new shell, and no shell history leakage across `loginctl switch`.
 - Already present: `npm run smoke:sessions` verifies per-user package preference persistence and no package preference leakage across `loginctl switch`.
 - Already present: `npm run smoke:sessions` verifies Runtime Cache API entries do not leak across `loginctl switch` and restore with the original user.
