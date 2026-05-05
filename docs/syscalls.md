@@ -79,6 +79,8 @@ Descriptor syscalls require a process context. New processes receive standard de
 
 `fd.ioctl` is the structured control boundary for descriptors that need device-style operations. The first supported requests are `tty.getWindowSize`, `tty.setWindowSize`, and `tty.isatty` for `/dev/tty` plus standard stream descriptors. Non-TTY descriptors return `ENOTTY`.
 
+Entropy and zero devices report `fd.read.bytes` as the actual device byte count returned by the pseudo-device, not the UTF-8 byte length of the JSON string representation.
+
 ## Shell Usage
 
 Terminal can call the ABI directly:

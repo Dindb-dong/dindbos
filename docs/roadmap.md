@@ -323,7 +323,8 @@ Verification:
 - Already present: `npm run smoke:descriptors` verifies `/dev/tty` output through the process stdout stream.
 - Already present: `npm run smoke:descriptors` verifies `fd.ioctl` TTY size get/set, stdout `isatty`, and non-TTY `ENOTTY` behavior.
 - Already present: `npm run smoke:shell` verifies shell pipeline output is delivered through descriptor-backed transient pipeline processes and that descriptor/procfs cleanup runs after pipeline exit.
-- Add smoke coverage for multi-process pipe chaining, entropy device byte semantics, and richer WASI descriptor rights/flags.
+- Already present: `npm run smoke:descriptors` verifies `/dev/zero`, `/dev/random`, and `/dev/urandom` report the actual pseudo-device byte count from `fd.read.bytes`.
+- Add smoke coverage for multi-process pipe chaining and richer WASI descriptor rights/flags.
 
 Completion criteria:
 
