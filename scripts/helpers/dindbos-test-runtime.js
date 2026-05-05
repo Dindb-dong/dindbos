@@ -6,6 +6,7 @@ import { EventBus } from "../../src/dindbos/event-bus.js";
 import { PackageManager } from "../../src/dindbos/package-manager.js";
 import { PermissionPolicy } from "../../src/dindbos/permission-policy.js";
 import { ProcessManager } from "../../src/dindbos/process-manager.js";
+import { ServiceManager } from "../../src/dindbos/service-manager.js";
 import { SyscallDispatcher } from "../../src/dindbos/syscalls.js";
 import { VirtualFileSystem } from "../../src/dindbos/vfs.js";
 import { WasmRunner } from "../../src/dindbos/wasm-runner.js";
@@ -28,6 +29,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
     packages: null,
     windows: null,
     processes: null,
+    services: null,
     descriptors: null,
     syscalls: null,
     wasm: null,
@@ -41,6 +43,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
   os.windows = createTestWindowManager();
   os.descriptors = new DescriptorManager(os);
   os.processes = new ProcessManager(os);
+  os.services = new ServiceManager(os);
   os.syscalls = new SyscallDispatcher(os);
   os.syscall = (name, args = {}, context = {}) => {
     const principal = context.principal || os.permissions.principal({ user: os.session.user, groups: os.session.groups });
