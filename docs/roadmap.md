@@ -236,7 +236,8 @@ Verification:
 - Already present: `npm run smoke:storage` verifies fsck repair preserves owner, group, permissions, security label, quarantine state, and encrypted-volume lock metadata while repairing corrupt size metadata.
 - Already present: `npm run smoke:persistent-storage` verifies storage-class quota reservation, class-specific denial, denial journaling, and path-based cache class inference.
 - Already present: `npm run smoke:persistent-storage` verifies an OPFS file content record whose hash no longer matches its manifest entry is reported as an inode/content mismatch and journaled.
-- Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, journal replay, and failed repair fallback.
+- Already present: `npm run smoke:packages` verifies interrupted package activation at the app-registry phase rolls back package root, staging root, package DB record, launcher, app registry state, and package DB operation lock.
+- Add smoke coverage for interrupted editor save through the app surface, journal replay, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 
 Completion criteria:

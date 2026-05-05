@@ -40,6 +40,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
     wasm: null,
     keychain: null,
     network: null,
+    operationLocks: new Map(),
     session,
     createSandbox: (process) => new AppSandbox(os, process),
     registerApp: (app) => os.apps.register(app),
@@ -51,6 +52,10 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
   os.listIpcEndpoints = (process = null) => listIpcEndpoints(os, process);
   os.unregisterIpcEndpointsForPid = (pid) => unregisterIpcEndpointsForPid(os, pid);
   os.unregisterIpcEndpointsForNamespace = (namespace, reason) => unregisterIpcEndpointsForNamespace(os, namespace, reason);
+  os.withRuntimeOperationLock = (name, details, callback) => withRuntimeOperationLock(os, name, details, callback);
+  os.acquireRuntimeOperationLock = (name, details) => acquireRuntimeOperationLock(os, name, details);
+  os.releaseRuntimeOperationLock = (name, record) => releaseRuntimeOperationLock(os, name, record);
+  os.readRuntimeOperationLock = (name) => os.operationLocks.get(operationLockKey(name)) || null;
 
   os.windows = createTestWindowManager();
   os.descriptors = new DescriptorManager(os);
@@ -136,6 +141,49 @@ function unregisterIpcEndpointsForNamespace(os, namespace = {}) {
     removed.push(publicIpcEndpoint(record));
   });
   return removed;
+}
+
+function withRuntimeOperationLock(os, name, details = {}, callback = () => null) {
+  const lock = acquireRuntimeOperationLock(os, name, details);
+  let result;
+  try {
+    result = callback(lock);
+  } catch (error) {
+    releaseRuntimeOperationLock(os, name, lock);
+    throw error;
+  }
+  if (result && typeof result.then === "function") {
+    return result.finally(() => releaseRuntimeOperationLock(os, name, lock));
+  }
+  releaseRuntimeOperationLock(os, name, lock);
+  return result;
+}
+
+function acquireRuntimeOperationLock(os, name, details = {}) {
+  const key = operationLockKey(name);
+  const existing = os.operationLocks.get(key);
+  if (existing) throw new Error(`${name}: operation locked by ${existing.owner}`);
+  const record = {
+    name,
+    owner: "test-runtime",
+    operation: String(details.operation || ""),
+    packageId: String(details.packageId || ""),
+    acquiredAt: new Date().toISOString(),
+  };
+  os.operationLocks.set(key, record);
+  return record;
+}
+
+function releaseRuntimeOperationLock(os, name, record = null) {
+  const key = operationLockKey(name);
+  const existing = os.operationLocks.get(key);
+  if (existing && record && existing.owner !== record.owner) return false;
+  os.operationLocks.delete(key);
+  return true;
+}
+
+function operationLockKey(name) {
+  return `dindbos:operation-lock:${String(name || "runtime")}`;
 }
 
 function normalizeIpcEndpoint(endpoint) {

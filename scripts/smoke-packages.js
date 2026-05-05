@@ -107,6 +107,7 @@ assert(activationFailOs.fs.list("/tmp/dindbos/package-staging").length === 0, "f
 assert(!activationFailOs.fs.exists("/var/lib/dindbos/packages/activation-fail.json"), "failed activation left package record");
 assert(!activationFailOs.fs.exists("/usr/share/applications/Activation Fail.app"), "failed activation left launcher");
 assert(!activationFailOs.apps.apps.has("activation-fail"), "failed activation registered app");
+assert(!activationFailOs.readRuntimeOperationLock("package-db"), "failed activation left package DB operation lock");
 
 const quotaOs = createDindbOSTestRuntime();
 const quotaReservations = [];
