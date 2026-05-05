@@ -240,6 +240,7 @@ export class DindbOS {
     this.network = new NetworkBroker(this, {
       fetch: options.networkFetch || options.fetch,
       webSocket: options.networkWebSocket,
+      rtcPeerConnection: options.networkPeerConnection,
     });
     this.npm = new NpmInstaller(this);
     this.node = new NodeCompat(this);

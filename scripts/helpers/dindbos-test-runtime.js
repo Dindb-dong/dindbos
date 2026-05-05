@@ -66,7 +66,11 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
   os.apps = new AppRegistry(os);
   os.packages = new PackageManager(os);
   os.keychain = new KeychainManager(os);
-  os.network = new NetworkBroker(os, { fetch: options.networkFetch, webSocket: options.networkWebSocket });
+  os.network = new NetworkBroker(os, {
+    fetch: options.networkFetch,
+    webSocket: options.networkWebSocket,
+    rtcPeerConnection: options.networkPeerConnection,
+  });
 
   return os;
 }

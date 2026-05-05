@@ -380,10 +380,11 @@ Why it matters:
 
 Implementation tasks:
 
-- Already present: first-pass network permission model covers `net.fetch`, `net.websocket`, `net.dns`, and package/app host allowlists; `net.webrtc` and richer firewall scopes remain future work.
+- Already present: first-pass network permission model covers `net.fetch`, `net.websocket`, `net.webrtc`, `net.dns`, and package/app host allowlists; richer firewall scopes remain future work.
 - Already present: runtime network broker routes app and shell fetch requests through DindbOS policy instead of direct app runtime access.
 - Already present: runtime network broker owns first-pass WebSocket sessions, close handling, session history, host policy, and `/proc/net` visibility.
-- Already present: `/proc/net/status.json` and `/proc/net/requests` expose active requests, WebSocket sessions/history, denied hosts, request history, browser-only companion state, and bandwidth estimates.
+- Already present: runtime network broker owns first-pass WebRTC data channel sessions, close handling, message counters, host policy, and `/proc/net` visibility; signaling remains external/future work.
+- Already present: `/proc/net/status.json` and `/proc/net/requests` expose active requests, WebSocket sessions/history, WebRTC data channel sessions/history, denied hosts, request history, browser-only companion state, and bandwidth estimates.
 - Already present: Terminal commands `netstat`, `curl`, `ping` policy probe, and `dig` policy probe route through the network broker.
 - Already present: first-pass `net.status`, `net.policy`, and `net.dns` syscalls expose broker diagnostics and policy probes through the syscall ABI.
 - Already present: package manifest `sandbox.networkHosts` scopes flow into package namespace metadata and AppSandbox network policy.
@@ -392,9 +393,10 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:network` verifies allowed fetch, denied host, request cancellation, WebSocket open/close, package network host allowlists, shell network commands, network syscalls, traffic-log redaction, bandwidth estimates, and `/proc/net` reporting.
+- Already present: `npm run smoke:network` verifies allowed fetch, denied host, request cancellation, WebSocket open/close, WebRTC data channel open/close, package network host allowlists, shell network commands, network syscalls, traffic-log redaction, bandwidth estimates, and `/proc/net` reporting.
 - Already present: `npm run smoke:network` verifies apps without `net.fetch` cannot use the broker through AppSandbox runtime APIs.
 - Already present: `npm run smoke:network` verifies apps without `net.websocket` cannot open brokered WebSocket sessions through AppSandbox runtime APIs.
+- Already present: `npm run smoke:network` verifies apps without `net.webrtc` cannot open brokered WebRTC data channels through AppSandbox runtime APIs.
 
 Completion criteria:
 

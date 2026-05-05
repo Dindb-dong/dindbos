@@ -780,9 +780,13 @@ export class ShellSession {
       `bytesReceived=${status.totals.bytesReceived}`,
       `websocket=${status.websocket.supported ? "supported" : status.websocket.reason}`,
       `websocketSessions=${status.websocket.sessions.length}`,
+      `webrtc=${status.webrtc.supported ? "supported" : status.webrtc.reason}`,
+      `webrtcDataChannels=${status.webrtc.dataChannels.length}`,
       ...status.history.slice(-5).map((entry) => `${entry.status} ${entry.host} ${entry.statusCode || "-"} ${entry.bytesReceived || 0}B`),
       ...status.websocket.sessions.slice(-5).map((entry) => `websocket-${entry.state} ${entry.host} sent=${entry.messagesSent} recv=${entry.messagesReceived}`),
       ...status.websocket.history.slice(-5).map((entry) => `websocket-${entry.state} ${entry.host} code=${entry.closeCode}`),
+      ...status.webrtc.dataChannels.slice(-5).map((entry) => `webrtc-${entry.state} ${entry.peer} sent=${entry.messagesSent} recv=${entry.messagesReceived}`),
+      ...status.webrtc.history.slice(-5).map((entry) => `webrtc-${entry.state} ${entry.peer}`),
       ...status.deniedHosts.slice(-5).map((entry) => `denied ${entry.host} ${entry.reason}`),
     ].join("\n");
   }
