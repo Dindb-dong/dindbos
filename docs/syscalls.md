@@ -36,6 +36,9 @@ Current errno-style codes include:
 - `ENOENT`: missing file, path, or runtime object.
 - `ESRCH`: missing process.
 - `EACCES`: filesystem, capability, or sandbox denial.
+- `EBADF`: invalid or closed file descriptor.
+- `ENODEV`: missing pseudo-device.
+- `ESPIPE`: descriptor is not seekable.
 - `EIO`: unexpected runtime failure.
 
 ## Current Syscalls
@@ -47,6 +50,13 @@ fs.exists
 fs.stat
 fs.readText
 fs.writeText
+fd.list
+fd.open
+fd.read
+fd.write
+fd.seek
+fd.stat
+fd.close
 env.get
 env.list
 app.list
@@ -61,7 +71,9 @@ process.log
 app.launch
 ```
 
-Filesystem syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process, package, storage, local mount, and app launch syscalls run through the same capability checks used by the existing high-level app facade.
+Filesystem and descriptor syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process, package, storage, local mount, and app launch syscalls run through the same capability checks used by the existing high-level app facade.
+
+Descriptor syscalls require a process context. New processes receive standard descriptors `0` stdin, `1` stdout, and `2` stderr. `fd.open` currently supports text VFS files plus `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom`; descriptor state is exposed under `/proc/<pid>/fd.json` and cleaned up when the process exits or crashes.
 
 ## Shell Usage
 
