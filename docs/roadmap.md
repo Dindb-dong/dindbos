@@ -4662,6 +4662,231 @@ Completion criteria:
 - Network-capable userland targets DindbOS socket/broker APIs rather than raw browser globals.
 - Network permissions, failures, and companion requirements are visible and testable.
 
+## Forward Native-OS Feasibility Register
+
+This register turns the native-convergence backlog into work packages that are technically possible, even when they are hard. These are not promises that the browser becomes a native kernel. They are implementation paths for getting closer to native OS behavior while keeping every browser, PWA, isolation, and companion boundary explicit.
+
+Each package must land with all of the following before it can count as implemented:
+
+- A kernel/runtime service, not only app UI.
+- A shell or diagnostic command.
+- An app/package-facing API or syscall.
+- Capability and policy enforcement.
+- `/proc`, log, or Settings visibility.
+- Smoke or conformance coverage that proves real behavior and refusal paths.
+
+### Forward Package 1: Durable Storage Kernel, Fsync Barriers, And Page Cache
+
+Feasibility: Browser-only first pass through OPFS/IndexedDB; installed PWA improves offline recovery; companion-assisted only for host filesystem durability guarantees.
+
+Goal: make DindbOS storage behave less like a serialized JavaScript object and more like a small browser-native disk subsystem.
+
+Implementation tasks:
+
+- Add a storage transaction manager with explicit begin, stage, commit, rollback, replay, abort, and explain records.
+- Add `storage.sync` / `fsync`-style barriers for Shell, SDK, AppSandbox, WASM, NodeCompat, package services, and future descriptor-backed file writes.
+- Add a page-cache layer that tracks clean pages, dirty pages, pinned pages, mapped pages, eviction candidates, and writeback failures.
+- Add writeback policies for user documents, package roots, package DB, app registry, service state, logs, caches, temp files, snapshots, backups, and sync staging.
+- Add crash-replay records for interrupted editor saves, archive imports, package activation, registry mutation, local mount sync, package update, key rotation, and snapshot creation.
+- Add quota reservation before large writes, archive extraction, package install, mapped-region expansion, backup export, and encrypted-volume rotation.
+- Add recovery export for damaged but readable user files before destructive repair.
+- Add diagnostics under `/proc/storage`, `/proc/page-cache`, `/var/log/dindbos/storage-replay.log`, `storage journal`, `storage sync`, `cachectl`, and `fsck --replay`.
+
+Verification:
+
+- Add smoke coverage for sync barrier success, sync barrier failure, dirty-page flush, interrupted write replay, quota-denied preflight, failed commit rollback, stale journal explanation, and salvage export.
+- Add cross-runtime tests proving Shell, Files.app, SDK apps, WASM, NodeCompat, and services all hit the same storage transaction boundary.
+- Add regression tests proving repair never weakens ownership, permission, encryption, quarantine, package trust, or local mount conflict state.
+
+### Forward Package 2: Handle-Based Kernel Boundary And User/Kernel Split
+
+Feasibility: Browser-only for structured message handles; cross-origin isolated for high-throughput transfer; companion-assisted only for host-backed handles.
+
+Goal: replace private object references with kernel-owned handles that can be granted, revoked, inherited, transferred, audited, and cleaned up.
+
+Implementation tasks:
+
+- Add kernel object handles for files, directories, descriptors, pipes, PTYs, processes, windows, app containers, services, timers, IPC channels, sockets, devices, keychain grants, storage transactions, memory regions, companion sessions, and package namespaces.
+- Add per-process handle tables with object type, rights, owner pid, user, group, package namespace, close-on-exec flag, expiry, inherited-from pid, transfer policy, and revoke reason.
+- Route filesystem opens, descriptor IO, app launch, IPC, device access, keychain access, network sessions, trusted prompts, and companion sessions through handle validation.
+- Add syscall results that return handles instead of raw internal records for long-lived resources.
+- Add cleanup on process exit, crash, kill, logout, session lock, package uninstall, permission revoke, service disable, companion disconnect, and recovery mode.
+- Expose `/proc/<pid>/handles.json`, `/proc/objects`, `handlectl list|stat|close|revoke|explain`, and Activity Monitor handle views.
+
+Verification:
+
+- Add smoke coverage for valid handle use, wrong-right denial, stale handle denial, double close, inherited stdio, transferred IPC handle, revoked device handle, and process-exit cleanup.
+- Add fuzz-style invalid handle tests for unknown id, wrong object type, cross-user use, package namespace escape, use-after-close, and replayed handle messages.
+
+### Forward Package 3: Native-Like Spawn, Exec, Job Control, And Process Images
+
+Feasibility: Browser-only for spawn/process image semantics; cross-origin isolated for shared-memory worker snapshots; research-grade for limited checkpoint/restore.
+
+Goal: give apps, shell commands, WASM modules, NodeCompat programs, services, and workers one launch model.
+
+Implementation tasks:
+
+- Define process image records for JavaScript app, package CLI, shell script, NodeCompat file, WASM module, WASI program, worker job, service unit, emulator workload, nested DindbOS image, and companion-backed command.
+- Add `process.spawn`, `process.exec`, `process.wait`, `process.signal`, `process.group`, and `process.session` syscall families.
+- Add argv, env, cwd, credentials, umask, namespace profile, inherited handles, stdio descriptors, resource limits, policy bundle, lifecycle class, and restart behavior to process images.
+- Add shell job control for background launch, foreground process groups, `jobs`, `fg`, `bg`, `wait`, Ctrl-C, Ctrl-D, Ctrl-Z, broken pipe, and pipeline cleanup.
+- Add explicit unsupported errors for true POSIX `fork()` where browser state cannot be cloned safely.
+- Add snapshot/checkpoint support only for runtimes that declare safe restore behavior, such as cooperative WASM memory checkpoints or deterministic worker jobs.
+- Expose `/proc/<pid>/image.json`, `/proc/jobs`, `/proc/sessions`, `spawnctl`, `jobctl`, and richer `ps` output.
+
+Verification:
+
+- Add smoke coverage for app/CLI/WASM/NodeCompat/service spawn, inherited cwd/env/stdio, foreground job interruption, background resume, killed pipeline cleanup, wait status aggregation, and unsupported fork refusal.
+- Add checkpoint fixtures for restorable and non-restorable WASM/worker processes.
+
+### Forward Package 4: Descriptor-First IO, PTY, And WASI/NodeCompat Convergence
+
+Feasibility: Browser-only first pass; cross-origin isolated for high-throughput shared buffers; companion-assisted only for host command bridges.
+
+Goal: make file IO, pipes, terminals, sockets, devices, and runtime streams share one descriptor model.
+
+Implementation tasks:
+
+- Extend descriptors beyond basic VFS files into directories, pipes, PTYs, sockets, device nodes, memory objects, local mount files, archive readers, package files, and companion streams.
+- Add descriptor rights, flags, append mode, nonblocking mode, readiness state, seekability, file type, owner pid, backpressure state, and cleanup lifecycle.
+- Add PTY master/slave pairs with raw/canonical modes, echo, resize, foreground process group, signal delivery, bracketed paste, scrollback retention, and privacy policy.
+- Route Terminal, shell pipelines, NodeCompat streams, WASI `fd_*` imports, app service logs, browser companion streams, and network sockets through descriptors.
+- Add `io.poll`, `io.wait`, `fd.dup`, `fd.pipe`, `fd.pty`, `fd.dir`, `fd.event`, `stty`, `tty`, and descriptor-backed `/dev`.
+- Add compatibility reports for unsupported WASI imports before a program mutates storage.
+
+Verification:
+
+- Add smoke coverage for descriptor dup/close, pipe backpressure, PTY input, Ctrl-C signal delivery, nonblocking read, directory descriptor reads, socket descriptor cleanup, and WASI errno mapping.
+- Add tests proving a process cannot read another process PTY, steal a terminal, bypass descriptor rights, or keep descriptors alive after kill.
+
+### Forward Package 5: Policy Compiler, Secure Boot, And Trusted System Surfaces
+
+Feasibility: Browser-only for signed manifests and policy enforcement; WebCrypto/WebAuthn for key material; installed PWA for better offline update/recovery; companion-assisted for external attestation only.
+
+Goal: make trust and permission decisions deterministic, inspectable, and enforced at the runtime boundary.
+
+Implementation tasks:
+
+- Add signed base-system manifests covering runtime version, boot schema, built-in app hashes, package ABI version, syscall ABI version, migration ids, and compatibility tier.
+- Add measured boot records and trust states: trusted, unsigned, mismatched, degraded, recovered, safe-mode, developer, and refused.
+- Add a policy language for syscalls, paths, handles, descriptors, devices, sockets, IPC, keychain records, package dependencies, services, child processes, storage classes, and companions.
+- Compile policy from app manifests, package manifests, service units, users/groups, trusted publishers, temporary grants, managed profiles, and deployment profiles.
+- Add compositor-owned trusted UI for login, unlock, permission grants, package install trust, keychain unlock, screen capture, companion pairing, update activation, destructive operations, and remote admin approval.
+- Prevent sandboxed apps from covering, embedding, reading, capturing, or forging trusted surfaces.
+- Expose `/proc/boot-measurements`, `/proc/policy`, `/proc/trusted-ui`, `bootctl`, `policyctl`, `pkg audit`, `doctor boot`, and `doctor policy`.
+
+Verification:
+
+- Add smoke coverage for valid boot manifest, hash mismatch, safe-mode fallback, policy compile refusal, syscall denial explanation, trusted prompt grant/deny, spoofed prompt denial, and package activation refusal before filesystem mutation.
+- Add property-style tests for path escape, undeclared device access, revoked grant reuse, keychain prompt spoofing, and companion direct-access denial.
+
+### Forward Package 6: Browser Device Tree, Driver Bus, And Virtual Hardware
+
+Feasibility: Browser-only for Web API brokers; companion-assisted for host-only hardware; research-grade for broad driver compatibility.
+
+Goal: make browser and companion capabilities look like OS-managed devices with permission, diagnostics, and fallback behavior.
+
+Implementation tasks:
+
+- Define a device tree for storage, local mounts, clipboard, notifications, badging, share targets, camera, microphone, screen capture, audio, GPU, USB, serial, HID, MIDI, gamepad, battery, geolocation where available, network providers, printers, scanners, companion endpoints, and remote providers.
+- Add driver provider records for browser APIs, mock test drivers, virtual devices, local companions, remote providers, and disabled/unsupported devices.
+- Add device open, close, read, write, ioctl, event, stat, grant, revoke, and explain syscalls.
+- Add package manifest requirements for device class, feature flags, foreground ownership, cross-origin isolation, PWA install state, companion protocol, and fallback mode.
+- Add privacy ledger entries for every sensitive device action, including foreground owner, process id, package id, user, grant reason, and revoke path.
+- Expose `/proc/device-tree`, `/proc/browser-capabilities`, `/dev/*`, `devctl`, `privacy report`, `privacy revoke`, and Settings device history.
+
+Verification:
+
+- Add mock-driver smoke coverage for open, denied open, busy device, revoked grant, hotplug event, package manifest refusal, privacy ledger record, and descriptor cleanup.
+- Add browser probe tests for stable capabilities and manual verification scripts for prompt-heavy APIs.
+- Add tests proving sandboxed packages cannot bypass a DindbOS broker through raw browser globals when a brokered device class exists.
+
+### Forward Package 7: Multi-Volume Encryption, Keychain, And User Recovery
+
+Feasibility: Browser-only with WebCrypto; WebAuthn optional for stronger unlock; companion-assisted only for external escrow or backup targets.
+
+Goal: protect user data, secrets, package state, backups, and sync payloads with OS-owned encryption and recovery flows.
+
+Implementation tasks:
+
+- Add volume records for system, user home, package-private state, keychain, cache, temp, backups, sync staging, portable images, and local mount mirrors.
+- Add WebCrypto key derivation, random volume keys, wrapped keys, passphrase unlock, WebAuthn unlock where available, recovery keys, key rotation, lock state, and revoke records.
+- Add sealed keychain records scoped by user, package, service, companion, network host, trusted prompt, and expiry.
+- Route encrypted volume reads/writes through VFS adapters while preserving metadata, quota, transaction, fsck, snapshot, backup, and sync rules.
+- Add trusted prompts for plaintext export, recovery key reveal, key rotation, backup restore, and destructive volume reset.
+- Expose `/proc/volumes`, `/proc/keychain`, `volumectl`, `keychainctl`, `recoveryctl`, and redacted diagnostic bundle export.
+
+Verification:
+
+- Add smoke coverage for volume create, lock, unlock, wrong passphrase denial, recovery key unlock, key rotation, sealed secret grant, revoked secret denial, encrypted backup metadata, and package uninstall grant cleanup.
+- Add tests proving locked data cannot leak through Shell, Files.app, Viewer.app cache, package app, WASM, NodeCompat, search index, sync export, diagnostics, or crash reports.
+
+### Forward Package 8: Service Worker Boot, Recovery Shell, And Native-Like Lifecycle
+
+Feasibility: Installed PWA for Service Worker participation; browser-only for page lifecycle diagnostics; companion-assisted for long-running host tasks.
+
+Goal: give DindbOS explicit boot, shutdown, recovery, offline, update, and background-work semantics that match browser limits.
+
+Implementation tasks:
+
+- Add Service Worker boot manifests for core assets, package index snapshots, offline docs, migration compatibility, build id, update state, and recovery shell assets.
+- Add a page-runtime to Service Worker handshake for cache state, storage availability, offline status, update state, background capability, and pending command queue.
+- Add safe boot profiles for normal, safe mode, package-disabled, service-disabled, companion-disabled, offline, storage repair, base-system repair, and developer diagnostics.
+- Add panic manager states for boot failure, migration failure, storage invariant failure, trust mismatch, package crash loop, service crash loop, quota exhaustion, and repeated UI crash.
+- Add shutdown and lifecycle barriers for dirty storage, running services, pending package activation, open local mounts, sync queues, encrypted volumes, and companion sessions.
+- Add `bootctl worker`, `panicctl`, `queuectl`, `shutdownctl`, `doctor offline`, emergency `fsck`, `pkg disable`, `service disable`, `rollback`, and diagnostic bundle export.
+
+Verification:
+
+- Add smoke coverage for offline cache population, Service Worker handshake, unsupported background sync degradation, pending queue persistence, induced boot panic, safe mode, recovery shell allowlist, dirty-shutdown warning, and rollback path.
+- Add tests proving queued commands retain declared credentials, respect revoked package policy, and cannot mutate protected storage after uninstall.
+
+### Forward Package 9: Virtual Networking, Service Mesh, And Remote Session Boundary
+
+Feasibility: Browser-only for virtual loopback/fetch/WebSocket/WebRTC brokers; companion-assisted for raw sockets, LAN discovery, packet capture, and host network exposure.
+
+Goal: provide a realistic OS networking abstraction without pretending ordinary browser pages can open arbitrary TCP/UDP sockets.
+
+Implementation tasks:
+
+- Add virtual interfaces for loopback, fetch broker, WebSocket broker, WebRTC data channel, service mesh, remote provider, companion tunnel, and disabled raw network.
+- Add socket handles and descriptors for stream, datagram, request/response, event stream, data channel, service endpoint, and companion-backed sessions.
+- Add firewall policy for package id, service id, user, group, host, origin, protocol, port class, data direction, foreground ownership, companion requirement, and trust tier.
+- Add DNS/resolution facade that reports browser/CORS limits honestly and delegates only approved names to fetch/WebSocket/WebRTC/companion providers.
+- Add remote session surfaces for screen sharing, controlled input, remote admin shell, remote logs, and diagnostic bundle transfer through trusted prompts.
+- Expose `/proc/net`, `/proc/sockets`, `/proc/routes`, `netctl`, `socketctl`, `firewallctl`, `resolvectl`, `sessionctl remote`, and Activity Monitor network columns.
+
+Verification:
+
+- Add smoke coverage for loopback service connect, denied host, allowed fetch broker, WebSocket broker, WebRTC mock data channel, firewall audit, stale socket cleanup, companion-required refusal, and remote admin prompt denial.
+- Add tests proving packages cannot bypass network policy through direct `fetch`, `WebSocket`, WebRTC, browserd, service workers, remote providers, or companions.
+
+### Forward Package 10: Conformance, Certification, And Native-OS Implementation Rate
+
+Feasibility: Browser-only for deterministic runtime tests; browser automation for profile tests; manual lanes for prompt-heavy APIs; companion-assisted for provider certification.
+
+Goal: turn "native-like" from a subjective label into tested certification levels.
+
+Implementation tasks:
+
+- Define certification levels for kernel boundary, durable disk, descriptor IO, PTY, package platform, WASM userland, NodeCompat userland, worker isolation, policy compiler, secure boot, keychain, device brokers, virtual networking, storage recovery, app containers, Service Worker lifecycle, and companion trust.
+- Add a conformance runner that boots clean profiles, installs fixture packages, runs Shell/WASM/NodeCompat/app/service workloads, checks `/proc`, validates policy denials, and records degraded browser capabilities.
+- Add profile matrices for Chromium, Safari, Firefox, mobile, installed PWA, cross-origin isolated, offline, local companion, remote provider, managed mode, and developer mode.
+- Generate compatibility docs from conformance output instead of manually maintained claims.
+- Add package certification metadata for required ABI, compatibility tier, smoke command, fallback behavior, device/network requirements, resource envelope, and trust state.
+- Add companion certification metadata for protocol version, advertised capabilities, stream policy, auth policy, trust boundary, and failure behavior.
+- Expose `/var/log/dindbos/conformance`, `doctor conformance`, `doctor matrix`, `pkg certify`, and CI artifacts.
+
+Verification:
+
+- Add smoke coverage for conformance report generation, failed guarantee reporting, profile classification, fixture package install/run, matrix-doc consistency, package certification refusal, and companion protocol mismatch.
+- Add CI/browser-profile hooks where automation is practical and explicit manual verification scripts where user prompts prevent full automation.
+
+Completion criteria:
+
+- DindbOS can report exactly which native-like guarantees are implemented, degraded, companion-required, experimental, or unsupported.
+- Roadmap implementation rate is derived from verified capabilities, not from UI appearance or aspirational text.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
