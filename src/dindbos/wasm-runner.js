@@ -90,6 +90,30 @@ export class WasmRunner {
         cursor += bytes.length;
       });
     };
+    const writeFilestat = (resultPtr, stat = {}, path = "") => {
+      const base = Number(resultPtr || 0);
+      const modified = Date.parse(stat.modified || "");
+      const timestamp = Number.isFinite(modified) ? BigInt(modified) * 1_000_000n : 0n;
+      writeU64(base, 0n);
+      writeU64(base + 8, stableInode(stat.path || path));
+      readMemory(base + 16, 1)[0] = wasiFileType(stat.resolvedType || stat.type || stat.kind);
+      writeU64(base + 24, BigInt(Math.max(1, Number(stat.linkCount || 1))));
+      writeU64(base + 32, BigInt(Math.max(0, Number(stat.size || 0))));
+      writeU64(base + 40, timestamp);
+      writeU64(base + 48, timestamp);
+      writeU64(base + 56, timestamp);
+    };
+    const descriptorStat = (descriptor) => {
+      if (String(descriptor.path || "").startsWith("/")) {
+        return this.os.fs.stat(descriptor.path, "/", context.principal) || descriptor;
+      }
+      const streams = this.os.descriptors?.standardStreams?.(process.pid) || {};
+      return {
+        ...descriptor,
+        type: descriptor.kind === "directory" ? "directory" : "file",
+        size: descriptor.kind === "stream" ? new TextEncoder().encode(String(streams[descriptor.path] || "")).byteLength : 0,
+      };
+    };
     const imports = {
       dindbos: {
         write: (ptr, length) => stdout.push(readString(ptr, length)),
@@ -173,6 +197,15 @@ export class WasmRunner {
         fd_close: (fd) => {
           try {
             this.os.descriptors.close(process, { fd }, context);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
+        fd_filestat_get: (fd, resultPtr) => {
+          try {
+            const descriptor = this.os.descriptors.stat(process, { fd }, context);
+            writeFilestat(resultPtr, descriptorStat(descriptor), descriptor.path);
             return 0;
           } catch (error) {
             return errnoNumber(error.code || "EIO");
@@ -274,6 +307,19 @@ export class WasmRunner {
             const source = this.scopedDirectoryTarget(process, context, Number(oldDirfd), readString(oldPathPtr, oldPathLength), "read");
             const destination = this.scopedDirectoryTarget(process, context, Number(newDirfd), readString(newPathPtr, newPathLength));
             this.os.fs.createHardLink(source, destination, "/", context.principal);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || errnoCodeFromMessage(error.message) || "EIO");
+          }
+        },
+        path_filestat_get: (dirfd, flags, pathPtr, pathLength, resultPtr) => {
+          try {
+            const target = this.scopedDirectoryTarget(process, context, Number(dirfd), readString(pathPtr, pathLength), "read");
+            const stat = Number(flags || 0) & 1
+              ? this.os.fs.stat(target, "/", context.principal)
+              : this.os.fs.lstat(target, "/", context.principal);
+            if (!stat) return errnoNumber("ENOENT");
+            writeFilestat(resultPtr, stat, target);
             return 0;
           } catch (error) {
             return errnoNumber(error.code || errnoCodeFromMessage(error.message) || "EIO");
@@ -541,6 +587,15 @@ function wasiFileType(type) {
   if (type === "file") return 4;
   if (type === "link") return 7;
   return 0;
+}
+
+function stableInode(path = "") {
+  let hash = 2166136261;
+  for (const char of String(path || "")) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return BigInt(hash >>> 0);
 }
 
 function cStringBytes(values) {

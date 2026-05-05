@@ -73,6 +73,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-rights.wasm", wasiRightsWasm(
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-filestat.wasm", wasiFilestatWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-readdir.wasm", wasiReaddirWasm(), "/", {
   owner: "guest",
   group: "users",
@@ -271,6 +277,12 @@ const wasiRights = await os.wasm.runFile("/home/guest/bin/wasi-rights.wasm", "/h
 });
 assert(wasiRights.status === 8, `wasi read-only descriptor write did not return EBADF: ${wasiRights.status} ${wasiRights.stderr}`);
 
+const wasiFilestat = await os.wasm.runFile("/home/guest/bin/wasi-filestat.wasm", "/home/guest/bin", {
+  argv: ["wasi-filestat.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiFilestat.status === 0, `wasi filestat status mismatch: ${wasiFilestat.status} ${wasiFilestat.stderr}`);
+
 const wasiReaddir = await os.wasm.runFile("/home/guest/bin/wasi-readdir.wasm", "/home/guest/bin", {
   argv: ["wasi-readdir.wasm"],
   principal: os.permissions.principal(os.session),
@@ -326,7 +338,7 @@ os.fs.remove("/home/guest/bin/wasi-hardlink-source.txt", "/", {}, os.permissions
 assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "changed through link\n", "wasi hard link did not survive source removal");
 assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 1, "wasi hard link count did not update after source removal");
 
-console.log("wasm smoke ok shell argv env syscall exit permission scopes crash memory wasi worker stdin path-open rights readdir mkdir remove rename symlink hardlink process");
+console.log("wasm smoke ok shell argv env syscall exit permission scopes crash memory wasi worker stdin path-open rights filestat readdir mkdir remove rename symlink hardlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -613,6 +625,45 @@ function wasiRightsWasm() {
       0x41, 0x03, 0x41, 0x00, 0x41, 0x00, 0x41, ...i32(path.length), 0x41, 0x00, 0x42, ...i64(2n), 0x42, 0x00, 0x41, 0x00, 0x41, ...i32(fdOffset), 0x10, 0x00, 0x1a,
       0x41, ...i32(fdOffset), 0x28, 0x02, 0x00, 0x41, ...i32(iovOffset), 0x41, 0x01, 0x41, ...i32(writtenOffset), 0x10, 0x01,
       0x10, 0x02,
+      0x0b,
+    ],
+    data,
+  });
+}
+
+function wasiFilestatWasm() {
+  const path = bytes("wasi-file.txt");
+  const openedFdOffset = 32;
+  const pathStatOffset = 64;
+  const fdStatOffset = 128;
+  const data = new Uint8Array(192);
+  data.set(path, 0);
+  const typeAndSizeMatch = (offset) => [
+    0x41, ...i32(offset + 16), 0x2d, 0x00, 0x00, 0x41, 0x04, 0x46,
+    0x41, ...i32(offset + 32), 0x29, 0x03, 0x00, 0x42, 0x0c, 0x51,
+    0x71,
+  ];
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32", "i32", "i32", "i32", "i32", "i64", "i64", "i32", "i32"], results: ["i32"] },
+      { params: ["i32", "i32"], results: ["i32"] },
+      { params: [], results: ["i32"] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "path_filestat_get", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "path_open", type: 1 },
+      { module: "wasi_snapshot_preview1", name: "fd_filestat_get", type: 2 },
+    ],
+    startType: 3,
+    body: [
+      0x41, 0x03, 0x41, 0x00, 0x41, 0x00, 0x41, ...i32(path.length), 0x41, ...i32(pathStatOffset), 0x10, 0x00, 0x1a,
+      0x41, 0x03, 0x41, 0x00, 0x41, 0x00, 0x41, ...i32(path.length), 0x41, 0x00, 0x42, 0x02, 0x42, 0x00, 0x41, 0x00, 0x41, ...i32(openedFdOffset), 0x10, 0x01, 0x1a,
+      0x41, ...i32(openedFdOffset), 0x28, 0x02, 0x00, 0x41, ...i32(fdStatOffset), 0x10, 0x02, 0x1a,
+      ...typeAndSizeMatch(pathStatOffset),
+      ...typeAndSizeMatch(fdStatOffset),
+      0x71,
+      0x45,
       0x0b,
     ],
     data,
