@@ -1885,7 +1885,7 @@ async function renderTextEditor(os, content, node, windowApi) {
         await os.localMounts.writeFile(node.path, textarea.value);
         node.content = textarea.value;
       } else {
-        os.fs.writeFile(node.path, textarea.value);
+        os.fs.atomicWriteFile(node.path, textarea.value);
         node.content = os.fs.readFile(node.path);
         await os.storage?.flush?.();
       }
