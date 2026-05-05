@@ -148,6 +148,21 @@ export class DindbOS {
       lastPeerMode: "",
       lastPeerAction: "",
       lastPeerAt: "",
+      relay: {
+        framesSent: 0,
+        framesReceived: 0,
+        inputsSent: 0,
+        inputsReceived: 0,
+        lastTransport: "",
+        lastFrameOfferId: "",
+        lastFrameSource: "",
+        lastFrameBytes: 0,
+        lastFrameAt: "",
+        lastInputOfferId: "",
+        lastInputSource: "",
+        lastInputType: "",
+        lastInputAt: "",
+      },
     };
     this.sessionRecovery = {
       recovered: false,
@@ -290,6 +305,7 @@ export class DindbOS {
     if (message.type === "app-state") this.recordSessionAppStateChange(message.source, message.payload, message.at);
     if (message.type === "package-operation") this.recordSessionPackageOperation(message.source, message.payload, message.at);
     if (message.type === "session-handoff") this.recordSessionHandoff(message.source, message.payload, message.at);
+    if (message.type === "session-handoff-relay") this.recordSessionHandoffRelay(message.source, message.payload, message.at);
     return message;
   }
 
@@ -440,6 +456,112 @@ export class DindbOS {
       }
     }
     this.bus.emit("session:handoff", { ...entry });
+    this.writeSessionCoordinationStatus();
+    return { ...entry };
+  }
+
+  sendSessionHandoffFrame(offerId, frame = {}) {
+    const handoff = this.requireActiveSessionHandoff(offerId);
+    const at = new Date().toISOString();
+    const data = typeof frame.data === "string" ? frame.data : "";
+    const payload = {
+      kind: "frame",
+      offerId: handoff.offerId,
+      mode: handoff.mode,
+      transport: String(frame.transport || handoff.transport || "broadcast-channel"),
+      sequence: boundedInteger(frame.sequence, this.sessionHandoffStatus.relay.framesSent + 1, 1, Number.MAX_SAFE_INTEGER),
+      width: boundedInteger(frame.width, 0, 0, 100_000),
+      height: boundedInteger(frame.height, 0, 0, 100_000),
+      mime: String(frame.mime || "image/jpeg"),
+      bytes: boundedInteger(frame.bytes, data ? byteLength(data) : 0, 0, 50_000_000),
+      data,
+      sentAt: at,
+    };
+    const entry = this.recordSessionHandoffRelay(this.instanceId, payload, at);
+    this.publishSessionEvent("session-handoff-relay", payload);
+    this.writeSessionCoordinationStatus();
+    return entry;
+  }
+
+  sendSessionHandoffInput(offerId, input = {}) {
+    const handoff = this.requireActiveSessionHandoff(offerId);
+    if (handoff.mode !== "control") throw new Error("session handoff input relay requires control mode");
+    const at = new Date().toISOString();
+    const payload = {
+      kind: "input",
+      offerId: handoff.offerId,
+      mode: handoff.mode,
+      transport: String(input.transport || handoff.transport || "broadcast-channel"),
+      sequence: boundedInteger(input.sequence, this.sessionHandoffStatus.relay.inputsSent + 1, 1, Number.MAX_SAFE_INTEGER),
+      inputType: normalizeHandoffInputType(input.inputType || input.type),
+      x: boundedInteger(input.x, 0, -1_000_000, 1_000_000),
+      y: boundedInteger(input.y, 0, -1_000_000, 1_000_000),
+      key: String(input.key || ""),
+      button: String(input.button || ""),
+      deltaX: boundedInteger(input.deltaX, 0, -1_000_000, 1_000_000),
+      deltaY: boundedInteger(input.deltaY, 0, -1_000_000, 1_000_000),
+      sentAt: at,
+    };
+    const entry = this.recordSessionHandoffRelay(this.instanceId, payload, at);
+    this.publishSessionEvent("session-handoff-relay", payload);
+    this.writeSessionCoordinationStatus();
+    return entry;
+  }
+
+  requireActiveSessionHandoff(offerId) {
+    const handoff = this.sessionHandoffs.get(String(offerId || ""));
+    if (!handoff || handoff.status !== "active") throw new Error(`session handoff is not active: ${offerId}`);
+    return handoff;
+  }
+
+  recordSessionHandoffRelay(source, payload = {}, at = "") {
+    const sourceId = String(source || "unknown");
+    const kind = normalizeHandoffRelayKind(payload.kind);
+    const offerId = String(payload.offerId || "");
+    const handoff = this.sessionHandoffs.get(offerId);
+    if (!handoff || handoff.status !== "active") return null;
+    if (kind === "input" && handoff.mode !== "control") return null;
+    const entry = {
+      source: sourceId,
+      kind,
+      offerId,
+      mode: handoff.mode,
+      transport: String(payload.transport || handoff.transport || "broadcast-channel"),
+      sequence: boundedInteger(payload.sequence, 0, 0, Number.MAX_SAFE_INTEGER),
+      width: boundedInteger(payload.width, 0, 0, 100_000),
+      height: boundedInteger(payload.height, 0, 0, 100_000),
+      mime: String(payload.mime || ""),
+      bytes: boundedInteger(payload.bytes, 0, 0, 50_000_000),
+      inputType: normalizeHandoffInputType(payload.inputType || payload.type),
+      x: boundedInteger(payload.x, 0, -1_000_000, 1_000_000),
+      y: boundedInteger(payload.y, 0, -1_000_000, 1_000_000),
+      key: String(payload.key || ""),
+      button: String(payload.button || ""),
+      deltaX: boundedInteger(payload.deltaX, 0, -1_000_000, 1_000_000),
+      deltaY: boundedInteger(payload.deltaY, 0, -1_000_000, 1_000_000),
+      at: at || new Date().toISOString(),
+    };
+    const local = sourceId === this.instanceId;
+    const relay = this.sessionHandoffStatus.relay;
+    relay.lastTransport = entry.transport;
+    if (kind === "frame") {
+      if (local) relay.framesSent += 1;
+      else relay.framesReceived += 1;
+      relay.lastFrameOfferId = offerId;
+      relay.lastFrameSource = sourceId;
+      relay.lastFrameBytes = entry.bytes;
+      relay.lastFrameAt = entry.at;
+      this.bus.emit("session:handoff-frame", { ...entry });
+    } else {
+      if (local) relay.inputsSent += 1;
+      else relay.inputsReceived += 1;
+      relay.lastInputOfferId = offerId;
+      relay.lastInputSource = sourceId;
+      relay.lastInputType = entry.inputType;
+      relay.lastInputAt = entry.at;
+      this.bus.emit("session:handoff-input", { ...entry });
+    }
+    this.bus.emit("session:handoff-relay", { ...entry });
     this.writeSessionCoordinationStatus();
     return { ...entry };
   }
@@ -1835,6 +1957,7 @@ export class DindbOS {
       },
       handoff: {
         ...this.sessionHandoffStatus,
+        relay: { ...this.sessionHandoffStatus.relay },
         offers: [...this.sessionHandoffs.values()].slice(-10).map((entry) => ({ ...entry })),
       },
       recovery: { ...this.sessionRecovery },
@@ -2460,6 +2583,16 @@ function normalizeHandoffMode(mode) {
 function normalizeHandoffAction(action) {
   const value = String(action || "offer").toLowerCase();
   return ["offer", "accept", "cancel"].includes(value) ? value : "offer";
+}
+
+function normalizeHandoffRelayKind(kind) {
+  const value = String(kind || "frame").toLowerCase();
+  return ["frame", "input"].includes(value) ? value : "frame";
+}
+
+function normalizeHandoffInputType(type) {
+  const value = String(type || "pointer").toLowerCase();
+  return ["pointer", "keyboard", "wheel", "text"].includes(value) ? value : "pointer";
 }
 
 function byteLength(value) {

@@ -179,6 +179,17 @@ assert(acceptedHandoff.status === "active" && acceptedHandoff.acceptedBy === "ta
 assert(tabA.sessionCoordinationStatus().handoff.activeOfferId === handoffOffer.offerId, "source session handoff active status was not recorded");
 assert(tabA.sessionCoordinationStatus().handoff.activePeerInstanceId === "tab-b", "source session handoff active peer was not recorded");
 assert(JSON.parse(tabA.fs.readFile("/proc/sessions")).handoff.activeOfferId === handoffOffer.offerId, "/proc/sessions did not expose active session handoff");
+const relayFrames = [];
+const relayInputs = [];
+tabB.bus.on("session:handoff-frame", (event) => relayFrames.push(`${event.source}:${event.offerId}:${event.width}x${event.height}:${event.bytes}`));
+tabA.bus.on("session:handoff-input", (event) => relayInputs.push(`${event.source}:${event.offerId}:${event.inputType}:${event.x},${event.y}`));
+tabA.sendSessionHandoffFrame(handoffOffer.offerId, { width: 800, height: 600, mime: "image/jpeg", bytes: 4096 });
+assert(relayFrames.includes(`tab-a:${handoffOffer.offerId}:800x600:4096`), "session handoff frame relay was not delivered");
+assert(tabB.sessionCoordinationStatus().handoff.relay.framesReceived === 1, "peer session handoff frame relay status was not recorded");
+tabB.sendSessionHandoffInput(handoffOffer.offerId, { inputType: "pointer", x: 24, y: 48, button: "primary" });
+assert(relayInputs.includes(`tab-b:${handoffOffer.offerId}:pointer:24,48`), "session handoff input relay was not delivered");
+assert(tabA.sessionCoordinationStatus().handoff.relay.inputsReceived === 1, "source session handoff input relay status was not recorded");
+assert(JSON.parse(tabA.fs.readFile("/proc/sessions")).handoff.relay.inputsReceived === 1, "/proc/sessions did not expose handoff relay diagnostics");
 const cancelledHandoff = tabA.cancelSessionHandoff(handoffOffer.offerId, "smoke-complete");
 assert(cancelledHandoff.status === "cancelled", "session handoff cancel status mismatch");
 assert(tabB.sessionCoordinationStatus().handoff.activeOfferId === "", "peer session handoff active status was not cleared");
@@ -348,7 +359,7 @@ assert(resumedApply.status === "complete" && resumedApply.startIndex === 1, "rem
 assert(resumeTarget.remoteSyncStatus().lastApplyRun.status === "complete", "remote sync status did not record completed resumed apply");
 assert(resumeTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync resumed apply did not restore remaining settings file");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume sync-retry");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff handoff-relay package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume sync-retry");
 
 function createStorage(values = new Map()) {
   return {
