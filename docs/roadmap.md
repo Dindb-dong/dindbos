@@ -312,6 +312,7 @@ Implementation tasks:
 - Already present: WASI `path_create_directory` can create directories under a scoped directory descriptor.
 - Already present: WASI `path_unlink_file` and `path_remove_directory` can remove files and directories under a scoped directory descriptor.
 - Already present: WASI `path_rename` can rename files and directories between scoped directory descriptors.
+- Already present: WASI `path_symlink` and `path_readlink` can create and inspect scoped symlink metadata through the shared VFS.
 - Already present: shell pipelines pass segment output through transient pipe descriptors owned by a short-lived `shell:pipeline` process while preserving existing shell pipeline output semantics.
 - Already present: runtime pipe objects can be attached across process descriptor tables, allowing descriptor-backed multi-process pipe chaining.
 - Already present: `fd.ioctl` exposes first-pass TTY control requests for window size and `isatty` checks, returning `ENOTTY` for non-TTY descriptors.
@@ -319,7 +320,7 @@ Implementation tasks:
 - Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
 - Already present: `/dev/clipboard` can be opened through descriptor syscalls and maps reads/writes to the DindbOS runtime clipboard service inside the browser policy boundary.
 - Already present: Terminal.app creates a DindbOS pseudo-terminal session; PTY-backed processes share TTY size, input, and output through standard streams and `/dev/tty`.
-- Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags, directory read, directory mutation, and rename subset.
+- Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags, directory read, directory mutation, rename, and symlink subset.
 
 Verification:
 
@@ -338,7 +339,8 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies WASI `path_create_directory` creates a directory under the preopened cwd descriptor.
 - Already present: `npm run smoke:wasm` verifies WASI `path_unlink_file` and `path_remove_directory` remove scoped files and directories.
 - Already present: `npm run smoke:wasm` verifies WASI `path_rename` renames scoped files and directories while preserving file bytes.
-- Add smoke coverage for broader WASI link metadata operations as more WASI calls are mapped.
+- Already present: `npm run smoke:wasm` verifies WASI `path_symlink` creates a link, `path_readlink` returns the link target, and VFS reads through the symlink.
+- Add smoke coverage for broader WASI hard-link metadata operations as more WASI calls are mapped.
 
 Completion criteria:
 
@@ -604,7 +606,7 @@ Goal: make common Unix-style programs easier to port by filling in the practical
 
 Implementation tasks:
 
-- Add symlink support in VFS path resolution, including loop detection, relative symlink targets, `readlink`, and `lstat` semantics.
+- Already present: VFS supports symlink creation, relative-target path resolution, loop detection, `readlink`, and `lstat` semantics.
 - Add hard-link-like alias records where the storage backend can support shared content references without corrupting metadata.
 - Expand file metadata to include mode bits, uid/gid, timestamps, link count, inode-like stable ids, device ids, and extended attributes.
 - Add POSIX-like commands and syscalls for `stat`, `lstat`, `chmod`, `chown`, `umask`, `link`, `unlink`, `rename`, `truncate`, `mkdir`, `rmdir`, `readdir`, and `realpath`.

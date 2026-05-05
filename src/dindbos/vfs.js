@@ -22,7 +22,7 @@ export class VirtualFileSystem {
       .sort((a, b) => sortNodes(a, b));
   }
 
-  resolve(path = "/", cwd = "/") {
+  resolve(path = "/", cwd = "/", seen = new Set()) {
     const normalized = this.normalize(path, cwd);
     if (normalized === "/") return this.withPath(this.root, "/");
     const parts = normalized.split("/").filter(Boolean);
@@ -34,9 +34,11 @@ export class VirtualFileSystem {
       current = (current.children || []).find((child) => child.name === part);
       currentPath = this.join(currentPath, part);
       if (current && this.isLink(current)) {
+        if (seen.has(currentPath)) throw new Error(`Too many symbolic links: ${currentPath}`);
+        seen.add(currentPath);
         const target = this.normalize(current.target, this.dirname(currentPath));
         const rest = parts.slice(index + 1).join("/");
-        return this.resolve(rest ? this.join(target, rest) : target);
+        return this.resolve(rest ? this.join(target, rest) : target, "/", seen);
       }
     }
     return current ? this.withPath(current, normalized) : null;
@@ -145,6 +147,27 @@ export class VirtualFileSystem {
 
   createFile(path, cwd = "/", options = {}, principal = this.systemPrincipal) {
     return this.writeOrCreateFile(path, options.content || "", cwd, options, principal);
+  }
+
+  createSymlink(target, path, cwd = "/", options = {}, principal = this.systemPrincipal) {
+    const normalized = this.normalize(path, cwd);
+    const existing = this.lookupChild(normalized).node;
+    if (existing) throw new Error(`ln: ${normalized}: file exists`);
+    const parent = this.parentFor(normalized);
+    this.assertTraversalAccess(parent.path, "/", principal);
+    this.assertAccess(parent, "write", principal, parent.path);
+    this.assertAccess(parent, "execute", principal, parent.path);
+    const node = this.createNode({
+      name: this.basename(normalized),
+      type: "link",
+      target: String(target || ""),
+      permissions: options.permissions || "lrwxrwxrwx",
+      owner: options.owner || ownerFromPrincipal(principal),
+      group: options.group || groupFromPrincipal(principal),
+    });
+    parent.children.push(node);
+    this.emitChange("symlink", normalized);
+    return this.withPath(node, normalized);
   }
 
   createApp(path, appId, icon = "app", cwd = "/", options = {}, principal = this.systemPrincipal) {
@@ -307,6 +330,14 @@ export class VirtualFileSystem {
     if (!node) return null;
     this.assertTraversalAccess(normalized, "/", principal);
     return this.nodeStat(this.withPath(node, normalized), normalized);
+  }
+
+  readlink(path, cwd = "/", principal = this.systemPrincipal) {
+    const normalized = this.normalize(path, cwd);
+    const stat = this.lstat(normalized, "/", principal);
+    if (!stat) throw new Error(`readlink: ${path}: no such file or directory`);
+    if (stat.type !== "link" && stat.type !== "symlink") throw new Error(`readlink: ${path}: not a symbolic link`);
+    return stat.target || "";
   }
 
   exists(path, cwd = "/", principal = this.systemPrincipal) {

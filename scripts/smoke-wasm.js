@@ -90,6 +90,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-rename.wasm", wasiRenameWasm(
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-symlink.wasm", wasiSymlinkWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFile("/home/guest/bin/wasi-file.txt", "opened read\n", "/", {
   owner: "guest",
   group: "users",
@@ -112,6 +118,11 @@ os.fs.writeOrCreateFile("/home/guest/bin/wasi-rename-from.txt", "rename me\n", "
 os.fs.createDirectory("/home/guest/bin/wasi-rename-dir", "/", {
   owner: "guest",
   group: "users",
+}, system);
+os.fs.writeOrCreateFile("/home/guest/bin/wasi-symlink-target.txt", "through symlink\n", "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rw-r--r--",
 }, system);
 
 const shell = new ShellSession(os);
@@ -219,7 +230,17 @@ assert(os.fs.readFile("/home/guest/bin/wasi-renamed.txt") === "rename me\n", "wa
 assert(!os.fs.exists("/home/guest/bin/wasi-rename-dir"), "wasi path_rename left source directory in place");
 assert(os.fs.stat("/home/guest/bin/wasi-renamed-dir")?.type === "directory", "wasi path_rename did not rename directory");
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir mkdir remove rename process");
+const wasiSymlink = await os.wasm.runFile("/home/guest/bin/wasi-symlink.wasm", "/home/guest/bin", {
+  argv: ["wasi-symlink.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiSymlink.status === 0, `wasi path_symlink/readlink status mismatch: ${wasiSymlink.status} ${wasiSymlink.stderr}`);
+assert(wasiSymlink.stdout === "wasi-symlink-target.txt", `wasi path_readlink stdout mismatch: ${JSON.stringify(wasiSymlink.stdout)}`);
+assert(os.fs.lstat("/home/guest/bin/wasi-link.txt")?.type === "link", "wasi path_symlink did not create a link node");
+assert(os.fs.readlink("/home/guest/bin/wasi-link.txt") === "wasi-symlink-target.txt", "wasi readlink target mismatch");
+assert(os.fs.readFile("/home/guest/bin/wasi-link.txt") === "through symlink\n", "wasi symlink did not resolve to target file content");
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi stdin path-open rights readdir mkdir remove rename symlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -599,6 +620,45 @@ function wasiRenameWasm() {
       0x41, 0x03, 0x41, 0x00, 0x41, ...i32(fileFrom.length), 0x41, 0x03, 0x41, ...i32(fileToOffset), 0x41, ...i32(fileTo.length), 0x10, 0x00, 0x1a,
       0x41, 0x03, 0x41, ...i32(dirFromOffset), 0x41, ...i32(dirFrom.length), 0x41, 0x03, 0x41, ...i32(dirToOffset), 0x41, ...i32(dirTo.length), 0x10, 0x00,
       0x10, 0x01,
+      0x0b,
+    ],
+    data,
+  });
+}
+
+function wasiSymlinkWasm() {
+  const target = bytes("wasi-symlink-target.txt");
+  const linkPath = bytes("wasi-link.txt");
+  const linkOffset = 32;
+  const iovOffset = 64;
+  const bufferOffset = 80;
+  const nreadOffset = 124;
+  const nwrittenOffset = 128;
+  const data = new Uint8Array(160);
+  data.set(target, 0);
+  data.set(linkPath, linkOffset);
+  data.set(u32le(bufferOffset), iovOffset);
+  data.set(u32le(target.length), iovOffset + 4);
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32", "i32", "i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "path_symlink", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "path_readlink", type: 1 },
+      { module: "wasi_snapshot_preview1", name: "fd_write", type: 2 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 3 },
+    ],
+    startType: 4,
+    body: [
+      0x41, 0x00, 0x41, ...i32(target.length), 0x41, 0x03, 0x41, ...i32(linkOffset), 0x41, ...i32(linkPath.length), 0x10, 0x00, 0x1a,
+      0x41, 0x03, 0x41, ...i32(linkOffset), 0x41, ...i32(linkPath.length), 0x41, ...i32(bufferOffset), 0x41, ...i32(target.length), 0x41, ...i32(nreadOffset), 0x10, 0x01, 0x1a,
+      0x41, 0x01, 0x41, ...i32(iovOffset), 0x41, 0x01, 0x41, ...i32(nwrittenOffset), 0x10, 0x02,
+      0x10, 0x03,
       0x0b,
     ],
     data,
