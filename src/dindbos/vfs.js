@@ -9,6 +9,7 @@ export class VirtualFileSystem {
     this.policy = options.policy || null;
     this.systemPrincipal = this.policy?.systemPrincipal() || { user: "root", groups: ["root"], system: true };
     this.onChange = options.onChange || (() => {});
+    this.onAccessDenied = options.onAccessDenied || (() => {});
   }
 
   list(path = "/", cwd = "/", principal = this.systemPrincipal) {
@@ -508,7 +509,14 @@ export class VirtualFileSystem {
 
   assertAccess(node, access, principal, path) {
     if (!this.policy) return;
-    this.policy.assert(node, access, principal, path);
+    try {
+      this.policy.assert(node, access, principal, path);
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        this.emitAccessDenied({ access, path, node, principal, error });
+      }
+      throw error;
+    }
   }
 
   assertTraversalAccess(path, cwd = "/", principal = this.systemPrincipal) {
@@ -526,6 +534,21 @@ export class VirtualFileSystem {
 
   emitChange(action, path) {
     this.onChange({ action, path, root: this.root });
+  }
+
+  emitAccessDenied(event = {}) {
+    try {
+      this.onAccessDenied({
+        access: event.access || "unknown",
+        path: event.path || event.node?.path || "",
+        principal: event.principal || {},
+        node: event.node ? this.nodeStat(event.node, event.node.path || event.path || "") : null,
+        reason: "permission-denied",
+        message: event.error?.message || "",
+      });
+    } catch {
+      // Access audit hooks must never change the filesystem operation result.
+    }
   }
 
   nodeStat(node, path) {
@@ -546,6 +569,10 @@ export class VirtualFileSystem {
       modified: resolved.modified || node.modified || "2026-04-20T00:00:00.000Z",
     };
   }
+}
+
+function isPermissionDenied(error) {
+  return String(error?.message || "").includes("permission denied");
 }
 
 function sortNodes(a, b) {

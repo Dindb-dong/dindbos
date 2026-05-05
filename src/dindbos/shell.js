@@ -368,6 +368,11 @@ export class ShellSession {
   }
 
   privilegeEscalation(command) {
+    this.os.auditSecurity?.(`permission-escalation:${command}`, "denied", {
+      principal: this.principal,
+      target: command,
+      reason: "unsupported-browser-runtime",
+    });
     return `${command}: unsupported in DindbOS browser runtime; session user is fixed to ${this.env.USER}`;
   }
 

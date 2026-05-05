@@ -25,6 +25,15 @@ result = await shell.executeAsync("echo nope > /root/new.txt");
 assert(result.status === 1, `shell denied write status mismatch: ${result.status}`);
 assert(result.output.includes("permission denied"), `shell denied write output mismatch: ${result.output}`);
 
+result = await shell.executeAsync("cat /home/guest/private.txt");
+assert(result.status === 1, `shell denied direct read status mismatch: ${result.status}`);
+assert(result.output.includes("permission denied"), `shell denied direct read output mismatch: ${result.output}`);
+
+let auditLog = os.fs.readFile("/var/log/dindbos/security-audit.log");
+assert(auditLog.includes("action=fs-access:execute decision=denied") && auditLog.includes("target=/root"), "security audit missing denied traversal execute");
+assert(auditLog.includes("action=fs-access:write decision=denied") && auditLog.includes("target=/root"), "security audit missing denied filesystem write");
+assert(auditLog.includes("action=fs-access:read decision=denied") && auditLog.includes("target=/home/guest/private.txt"), "security audit missing denied filesystem read");
+
 result = await shell.executeAsync("syscall fs.readText '{}'");
 assert(result.status === 2, `raw syscall invalid args status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).error.code === "EINVAL", `raw syscall invalid args code mismatch: ${result.output}`);
@@ -134,16 +143,22 @@ async function openNonExecutableAppLauncher() {
 
 function bootOs() {
   const permissions = new PermissionPolicy();
-  const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
+  let os;
+  const fs = new VirtualFileSystem(null, {
+    home: "/home/guest",
+    policy: permissions,
+    onAccessDenied: (event) => os?.auditDeniedFileSystemAccess?.(event),
+  });
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
   fs.createDirectory("/home/guest/Documents", "/", { owner: "guest", group: "users" }, system);
   fs.writeOrCreateFile("/home/guest/readable.txt", "ok", "/", { owner: "guest", group: "users", permissions: "-rw-r--r--" }, system);
+  fs.writeOrCreateFile("/home/guest/private.txt", "private", "/", { owner: "root", group: "root", permissions: "-rw-------" }, system);
   fs.createDirectory("/root", "/", { owner: "root", group: "root", permissions: "drwx------" }, system);
   fs.writeOrCreateFile("/root/secret.txt", "secret", "/", { owner: "root", group: "root", permissions: "-rw-------" }, system);
   fs.writeOrCreateFile("/root/public.txt", "public", "/", { owner: "root", group: "root", permissions: "-rw-r--r--" }, system);
-  const os = {
+  os = {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
@@ -193,6 +208,15 @@ function bootOs() {
       if (this.fs.exists("/var/log/dindbos/security-audit.log")) this.fs.appendFile("/var/log/dindbos/security-audit.log", line, "/", system);
       else this.fs.writeOrCreateFile("/var/log/dindbos/security-audit.log", line, "/", { owner: "root", group: "root", permissions: "-rw-r--r--" }, system);
       return { action, decision };
+    },
+    auditDeniedFileSystemAccess(event = {}) {
+      const principal = event.principal || {};
+      if (principal.system || principal.user === "root") return null;
+      return this.auditSecurity(`fs-access:${event.access || "unknown"}`, "denied", {
+        principal,
+        target: event.path || "",
+        reason: event.reason || "permission-denied",
+      });
     },
     openPath: () => null,
     openNode: () => null,

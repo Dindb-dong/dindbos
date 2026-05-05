@@ -439,7 +439,7 @@ Implementation tasks:
 - Already present: system settings storage-management allow/deny decisions are recorded in `/var/log/dindbos/security-audit.log`.
 - Already present: companion permission grant/revoke operations through shell `companion grant` / `companion revoke` require an administrator principal and persist records under `/etc/dindbos/companions.json`.
 - Already present: companion permission allow/deny decisions are recorded in `/var/log/dindbos/security-audit.log`, and raw socket companions respect revoked or capability-narrowed permission records.
-- Add audit logs for permission escalation and broader denied access.
+- Already present: VFS permission-denied reads, writes, and traversal checks are recorded in `/var/log/dindbos/security-audit.log`, and unsupported `su`/`sudo` permission-escalation attempts are recorded as denied security events.
 
 Verification:
 
@@ -455,6 +455,7 @@ Verification:
 - Already present: `npm run smoke:permissions` and `npm run smoke:shell` verify non-admin system storage-management denial, admin storage-management allowance, and security audit logging for both decisions.
 - Already present: `npm run smoke:sessions` verifies non-admin companion grant denial, admin companion grant/revoke allowance, persistence under `/etc/dindbos/companions.json`, and security audit logging for both decisions.
 - Already present: `npm run smoke:network` verifies raw socket companions are denied after revoked or capability-narrowed companion permission records.
+- Already present: `npm run smoke:permissions` verifies denied VFS traversal, read, and write audit records, and `npm run smoke:shell` verifies denied `su`/`sudo` permission-escalation audit records.
 
 Completion criteria:
 
