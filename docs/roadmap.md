@@ -258,7 +258,7 @@ Completion criteria:
 
 ### Convergence 3: Real Process Isolation With Workers
 
-Status: Next.
+Status: In progress.
 
 Goal: move risky or heavy userland execution out of the main UI thread into Web Workers or dedicated worker pools.
 
@@ -270,18 +270,20 @@ Why it matters:
 
 Implementation tasks:
 
-- Add a `ProcessExecutor` abstraction with main-thread, worker, and future companion-backed execution modes.
+- Already present: `ProcessExecutor` provides main-thread and worker execution backends for runtime-managed CPU task processes.
 - Run NodeCompat programs and WASM programs in dedicated workers where possible.
 - Provide a message-based syscall bridge from worker processes back to the runtime kernel.
 - Transfer binary data with `ArrayBuffer`/`MessagePort` instead of JSON-only payloads.
-- Add per-process cancellation, timeout, output buffering, and crash propagation.
-- Add worker lifecycle state to `/proc/<pid>/status`.
-- Make Activity Monitor distinguish `main-thread`, `worker`, and `companion` execution backends.
+- Already present: worker-backed executor tasks support process kill termination, timeout crash propagation, and completion cleanup.
+- Add output buffering for worker-backed user programs once stdout/stderr are routed through the worker bridge.
+- Already present: `/proc/<pid>/status` and `/proc/processes.json` expose runtime, execution backend, executor state, executor kind, and executor detail.
+- Already present: Activity Monitor distinguishes execution backend and executor state in the process table/detail view.
 
 Verification:
 
-- Add smoke coverage proving a CPU-heavy worker process does not block window rendering or shell input.
-- Add tests for worker crash, timeout, kill, stdout/stderr delivery, and VFS syscall denial.
+- Already present: `npm run smoke:processes` verifies a CPU-heavy worker process does not block main-runtime process spawning while it is busy.
+- Already present: `npm run smoke:processes` verifies worker completion cleanup, timeout crash reporting, kill termination, `/proc` backend reporting, and Activity Monitor backend filtering data.
+- Add tests for worker stdout/stderr delivery and VFS syscall denial once NodeCompat/WASM worker bridges exist.
 
 Completion criteria:
 
