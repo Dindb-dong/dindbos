@@ -999,7 +999,8 @@ Why it matters:
 Implementation tasks:
 
 - Already present: package records include first-pass namespace metadata for package root, private state root, private cache root, private temp root, process group, dependency root, device grants, network grants, IPC endpoints, and child-process limit.
-- Add namespace inheritance for child processes, WASM programs, NodeCompat commands, workers, and service units launched by a package.
+- Already present: ProcessManager inherits parent namespaces for child process launches, package WASM entries pass package namespace into their child process manifest, and `/proc/<pid>/status` plus `/proc/processes.json` expose process namespace metadata.
+- Add namespace inheritance for worker executor tasks, package CLI tools, and service units launched by a package.
 - Already present: AppSandbox NodeCompat execution inherits package filesystem scopes and a first-pass declared npm dependency allowlist, so package code cannot `require()` undeclared package-local dependency trees through NodeCompat.
 - Add per-package dependency views so SDK resolution, WASM entries, CLI tools, services, and future package child processes cannot read undeclared dependency trees by default.
 - Add namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics.
@@ -1011,7 +1012,8 @@ Verification:
 
 - Already present: `npm run smoke:packages` verifies package namespace root metadata, state/cache/temp root creation, app manifest namespace exposure, and namespace root cleanup on uninstall.
 - Already present: `npm run smoke:packages` launches package code that verifies another package root is denied through AppSandbox filesystem APIs and undeclared package-local `node_modules` reads are denied through NodeCompat dependency resolution.
-- Add smoke coverage for child namespace inheritance and denied cross-package IPC.
+- Already present: `npm run smoke:packages` verifies package-launched child app processes and package WASM child process history inherit package namespace metadata.
+- Add smoke coverage for denied cross-package IPC.
 - Add tests proving namespace restrictions apply identically to GUI apps, CLI apps, WASM entries, NodeCompat tools, and background services.
 
 Completion criteria:

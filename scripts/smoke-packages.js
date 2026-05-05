@@ -55,6 +55,14 @@ packages.install(packageManifest("namespace-target", "0.1.0", [
   { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
   { path: "secret.txt", mime: "text/plain", content: "target secret\n" },
 ]));
+os.registerApp({
+  id: "namespace-child",
+  name: "Namespace Child",
+  manifest: { capabilities: [], fileSystem: { read: [], write: [] } },
+  render: ({ content }) => {
+    content.innerHTML = "<main data-namespace-child>child</main>";
+  },
+});
 packages.install(packageManifest("namespace-probe", "0.1.0", [
   {
     path: "app.js",
@@ -67,16 +75,24 @@ packages.install(packageManifest("namespace-probe", "0.1.0", [
       "  let dependencyIsolation = 'not-denied';",
       "  try { os.node.evaluate(\"const secret = require('secret-lib'); console.log(secret);\", pkg.installPath); }",
       "  catch (error) { dependencyIsolation = error.message.includes('dependency not declared') ? 'dependency-denied' : error.message; }",
-      "  content.innerHTML = `<main data-namespace-probe>${rootIsolation}:${dependencyIsolation}</main>`;",
+      "  const child = os.launch('namespace-child');",
+      "  content.innerHTML = `<main data-namespace-probe data-child-pid=\"${child.pid}\">${rootIsolation}:${dependencyIsolation}</main>`;",
       "}",
     ].join("\n"),
   },
   { path: "node_modules/secret-lib/index.js", mime: "text/javascript", content: "module.exports = 'undeclared secret';\n" },
-], { permissions: { capabilities: ["node.execute"] } }));
+], { permissions: { capabilities: ["app.launch", "node.execute"] } }));
 const namespaceProbeWindow = os.apps.launch("namespace-probe");
 await namespaceProbeWindow.rendered;
 await waitFor(() => namespaceProbeWindow.content.innerHTML.includes("data-namespace-probe"), `namespace probe did not render: ${namespaceProbeWindow.content.innerHTML}`);
 assert(namespaceProbeWindow.content.innerHTML.includes("root-denied:dependency-denied"), `package namespace isolation mismatch: ${namespaceProbeWindow.content.innerHTML}`);
+const namespaceChild = os.processes.list().find((process) => process.parentPid === namespaceProbeWindow.pid && process.appId === "namespace-child");
+assert(namespaceChild?.manifest?.namespace?.processGroup === "package:namespace-probe", `child process did not inherit package namespace: ${JSON.stringify(namespaceChild)}`);
+const namespaceChildStatus = os.fs.readFile(`/proc/${namespaceChild.pid}/status`);
+assert(namespaceChildStatus.includes("Namespace:\tpackage:namespace-probe"), "child /proc status missing inherited package namespace");
+assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === namespaceChild.pid && entry.namespace?.processGroup === "package:namespace-probe"), "/proc processes JSON missing inherited package namespace");
+os.processes.kill(namespaceChild.pid, "namespace-test-cleanup");
+os.processes.kill(namespaceProbeWindow.pid, "namespace-test-cleanup");
 packages.remove("namespace-probe");
 packages.remove("namespace-target");
 
@@ -277,6 +293,8 @@ await waitFor(() => wasmWindow.content.innerHTML.includes("data-wasm-package"), 
 assert(wasmWindow.content.innerHTML.includes("wasm package ok"), "WASM package stdout was not rendered");
 assert(os.fs.readFile("/home/guest/wasm-package-output.txt") === "from package wasm", "WASM package did not write through syscall-backed VFS");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("app=package:wasm-tool:wasm fs.writeText OK"), "WASM package syscall trace missing package wasm app id");
+const wasmHistory = os.processes.history.find((process) => process.appId === "package:wasm-tool:wasm" && process.manifest?.namespace?.processGroup === "package:wasm-tool");
+assert(wasmHistory, "WASM package child process did not inherit package namespace");
 assert(lifecycleEvents.includes("first-run:wasm-tool:wasm-tool"), "WASM package did not emit app:first-run lifecycle event");
 const removedWasmTool = packages.remove("wasm-tool");
 assert(removedWasmTool.id === "wasm-tool", "WASM package remove returned wrong id");

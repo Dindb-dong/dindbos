@@ -12,6 +12,10 @@ export class ProcessManager {
     const now = new Date().toISOString();
     const parentPid = normalizePid(context.parentPid);
     const parent = parentPid ? this.processes.get(parentPid) : null;
+    const manifest = {
+      ...(app.manifest || {}),
+      namespace: cloneJson(context.namespace || app.manifest?.namespace || parent?.manifest?.namespace || null),
+    };
     const process = {
       pid: this.nextPid++,
       parentPid,
@@ -21,7 +25,7 @@ export class ProcessManager {
       state: "running",
       user: this.os.session.user || "guest",
       cwd: context.cwd || this.os.session.home || "/",
-      manifest: app.manifest,
+      manifest,
       context,
       runtime: context.runtime || app.manifest?.runtime || "javascript",
       executionBackend: context.executionBackend || "main-thread",
@@ -292,6 +296,7 @@ export class ProcessManager {
       appId: process.appId,
       state: process.state,
       runtime: process.runtime || "",
+      namespace: process.manifest?.namespace || null,
       executionBackend: process.executionBackend || "",
       executorState: process.executorState || "",
       executorKind: process.executorKind || "",
@@ -472,6 +477,9 @@ function formatProcessStatus(process) {
     `State:\t${process.state}`,
     `App:\t${process.appId}`,
     `Runtime:\t${process.runtime || "-"}`,
+    `Namespace:\t${process.manifest?.namespace?.processGroup || "-"}`,
+    `NamespaceRoot:\t${process.manifest?.namespace?.packageRoot || "-"}`,
+    `NamespaceState:\t${process.manifest?.namespace?.stateRoot || "-"}`,
     `ExecutionBackend:\t${process.executionBackend || "-"}`,
     `ExecutorState:\t${process.executorState || "-"}`,
     `ExecutorKind:\t${process.executorKind || "-"}`,
@@ -493,6 +501,11 @@ function formatProcessStatus(process) {
     `LifecycleLastResult:\t${process.lifecycleLastResult || "-"}`,
     `LifecycleLastError:\t${process.lifecycleLastError || "-"}`,
   ].join("\n");
+}
+
+function cloneJson(value) {
+  if (value === undefined || value === null) return value;
+  return JSON.parse(JSON.stringify(value));
 }
 
 function processLifecycleCallbackForState(osState) {
