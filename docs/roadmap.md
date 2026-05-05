@@ -309,6 +309,7 @@ Implementation tasks:
 - Already present: WASI programs receive a preopened cwd descriptor and can use `path_open` plus `fd_read`/`fd_write`/`fd_close` for scoped VFS file read/write through opened descriptors.
 - Already present: WASI `path_open` maps first-pass `rightsBase` read/write rights onto descriptor read/write checks.
 - Already present: WASI `fd_readdir` can enumerate directory descriptors such as the preopened cwd.
+- Already present: WASI `path_create_directory` can create directories under a scoped directory descriptor.
 - Already present: shell pipelines pass segment output through transient pipe descriptors owned by a short-lived `shell:pipeline` process while preserving existing shell pipeline output semantics.
 - Already present: runtime pipe objects can be attached across process descriptor tables, allowing descriptor-backed multi-process pipe chaining.
 - Already present: `fd.ioctl` exposes first-pass TTY control requests for window size and `isatty` checks, returning `ENOTTY` for non-TTY descriptors.
@@ -316,7 +317,7 @@ Implementation tasks:
 - Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
 - Already present: `/dev/clipboard` can be opened through descriptor syscalls and maps reads/writes to the DindbOS runtime clipboard service inside the browser policy boundary.
 - Already present: Terminal.app creates a DindbOS pseudo-terminal session; PTY-backed processes share TTY size, input, and output through standard streams and `/dev/tty`.
-- Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags and `fd_readdir` subset, including directory mutation operations.
+- Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags, `fd_readdir`, and `path_create_directory` subset.
 
 Verification:
 
@@ -332,7 +333,8 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies read-only WASI `rightsBase` denies descriptor writes with `EBADF`.
 - Already present: `npm run smoke:wasm` verifies WASI `fd_readdir` returns directory records from the preopened cwd descriptor.
 - Already present: `npm run smoke:descriptors` verifies writer, middle, and reader processes can chain bytes through attached pipe descriptors and that closed pipes are removed from the pipe registry.
-- Add smoke coverage for broader WASI directory mutation operations.
+- Already present: `npm run smoke:wasm` verifies WASI `path_create_directory` creates a directory under the preopened cwd descriptor.
+- Add smoke coverage for broader WASI directory mutation operations as more WASI calls are mapped.
 
 Completion criteria:
 

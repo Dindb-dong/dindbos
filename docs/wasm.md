@@ -55,6 +55,7 @@ fd_write(fd, iovsPtr, iovsLen, nwrittenPtr) -> errno
 fd_read(fd, iovsPtr, iovsLen, nreadPtr) -> errno
 fd_close(fd) -> errno
 fd_readdir(fd, bufPtr, bufLen, cookie, nreadPtr) -> errno
+path_create_directory(dirfd, pathPtr, pathLen) -> errno
 path_open(dirfd, dirflags, pathPtr, pathLen, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) -> errno
 fd_prestat_get(fd, resultPtr) -> errno
 fd_prestat_dir_name(fd, pathPtr, pathLen) -> errno
@@ -63,7 +64,7 @@ random_get(ptr, len) -> errno
 clock_time_get(id, precision, resultPtr) -> errno
 ```
 
-`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read` reads through the same table, including stdin data supplied by shell pipelines and `runFile({ stdin })`. WASI programs receive a preopened cwd descriptor and can use `path_open` for scoped VFS file read/write. `path_open` honors first-pass `rightsBase` read/write rights by mapping them onto descriptor read/write permission checks. `fd_readdir` can enumerate directory descriptors such as the preopened cwd. Full pseudo-terminal behavior remains roadmap work.
+`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read` reads through the same table, including stdin data supplied by shell pipelines and `runFile({ stdin })`. WASI programs receive a preopened cwd descriptor and can use `path_open` for scoped VFS file read/write. `path_open` honors first-pass `rightsBase` read/write rights by mapping them onto descriptor read/write permission checks. `fd_readdir` can enumerate directory descriptors such as the preopened cwd, and `path_create_directory` can create directories under a scoped directory descriptor. Full pseudo-terminal behavior remains roadmap work.
 
 ## Process Model
 
@@ -75,7 +76,7 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 
 - no full WASI import surface yet
 - no full pseudo-terminal sessions yet
-- no broad WASI directory mutation operation coverage yet
+- no broad WASI directory mutation coverage beyond first-pass create-directory
 - no worker isolation yet
 - no compiler toolchain integration docs yet
 
@@ -85,4 +86,4 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 npm run smoke:wasm
 ```
 
-The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, basic WASI `fd_write`/`fd_read`/`fd_readdir`/`path_open`/`fd_close`/`proc_exit`, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, read-only `rightsBase` denial for descriptor writes, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
+The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, basic WASI `fd_write`/`fd_read`/`fd_readdir`/`path_create_directory`/`path_open`/`fd_close`/`proc_exit`, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, read-only `rightsBase` denial for descriptor writes, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
