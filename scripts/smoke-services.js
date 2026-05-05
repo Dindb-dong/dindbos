@@ -36,6 +36,7 @@ assert(os.fs.readFile("/var/lib/dindbos/search/last-run.txt") === "indexed\n", "
 assert(events.includes("scheduled-run:search-indexer:running"), "scheduled-run event missing");
 const manifest = os.services.manifest("search-indexer");
 assert(manifest.capabilities.length === 0, "service manifest default capabilities mismatch");
+assert(manifest.lifecyclePolicy === "resumable", "service manifest default lifecycle policy mismatch");
 assert(manifest.fileSystem.read.includes("/home/guest"), "service manifest read scope missing");
 assert(manifest.fileSystem.write.includes("/var/lib/dindbos/search"), "service manifest write scope missing");
 manifest.fileSystem.read.push("/mutated");
@@ -47,6 +48,19 @@ os.services.resume("visibility-visible");
 assert(os.services.get("search-indexer").state === "running", "service did not resume");
 assert(events.includes("suspend:search-indexer:suspended"), "service suspend event missing");
 assert(events.includes("resume:search-indexer:running"), "service resume event missing");
+
+os.services.register({
+  id: "visible-sync",
+  name: "Visible Sync",
+  lifecyclePolicy: "visible-tab-only",
+});
+await os.services.start("visible-sync");
+os.services.suspend("pagehide");
+const visibleSync = os.services.get("visible-sync");
+assert(visibleSync.state === "degraded", "visible-tab-only service did not degrade on pagehide");
+assert(visibleSync.lastError.includes("visible-tab-only"), "degraded service missing lifecycle policy reason");
+assert(os.fs.readFile("/var/run/dindbos/services.json").includes("visible-tab-only"), "service state missing lifecycle policy");
+assert(events.includes("degraded:visible-sync:degraded"), "service lifecycle policy degraded event missing");
 
 const deniedPrincipal = os.permissions.principal({ user: "guest", groups: ["users"] });
 assertThrows(() => os.services.stop("search-indexer", { principal: deniedPrincipal }), "service: manage denied");

@@ -14,6 +14,7 @@ os.services.register({
   name: "Search Indexer",
   enabled: true,
   schedule: { everyMs: 60000 },
+  lifecyclePolicy: "resumable",
   fileSystem: {
     read: ["/home/guest"],
     write: ["/var/lib/dindbos/search"]
@@ -43,7 +44,7 @@ Current service states:
 
 Settings.app reads `os.services.list()` and renders service state, run count, restart controls, and disable controls through the sandboxed `service.read` / `service.manage` facade.
 
-Activity Monitor shows service-managed processes as `service:<id>` rows. Selecting one renders service metadata, service logs, restart controls, disable controls, and a permission review of the service manifest capabilities, filesystem read/write scope, and schedule.
+Activity Monitor shows service-managed processes as `service:<id>` rows. Selecting one renders service metadata, service logs, restart controls, disable controls, and a permission review of the service manifest capabilities, filesystem read/write scope, lifecycle policy, and schedule.
 
 ## Process Boundary
 
@@ -55,6 +56,8 @@ Service management is privileged. Calls that mutate service state require a root
 
 ## Browser Lifecycle Limits
 
-DindbOS wires browser `visibilitychange`, `pagehide`, and `pageshow` events into service `suspend(reason)` and `resume(reason)` transitions. Hidden tabs and pagehide move running services into `suspended`; visible tabs and pageshow restore suspended services to their previous running state.
+DindbOS wires browser `visibilitychange`, `pagehide`, and `pageshow` events into service `suspend(reason)` and `resume(reason)` transitions. Services default to the `resumable` lifecycle policy, so hidden tabs and pagehide move them into `suspended`; visible tabs and pageshow restore suspended services to their previous running state.
+
+Supported lifecycle policies are `foreground-only`, `visible-tab-only`, `resumable`, `scheduled-when-visible`, and `companion-required`. Services marked `foreground-only`, `visible-tab-only`, or `companion-required` degrade on hidden-tab/pagehide suspension instead of pretending to keep native-style background guarantees. The degraded state records a policy reason in `/var/run/dindbos/services.json` and `/var/log/dindbos/services.log`.
 
 This still does not claim closed-page persistence. Service worker and periodic background sync integration remain future work and must report unsupported behavior honestly when the browser cannot keep work alive.

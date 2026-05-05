@@ -1059,15 +1059,16 @@ Implementation tasks:
 - Already present: browser `pagehide`, `pageshow`, hidden/visible `visibilitychange`, and `beforeunload` drive first-pass OS transitions around `suspending`, `suspended`, `resuming`, `active`, and `shutting-down`.
 - Already present: dirty shutdown records are written to `/var/run/dindbos/recovery/last-shutdown.json`, and the next boot acknowledges unrecovered dirty shutdowns with `/var/run/dindbos/recovery/last-recovery.json` plus an `os:lifecycle` transition to `recovered`.
 - Add broader OS lifecycle state transitions around `idle` and deeper recovered-session repair modes.
-- Add service policies for foreground-only, visible-tab-only, resumable, scheduled-when-visible, and companion-required work.
+- Already present: service manifests support lifecycle policies for `foreground-only`, `visible-tab-only`, `resumable`, `scheduled-when-visible`, and `companion-required` work; pagehide/hidden-tab suspension degrades foreground/visible/companion-bound services instead of pretending they can keep running.
 - Already present: recovery records under `/var/run/dindbos/recovery` capture dirty shutdown state, pending persistence status, suspended services, worker-backed processes, and running processes.
-- Add user-facing diagnostics explaining which background tasks cannot continue when the browser page closes.
+- Already present: service degradation records lifecycle policy reasons in `/var/run/dindbos/services.json`, `/var/log/dindbos/services.log`, and Activity Monitor's service permission review.
+- Add broader user-facing diagnostics explaining closed-page limits across apps, workers, and optional companions.
 - Add optional service worker or periodic background sync integration only for browser-supported, permissioned, limited maintenance tasks.
 
 Verification:
 
-- Already present: smoke coverage verifies pending-write lifecycle flushes, boot-time lifecycle diagnostics, service visibility/pagehide suspend/resume wiring, OS lifecycle transitions for pagehide/pageshow/visibility/beforeunload, and dirty shutdown recovery records after reload.
-- Add smoke coverage for service degradation after pagehide and richer recovery diagnostics after reload.
+- Already present: smoke coverage verifies pending-write lifecycle flushes, boot-time lifecycle diagnostics, service visibility/pagehide suspend/resume wiring, OS lifecycle transitions for pagehide/pageshow/visibility/beforeunload, dirty shutdown recovery records after reload, and service degradation after pagehide.
+- Add smoke coverage for richer recovery diagnostics after reload.
 - Add tests proving unsupported background persistence is reported as unsupported instead of silently promised.
 
 Completion criteria:
