@@ -410,10 +410,7 @@ export class PackageManager {
       this.ensurePackageRoots();
       this.ensurePackageDirectory(record);
       await this.installDeclaredFiles(record, manifest.files || [], sourceUrl, fetcher);
-      this.writePackageRecord(record);
-      this.installLauncher(record);
-      this.registerPackageApp(record);
-      this.registerPackageServices(record, previous);
+      this.activatePackage(record, previous, previous ? "update" : "install");
       this.emitPackageLifecycle(previous ? "update" : "install", record, { previousVersion: previous?.version || "" });
       return record;
     });
@@ -428,10 +425,7 @@ export class PackageManager {
       this.ensurePackageRoots();
       this.ensurePackageDirectory(record);
       this.installDeclaredInlineFiles(record, manifest.files || []);
-      this.writePackageRecord(record);
-      this.installLauncher(record);
-      this.registerPackageApp(record);
-      this.registerPackageServices(record, previous);
+      this.activatePackage(record, previous, previous ? "update" : "install");
       this.emitPackageLifecycle(previous ? "update" : "install", record, { previousVersion: previous?.version || "" });
       return record;
     });
@@ -1337,6 +1331,79 @@ export class PackageManager {
       if (!this.os.services?.get?.(service.id)) return;
       this.os.services.unregister(service.id, { principal: this.system });
     });
+  }
+
+  activatePackage(record, previous = null, operation = "install") {
+    const activation = this.createPackageActivation(record, operation);
+    this.emitPackageActivation("start", record, activation);
+    try {
+      this.runPackageActivationPhase(activation, record, "package-record", () => this.writePackageRecord(record));
+      this.runPackageActivationPhase(activation, record, "launcher", () => this.installLauncher(record));
+      this.runPackageActivationPhase(activation, record, "app-registry", () => this.registerPackageApp(record));
+      this.runPackageActivationPhase(activation, record, "services", () => this.registerPackageServices(record, previous));
+      activation.status = "complete";
+      activation.completedAt = new Date().toISOString();
+      this.emitPackageActivation("complete", record, activation);
+      return activation;
+    } catch (error) {
+      activation.status = "error";
+      activation.error = error?.message || String(error);
+      activation.completedAt = new Date().toISOString();
+      this.emitPackageActivation("error", record, activation);
+      throw error;
+    }
+  }
+
+  createPackageActivation(record, operation) {
+    return {
+      id: `package-activation:${record.id}:${Date.now().toString(36)}`,
+      packageId: record.id,
+      appId: record.app?.id || "",
+      operation,
+      status: "running",
+      startedAt: new Date().toISOString(),
+      completedAt: "",
+      phases: [],
+      error: "",
+    };
+  }
+
+  runPackageActivationPhase(activation, record, phase, action) {
+    const entry = {
+      phase,
+      status: "running",
+      startedAt: new Date().toISOString(),
+      completedAt: "",
+      error: "",
+    };
+    activation.phases.push(entry);
+    this.emitPackageActivation("phase-start", record, activation, entry);
+    try {
+      const result = action();
+      entry.status = "complete";
+      entry.completedAt = new Date().toISOString();
+      this.emitPackageActivation("phase-complete", record, activation, entry);
+      return result;
+    } catch (error) {
+      entry.status = "error";
+      entry.completedAt = new Date().toISOString();
+      entry.error = error?.message || String(error);
+      this.emitPackageActivation("phase-error", record, activation, entry);
+      throw error;
+    }
+  }
+
+  emitPackageActivation(type, record, activation, phase = null) {
+    const payload = {
+      type,
+      packageId: record.id,
+      appId: record.app?.id || "",
+      operation: activation.operation,
+      activation: cloneJson(activation),
+      phase: phase ? cloneJson(phase) : null,
+    };
+    this.os.bus?.emit?.(`package:activation:${type}`, payload);
+    this.os.bus?.emit?.("package:activation", payload);
   }
 
   writePackageRecord(record) {
