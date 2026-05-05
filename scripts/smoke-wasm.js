@@ -3,7 +3,8 @@ import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { DindbOS } from "../src/dindbos/index.js";
 import { ShellSession } from "../src/dindbos/shell.js";
 
-const os = new DindbOS({ root: {}, storage: memoryStorage() });
+const storage = memoryStorage();
+const os = new DindbOS({ root: {}, storage });
 const system = os.permissions.systemPrincipal();
 os.ensureDirectoryPath("/home/guest/bin", { leafOwner: "guest", leafGroup: "users", principal: system });
 os.ensureDirectoryPath("/home/guest/shared", { leafOwner: "guest", leafGroup: "users", principal: system });
@@ -15,6 +16,18 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/hello.wasm", helloWasm(), "/", {
   mime: "application/wasm",
 }, system);
 os.fs.writeOrCreateFileBytes("/home/guest/bin/syscall.wasm", syscallWriteWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/syscall-async-sync.wasm", syscallAsyncStorageSyncWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/syscall-async-denied.wasm", syscallAsyncStorageSyncWasm(), "/", {
   owner: "guest",
   group: "users",
   permissions: "-rwxr-xr-x",
@@ -81,6 +94,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-open-read.wasm", wasiOpenRead
   mime: "application/wasm",
 }, system);
 os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-open-write.wasm", wasiOpenWriteWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-sync-write.wasm", wasiSyncWriteWasm(), "/", {
   owner: "guest",
   group: "users",
   permissions: "-rwxr-xr-x",
@@ -208,6 +227,22 @@ const syscallRun = await os.wasm.runFile("/home/guest/bin/syscall.wasm", "/home/
 assert(syscallRun.status === 0, `wasm syscall run status mismatch: ${syscallRun.status} ${syscallRun.stderr}`);
 assert(os.fs.readFile("/home/guest/bin/wasm-syscall.txt") === "from wasm syscall", "wasm syscall did not write through DindbOS syscall ABI");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("fs.writeText OK"), "wasm syscall did not write global syscall trace");
+
+const beforeAsyncStorageSyncFlushes = storage.flushes;
+const asyncStorageSyncRun = await os.wasm.runFile("/home/guest/bin/syscall-async-sync.wasm", "/home/guest/bin", {
+  capabilities: ["storage.read"],
+  principal: os.permissions.principal(os.session),
+});
+assert(asyncStorageSyncRun.status === 0, `wasm async syscall sync status mismatch: ${asyncStorageSyncRun.status} ${asyncStorageSyncRun.stderr}`);
+assert(storage.flushes > beforeAsyncStorageSyncFlushes, "wasm async syscall did not wait for storage sync flush");
+assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("storage.sync OK"), "wasm async syscall did not write storage.sync trace");
+
+const asyncStorageDeniedRun = await os.wasm.runFile("/home/guest/bin/syscall-async-denied.wasm", "/home/guest/bin", {
+  principal: os.permissions.principal(os.session),
+});
+assert(asyncStorageDeniedRun.status === 13, `wasm async syscall denial status mismatch: ${asyncStorageDeniedRun.status} ${asyncStorageDeniedRun.stderr}`);
+assert(asyncStorageDeniedRun.crashed === false, "wasm async syscall denial should not crash the process");
+assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("storage.sync EACCES"), "wasm async syscall did not write denied storage.sync trace");
 
 const exitRun = await os.wasm.runFile("/home/guest/bin/exit7.wasm", "/home/guest/bin", {
   principal: os.permissions.principal(os.session),
@@ -369,6 +404,15 @@ const wasiOpenWrite = await os.wasm.runFile("/home/guest/bin/wasi-open-write.was
 assert(wasiOpenWrite.status === 0, `wasi path_open write status mismatch: ${wasiOpenWrite.status} ${wasiOpenWrite.stderr}`);
 assert(os.fs.readFile("/home/guest/bin/wasi-out.txt") === "opened write\n", "wasi path_open write did not persist file");
 
+const beforeWasiFdSyncFlushes = storage.flushes;
+const wasiSyncWrite = await os.wasm.runFile("/home/guest/bin/wasi-sync-write.wasm", "/home/guest/bin", {
+  argv: ["wasi-sync-write.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiSyncWrite.status === 0, `wasi fd_sync status mismatch: ${wasiSyncWrite.status} ${wasiSyncWrite.stderr}`);
+assert(os.fs.readFile("/home/guest/bin/wasi-sync-out.txt") === "synced write\n", "wasi fd_sync write did not persist file");
+assert(storage.flushes > beforeWasiFdSyncFlushes, "wasi fd_sync did not wait for descriptor sync flush");
+
 const wasiRights = await os.wasm.runFile("/home/guest/bin/wasi-rights.wasm", "/home/guest/bin", {
   argv: ["wasi-rights.wasm"],
   principal: os.permissions.principal(os.session),
@@ -436,7 +480,7 @@ os.fs.remove("/home/guest/bin/wasi-hardlink-source.txt", "/", {}, os.permissions
 assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "changed through link\n", "wasi hard link did not survive source removal");
 assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 1, "wasi hard link count did not update after source removal");
 
-console.log("wasm smoke ok shell argv env syscall exit permission scopes crash memory deadline grow wasi worker stdin path-open rights filestat readdir mkdir remove rename symlink hardlink process");
+console.log("wasm smoke ok shell argv env syscall async-sync exit permission scopes crash memory deadline grow wasi fd-sync worker stdin path-open rights filestat readdir mkdir remove rename symlink hardlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -478,6 +522,26 @@ function syscallWriteWasm() {
     startType: 1,
     body: [
       0x41, 0x00, 0x41, ...i32(request.length), 0x10, 0x00, 0x1a,
+      0x0b,
+    ],
+    data: request,
+  });
+}
+
+function syscallAsyncStorageSyncWasm() {
+  const request = bytes(JSON.stringify({
+    name: "storage.sync",
+    args: {},
+  }));
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32"], results: ["i32"] },
+      { params: [], results: ["i32"] },
+    ],
+    imports: [{ name: "syscallAsync", type: 0 }],
+    startType: 1,
+    body: [
+      0x41, 0x00, 0x41, ...i32(request.length), 0x10, 0x00,
       0x0b,
     ],
     data: request,
@@ -722,6 +786,46 @@ function wasiOpenWriteWasm() {
       0x41, ...i32(fdOffset), 0x28, 0x02, 0x00, 0x41, ...i32(iovOffset), 0x41, 0x01, 0x41, ...i32(writtenOffset), 0x10, 0x01, 0x1a,
       0x41, ...i32(fdOffset), 0x28, 0x02, 0x00, 0x10, 0x02, 0x1a,
       0x41, 0x00, 0x10, 0x03,
+      0x0b,
+    ],
+    data,
+  });
+}
+
+function wasiSyncWriteWasm() {
+  const path = bytes("wasi-sync-out.txt");
+  const content = bytes("synced write\n");
+  const contentOffset = 32;
+  const iovOffset = 64;
+  const fdOffset = 80;
+  const writtenOffset = 84;
+  const data = new Uint8Array(96);
+  data.set(path, 0);
+  data.set(content, contentOffset);
+  data.set(u32le(contentOffset), iovOffset);
+  data.set(u32le(content.length), iovOffset + 4);
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i32", "i32", "i64", "i64", "i32", "i32"], results: ["i32"] },
+      { params: ["i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "path_open", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "fd_write", type: 1 },
+      { module: "wasi_snapshot_preview1", name: "fd_sync", type: 2 },
+      { module: "wasi_snapshot_preview1", name: "fd_close", type: 2 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 3 },
+    ],
+    startType: 4,
+    body: [
+      0x41, 0x03, 0x41, 0x00, 0x41, 0x00, 0x41, ...i32(path.length), 0x41, 0x09, 0x42, 0x00, 0x42, 0x00, 0x41, 0x00, 0x41, ...i32(fdOffset), 0x10, 0x00, 0x1a,
+      0x41, ...i32(fdOffset), 0x28, 0x02, 0x00, 0x41, ...i32(iovOffset), 0x41, 0x01, 0x41, ...i32(writtenOffset), 0x10, 0x01, 0x1a,
+      0x41, ...i32(fdOffset), 0x28, 0x02, 0x00, 0x10, 0x02, 0x1a,
+      0x41, ...i32(fdOffset), 0x28, 0x02, 0x00, 0x10, 0x03, 0x1a,
+      0x41, 0x00, 0x10, 0x04,
       0x0b,
     ],
     data,
@@ -1093,12 +1197,19 @@ function u32le(value) {
 }
 
 function memoryStorage() {
+  let flushes = 0;
   return {
     async loadFileSystem() {
       return null;
     },
     saveFileSystem() {},
-    async flush() {},
+    async flush() {
+      flushes += 1;
+      return { flushed: true, flushes };
+    },
+    get flushes() {
+      return flushes;
+    },
     status: () => ({ backend: "memory", bytes: 0 }),
     estimate: async () => ({ backend: "memory", bytes: 0 }),
     resetFileSystem() {},

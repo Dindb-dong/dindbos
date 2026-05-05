@@ -126,4 +126,4 @@ Trace arguments are summarized and secret/token-looking fields are redacted. Tra
 
 The syscall ABI is the target boundary for future WASM and worker-backed user processes. Unsupported native behavior must fail with `ENOSYS` or a specific policy error instead of pretending the browser can provide kernel mode, hardware drivers, arbitrary host filesystem access, native binaries, or unrestricted raw sockets.
 
-The first WASM runner already calls this ABI through the `dindbos.syscall(ptr, len)` import. Full WASI mapping remains a separate compatibility layer.
+The first WASM runner already calls this ABI through the `dindbos.syscall(ptr, len)` import. Async barriers can be started through `dindbos.syscallAsync(ptr, len)`; the runner waits for those pending async syscalls before reporting process completion. Full WASI mapping remains a separate compatibility layer.
