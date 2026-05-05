@@ -1082,7 +1082,10 @@ export class ShellSession {
   fsck(args = []) {
     const repair = args.includes("--repair");
     const dryRun = !repair || args.includes("--dry-run");
-    const result = this.os.fs.checkIntegrity({ repair, dryRun });
+    const result = mergeFsckResults(
+      this.os.fs.checkIntegrity({ repair, dryRun }),
+      safeRead(() => this.os.packages?.checkIntegrity?.({ repair, dryRun }), null),
+    );
     return formatFsck(result);
   }
 
@@ -1802,7 +1805,7 @@ function formatStorage(status) {
 
 function formatFsck(result = {}) {
   const lines = [
-    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
+    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} packages=${Number(result.checkedPackages || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
   ];
   (result.problems || []).slice(0, 20).forEach((entry) => {
     lines.push(`${entry.code} ${entry.path} repairable=${Boolean(entry.repairable)} ${entry.message}`);
@@ -1811,6 +1814,22 @@ function formatFsck(result = {}) {
     lines.push(`repair ${entry.kind} ${entry.path} ${entry.from} -> ${entry.to} dryRun=${Boolean(entry.dryRun)}`);
   });
   return lines.join("\n");
+}
+
+function mergeFsckResults(base = {}, extra = null) {
+  if (!extra) return base;
+  const problems = [...(base.problems || []), ...(extra.problems || [])];
+  const repairs = [...(base.repairs || []), ...(extra.repairs || [])];
+  return {
+    ...base,
+    ok: Boolean(base.ok) && Boolean(extra.ok),
+    repaired: Boolean(base.repaired || extra.repaired),
+    checkedPackages: Number(base.checkedPackages || 0) + Number(extra.checkedPackages || 0),
+    problemCount: problems.length,
+    repairCount: repairs.length,
+    problems,
+    repairs,
+  };
 }
 
 function formatMountStatus(mounts) {

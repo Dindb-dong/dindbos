@@ -373,6 +373,51 @@ export class PackageManager {
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
+  checkIntegrity(options = {}) {
+    this.ensurePackageRoots();
+    const dryRun = options.dryRun !== false;
+    const problems = [];
+    const recordsByInstallPath = new Map();
+    let checkedPackages = 0;
+    this.packageRecordNodes().forEach((node) => {
+      const recordPath = node.path;
+      const record = this.readPackageRecord(recordPath);
+      if (!record?.id) {
+        problems.push(packageFsckProblem("package-record-invalid", recordPath, "package record is unreadable or missing id"));
+        return;
+      }
+      checkedPackages += 1;
+      const installPath = this.os.fs.normalize(record.installPath || `${PACKAGE_INSTALL_ROOT}/${record.id}`);
+      recordsByInstallPath.set(installPath, record);
+      if (!this.os.fs.exists(installPath)) {
+        problems.push(packageFsckProblem("package-root-missing", installPath, `record=${recordPath}`));
+        return;
+      }
+      const root = this.os.fs.resolve(installPath);
+      if (root?.mountType !== "pkgfs") {
+        problems.push(packageFsckProblem("package-root-invalid", installPath, `mountType=${root?.mountType || root?.type || "unknown"} record=${recordPath}`));
+      }
+    });
+    this.os.fs.list(PACKAGE_INSTALL_ROOT, "/", this.system)
+      .filter((node) => node.mountType === "pkgfs")
+      .forEach((node) => {
+        const installPath = this.os.fs.join(PACKAGE_INSTALL_ROOT, node.name);
+        if (!recordsByInstallPath.has(installPath)) {
+          problems.push(packageFsckProblem("package-record-missing", installPath, "pkgfs root has no package DB record"));
+        }
+      });
+    return {
+      ok: problems.length === 0,
+      dryRun,
+      repaired: false,
+      checkedPackages,
+      problemCount: problems.length,
+      repairCount: 0,
+      problems,
+      repairs: [],
+    };
+  }
+
   info(packageId) {
     const id = normalizePackageId(packageId);
     const path = this.packageRecordPath(id);
@@ -1925,6 +1970,10 @@ function normalizePackageId(value) {
     throw new Error(`pkg: invalid package id: ${value || ""}`);
   }
   return id;
+}
+
+function packageFsckProblem(code, path, message) {
+  return { code, path, message, repairable: false };
 }
 
 function normalizeOptionalRelativePath(value) {
