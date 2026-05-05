@@ -272,10 +272,11 @@ Implementation tasks:
 
 - Already present: `ProcessExecutor` provides main-thread and worker execution backends for runtime-managed CPU task processes.
 - Run NodeCompat programs and WASM programs in dedicated workers where possible.
-- Provide a message-based syscall bridge from worker processes back to the runtime kernel.
-- Transfer binary data with `ArrayBuffer`/`MessagePort` instead of JSON-only payloads.
+- Already present: worker executor syscall tasks use a message-based bridge back to the runtime kernel instead of direct VFS access.
+- Already present: worker executor syscall tasks can transfer binary `ArrayBuffer` payloads back to the runtime output buffer.
 - Already present: worker-backed executor tasks support process kill termination, timeout crash propagation, and completion cleanup.
-- Add output buffering for worker-backed user programs once stdout/stderr are routed through the worker bridge.
+- Already present: worker executor syscall tasks return stdout, stderr, binary-byte, and syscall result buffers.
+- Route NodeCompat and WASM stdout/stderr through the worker executor output buffer once those runtimes move behind the bridge.
 - Already present: `/proc/<pid>/status` and `/proc/processes.json` expose runtime, execution backend, executor state, executor kind, and executor detail.
 - Already present: Activity Monitor distinguishes execution backend and executor state in the process table/detail view.
 
@@ -283,7 +284,8 @@ Verification:
 
 - Already present: `npm run smoke:processes` verifies a CPU-heavy worker process does not block main-runtime process spawning while it is busy.
 - Already present: `npm run smoke:processes` verifies worker completion cleanup, timeout crash reporting, kill termination, `/proc` backend reporting, and Activity Monitor backend filtering data.
-- Add tests for worker stdout/stderr delivery and VFS syscall denial once NodeCompat/WASM worker bridges exist.
+- Already present: `npm run smoke:processes` verifies worker stdout/stderr delivery, binary transfer, syscall-backed VFS write/read, syscall tracing, and VFS scope denial.
+- Add tests for NodeCompat/WASM worker stdout/stderr delivery and VFS syscall denial once those runtimes use the bridge.
 
 Completion criteria:
 
