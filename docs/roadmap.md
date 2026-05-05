@@ -238,7 +238,8 @@ Verification:
 - Already present: `npm run smoke:persistent-storage` verifies an OPFS file content record whose hash no longer matches its manifest entry is reported as an inode/content mismatch and journaled.
 - Already present: `npm run smoke:packages` verifies interrupted package activation at the app-registry phase rolls back package root, staging root, package DB record, launcher, app registry state, and package DB operation lock.
 - Already present: `npm run smoke:files` verifies an interrupted TextEdit save through the app save helper preserves the existing file, cleans staged temp files, and still commits on the next successful save.
-- Add smoke coverage for journal replay and failed repair fallback.
+- Already present: `npm run smoke:packages` verifies failed package-root repair fallback preserves the package DB record and audits the refused repair through shell fsck.
+- Add smoke coverage for journal replay.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 
 Completion criteria:
