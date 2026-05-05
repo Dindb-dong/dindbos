@@ -4,12 +4,130 @@ export class NetworkBroker {
   constructor(os, options = {}) {
     this.os = os;
     this.fetchAdapter = options.fetch || null;
+    this.webSocketAdapter = options.webSocket || null;
     this.requests = new Map();
+    this.webSocketSessions = new Map();
+    this.webSocketHistory = [];
     this.history = [];
     this.deniedHosts = [];
     this.nextRequestId = 1;
     this.bytesReceived = 0;
     this.bytesSent = 0;
+  }
+
+  openWebSocket(url, options = {}, context = {}) {
+    const target = normalizeSocketUrl(url);
+    this.assertAllowed(target, "net.websocket", context);
+    const Socket = this.webSocketAdapter || this.os.networkWebSocket || globalThis.WebSocket;
+    if (typeof Socket !== "function") throw new Error("net: WebSocket unavailable in this browser");
+    const id = this.nextId();
+    const openedAt = new Date().toISOString();
+    const record = {
+      id,
+      url: redactedUrl(target),
+      host: target.hostname,
+      requester: requesterId(context),
+      state: "connecting",
+      openedAt,
+      closedAt: "",
+      closeCode: 0,
+      closeReason: "",
+      messagesSent: 0,
+      messagesReceived: 0,
+      bytesSent: 0,
+      bytesReceived: 0,
+    };
+    const socket = new Socket(target.toString(), options.protocols);
+    this.webSocketSessions.set(id, { record, socket });
+    this.attachWebSocketEvents(id, socket);
+    this.writeProcfs();
+    return {
+      id,
+      url: record.url,
+      host: record.host,
+      state: record.state,
+      send: (data) => this.sendWebSocket(id, data),
+      close: (code = 1000, reason = "closed") => this.closeWebSocket(id, code, reason),
+    };
+  }
+
+  sendWebSocket(id, data = "") {
+    const session = this.webSocketSessions.get(id);
+    if (!session) throw new Error(`net: websocket ${id}: no such session`);
+    const text = typeof data === "string" ? data : JSON.stringify(data);
+    session.socket.send?.(text);
+    session.record.messagesSent += 1;
+    session.record.bytesSent += byteLength(text);
+    this.bytesSent += byteLength(text);
+    this.writeProcfs();
+    return { id, bytes: byteLength(text), messagesSent: session.record.messagesSent };
+  }
+
+  closeWebSocket(id, code = 1000, reason = "closed") {
+    const session = this.webSocketSessions.get(id);
+    if (!session) throw new Error(`net: websocket ${id}: no such session`);
+    session.socket.close?.(code, reason);
+    if (session.record.state !== "closed") this.finishWebSocket(id, code, reason);
+    return cloneRecord(session.record);
+  }
+
+  attachWebSocketEvents(id, socket) {
+    const onOpen = () => {
+      const session = this.webSocketSessions.get(id);
+      if (!session) return;
+      session.record.state = "open";
+      this.writeProcfs();
+    };
+    const onMessage = (event = {}) => {
+      const session = this.webSocketSessions.get(id);
+      if (!session) return;
+      const size = byteLength(event.data || "");
+      session.record.messagesReceived += 1;
+      session.record.bytesReceived += size;
+      this.bytesReceived += size;
+      this.writeProcfs();
+    };
+    const onClose = (event = {}) => this.finishWebSocket(id, Number(event.code || 1000), String(event.reason || "closed"));
+    const onError = (event = {}) => {
+      const session = this.webSocketSessions.get(id);
+      if (!session) return;
+      session.record.state = "error";
+      session.record.closeReason = String(event.message || "error");
+      this.writeProcfs();
+    };
+    if (typeof socket.addEventListener === "function") {
+      socket.addEventListener("open", onOpen);
+      socket.addEventListener("message", onMessage);
+      socket.addEventListener("close", onClose);
+      socket.addEventListener("error", onError);
+    } else {
+      socket.onopen = onOpen;
+      socket.onmessage = onMessage;
+      socket.onclose = onClose;
+      socket.onerror = onError;
+    }
+  }
+
+  finishWebSocket(id, code = 1000, reason = "closed") {
+    const session = this.webSocketSessions.get(id);
+    if (!session) return;
+    session.record.state = "closed";
+    session.record.closedAt = new Date().toISOString();
+    session.record.closeCode = Number(code || 0);
+    session.record.closeReason = String(reason || "");
+    this.webSocketSessions.delete(id);
+    this.webSocketHistory.push(cloneRecord(session.record));
+    this.webSocketHistory = this.webSocketHistory.slice(-200);
+    this.appendLog({
+      finishedAt: session.record.closedAt,
+      requester: session.record.requester,
+      host: session.record.host,
+      status: "websocket-closed",
+      bytesReceived: session.record.bytesReceived,
+      url: session.record.url,
+      reason: session.record.closeReason,
+    });
+    this.writeProcfs();
   }
 
   async fetch(url, options = {}, context = {}) {
@@ -113,9 +231,10 @@ export class NetworkBroker {
         bytesSent: this.bytesSent,
       },
       websocket: {
-        sessions: [],
-        supported: false,
-        reason: "not implemented in first-pass broker",
+        sessions: [...this.webSocketSessions.values()].map((session) => cloneRecord(session.record)),
+        history: this.webSocketHistory.slice(-50).map(cloneRecord),
+        supported: Boolean(this.webSocketAdapter || this.os.networkWebSocket || globalThis.WebSocket),
+        reason: "browser WebSocket broker",
       },
       companion: {
         rawTcpUdp: "unsupported-browser-only",
@@ -221,6 +340,17 @@ function normalizeUrl(value) {
   return parsed;
 }
 
+function normalizeSocketUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value || ""));
+  } catch {
+    throw new Error(`net: invalid URL: ${value || ""}`);
+  }
+  if (!["ws:", "wss:"].includes(parsed.protocol)) throw new Error(`net: unsupported WebSocket URL scheme: ${parsed.protocol}`);
+  return parsed;
+}
+
 function redactedUrl(url) {
   const safe = new URL(url.toString());
   [...safe.searchParams.keys()].forEach((key) => {
@@ -275,6 +405,8 @@ function formatRequests(status) {
   return [
     "ID STATUS HOST REQUESTER BYTES URL",
     ...status.activeRequests.map((entry) => `${entry.id} active ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
+    ...status.websocket.sessions.map((entry) => `${entry.id} websocket-${entry.state} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
+    ...status.websocket.history.slice(-20).map((entry) => `${entry.id} websocket-${entry.state} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
     ...status.history.slice(-20).map((entry) => `${entry.id} ${entry.status} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
     ...status.deniedHosts.slice(-20).map((entry) => `- denied ${entry.host} ${entry.requester} 0 ${entry.url}`),
   ].join("\n");

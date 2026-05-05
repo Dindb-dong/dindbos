@@ -779,7 +779,10 @@ export class ShellSession {
       `denied=${status.totals.denied}`,
       `bytesReceived=${status.totals.bytesReceived}`,
       `websocket=${status.websocket.supported ? "supported" : status.websocket.reason}`,
+      `websocketSessions=${status.websocket.sessions.length}`,
       ...status.history.slice(-5).map((entry) => `${entry.status} ${entry.host} ${entry.statusCode || "-"} ${entry.bytesReceived || 0}B`),
+      ...status.websocket.sessions.slice(-5).map((entry) => `websocket-${entry.state} ${entry.host} sent=${entry.messagesSent} recv=${entry.messagesReceived}`),
+      ...status.websocket.history.slice(-5).map((entry) => `websocket-${entry.state} ${entry.host} code=${entry.closeCode}`),
       ...status.deniedHosts.slice(-5).map((entry) => `denied ${entry.host} ${entry.reason}`),
     ].join("\n");
   }

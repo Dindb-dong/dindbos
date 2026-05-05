@@ -424,6 +424,7 @@ export class AppSandbox {
     });
     return {
       fetch: (url, options = {}) => this.os.network.fetch(url, options, context()),
+      openWebSocket: (url, options = {}) => this.os.network.openWebSocket(url, options, context()),
       policy: (url, capability = "net.fetch") => this.os.network.policyProbe(url, context(), capability),
       status: () => {
         this.assertCapability("net.fetch");

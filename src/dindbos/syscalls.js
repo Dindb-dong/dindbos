@@ -55,6 +55,9 @@ export class SyscallDispatcher {
     if (name === "mount.list") return this.mountList(context);
     if (name === "mount.mount") return this.mount(args, context);
     if (name === "mount.unmount") return this.unmount(args, context);
+    if (name === "net.status") return this.netStatus(context);
+    if (name === "net.policy") return this.netPolicy(args, context);
+    if (name === "net.dns") return this.netDns(args, context);
     if (name === "process.list") return this.processList(context);
     if (name === "process.get") return this.processGet(args, context);
     if (name === "process.log") return this.processLog(args, context);
@@ -234,6 +237,23 @@ export class SyscallDispatcher {
     this.assertCapability("mount.manage", context);
     const path = this.normalizedPath(args, context);
     return this.os.unmountVirtual(path, context.principal);
+  }
+
+  netStatus(context) {
+    this.assertCapability("net.fetch", context);
+    return this.os.network.status();
+  }
+
+  netPolicy(args, context) {
+    const url = String(args.url || "");
+    if (!url) throw syscallError("EINVAL", "syscall: net.policy needs url");
+    return this.os.network.policyProbe(url, context, args.capability || "net.fetch");
+  }
+
+  netDns(args, context) {
+    const host = String(args.host || args.url || "");
+    if (!host) throw syscallError("EINVAL", "syscall: net.dns needs host");
+    return this.os.network.dnsProbe(host, context);
   }
 
   processList(context) {
