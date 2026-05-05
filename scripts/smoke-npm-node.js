@@ -159,11 +159,11 @@ assert(pathWin32Import.status === 0, `path/win32 import exited with ${pathWin32I
 assert(pathWin32Import.output.trim() === "C:\\app\\file.md nested\\file.md", `unexpected path/win32 import output: ${pathWin32Import.output}`);
 
 const fsPromisesRequire = node.evaluate(
-  "const fs = require('fs'); console.log(typeof fs.promises.readFile, typeof fs.promises.readdir, typeof fs.promises.stat);",
+  "const fs = require('fs'); console.log(typeof fs.promises.readFile, typeof fs.promises.readdir, typeof fs.promises.stat, typeof fs.promises.fsync);",
   cwd,
 );
 assert(fsPromisesRequire.status === 0, `fs promises require exited with ${fsPromisesRequire.status}`);
-assert(fsPromisesRequire.output.trim() === "function function function", `unexpected fs promises require output: ${fsPromisesRequire.output}`);
+assert(fsPromisesRequire.output.trim() === "function function function function", `unexpected fs promises require output: ${fsPromisesRequire.output}`);
 
 const fsPromisesImport = await node.evaluate(
   [
@@ -182,6 +182,22 @@ const fsPromisesImport = await node.evaluate(
 );
 assert(fsPromisesImport.status === 0, `fs promises import exited with ${fsPromisesImport.status}`);
 assert(fsPromisesImport.output.trim() === "async note note.txt true []", `unexpected fs promises import output: ${fsPromisesImport.output}`);
+
+const beforePromiseFsyncFlushes = os.storageFlushes;
+const fsPromisesFsyncImport = await node.evaluate(
+  [
+    "import { promises as fs } from 'node:fs';",
+    "await fs.writeFile('./async-sync.txt', 'sync me');",
+    "await fs.fsync(1);",
+    "await fs.fdatasync(1);",
+    "console.log('synced', await fs.readFile('./async-sync.txt', 'utf8'));",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsPromisesFsyncImport.status === 0, `fs promises fsync import exited with ${fsPromisesFsyncImport.status}`);
+assert(fsPromisesFsyncImport.output.trim() === "synced sync me", `unexpected fs promises fsync output: ${fsPromisesFsyncImport.output}`);
+assert(os.storageFlushes === beforePromiseFsyncFlushes + 2, "fs.promises fsync/fdatasync did not reach storage barrier");
 
 const fsCallbacksRequire = node.evaluate(
   [
@@ -228,6 +244,32 @@ const fsCallbacksImport = await node.evaluate(
 );
 assert(fsCallbacksImport.status === 0, `fs callbacks import exited with ${fsCallbacksImport.status}`);
 assert(fsCallbacksImport.output.trim() === "esm callback note.txt true 4", `unexpected fs callbacks import output: ${fsCallbacksImport.output}`);
+
+const beforeCallbackFsyncFlushes = os.storageFlushes;
+const fsCallbackFsyncImport = await node.evaluate(
+  [
+    "import { fsync, fdatasync } from 'node:fs';",
+    "const call = (fn, fd) => new Promise((resolve, reject) => fn(fd, (error) => error ? reject(error) : resolve()));",
+    "await call(fsync, 1);",
+    "await call(fdatasync, 1);",
+    "console.log('callback-sync');",
+  ].join("\n"),
+  cwd,
+  { inputType: "module" },
+);
+assert(fsCallbackFsyncImport.status === 0, `fs callback fsync import exited with ${fsCallbackFsyncImport.status}`);
+assert(fsCallbackFsyncImport.output.trim() === "callback-sync", `unexpected fs callback fsync output: ${fsCallbackFsyncImport.output}`);
+assert(os.storageFlushes === beforeCallbackFsyncFlushes + 2, "callback fsync/fdatasync did not reach storage barrier");
+
+const fsSyncFsyncPolicy = node.evaluate(
+  [
+    "const fs = require('fs');",
+    "try { fs.fsyncSync(1); } catch (error) { console.log(error.message); }",
+  ].join("\n"),
+  cwd,
+);
+assert(fsSyncFsyncPolicy.status === 0, `fs sync fsync policy exited with ${fsSyncFsyncPolicy.status}`);
+assert(fsSyncFsyncPolicy.output.includes("NodeCompat fsyncSync is unavailable"), `unexpected fsyncSync policy output: ${fsSyncFsyncPolicy.output}`);
 
 const fsCopyFileRequire = node.evaluate(
   [
@@ -1032,6 +1074,7 @@ function bootOs() {
   const permissions = new PermissionPolicy();
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
   const system = permissions.systemPrincipal();
+  let storageFlushes = 0;
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/tmp", "/", { owner: "root", group: "root", permissions: "drwxrwxrwx" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
@@ -1045,6 +1088,25 @@ function bootOs() {
       user: "guest",
     },
     cache: new RuntimeCacheStore({ cacheApi: null }),
+    storage: {
+      status: () => ({ backend: "memory", bytes: 0 }),
+      flush: async () => {
+        storageFlushes += 1;
+        return { flushed: true };
+      },
+    },
+    get storageFlushes() {
+      return storageFlushes;
+    },
+    async syscallAsync(name) {
+      if (name !== "storage.sync") return { ok: false, error: { code: "ENOSYS", message: `syscall: ${name}: not implemented`, syscall: name } };
+      storageFlushes += 1;
+      return { ok: true, value: { synced: true, backend: "memory" } };
+    },
+    async flushPersistentFileSystem() {
+      storageFlushes += 1;
+      return { flushed: true };
+    },
   };
 }
 

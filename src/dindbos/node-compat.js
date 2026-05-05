@@ -232,6 +232,17 @@ export class NodeCompat {
     if (!this.allowedPackages || this.allowedPackages.has(packageName)) return;
     throw new Error(`NodeCompat dependency not declared: ${packageName}`);
   }
+
+  async syncStorage() {
+    if (typeof this.os.syscallAsync === "function") {
+      const result = await this.os.syscallAsync("storage.sync", {}, {});
+      if (result?.ok === false) throw new Error(result.error?.message || "NodeCompat storage.sync failed");
+      return result?.value || {};
+    }
+    if (typeof this.os.flushPersistentFileSystem === "function") return this.os.flushPersistentFileSystem();
+    await this.os.storage?.flush?.();
+    return this.os.persistenceStatus?.() || {};
+  }
 }
 
 class CommonJsRuntime {
@@ -536,6 +547,14 @@ class CommonJsRuntime {
         }
         this.os.fs.writeOrCreateFileBytes(resolvedDestination, this.os.fs.readFileBytes(resolvedSource, "/", this.node.system), "/", {}, this.node.system);
       },
+      fsyncSync: (fd) => {
+        assertNodeFd(fd, "fsyncSync");
+        throw new Error("NodeCompat fsyncSync is unavailable in the browser runtime; use fs.promises.fsync or callback fs.fsync.");
+      },
+      fdatasyncSync: (fd) => {
+        assertNodeFd(fd, "fdatasyncSync");
+        throw new Error("NodeCompat fdatasyncSync is unavailable in the browser runtime; use fs.promises.fdatasync or callback fs.fdatasync.");
+      },
       readFile: (path, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.readFileSync(path, optionalOptions(options))),
       writeFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.writeFileSync(path, data)),
       appendFile: (path, data, options, callback) => invokeFsCallback(optionalCallback(options, callback), () => fsModule.appendFileSync(path, data)),
@@ -548,6 +567,14 @@ class CommonJsRuntime {
       unlink: (path, callback) => invokeFsCallback(callback, () => fsModule.unlinkSync(path)),
       rename: (oldPath, newPath, callback) => invokeFsCallback(callback, () => fsModule.renameSync(oldPath, newPath)),
       copyFile: (source, destination, mode, callback) => invokeFsCallback(optionalCallback(mode, callback), () => fsModule.copyFileSync(source, destination, optionalOptions(mode) || 0)),
+      fsync: (fd, callback) => invokeFsCallbackAsync(callback, () => {
+        assertNodeFd(fd, "fsync");
+        return this.node.syncStorage();
+      }),
+      fdatasync: (fd, callback) => invokeFsCallbackAsync(callback, () => {
+        assertNodeFd(fd, "fdatasync");
+        return this.node.syncStorage();
+      }),
       stat: (path, callback) => invokeFsCallback(callback, () => fsModule.statSync(path)),
       lstat: (path, callback) => invokeFsCallback(callback, () => fsModule.lstatSync(path)),
       access: (path, mode, callback) =>
@@ -598,6 +625,14 @@ class CommonJsRuntime {
       unlink: async (path) => fsModule.unlinkSync(path),
       rename: async (oldPath, newPath) => fsModule.renameSync(oldPath, newPath),
       copyFile: async (source, destination, mode = 0) => fsModule.copyFileSync(source, destination, mode),
+      fsync: async (fd) => {
+        assertNodeFd(fd, "fs.promises.fsync");
+        await this.node.syncStorage();
+      },
+      fdatasync: async (fd) => {
+        assertNodeFd(fd, "fs.promises.fdatasync");
+        await this.node.syncStorage();
+      },
       stat: async (path) => fsModule.statSync(path),
       lstat: async (path) => fsModule.lstatSync(path),
       access: async (path) => {
@@ -2669,6 +2704,19 @@ function invokeFsCallback(callback, operation) {
     return;
   }
   callback(null, result);
+}
+
+function invokeFsCallbackAsync(callback, operation) {
+  if (typeof callback !== "function") throw new Error("fs: callback must be a function");
+  Promise.resolve()
+    .then(operation)
+    .then((result) => callback(null, result), (error) => callback(error));
+}
+
+function assertNodeFd(fd, name) {
+  const value = Number(fd);
+  if (!Number.isInteger(value) || value < 0) throw new Error(`ERR_INVALID_ARG_TYPE: ${name}: fd must be a non-negative integer`);
+  return value;
 }
 
 function normalizeStreamOptions(options = {}) {
