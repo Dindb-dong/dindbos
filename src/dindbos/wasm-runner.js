@@ -35,6 +35,7 @@ export class WasmRunner {
     let instance = null;
     let crashed = false;
     let crashReportPath = "";
+    let descriptorOutput = { stdout: "", stderr: "" };
     const env = this.environment(options, process);
     const context = {
       process,
@@ -114,17 +115,22 @@ export class WasmRunner {
         },
         fd_write: (fd, iovsPtr, iovsLength, nwrittenPtr) => {
           const descriptor = Number(fd);
-          if (![1, 2].includes(descriptor)) return 8;
           const view = memoryView();
           let written = 0;
-          for (let index = 0; index < Number(iovsLength || 0); index += 1) {
-            const base = Number(iovsPtr || 0) + index * 8;
-            const ptr = view.getUint32(base, true);
-            const length = view.getUint32(base + 4, true);
-            const text = readString(ptr, length);
-            if (descriptor === 1) stdout.push(text);
-            else stderr.push(text);
-            written += length;
+          try {
+            for (let index = 0; index < Number(iovsLength || 0); index += 1) {
+              const base = Number(iovsPtr || 0) + index * 8;
+              const ptr = view.getUint32(base, true);
+              const length = view.getUint32(base + 4, true);
+              const text = readString(ptr, length);
+              if (this.os.descriptors?.write) this.os.descriptors.write(process, { fd: descriptor, data: text }, context);
+              else if (descriptor === 1) stdout.push(text);
+              else if (descriptor === 2) stderr.push(text);
+              else return 8;
+              written += length;
+            }
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
           }
           writeU32(nwrittenPtr, written);
           return 0;
@@ -166,11 +172,13 @@ export class WasmRunner {
       } else {
         status = 1;
         crashed = true;
+        descriptorOutput = this.os.descriptors?.standardStreams?.(process.pid) || descriptorOutput;
         stderr.push(error.message || String(error));
         this.os.processes.crash(process.pid, error);
         crashReportPath = process.crashReportPath || "";
       }
     } finally {
+      descriptorOutput = this.os.descriptors?.standardStreams?.(process.pid) || descriptorOutput;
       if (this.os.processes.get(process.pid)) this.os.processes.kill(process.pid, status === 0 ? "exited" : `exited-${status}`);
     }
     return {
@@ -178,8 +186,8 @@ export class WasmRunner {
       path: options.path || "",
       argv: [...(options.argv || [])],
       env,
-      stdout: stdout.join(""),
-      stderr: stderr.join(""),
+      stdout: `${stdout.join("")}${descriptorOutput.stdout}`,
+      stderr: `${stderr.join("")}${descriptorOutput.stderr}`,
       status,
       crashed,
       crashReportPath,
