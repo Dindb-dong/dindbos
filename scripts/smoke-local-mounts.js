@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile as readNodeFile, readdir, rename as renameNode
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { LocalFolderMountManager } from "../src/dindbos/local-folder-mount.js";
+import { KernelObjectRegistry } from "../src/dindbos/kernel-objects.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 
@@ -207,6 +208,11 @@ const handle = new MemoryDirectoryHandle("disk", {
 });
 const mounted = await mounts.mountLocal("disk", { handle, persist: false });
 assert(mounted.path === "/mnt/disk", `mounted path mismatch: ${mounted.path}`);
+assert(mounted.objectId && mounted.handleId, "mounted local folder did not expose kernel object and handle ids");
+const mountObject = os.objects.list({ type: "mount", status: "active" }).find((object) => object.metadata?.path === "/mnt/disk");
+assert(mountObject?.rights.includes("read") && mountObject.rights.includes("write") && mountObject.rights.includes("sync"), "local mount kernel object rights mismatch");
+const mountHandle = os.objects.getHandle(mounted.handleId);
+assert(mountHandle?.objectId === mountObject.id && mountHandle.rights.includes("write"), "local mount handle did not target mount object");
 assert(os.mountTableWrites.includes("local-mount"), "local mount did not refresh mount table procfs");
 assert(await mounts.readFile("/mnt/disk/note.txt") === "external v1", "initial local mount mirror did not read external file");
 const fileMetadata = await mounts.stat("/mnt/disk/note.txt");
@@ -276,6 +282,17 @@ fsck = await mounts.checkIntegrity({ repair: true, dryRun: false });
 assert(fsck.repaired, "local mount fsck repair did not report repaired state");
 const persistedAfterRepair = await os.storage.readValue("dindbos:local-folder-mounts");
 assert(persistedAfterRepair.mounts.length === 1 && persistedAfterRepair.mounts[0].path === "/mnt/disk", "local mount fsck repair did not remove only stale metadata");
+const protectedHandle = new MemoryDirectoryHandle("protected", {
+  "secret.txt": new MemoryFileHandle("secret.txt", "handle gated", "text/plain", 2_000),
+});
+const protectedMount = await mounts.mountLocal("protected", { handle: protectedHandle, persist: false });
+os.objects.revokeHandle(protectedMount.handleId, "local-mount-handle-smoke");
+await assertRejects(
+  () => mounts.readFile("/mnt/protected/secret.txt"),
+  "stale handle",
+);
+await mounts.unmount("/mnt/protected");
+assert(os.objects.list({ type: "mount", status: "revoked" }).some((object) => object.metadata?.path === "/mnt/protected"), "revoked local mount object missing diagnostics");
 
 console.log("local mounts smoke ok permission-denied metadata-limits directory-copy-policy native-rename sync-conflict");
 
@@ -283,7 +300,7 @@ function bootOs() {
   const permissions = new PermissionPolicy();
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
   const storageValues = new Map();
-  return {
+  const os = {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
@@ -301,6 +318,8 @@ function bootOs() {
       async flush() {},
     },
   };
+  os.objects = new KernelObjectRegistry(os);
+  return os;
 }
 
 async function smokeNativeRenameHelper(os) {
