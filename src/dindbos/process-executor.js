@@ -112,6 +112,7 @@ const handleWasmTask = async (message) => {
   const writeU32 = (ptr, value) => memoryView().setUint32(Number(ptr || 0), Number(value || 0), true);
   const writeMemory = (ptr, bytes) => readMemory(ptr, bytes.length).set(bytes);
   const checkDeadline = () => {
+    assertMemoryLimit();
     if (message.aborted) {
       throw new WorkerWasmAbort("wasm: aborted" + (message.abortReason ? ": " + String(message.abortReason) : ""));
     }

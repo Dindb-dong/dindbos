@@ -55,6 +55,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/slow-deadline.wasm", deadlineWasm(
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/grow-memory.wasm", growMemoryWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-hello.wasm", wasiHelloWasm(), "/", {
   owner: "guest",
   group: "users",
@@ -238,6 +244,14 @@ assert(timeoutRun.status === 1, `wasm cooperative timeout status mismatch: ${tim
 assert(timeoutRun.crashed === true, "wasm cooperative timeout did not report crashed=true");
 assert(timeoutRun.stderr.includes("cooperative timeout after 1ms"), "wasm cooperative timeout stderr missing detail");
 
+const growMemoryRun = await os.wasm.runFile("/home/guest/bin/grow-memory.wasm", "/home/guest/bin", {
+  maxMemoryPages: 1,
+  principal: os.permissions.principal(os.session),
+});
+assert(growMemoryRun.status === 1, `wasm grow memory limit status mismatch: ${growMemoryRun.status}`);
+assert(growMemoryRun.crashed === true, "wasm grow memory limit did not report crashed=true");
+assert(growMemoryRun.stderr.includes("memory pages 2 exceed limit 1"), "wasm grow memory limit stderr missing page detail");
+
 const wasiRun = await os.wasm.runFile("/home/guest/bin/wasi-hello.wasm", "/home/guest/bin", {
   argv: ["wasi-hello.wasm"],
   principal: os.permissions.principal(os.session),
@@ -286,6 +300,19 @@ try {
 }
 assert(workerAbortError?.code === "EIO", `worker wasm cooperative abort error code mismatch: ${workerAbortError?.code}`);
 assert(String(workerAbortError?.message || "").includes("wasm: aborted: worker smoke abort"), "worker wasm cooperative abort error missing reason");
+
+let workerGrowMemoryError = null;
+try {
+  await os.wasm.runFile("/home/guest/bin/grow-memory.wasm", "/home/guest/bin", {
+    executionBackend: "worker",
+    maxMemoryPages: 1,
+    principal: os.permissions.principal(os.session),
+  });
+} catch (error) {
+  workerGrowMemoryError = error;
+}
+assert(workerGrowMemoryError?.code === "EIO", `worker wasm grow memory limit error code mismatch: ${workerGrowMemoryError?.code}`);
+assert(String(workerGrowMemoryError?.message || "").includes("memory pages 2 exceed limit 1"), "worker wasm grow memory limit error missing page detail");
 
 const wasiCatRun = await os.wasm.runFile("/home/guest/bin/wasi-cat.wasm", "/home/guest/bin", {
   argv: ["wasi-cat.wasm"],
@@ -380,7 +407,7 @@ os.fs.remove("/home/guest/bin/wasi-hardlink-source.txt", "/", {}, os.permissions
 assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "changed through link\n", "wasi hard link did not survive source removal");
 assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 1, "wasi hard link count did not update after source removal");
 
-console.log("wasm smoke ok shell argv env syscall exit permission scopes crash memory deadline wasi worker stdin path-open rights filestat readdir mkdir remove rename symlink hardlink process");
+console.log("wasm smoke ok shell argv env syscall exit permission scopes crash memory deadline grow wasi worker stdin path-open rights filestat readdir mkdir remove rename symlink hardlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -503,6 +530,23 @@ function deadlineWasm(nopCount = 0) {
     startType: 1,
     body: [
       ...Array.from({ length: nopCount }, () => 0x01),
+      0x10, 0x00,
+      0x0b,
+    ],
+    data: new Uint8Array(),
+  });
+}
+
+function growMemoryWasm() {
+  return wasmModule({
+    types: [
+      { params: [], results: ["i32"] },
+      { params: [], results: ["i32"] },
+    ],
+    imports: [{ name: "checkDeadline", type: 0 }],
+    startType: 1,
+    body: [
+      0x41, 0x01, 0x40, 0x00, 0x1a,
       0x10, 0x00,
       0x0b,
     ],

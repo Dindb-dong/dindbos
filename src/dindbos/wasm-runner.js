@@ -92,6 +92,7 @@ export class WasmRunner {
     };
     const readString = (ptr, length) => new TextDecoder().decode(readMemory(ptr, length));
     const checkDeadline = () => {
+      assertWasmMemoryLimit(instance, options.maxMemoryPages);
       if (options.abortSignal?.aborted || options.aborted) {
         throw new WasmAbort(`wasm: aborted${abortReason(options)}`);
       }
