@@ -379,6 +379,40 @@ const addedPublisher = packages.addTrustedPublisher(trustedPublisher);
 assert(addedPublisher.id === trustedPublisher.id, "trusted publisher add returned wrong id");
 assert(packages.trustedPublishers().some((publisher) => publisher.publicKey === trustedPublisher.publicKey), "trusted publisher was not persisted");
 
+const remoteQuotaSigned = await signedPackageManifest(packageManifest("remote-quota", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    url: "quota-app.js",
+    size: 8_192,
+    integrity: await sha256Integrity("export const quota = true;\n"),
+  },
+]));
+let remoteQuotaManifest = remoteQuotaSigned.manifest;
+const remoteQuotaOs = createDindbOSTestRuntime();
+remoteQuotaOs.storage = {
+  reservations: [],
+  reserveStorageBytes(bytes, details = {}) {
+    this.reservations.push({ bytes, details });
+    throw new Error(`storage quota exceeded: required=${bytes} available=1 quota=1`);
+  },
+};
+remoteQuotaOs.packages.addTrustedPublisher(remoteQuotaSigned.publisher);
+const remoteQuotaFetch = countedFetch(async (url) => {
+  if (url.endsWith("dindbos.app.json")) return response(JSON.stringify(remoteQuotaManifest));
+  if (url.endsWith("quota-app.js")) return response("export const quota = true;\n");
+  return { ok: false, status: 404, headers: new Map(), text: async () => "" };
+});
+await assertRejects(
+  () => remoteQuotaOs.packages.installFromUrl("https://packages.example/quota/dindbos.app.json", { fetch: remoteQuotaFetch, registry: "community" }),
+  "storage quota exceeded",
+);
+assert(remoteQuotaOs.storage.reservations.length === 1 && remoteQuotaOs.storage.reservations[0].details.source === "remote", "remote package install did not reserve quota");
+assert(remoteQuotaFetch.count === 1, `remote quota denial fetched package file: ${remoteQuotaFetch.count}`);
+assert(!remoteQuotaOs.fs.exists("/opt/remote-quota"), "remote quota denial mutated install directory");
+assert(!remoteQuotaOs.fs.exists("/var/lib/dindbos/packages/remote-quota.json"), "remote quota denial wrote package record");
+assert(!remoteQuotaOs.apps.apps.has("remote-quota"), "remote quota denial registered app");
+
 await assertRejects(
   () => packages.installFromUrl("https://packages.example/tampered/dindbos.app.json", { fetch: remoteFetch, registry: "community" }),
   "signature invalid",
