@@ -100,6 +100,9 @@ assert(userDb.users["grace-hopper"].home === "/home/grace-hopper", "user databas
 assertRejects(() => os.createUser("Grace Hopper"), "already exists");
 result = await shell.executeAsync("id");
 assert(result.output.includes("uid=") && result.output.includes("(ada-lovelace)") && result.output.includes("groups=100(users)"), `id did not expose numeric credentials: ${result.output}`);
+result = await shell.executeAsync("pkg prefs set api-lab channel beta");
+assert(result.status === 0 && result.output.includes('"beta"'), `package preference set failed: ${result.output}`);
+assert(JSON.parse(os.fs.readFile("/var/lib/dindbos/package-preferences/ada-lovelace.json")).packages["api-lab"].channel === "beta", "per-user package preference was not persisted");
 const system = os.permissions.systemPrincipal();
 os.ensureDirectoryPath("/home/grace-hopper/Team", { leafOwner: "grace-hopper", leafGroup: "release-team", principal: system });
 os.fs.writeOrCreateFile("/home/grace-hopper/Team/plan.txt", "release\n", "/", {
@@ -125,6 +128,10 @@ result = await shell.executeAsync("loginctl switch grace-hopper");
 assert(result.status === 0 && result.output.includes("switched to grace-hopper"), `loginctl switch failed: ${result.output}`);
 assert(shell.env.USER === "grace-hopper" && shell.cwd === "/home/grace-hopper", "shell did not adopt switched session user");
 assert(!shell.history.includes("mkdir Projects"), "switched session leaked previous user's shell history");
+result = await shell.executeAsync("pkg prefs list");
+assert(result.status === 0 && result.output === "pkg: no package preferences", `switched user saw another user's package preferences: ${result.output}`);
+result = await shell.executeAsync("pkg prefs set api-lab channel stable");
+assert(result.status === 0 && result.output.includes('"stable"'), `switched user package preference set failed: ${result.output}`);
 result = await shell.executeAsync("whoami");
 assert(result.status === 0 && result.output === "grace-hopper", `switched whoami mismatch: ${result.output}`);
 result = await shell.executeAsync("cat Team/plan.txt");
@@ -134,6 +141,8 @@ assert(result.status === 0 && shell.env.USER === "ada-lovelace", "loginctl switc
 const graceHistory = JSON.parse(os.fs.readFile("/var/lib/dindbos/shell-history/grace-hopper.json"));
 assert(graceHistory.entries.includes("whoami") && graceHistory.entries.includes("cat Team/plan.txt"), "switched user's shell history was not persisted");
 assert(!JSON.parse(os.fs.readFile(adaHistoryPath)).entries.includes("cat Team/plan.txt"), "shell history leaked across users");
+assert(JSON.parse(os.fs.readFile("/var/lib/dindbos/package-preferences/grace-hopper.json")).packages["api-lab"].channel === "stable", "switched user's package preference was not persisted");
+assert(JSON.parse(os.fs.readFile("/var/lib/dindbos/package-preferences/ada-lovelace.json")).packages["api-lab"].channel === "beta", "package preferences leaked across users");
 const trustKey = "ed25519-pub:v1:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 result = await shell.executeAsync(`pkg trust add org.session ${trustKey} Session Publisher`);
 assert(result.status === 1 && result.output.includes("administrator required"), `non-admin package trust change was not denied: ${result.output}`);

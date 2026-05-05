@@ -58,6 +58,7 @@ const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
 const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
 const REMOTE_SYNC_SNAPSHOT_KEY = "dindbos:remote-sync:last-snapshot";
 const REMOTE_SYNC_APPLY_STATUS_PATH = "/var/run/dindbos/remote-sync-apply.json";
+const PACKAGE_PREFERENCES_DIR = "/var/lib/dindbos/package-preferences";
 const WELL_KNOWN_GROUP_IDS = { root: 0, admins: 10, users: 100, packages: 101 };
 const WELL_KNOWN_USER_IDS = { root: 0, guest: 1000 };
 
@@ -2004,6 +2005,75 @@ export class DindbOS {
     return entry;
   }
 
+  packagePreferences(userName = this.session.user) {
+    const user = sanitizeUserName(userName || this.session.user);
+    const path = this.packagePreferencesPath(user);
+    if (!this.fs.exists(path)) return { version: 1, user, updatedAt: "", packages: {} };
+    const parsed = safeJson(this.fs.readFile(path, "/", this.permissions.systemPrincipal()), null);
+    if (!parsed || parsed.version !== 1 || parsed.user !== user || !parsed.packages || typeof parsed.packages !== "object") {
+      return { version: 1, user, updatedAt: "", packages: {} };
+    }
+    return {
+      version: 1,
+      user,
+      updatedAt: String(parsed.updatedAt || ""),
+      packages: JSON.parse(JSON.stringify(parsed.packages)),
+    };
+  }
+
+  setPackagePreference(packageId, key, value, userName = this.session.user) {
+    const user = sanitizeUserName(userName || this.session.user);
+    const id = sanitizeIdentifier(packageId, "");
+    const preferenceKey = sanitizeIdentifier(key, "");
+    if (!id) throw new Error("package preference package id is required");
+    if (!preferenceKey) throw new Error("package preference key is required");
+    const record = this.packagePreferences(user);
+    record.packages[id] = record.packages[id] || {};
+    record.packages[id][preferenceKey] = normalizePreferenceValue(value);
+    this.writePackagePreferences(record);
+    return record.packages[id][preferenceKey];
+  }
+
+  removePackagePreference(packageId, key, userName = this.session.user) {
+    const user = sanitizeUserName(userName || this.session.user);
+    const id = sanitizeIdentifier(packageId, "");
+    const preferenceKey = sanitizeIdentifier(key, "");
+    const record = this.packagePreferences(user);
+    const existed = Boolean(record.packages[id] && Object.hasOwn(record.packages[id], preferenceKey));
+    if (record.packages[id]) {
+      delete record.packages[id][preferenceKey];
+      if (!Object.keys(record.packages[id]).length) delete record.packages[id];
+    }
+    this.writePackagePreferences(record);
+    return existed;
+  }
+
+  writePackagePreferences(record) {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/lib", "root", system);
+    this.ensureSystemDirectory("/var/lib/dindbos", "root", system);
+    this.ensureSystemDirectory(PACKAGE_PREFERENCES_DIR, "root", system);
+    const payload = {
+      version: 1,
+      user: sanitizeUserName(record.user || this.session.user),
+      updatedAt: new Date().toISOString(),
+      packages: JSON.parse(JSON.stringify(record.packages || {})),
+    };
+    this.fs.writeOrCreateFile(this.packagePreferencesPath(payload.user), `${JSON.stringify(payload, null, 2)}\n`, "/", {
+      owner: payload.user,
+      group: "users",
+      permissions: "-rw-------",
+      mime: "application/json",
+    }, system);
+    return payload;
+  }
+
+  packagePreferencesPath(userName = this.session.user) {
+    const user = encodeURIComponent(sanitizeUserName(userName || this.session.user));
+    return `${PACKAGE_PREFERENCES_DIR}/${user && user !== "." && user !== ".." ? user : "guest"}.json`;
+  }
+
   sessionStatus() {
     return {
       instanceId: this.instanceId,
@@ -2975,6 +3045,17 @@ function safeJson(value, fallback) {
     return JSON.parse(value);
   } catch {
     return fallback;
+  }
+}
+
+function normalizePreferenceValue(value) {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value !== "" && Number.isFinite(Number(value))) return Number(value);
+  try {
+    return JSON.parse(value);
+  } catch {
+    return String(value ?? "");
   }
 }
 
