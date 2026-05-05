@@ -307,8 +307,8 @@ Implementation tasks:
 - Already present: WASI `fd_write` for stdout/stderr writes through the shared descriptor table instead of a separate direct output path.
 - Already present: WASI `fd_read` reads through the shared descriptor table, including stdin supplied by shell pipelines and `runFile({ stdin })`.
 - Already present: WASI programs receive a preopened cwd descriptor and can use `path_open` plus `fd_read`/`fd_write`/`fd_close` for scoped VFS file read/write through opened descriptors.
+- Already present: shell pipelines pass segment output through transient pipe descriptors owned by a short-lived `shell:pipeline` process while preserving existing shell pipeline output semantics.
 - Add `ioctl`-style descriptor syscalls once terminal and device behavior needs structured control operations.
-- Back shell pipelines with real pipe descriptors instead of only command string plumbing.
 - Already present: `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom` can be opened through descriptor syscalls.
 - Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
 - Add `/dev/clipboard` where browser policy allows.
@@ -321,7 +321,8 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies WASI `fd_read` from stdin plus shell pipeline stdin delivery into executable `.wasm` files.
 - Already present: `npm run smoke:wasm` verifies WASI `path_open` read/write against scoped VFS files through opened descriptors.
 - Already present: `npm run smoke:descriptors` verifies `/dev/tty` output through the process stdout stream.
-- Add smoke coverage for pipe chaining, entropy device byte semantics, and richer WASI descriptor rights/flags.
+- Already present: `npm run smoke:shell` verifies shell pipeline output is delivered through descriptor-backed transient pipeline processes and that descriptor/procfs cleanup runs after pipeline exit.
+- Add smoke coverage for multi-process pipe chaining, entropy device byte semantics, and richer WASI descriptor rights/flags.
 
 Completion criteria:
 
@@ -592,7 +593,7 @@ The next practical sequence:
 2. Add the browser-native syscall ABI and route high-level app APIs through it where practical.
 3. Add WASM user processes on top of the syscall ABI with VFS, argv/env, stdio, permissions, and `/proc` visibility.
 4. Move heavy NodeCompat/WASM execution into worker-backed process executors with kill, timeout, crash, and descriptor cleanup behavior.
-5. Add descriptor-backed IO, real pipes, pseudo-devices, and TTY-like Terminal sessions.
+5. Expand descriptor-backed IO from transient shell pipe descriptors into per-command process groups, pseudo-terminals, richer device nodes, and WASI rights/flags.
 6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, and native-adjacent companions only after the syscall/WASM/worker/descriptor base is verifiable.
 7. Continue Browser.app, document viewer, package, and UX work only when real workloads expose gaps in the already completed first-pass surfaces.
 

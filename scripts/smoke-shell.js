@@ -1,14 +1,28 @@
 #!/usr/bin/env node
 import { ShellSession } from "../src/dindbos/shell.js";
+import { DescriptorManager } from "../src/dindbos/descriptors.js";
+import { EventBus } from "../src/dindbos/event-bus.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
+import { ProcessManager } from "../src/dindbos/process-manager.js";
 import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 
 const shell = new ShellSession(bootOs());
+let descriptorPipeCalls = 0;
+const originalPipe = shell.os.descriptors.pipe.bind(shell.os.descriptors);
+shell.os.descriptors.pipe = (...args) => {
+  descriptorPipeCalls += 1;
+  return originalPipe(...args);
+};
 
 let result = await shell.executeAsync('echo "alpha|beta" | grep "|"');
 assert(result.status === 0, `quoted pipe pipeline status mismatch: ${result.status}`);
 assert(result.output === "alpha|beta", `quoted pipe output mismatch: ${JSON.stringify(result.output)}`);
+assert(descriptorPipeCalls >= 2, `pipeline did not use descriptor pipes: ${descriptorPipeCalls}`);
+const pipelineExit = shell.os.processes.history.find((entry) => entry.appId === "shell:pipeline" && entry.state === "pipeline-exit");
+assert(pipelineExit, "shell pipeline process exit was not recorded");
+assert(!shell.os.descriptors.tables.has(pipelineExit.pid), "shell pipeline descriptor table remained after exit");
+assert(!shell.os.fs.exists(`/proc/${pipelineExit.pid}/fd.json`), "shell pipeline fd procfs remained after exit");
 
 result = await shell.executeAsync('echo "left;right"; echo done');
 assert(result.status === 0, `quoted semicolon command status mismatch: ${result.status}`);
@@ -282,15 +296,15 @@ function bootOs() {
         return idOrKey;
       },
     },
-    processes: {
-      list: () => [],
-      table: () => "",
-      kill: (pid) => {
-        throw new Error(`kill: ${pid}: no such process`);
-      },
-    },
     openPath: () => null,
   };
+  os.bus = new EventBus();
+  os.windows = {
+    has: () => false,
+    close: () => null,
+  };
+  os.processes = new ProcessManager(os);
+  os.descriptors = new DescriptorManager(os);
   os.syscalls = new SyscallDispatcher(os);
   os.syscall = (name, args = {}, context = {}) => os.syscalls.call(name, args, context);
   return os;
