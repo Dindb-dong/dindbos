@@ -25,6 +25,8 @@ The OS-level lifecycle is exposed through `os.lifecycleStatus()` and `os:lifecyc
 
 Browser `pagehide` and hidden-tab `visibilitychange` events transition the OS through `suspending` to `suspended` while service records are suspended. `pageshow` and visible-tab `visibilitychange` transition through `resuming` back to `active`. `beforeunload` records `shutting-down` before the persistence lifecycle hook performs its best-effort flush.
 
+Page lifecycle exits write `/var/run/dindbos/recovery/last-shutdown.json` with pending persistence status, suspended services, worker-backed processes, and running processes. When the next boot sees an unrecovered dirty shutdown record, it writes `/var/run/dindbos/recovery/last-recovery.json`, acknowledges the prior shutdown record, and emits an `os:lifecycle` transition to `recovered` before normal boot continues.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed

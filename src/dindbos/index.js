@@ -49,6 +49,10 @@ export const OS_LIFECYCLE_STATES = [
   "recovered",
 ];
 
+const RECOVERY_DIR = "/var/run/dindbos/recovery";
+const LAST_SHUTDOWN_RECOVERY_PATH = `${RECOVERY_DIR}/last-shutdown.json`;
+const LAST_RECOVERY_PATH = `${RECOVERY_DIR}/last-recovery.json`;
+
 export class DindbOS {
   constructor(options = {}) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
@@ -156,6 +160,7 @@ export class DindbOS {
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
     this.writeSessionStatus();
+    this.recoverPreviousShutdown();
   }
 
   boot() {
@@ -298,6 +303,94 @@ export class DindbOS {
         mime: "text/plain",
       }, system);
     }
+  }
+
+  readLastShutdownRecord() {
+    if (!this.fs.exists(LAST_SHUTDOWN_RECOVERY_PATH)) return null;
+    try {
+      return JSON.parse(this.fs.readFile(LAST_SHUTDOWN_RECOVERY_PATH, "/", this.permissions.systemPrincipal()));
+    } catch {
+      return null;
+    }
+  }
+
+  recoverPreviousShutdown() {
+    const record = this.readLastShutdownRecord();
+    if (!record?.dirtyShutdown || record.recoveredAt) return null;
+    const system = this.permissions.systemPrincipal();
+    const recoveredAt = new Date().toISOString();
+    const recovery = {
+      recoveredAt,
+      reason: "dirty-shutdown",
+      previousShutdown: record,
+      action: "recorded browser-interrupted shutdown for user-visible diagnostics",
+    };
+    this.ensureDirectoryPath(RECOVERY_DIR, {
+      leafOwner: "root",
+      leafGroup: "root",
+      leafPermissions: "drwxr-xr-x",
+      principal: system,
+    });
+    this.fs.writeOrCreateFile(LAST_RECOVERY_PATH, `${JSON.stringify(recovery, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile(LAST_SHUTDOWN_RECOVERY_PATH, `${JSON.stringify({
+      ...record,
+      dirtyShutdown: false,
+      recoveredAt,
+      recoveryRecord: LAST_RECOVERY_PATH,
+    }, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.transitionLifecycle("recovered", "dirty-shutdown");
+    return recovery;
+  }
+
+  writeRecoveryRecord(reason = "runtime", options = {}) {
+    const system = this.permissions.systemPrincipal();
+    this.ensureDirectoryPath(RECOVERY_DIR, {
+      leafOwner: "root",
+      leafGroup: "root",
+      leafPermissions: "drwxr-xr-x",
+      principal: system,
+    });
+    const processes = this.processes?.list?.() || [];
+    const services = this.services?.list?.() || [];
+    const record = {
+      recordedAt: new Date().toISOString(),
+      reason: String(reason || "runtime"),
+      dirtyShutdown: Boolean(options.dirty || this.hasPendingPersistenceWork()),
+      lifecycle: { ...this.lifecycleState },
+      persistence: this.persistenceStatus(),
+      pendingPersistence: this.hasPendingPersistenceWork(),
+      suspendedServices: services
+        .filter((service) => service.state === "suspended")
+        .map((service) => ({ id: service.id, state: service.state, pid: service.pid })),
+      workerProcesses: processes
+        .filter((process) => process.executionBackend === "worker")
+        .map((process) => ({
+          pid: process.pid,
+          appId: process.appId,
+          state: process.state,
+          executorState: process.executorState,
+        })),
+      runningProcesses: processes
+        .filter((process) => process.state === "running")
+        .map((process) => ({ pid: process.pid, appId: process.appId, runtime: process.runtime })),
+    };
+    this.fs.writeOrCreateFile(LAST_SHUTDOWN_RECOVERY_PATH, `${JSON.stringify(record, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    return record;
   }
 
   writeBootDiagnostics() {
@@ -805,6 +898,7 @@ export class DindbOS {
       this.transitionLifecycle("suspending", reason);
       this.services?.suspend?.(reason);
       this.transitionLifecycle("suspended", reason);
+      if (reason === "pagehide") this.writeRecoveryRecord(reason);
     };
     const resume = (reason) => {
       this.transitionLifecycle("resuming", reason);
@@ -813,7 +907,10 @@ export class DindbOS {
     };
     globalThis.window.addEventListener("pagehide", () => suspend("pagehide"));
     globalThis.window.addEventListener("pageshow", () => resume("pageshow"));
-    globalThis.window.addEventListener("beforeunload", () => this.transitionLifecycle("shutting-down", "beforeunload"));
+    globalThis.window.addEventListener("beforeunload", () => {
+      this.transitionLifecycle("shutting-down", "beforeunload");
+      this.writeRecoveryRecord("beforeunload");
+    });
     globalThis.document?.addEventListener?.("visibilitychange", () => {
       if (globalThis.document.visibilityState === "hidden") {
         suspend("visibility-hidden");
