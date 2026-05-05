@@ -10,6 +10,7 @@ import { filterAndSortActivityProcesses, renderActivityDetail } from "../src/din
 const os = bootOs();
 const launched = [];
 let closedWindow = null;
+const captureReleases = [];
 const lifecycleEvents = [];
 const processLifecycleEvents = [];
 ["launch", "ready", "focus", "suspend", "resume", "crash", "close"].forEach((type) => {
@@ -26,6 +27,9 @@ os.windows = {
   has: (windowId) => windowId === "window-activity",
   close: (windowId, options = {}) => {
     closedWindow = { windowId, options };
+  },
+  releaseProcessCapture: (pid, reason) => {
+    captureReleases.push(`${pid}:${reason}`);
   },
 };
 
@@ -53,6 +57,7 @@ assert(lifecycleEvents.includes("ready:activity-monitor:"), "app:ready lifecycle
 assert(lifecycleEvents.includes("focus:activity-monitor:"), "app:focus lifecycle event missing");
 assert(lifecycleEvents.includes("suspend:activity-monitor:"), "app:suspend lifecycle event missing");
 assert(lifecycleEvents.includes("resume:activity-monitor:"), "app:resume lifecycle event missing");
+assert(captureReleases.includes(`${process.pid}:process-suspend`), "minimized process did not release compositor capture");
 
 const previousActivity = os.processes.get(process.pid).activityScore;
 os.processes.sampleActivity(process.pid, "smoke-click", 3);
@@ -94,6 +99,7 @@ os.processes.applyLifecycleTransition("shutting-down", "smoke-unload");
 os.processes.applyLifecycleTransition("recovered", "smoke-recovery");
 assert(callbackRuns.join(",") === "prepare:smoke-hidden,suspend:smoke-hidden,resume:smoke-visible,shutdown:smoke-unload,recovery:smoke-recovery", "process lifecycle callbacks did not run in order");
 assert(processLifecycleEvents.includes("prepare-suspend:lifecycle-app:smoke-hidden:handled"), "process lifecycle event missing prepare-suspend");
+assert(captureReleases.includes(`${lifecycleProcess.pid}:process-suspend`), "suspended lifecycle process did not release compositor capture");
 assert(os.processes.get(lifecycleProcess.pid).lifecycleLastCallback === "recovery-inspection", "process lifecycle last callback mismatch");
 assert(os.fs.readFile(`/proc/${lifecycleProcess.pid}/status`).includes("LifecycleLastCallback:\trecovery-inspection"), "process /proc status missing lifecycle callback");
 assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === lifecycleProcess.pid && entry.lifecycleLastCallback === "recovery-inspection"), "/proc processes JSON missing lifecycle callback");
@@ -107,6 +113,7 @@ assert(os.fs.exists(crashReportPath), "crash report file was not written");
 assert(os.fs.readFile(crashReportPath).includes("boom smoke"), "crash report missing error message");
 assert(os.fs.readFile("/var/log/dindbos/crashes.log").includes(`pid=${crashed.pid}`), "crash index missing crashed pid");
 assert(lifecycleEvents.includes("crash:crashy:boom smoke"), "app:crash lifecycle event missing");
+assert(captureReleases.includes(`${crashed.pid}:process-crash`), "crashed process did not release compositor capture");
 
 const restartTarget = os.processes.get(process.pid);
 const relaunched = os.processes.restart(process.pid);

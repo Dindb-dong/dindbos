@@ -394,9 +394,23 @@ async function runLiveWindowStateSmoke() {
       target: { closest: () => null },
     });
     assert(liveManager.compositorStatus().captureOwner === "browser", "compositor did not record pointer capture owner");
+    const processRelease = liveManager.releaseProcessCapture(42, "process-suspend");
+    assert(processRelease?.pointerCapture && processRelease?.pointerLock, "process capture cleanup did not release pointer capture and pointer lock");
+    assert(task.titlebar.releasedPointerIds.includes(7), "process capture cleanup did not release active pointer capture");
+    const suspendedCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
+    assert(suspendedCompositor.captureOwner === "", "suspended process kept pointer capture owner");
+    assert(suspendedCompositor.pointerLock.activeWindowId === "" && suspendedCompositor.pointerLock.releaseReason === "process-suspend", "suspended process kept pointer lock owner");
+    globalThis.document.exitedPointerLock = false;
+    liveManager.requestPointerLock("browser", { target: lockTarget });
+    task.titlebar.listeners.pointerdown({
+      pointerId: 8,
+      clientX: 10,
+      clientY: 10,
+      target: { closest: () => null },
+    });
     liveManager.close("browser");
     assert(globalThis.document.exitedPointerLock === true, "window close did not exit active pointer lock");
-    assert(task.titlebar.releasedPointerIds.includes(7), "window close did not release active pointer capture");
+    assert(task.titlebar.releasedPointerIds.includes(8), "window close did not release active pointer capture");
     const closeCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
     assert(closeCompositor.captureOwner === "", "/proc/compositor kept stale capture owner after close");
     assert(closeCompositor.pointerLock.activeWindowId === "" && closeCompositor.pointerLock.releaseReason === "window-close", "/proc/compositor kept stale pointer lock owner after close");

@@ -79,7 +79,10 @@ export class ProcessManager {
     this.syncProcfs();
     this.os.bus.emit("process:update", process);
     if (state === "focused") this.emitAppLifecycle("focus", process, details);
-    if (state === "minimized") this.emitAppLifecycle("suspend", process, details);
+    if (state === "minimized") {
+      this.os.windows?.releaseProcessCapture?.(process.pid, "process-suspend");
+      this.emitAppLifecycle("suspend", process, details);
+    }
     if (state === "restored" || state === "maximized") this.emitAppLifecycle("resume", process, details);
     return { ...this.withRuntimeMetrics(process) };
   }
@@ -125,6 +128,7 @@ export class ProcessManager {
     const report = this.writeCrashReport(process, error);
     process.crashReportPath = report.path;
     process.crashIndexPath = report.indexPath;
+    this.os.windows?.releaseProcessCapture?.(process.pid, "process-crash");
     this.os.descriptors?.closeProcess?.(process.pid);
     this.syncProcfs();
     this.os.bus.emit("process:crash", process);
@@ -203,6 +207,7 @@ export class ProcessManager {
     const results = [];
     this.processes.forEach((process) => {
       if (process.endedAt || process.state === "crashed") return;
+      if (callback.id === "suspend") this.os.windows?.releaseProcessCapture?.(process.pid, "process-suspend");
       const result = this.runLifecycleCallback(process, callback, reason, osState);
       results.push(result);
     });
