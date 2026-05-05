@@ -414,6 +414,8 @@ async function runLiveWindowStateSmoke() {
     const closeCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
     assert(closeCompositor.captureOwner === "", "/proc/compositor kept stale capture owner after close");
     assert(closeCompositor.pointerLock.activeWindowId === "" && closeCompositor.pointerLock.releaseReason === "window-close", "/proc/compositor kept stale pointer lock owner after close");
+    assert(!closeCompositor.surfaces.some((surface) => surface.windowId === "browser"), "/proc/compositor kept a closed browser surface");
+    assert(closeCompositor.surfaceCleanup.lastCleanup.windowId === "browser" && closeCompositor.surfaceCleanup.lastCleanup.staleCapture === false, "/proc/compositor did not record clean surface cleanup");
     liveManager.open({
       id: "browser",
       appId: "browser",

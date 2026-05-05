@@ -48,6 +48,10 @@ export class WindowManager {
       lastCapture: null,
       lastDenied: null,
     };
+    this.surfaceCleanup = {
+      cleaned: 0,
+      lastCleanup: null,
+    };
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
     this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
     this.boundHandleGlobalPointerDown = (event) => this.routeInputEvent("pointerdown", event);
@@ -231,6 +235,7 @@ export class WindowManager {
     task.frame.remove();
     this.windows.delete(id);
     if (this.activeWindowId === id) this.activeWindowId = newestWindowId(this.windows);
+    this.recordSurfaceCleanup(task, "window-close");
     if (!options.skipOnClose) task.onClose?.();
     this.renderTasks();
     this.writeCompositorProcfs("close");
@@ -614,6 +619,25 @@ export class WindowManager {
     return released.pointerCapture || released.pointerLock ? released : null;
   }
 
+  recordSurfaceCleanup(task, reason = "surface-cleanup") {
+    if (!task) return null;
+    const cleanup = {
+      windowId: task.id,
+      pid: task.pid,
+      appId: task.appId,
+      reason: String(reason || "surface-cleanup"),
+      remainingSurfaceCount: this.windows.size,
+      activeWindowId: this.activeWindowId,
+      staleCapture: this.lastCapture?.windowId === task.id,
+      stalePointerLock: this.pointerLock.activeWindowId === task.id,
+      at: new Date().toISOString(),
+    };
+    this.surfaceCleanup.cleaned += 1;
+    this.surfaceCleanup.lastCleanup = cleanup;
+    this.os.bus?.emit?.("compositor:surface-cleanup", { ...cleanup });
+    return { ...cleanup };
+  }
+
   compositorStatus() {
     const surfaces = [...this.windows.values()].map((task) => {
       const rect = surfaceRectForTask(task);
@@ -684,6 +708,10 @@ export class WindowManager {
         denied: this.surfaceCapture.denied,
         lastCapture: this.surfaceCapture.lastCapture ? cloneState(this.surfaceCapture.lastCapture) : null,
         lastDenied: this.surfaceCapture.lastDenied ? { ...this.surfaceCapture.lastDenied } : null,
+      },
+      surfaceCleanup: {
+        cleaned: this.surfaceCleanup.cleaned,
+        lastCleanup: this.surfaceCleanup.lastCleanup ? { ...this.surfaceCleanup.lastCleanup } : null,
       },
       surfaces,
       updatedAt: new Date().toISOString(),
