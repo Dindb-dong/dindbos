@@ -24,6 +24,12 @@ export class WindowManager {
       denied: 0,
       lastShortcut: null,
     };
+    this.clipboardRouter = {
+      copied: 0,
+      pasted: 0,
+      denied: 0,
+      lastClipboard: null,
+    };
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
     this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
     this.boundHandleGlobalPointerDown = (event) => this.routeInputEvent("pointerdown", event);
@@ -349,6 +355,48 @@ export class WindowManager {
     return { ...route };
   }
 
+  routeClipboardEvent(action, event = {}, options = {}) {
+    const normalizedAction = normalizeClipboardAction(action);
+    const targetWindowId = String(options.targetWindowId || this.activeWindowId || "");
+    const task = this.windows.get(targetWindowId);
+    const textEntry = options.textEntry ?? isTextEntryEventTarget(event.target);
+    const writeText = String(options.text ?? "");
+    const canRoute = Boolean(task);
+    const route = {
+      action: normalizedAction,
+      targetWindowId,
+      targetPid: task?.pid || 0,
+      targetAppId: task?.appId || "",
+      textEntry: Boolean(textEntry),
+      bytes: 0,
+      handled: canRoute,
+      deniedReason: canRoute ? "" : "no-focused-window",
+      at: new Date().toISOString(),
+    };
+    if (canRoute && normalizedAction === "copy") {
+      const result = this.os.clipboard?.writeText?.(writeText) || { bytes: byteLength(writeText) };
+      route.bytes = Number(result.bytes || 0);
+      this.clipboardRouter.copied += 1;
+    } else if (canRoute && normalizedAction === "paste") {
+      const text = String(this.os.clipboard?.readText?.() ?? "");
+      route.bytes = byteLength(text);
+      if (!text && options.requireContent) {
+        route.handled = false;
+        route.deniedReason = "clipboard-empty";
+        this.clipboardRouter.denied += 1;
+      } else {
+        this.clipboardRouter.pasted += 1;
+      }
+    } else {
+      this.clipboardRouter.denied += 1;
+    }
+    this.clipboardRouter.lastClipboard = route;
+    this.routeInputEvent(normalizedAction, event, { targetWindowId, source: "clipboard-router" });
+    this.os.bus?.emit?.("compositor:clipboard", { ...route });
+    this.writeCompositorProcfs("clipboard");
+    return { ...route };
+  }
+
   recordPointerCapture(windowId, pid, kind, capture = {}) {
     const pointerId = Number(capture.pointerId || 0);
     this.lastCapture = {
@@ -434,6 +482,12 @@ export class WindowManager {
         routed: this.shortcutRouter.routed,
         denied: this.shortcutRouter.denied,
         lastShortcut: this.shortcutRouter.lastShortcut ? { ...this.shortcutRouter.lastShortcut } : null,
+      },
+      clipboardRouter: {
+        copied: this.clipboardRouter.copied,
+        pasted: this.clipboardRouter.pasted,
+        denied: this.clipboardRouter.denied,
+        lastClipboard: this.clipboardRouter.lastClipboard ? { ...this.clipboardRouter.lastClipboard } : null,
       },
       surfaces,
       updatedAt: new Date().toISOString(),
@@ -732,6 +786,15 @@ function normalizeShortcutKey(value) {
 function normalizeShortcutScope(value) {
   const scope = String(value || "focused").toLowerCase();
   return ["global", "focused", "text-entry"].includes(scope) ? scope : "focused";
+}
+
+function normalizeClipboardAction(action) {
+  const value = String(action || "paste").toLowerCase();
+  return value === "copy" ? "copy" : "paste";
+}
+
+function byteLength(value) {
+  return new TextEncoder().encode(String(value ?? "")).byteLength;
 }
 
 function shortcutScopeRank(scope) {
