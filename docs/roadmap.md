@@ -238,6 +238,7 @@ Implementation tasks:
 - Already present: a basic `wasi_snapshot_preview1` import subset covers args/env sizing and buffers, `fd_write` for stdout/stderr, `proc_exit`, `random_get`, and `clock_time_get`.
 - Expand WASI-style imports where possible, mapped to the DindbOS syscall ABI and future descriptor tables.
 - Already present: a first-pass process descriptor table exists for stdin/stdout/stderr, text VFS files, and basic pseudo-devices; WASI file descriptor mapping remains future work.
+- Already present: stdout/stderr-only DindbOS ABI and basic WASI modules can opt into worker execution through `ProcessExecutor` output buffers.
 - Broaden process filesystem scopes beyond the first-pass executable-directory policy.
 - Already present: WASM trap paths flow through process crash handling and return crash report paths for `/var/log/dindbos/crash-<pid>.log` diagnostics.
 - Add memory and execution guards: max memory pages, cooperative timeout, and abort handling.
@@ -248,6 +249,7 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies shell execution, argv/env stdout, syscall-backed file write, syscall tracing, nonzero exit status, and process tracking.
 - Already present: `npm run smoke:wasm` verifies permission-denied syscall behavior, EACCES syscall tracing, trap crash report files, and crash index entries.
 - Already present: `npm run smoke:wasm` verifies basic WASI `fd_write` stdout and `proc_exit`.
+- Already present: `npm run smoke:wasm` verifies worker-backed WASM stdout, exit status, and process backend history for output-only modules.
 - Already present: `npm run smoke:packages` verifies a WASM-backed package install, AppRegistry launch, stdout rendering, package-scoped syscall write, and package removal.
 
 Completion criteria:
@@ -271,12 +273,12 @@ Why it matters:
 Implementation tasks:
 
 - Already present: `ProcessExecutor` provides main-thread and worker execution backends for runtime-managed CPU task processes.
-- Run NodeCompat programs and WASM programs in dedicated workers where possible.
 - Already present: worker executor syscall tasks use a message-based bridge back to the runtime kernel instead of direct VFS access.
 - Already present: worker executor syscall tasks can transfer binary `ArrayBuffer` payloads back to the runtime output buffer.
 - Already present: worker-backed executor tasks support process kill termination, timeout crash propagation, and completion cleanup.
 - Already present: worker executor syscall tasks return stdout, stderr, binary-byte, and syscall result buffers.
-- Route NodeCompat and WASM stdout/stderr through the worker executor output buffer once those runtimes move behind the bridge.
+- Already present: stdout/stderr-only WASM programs can run in dedicated workers and return output/status through the worker executor output buffer.
+- Move syscall-heavy WASM and NodeCompat programs behind the worker syscall bridge where the runtime ABI can preserve permission checks.
 - Already present: `/proc/<pid>/status` and `/proc/processes.json` expose runtime, execution backend, executor state, executor kind, and executor detail.
 - Already present: Activity Monitor distinguishes execution backend and executor state in the process table/detail view.
 
@@ -285,7 +287,8 @@ Verification:
 - Already present: `npm run smoke:processes` verifies a CPU-heavy worker process does not block main-runtime process spawning while it is busy.
 - Already present: `npm run smoke:processes` verifies worker completion cleanup, timeout crash reporting, kill termination, `/proc` backend reporting, and Activity Monitor backend filtering data.
 - Already present: `npm run smoke:processes` verifies worker stdout/stderr delivery, binary transfer, syscall-backed VFS write/read, syscall tracing, and VFS scope denial.
-- Add tests for NodeCompat/WASM worker stdout/stderr delivery and VFS syscall denial once those runtimes use the bridge.
+- Already present: `npm run smoke:wasm` verifies worker-backed WASM stdout/status delivery and worker backend process history for output-only modules.
+- Add tests for syscall-heavy WASM and NodeCompat VFS syscall denial once those runtimes use the worker syscall bridge directly.
 
 Completion criteria:
 
