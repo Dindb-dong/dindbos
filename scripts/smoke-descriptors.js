@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { DindbOS } from "../src/dindbos/index.js";
 
-const os = new DindbOS({ root: {}, storage: memoryStorage() });
+const storage = memoryStorage();
+const os = new DindbOS({ root: {}, storage });
 const system = os.permissions.systemPrincipal();
 os.ensureDirectoryPath("/home/guest", { leafOwner: "guest", leafGroup: "users", principal: system });
 os.fs.writeOrCreateFile("/home/guest/input.txt", "hello world", "/", {
@@ -54,6 +55,12 @@ assert(result.ok, `fd.open write mismatch: ${JSON.stringify(result)}`);
 const outputFd = result.value.fd;
 result = os.syscall("fd.write", { fd: outputFd, data: "alpha" }, context);
 assert(result.ok && result.value.bytes === 5, `fd.write mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.sync", { fd: outputFd }, context);
+assert(!result.ok && result.error.code === "EAGAIN", `sync fd.sync did not require async dispatch: ${JSON.stringify(result)}`);
+const beforeFdSyncFlushes = storage.flushes;
+result = await os.syscallAsync("fd.sync", { fd: outputFd }, context);
+assert(result.ok && result.value.synced === true && result.value.fd === outputFd, `fd.sync mismatch: ${JSON.stringify(result)}`);
+assert(storage.flushes === beforeFdSyncFlushes + 1, "fd.sync did not reach storage flush barrier");
 result = os.syscall("fd.seek", { fd: outputFd, offset: 0 }, context);
 assert(result.ok, `fd.seek output mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: outputFd, length: 5 }, context);
@@ -62,8 +69,11 @@ assert(os.fs.readFile("/home/guest/output.txt") === "alpha", "fd.write did not p
 
 result = os.syscall("fd.open", { path: "/dev/null", flags: "w" }, context);
 assert(result.ok, `fd.open /dev/null mismatch: ${JSON.stringify(result)}`);
-result = os.syscall("fd.write", { fd: result.value.fd, data: "discarded" }, context);
+const nullFd = result.value.fd;
+result = os.syscall("fd.write", { fd: nullFd, data: "discarded" }, context);
 assert(result.ok && result.value.bytes === 9, `fd.write /dev/null mismatch: ${JSON.stringify(result)}`);
+result = await os.syscallAsync("fd.sync", { fd: nullFd }, context);
+assert(!result.ok && result.error.code === "EINVAL", `fd.sync /dev/null did not reject non-file descriptor: ${JSON.stringify(result)}`);
 
 result = os.syscall("fd.open", { path: "/dev/zero", flags: "r" }, context);
 assert(result.ok, `fd.open /dev/zero mismatch: ${JSON.stringify(result)}`);
@@ -168,12 +178,19 @@ assert(!os.fs.exists(`/proc/${crashProcess.pid}/fd.json`), "crashed process fd p
 console.log("descriptors smoke ok open read write seek close devices clipboard tty pty pipes ioctl crash-cleanup");
 
 function memoryStorage() {
+  let flushes = 0;
   return {
     async loadFileSystem() {
       return null;
     },
     saveFileSystem() {},
-    async flush() {},
+    async flush() {
+      flushes += 1;
+      return { flushed: true };
+    },
+    get flushes() {
+      return flushes;
+    },
     status: () => ({ backend: "memory", bytes: 0 }),
     estimate: async () => ({ backend: "memory", bytes: 0 }),
     resetFileSystem() {},

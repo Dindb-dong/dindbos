@@ -203,8 +203,8 @@ Implementation cuts:
 - Already present: AppRegistry register/unregister mutations group the in-memory app map, manifest file, and launcher file under one VFS snapshot rollback boundary.
 - Already present: ServiceManager register/unregister mutations group definitions, records, logs, and persisted service state under one VFS snapshot rollback boundary.
 - Extend staged activation to broader service lifecycle transaction groups.
-- Already present: first-pass `storage.sync` / `fsync`-style durability barrier is exposed through async syscalls, Shell raw syscall usage, SDK `storage.sync()`, AppSandbox `os.storage.sync()`, and NodeCompat async `fsync`/`fdatasync` APIs so programs can wait for the runtime persistence flush path before reporting success.
-- Extend durability barriers into WASM, package services, descriptor-backed file writes, and future mapped-file writes.
+- Already present: first-pass `storage.sync` / `fsync`-style durability barrier is exposed through async syscalls, Shell raw syscall usage, SDK `storage.sync()`, AppSandbox `os.storage.sync()`, NodeCompat async `fsync`/`fdatasync` APIs, and descriptor-backed `fd.sync` for file descriptors so programs can wait for the runtime persistence flush path before reporting success.
+- Extend durability barriers into WASM, package services, and future mapped-file writes.
 - Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
 - Already present: `fsck --dry-run` includes first-pass package DB drift checks for package records whose `/opt/<package>` root is missing and `pkgfs` roots with no package DB record.
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
@@ -227,7 +227,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package fsck repair removes orphan `pkgfs` roots and does not attempt unsafe repair of missing package roots.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Already present: `npm run smoke:shell` verifies `fsck --explain` prints repair policy explanations and `/var/log/dindbos/fsck.log` records dry-run and repaired runs.
-- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, and `npm run smoke:npm-node` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, and NodeCompat async fsync/fdatasync paths, while sandboxed callers without `storage.read` are denied.
+- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, and `npm run smoke:descriptors` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, and descriptor-backed `fd.sync`, while sandboxed callers without `storage.read` are denied.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
 - Add regression fixtures for package DB/app registry disagreement and VFS inode/content mismatch.
@@ -635,6 +635,7 @@ Implementation tasks:
 - Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
 - Already present: `/dev/clipboard` can be opened through descriptor syscalls and maps reads/writes to the DindbOS runtime clipboard service inside the browser policy boundary.
 - Already present: Terminal.app creates a DindbOS pseudo-terminal session; PTY-backed processes share TTY size, input, and output through standard streams and `/dev/tty`.
+- Already present: async descriptor syscall `fd.sync` validates file descriptors and routes descriptor-backed file writes through the DindbOS persistence flush barrier while refusing non-file descriptors.
 - Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags, directory read, directory mutation, rename, symlink, and hard-link subset.
 
 Verification:
@@ -658,6 +659,7 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies WASI `path_link` creates a hard-link-like alias, preserves bytes, shares writes, survives source removal, and updates link counts.
 - Already present: `npm run smoke:wasm` verifies WASI `path_filestat_get` and `fd_filestat_get` report file type and size for a scoped VFS file.
 - Already present: `npm run smoke:wasm` verifies WASI `fd_fdstat_get` reports descriptor type and read rights for a preopened directory and opened file.
+- Already present: `npm run smoke:descriptors` verifies `fd.sync` reaches the runtime storage flush barrier for file descriptors and rejects device descriptors.
 - Add smoke coverage for broader WASI metadata edge cases as more WASI calls are mapped.
 
 Completion criteria:
@@ -4686,8 +4688,8 @@ Goal: make DindbOS storage behave less like a serialized JavaScript object and m
 Implementation tasks:
 
 - Add a storage transaction manager with explicit begin, stage, commit, rollback, replay, abort, and explain records.
-- Already present: first-pass `storage.sync` / `fsync`-style barrier covers Shell, SDK, AppSandbox, and NodeCompat async filesystem callers through the async syscall path.
-- Extend `storage.sync` / `fsync`-style barriers to WASM, package services, and future descriptor-backed file writes.
+- Already present: first-pass `storage.sync` / `fsync`-style barrier covers Shell, SDK, AppSandbox, NodeCompat async filesystem callers, and file descriptor callers through the async syscall path.
+- Extend `storage.sync` / `fsync`-style barriers to WASM, package services, and future mapped-file writes.
 - Add a page-cache layer that tracks clean pages, dirty pages, pinned pages, mapped pages, eviction candidates, and writeback failures.
 - Add writeback policies for user documents, package roots, package DB, app registry, service state, logs, caches, temp files, snapshots, backups, and sync staging.
 - Add crash-replay records for interrupted editor saves, archive imports, package activation, registry mutation, local mount sync, package update, key rotation, and snapshot creation.
@@ -4697,7 +4699,7 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, and `npm run smoke:npm-node` cover first-pass sync barrier success plus capability denial.
+- Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, and `npm run smoke:descriptors` cover first-pass sync barrier success plus capability denial.
 - Add smoke coverage for sync barrier failure, dirty-page flush, interrupted write replay, quota-denied preflight, failed commit rollback, stale journal explanation, and salvage export.
 - Add cross-runtime tests proving Shell, Files.app, SDK apps, WASM, NodeCompat, and services all hit the same storage transaction boundary.
 - Add regression tests proving repair never weakens ownership, permission, encryption, quarantine, package trust, or local mount conflict state.

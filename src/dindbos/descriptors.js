@@ -170,6 +170,20 @@ export class DescriptorManager {
     return publicDescriptor(this.descriptorFor(process.pid, args.fd));
   }
 
+  async sync(process, args = {}) {
+    const descriptor = this.descriptorFor(process.pid, args.fd);
+    if (descriptor.kind !== "file") throw descriptorError("EINVAL", `fd.sync: ${descriptor.fd}: descriptor is not a file`);
+    const flush = typeof this.os.flushPersistentFileSystem === "function"
+      ? await this.os.flushPersistentFileSystem()
+      : await this.os.storage?.flush?.();
+    return {
+      fd: descriptor.fd,
+      path: descriptor.path,
+      synced: true,
+      flush: flush || null,
+    };
+  }
+
   readDirectory(process, args = {}, context = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (descriptor.kind !== "directory") throw descriptorError("ENOTDIR", `fd.readdir: ${descriptor.fd}: descriptor is not a directory`);

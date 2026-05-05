@@ -42,6 +42,7 @@ export function createDindbOSSDK(target, options = {}) {
       write: (fd, data, args = {}) => invoke("fd.write", { ...args, fd, data }),
       seek: (fd, offset, args = {}) => invoke("fd.seek", { ...args, fd, offset }),
       stat: (fd) => invoke("fd.stat", { fd }),
+      sync: (fd) => invokeAsync("fd.sync", { fd }),
       ioctl: (fd, request, args = {}) => invoke("fd.ioctl", { ...args, fd, request }),
       close: (fd) => invoke("fd.close", { fd }),
     },
