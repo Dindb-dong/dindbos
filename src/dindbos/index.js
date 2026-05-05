@@ -53,6 +53,7 @@ const RECOVERY_DIR = "/var/run/dindbos/recovery";
 const LAST_SHUTDOWN_RECOVERY_PATH = `${RECOVERY_DIR}/last-shutdown.json`;
 const LAST_RECOVERY_PATH = `${RECOVERY_DIR}/last-recovery.json`;
 const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
+const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
 
 export class DindbOS {
   constructor(options = {}) {
@@ -60,6 +61,7 @@ export class DindbOS {
     this.instanceId = String(options.instanceId || `runtime-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
     this.session = normalizeSession(options.session || {});
     this.sessionLockTtlMs = Number(options.sessionLockTtlMs || 30_000);
+    this.operationLockTtlMs = Number(options.operationLockTtlMs || 30_000);
     this.sessionCoordination = {
       instanceId: this.instanceId,
       role: "unknown",
@@ -1012,6 +1014,81 @@ export class DindbOS {
     } catch {
       return null;
     }
+  }
+
+  withRuntimeOperationLock(name, details = {}, callback = () => null) {
+    const lock = this.acquireRuntimeOperationLock(name, details);
+    let result;
+    try {
+      result = callback(lock);
+    } catch (error) {
+      this.releaseRuntimeOperationLock(name, lock);
+      throw error;
+    }
+    if (result && typeof result.then === "function") {
+      return result.finally(() => this.releaseRuntimeOperationLock(name, lock));
+    }
+    this.releaseRuntimeOperationLock(name, lock);
+    return result;
+  }
+
+  acquireRuntimeOperationLock(name, details = {}, now = Date.now()) {
+    const key = this.operationLockKey(name);
+    const existing = this.readRuntimeOperationLock(name);
+    const expired = existing?.expiresAtMs && Number(existing.expiresAtMs) <= now;
+    if (existing && !expired && existing.owner !== this.instanceId) {
+      throw new Error(`${name}: operation locked by ${existing.owner}`);
+    }
+    const record = {
+      name,
+      owner: this.instanceId,
+      operation: String(details.operation || ""),
+      packageId: String(details.packageId || ""),
+      acquiredAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + this.operationLockTtlMs).toISOString(),
+      expiresAtMs: now + this.operationLockTtlMs,
+    };
+    this.writeRuntimeOperationLock(key, record);
+    return record;
+  }
+
+  releaseRuntimeOperationLock(name, record = null) {
+    const key = this.operationLockKey(name);
+    const existing = this.readRuntimeOperationLock(name);
+    if (existing && record && existing.owner !== record.owner) return false;
+    this.removeRuntimeOperationLock(key);
+    return true;
+  }
+
+  readRuntimeOperationLock(name) {
+    const key = this.operationLockKey(name);
+    const raw = this.storage.readValueSync?.(key) ?? globalThis.localStorage?.getItem?.(key) ?? null;
+    if (!raw) return null;
+    try {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  writeRuntimeOperationLock(key, record) {
+    const payload = JSON.stringify(record);
+    this.storage.writeValue?.(key, payload);
+    try {
+      globalThis.localStorage?.setItem?.(key, payload);
+    } catch {}
+  }
+
+  removeRuntimeOperationLock(key) {
+    this.storage.removeValue?.(key);
+    try {
+      globalThis.localStorage?.removeItem?.(key);
+    } catch {}
+  }
+
+  operationLockKey(name) {
+    return `${OPERATION_LOCK_PREFIX}${String(name || "runtime")}`;
   }
 
   lockSession(reason = "manual") {
