@@ -1110,7 +1110,8 @@ Implementation tasks:
 - Already present: offline-first merge policy and planning APIs classify user documents, app state, package metadata, search indexes, settings, and cache metadata before remote sync apply mutates runtime state.
 - Already present: encrypted remote sync snapshots can be applied through the merge planner; safe files are restored, text merges are written, unsafe conflicts are preserved under `.sync-conflicts`, package metadata mutations are refused, and apply conflicts/refusals are recorded in sync status.
 - Already present: conflict repair APIs and `sync` shell commands list `.sync-conflicts` entries and resolve them by applying the conflict copy, keeping local state, or deleting the conflict copy.
-- Add conflict repair UI, retrying refused records after package validation, and resuming interrupted remote sync apply runs.
+- Already present: interrupted remote sync apply runs are checkpointed under `/var/run/dindbos/remote-sync-apply.json` and can resume from the recorded `nextIndex`.
+- Add conflict repair UI and retrying refused records after package validation.
 
 Verification:
 
@@ -1128,6 +1129,7 @@ Verification:
 - Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify offline-first merge policy/planning for text documents, app-state conflicts, package metadata refusal, search index rebuild, settings last-writer-wins, Settings, and `doctor`.
 - Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify encrypted remote sync apply, conflict-copy preservation, package metadata refusal, cache/settings restore, last-applied status, Settings, and `doctor`.
 - Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify sync conflict listing, conflict resolution, last-repair status, Settings, and shell commands.
+- Already present: `npm run smoke:sessions`, `npm run smoke:settings`, and `npm run smoke:shell` verify interrupted apply checkpoint persistence, resume from `nextIndex`, apply-run status, Settings, and shell status output.
 
 Completion criteria:
 

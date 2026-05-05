@@ -307,8 +307,25 @@ assert(repairedConflict.action === "use-conflict", "remote sync conflict repair 
 assert(syncTarget.fs.readFile(repairedConflict.targetPath).includes("peer edit"), "remote sync conflict repair did not apply conflict bytes");
 assert(!syncTarget.fs.exists(repairedConflict.path), "remote sync conflict repair did not remove conflict copy");
 assert(syncTarget.remoteSyncStatus().lastRepair.remainingConflicts === syncTarget.listRemoteSyncConflicts().length, "remote sync status did not record repair result");
+const resumeTarget = new DindbOS({ root: null, storage: createStorage(new Map()), instanceId: "sync-resume-target" });
+await resumeTarget.loadPersistentFileSystem();
+const interruptedApply = await resumeTarget.applyRemoteSyncSnapshot({
+  passphrase: "session-sync-secret",
+  snapshot: syncSnapshot,
+  maxFiles: 1,
+});
+assert(interruptedApply.status === "interrupted" && interruptedApply.nextIndex === 1, "remote sync apply did not record interrupted run");
+assert(resumeTarget.remoteSyncStatus().lastApplyRun.status === "interrupted", "remote sync status did not expose interrupted apply run");
+assert(JSON.parse(resumeTarget.fs.readFile("/var/run/dindbos/remote-sync-apply.json")).nextIndex === 1, "remote sync apply checkpoint was not persisted");
+const resumedApply = await resumeTarget.resumeRemoteSyncApply({
+  passphrase: "session-sync-secret",
+  snapshot: syncSnapshot,
+});
+assert(resumedApply.status === "complete" && resumedApply.startIndex === 1, "remote sync apply resume did not continue from checkpoint");
+assert(resumeTarget.remoteSyncStatus().lastApplyRun.status === "complete", "remote sync status did not record completed resumed apply");
+assert(resumeTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync resumed apply did not restore remaining settings file");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume");
 
 function createStorage(values = new Map()) {
   return {

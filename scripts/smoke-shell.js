@@ -157,6 +157,7 @@ assert(result.output.includes("rename=false"), `mount helper rename output missi
 result = await shell.executeAsync("sync status");
 assert(result.status === 0, `sync status mismatch: ${result.status}`);
 assert(result.output.includes("pendingConflicts=1"), `sync status did not show pending conflicts: ${result.output}`);
+assert(result.output.includes("applyRun=interrupted next=2/5"), `sync status did not show interrupted apply run: ${result.output}`);
 result = await shell.executeAsync("sync conflicts");
 assert(result.status === 0 && result.output.includes("/home/guest/Documents/.sync-conflicts/note.txt.2026.remote -> /home/guest/Documents/note.txt"), `sync conflicts output mismatch: ${result.output}`);
 result = await shell.executeAsync("sync resolve keep-local /home/guest/Documents/.sync-conflicts/note.txt.2026.remote");
@@ -313,6 +314,11 @@ function bootOs() {
         appliedAt: "2026-05-05T00:03:00.000Z",
         conflicts: 1,
         refused: 2,
+      },
+      lastApplyRun: {
+        status: "interrupted",
+        nextIndex: 2,
+        totalFiles: 5,
       },
     }),
     remoteSyncMergePolicy: () => ({
