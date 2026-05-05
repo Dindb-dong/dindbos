@@ -160,6 +160,8 @@ class FakeElement {
     this.textContent = "";
     this.className = "";
     this.listeners = {};
+    this.capturedPointerIds = new Set();
+    this.releasedPointerIds = [];
     this.classList = {
       values: new Set(),
       add: (name) => {
@@ -191,6 +193,19 @@ class FakeElement {
 
   addEventListener(type, handler) {
     this.listeners[type] = handler;
+  }
+
+  setPointerCapture(pointerId) {
+    this.capturedPointerIds.add(pointerId);
+  }
+
+  hasPointerCapture(pointerId) {
+    return this.capturedPointerIds.has(pointerId);
+  }
+
+  releasePointerCapture(pointerId) {
+    this.capturedPointerIds.delete(pointerId);
+    this.releasedPointerIds.push(pointerId);
   }
 
   querySelector(selector) {
@@ -268,6 +283,25 @@ async function runLiveWindowStateSmoke() {
     assert(compositor.surfaceCount === 1 && compositor.surfaces[0].rect.width === 640, "compositor status did not expose surface geometry");
     const procCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
     assert(procCompositor.lastInputEvent.type === "pointerdown", "/proc/compositor did not expose last input event");
+    task.titlebar.listeners.pointerdown({
+      pointerId: 7,
+      clientX: 10,
+      clientY: 10,
+      target: { closest: () => null },
+    });
+    assert(liveManager.compositorStatus().captureOwner === "browser", "compositor did not record pointer capture owner");
+    liveManager.close("browser");
+    assert(task.titlebar.releasedPointerIds.includes(7), "window close did not release active pointer capture");
+    assert(JSON.parse(liveOs.fs.readFile("/proc/compositor")).captureOwner === "", "/proc/compositor kept stale capture owner after close");
+    liveManager.open({
+      id: "browser",
+      appId: "browser",
+      pid: 42,
+      title: "Browser.app",
+      width: 640,
+      height: 420,
+      render: () => {},
+    });
     liveManager.activate("browser");
     assert(api.getState("browser").title === "Example Domain", "window API state was not preserved after activate");
   } finally {
