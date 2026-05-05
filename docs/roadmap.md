@@ -3739,6 +3739,336 @@ Completion criteria:
 - Sensitive DindbOS secrets can be bound to user identity and measured runtime state within browser constraints.
 - Trust reports make clear what is actually verified, what is browser-limited, and what requires a companion or managed deployment.
 
+### Native-Like 95: Real Userland Distribution, Base System, And Package Sets
+
+Status: Later.
+
+Goal: make DindbOS feel less like a collection of built-in demos and more like a small operating-system distribution with a base system, optional package sets, release channels, and reproducible install state.
+
+Why it matters:
+
+- Native OSes have a base system that boots consistently, a package manager that knows which files belong to which package, and upgrade paths between releases.
+- DindbOS already installs packages, apps, services, and package images, but a native-like OS needs a clearer boundary between the immutable base runtime, mutable system configuration, user-installed packages, and developer builds.
+- This is technically feasible in the browser by treating the base system as a signed package set, layering it through mount drivers, and applying updates through staged package transactions.
+
+Implementation tasks:
+
+- Define base system package sets such as `dindbos-kernel`, `dindbos-shell`, `dindbos-desktop`, `dindbos-sdk`, `dindbos-browser-tools`, `dindbos-viewers`, and `dindbos-compat`.
+- Add package-set manifests that declare included packages, boot-critical services, required mount drivers, default system files, compatibility tier, migration scripts, and rollback metadata.
+- Split built-in app/service registration so the runtime can report whether an app belongs to the base system, a user package, a developer workspace, or a temporary safe-mode overlay.
+- Add `distctl status|list|install-set|remove-set|verify|repair`, package-set records under `/var/lib/dindbos/distribution`, and `/etc/dindbos/release.json`.
+- Add immutable base image mounts with writable overlay configuration for `/etc`, `/var`, `/home`, package caches, and developer workspaces.
+- Add release channels such as stable, beta, nightly, local-dev, and managed-policy, with signed channel metadata and downgrade/rollback rules.
+- Add repair mode that can reinstall missing base files without touching user homes, keychain vaults, package data, or managed policy.
+
+Verification:
+
+- Add smoke coverage for base system manifest verification, missing-base-file repair, safe-mode base-only boot, package-set install/remove, release channel selection, and rollback to the previous package-set state.
+- Add tests proving user-installed packages cannot overwrite base-system files unless an update transaction owns the mutation.
+- Add regression tests proving failed package-set activation cannot leave `/etc`, `/var`, package records, service records, and launcher records out of sync.
+
+Completion criteria:
+
+- DindbOS can explain exactly what belongs to the base system, what belongs to installed packages, and what belongs to the user.
+- A damaged base system can be repaired without factory-resetting the whole browser OS installation.
+
+### Native-Like 96: Rootless System Services And Least-Privilege Service Accounts
+
+Status: Later.
+
+Goal: move service execution away from broad system authority by giving each daemon a dedicated service account, filesystem scope, device scope, network scope, and audit identity.
+
+Why it matters:
+
+- Native OSes do not run every background service as one all-powerful principal; services usually have dedicated users, groups, capabilities, and resource limits.
+- DindbOS already has users, groups, package services, service lifecycle state, and package namespaces, but service authority should become more granular before sensitive daemons handle sync, package updates, indexing, keychain prompts, or remote access.
+- Browser-native enforcement is possible because service entry points already run through runtime-owned process, namespace, VFS, keychain, network, and device brokers.
+
+Implementation tasks:
+
+- Add service account records under `/etc/dindbos/service-accounts.json`, with uid/gid, home/state roots, allowed syscalls, file labels, device grants, network grants, keychain grants, and restart policy.
+- Add `service --user`, `servicectl account`, `servicectl inspect-permissions`, and Settings service permission review surfaces.
+- Give core daemons separate identities such as `svc.indexer`, `svc.sync`, `svc.packages`, `svc.network`, `svc.companions`, `svc.scheduler`, and `svc.recovery`.
+- Route service filesystem access through service-owned roots such as `/var/lib/dindbos/services/<id>`, `/var/cache/dindbos/services/<id>`, and `/run/dindbos/services/<id>`.
+- Add service-to-service IPC policy so daemons communicate through named endpoints instead of shared private runtime objects.
+- Add privilege drop semantics at service start: boot may register a daemon, but the running process receives only its declared service principal and scoped grants.
+- Add audit records for service permission use, denied service access, service account migration, and managed-policy overrides.
+
+Verification:
+
+- Add smoke coverage for service account creation, scoped service file writes, denied cross-service state reads, denied undeclared device use, allowed service IPC, and service audit records.
+- Add tests proving a compromised non-critical service cannot mutate package DB, keychain records, user homes, or another service's state without explicit policy.
+- Add regression tests for service account migration across runtime updates and safe-mode service disablement.
+
+Completion criteria:
+
+- Background services can run continuously inside DindbOS without inheriting broad kernel authority by default.
+- Service permissions are inspectable, revocable, and testable like app/package permissions.
+
+### Native-Like 97: Encrypted Volumes, Per-User Home Protection, And Recovery Keys
+
+Status: Later.
+
+Goal: provide encrypted browser-native volumes for user homes, package secrets, portable images, backups, and managed profiles.
+
+Why it matters:
+
+- Native OSes protect user data with encrypted disks, user vaults, recovery keys, and policy-controlled unlock flows.
+- DindbOS already has per-user state, keychain primitives, and storage backends, but ordinary VFS files are not yet encrypted as a coherent volume.
+- Browser-native encryption is technically feasible with WebCrypto, per-user keys, passkeys, recovery keys, and careful separation between encrypted content, metadata, sync state, and audit logs.
+
+Implementation tasks:
+
+- Define encrypted volume records under `/var/lib/dindbos/volumes`, including owner, mount path, cipher profile, key reference, recovery policy, quota, dirty state, and last unlock diagnostics.
+- Add volume types for encrypted home, encrypted package state, encrypted portable image, encrypted backup archive, and managed encrypted workspace.
+- Add `volctl create|mount|unmount|lock|unlock|status|recover|rotate-key|export`, Settings storage security panels, and Files.app lock indicators.
+- Store encrypted file payloads in OPFS/IndexedDB-backed blocks or encrypted VFS blobs while keeping only safe redacted metadata visible before unlock.
+- Bind volume unlock to keychain, passkey/WebAuthn where available, password-derived fallback only when explicitly marked weak, and offline recovery keys.
+- Add key rotation, recovery key regeneration, lost-key unrecoverable-state reporting, and managed escrow-disabled policy.
+- Ensure sync snapshots and portable images preserve encrypted payloads without leaking plaintext into logs, search indexes, traces, crash bundles, or package DB records.
+
+Verification:
+
+- Add smoke coverage for encrypted volume create, lock, unlock, read/write after unlock, denied read while locked, wrong-user denial, recovery-key unlock, and key rotation.
+- Add tests proving plaintext does not appear in ordinary VFS exports, system image manifests, sync journals, audit logs, search index records, trace bundles, or crash reports.
+- Add regression tests for interrupted encrypted writes, corrupt encrypted block refusal, quota pressure during encryption, and recovery after browser reload.
+
+Completion criteria:
+
+- User-private data can be stored in a volume that remains unreadable until an OS-owned unlock flow succeeds.
+- DindbOS can honestly report which data is encrypted, which metadata is still visible, and which browser limits remain.
+
+### Native-Like 98: Real Filesystem Consistency Checker And Repair Tool
+
+Status: Later.
+
+Goal: add `fsck`-style verification and repair for VFS trees, mount driver metadata, package images, journals, caches, local mount records, and encrypted volumes.
+
+Why it matters:
+
+- Native OSes need filesystem repair because power loss, interrupted writes, schema migrations, quota failures, and bugs can corrupt metadata.
+- DindbOS already has durable files and storage diagnostics, but native-like reliability requires a tool that can prove the filesystem is internally consistent and repair known failure modes.
+- This is technically feasible because the browser runtime owns the VFS tree, mount table, package records, journals, and storage schema.
+
+Implementation tasks:
+
+- Define filesystem invariants for path normalization, directory children, parent links, inode-like ids, hard links, symlinks, ownership, permissions, mount records, package roots, descriptor references, and storage journal records.
+- Add `fsck.dindbos check|repair|dry-run|explain`, safe-mode boot repair, Settings storage repair flow, and `/var/log/dindbos/fsck.log`.
+- Add repair actions for orphaned nodes, missing parent pointers, duplicate ids, broken package mount records, stale local mount metadata, inconsistent link counts, invalid permission metadata, and incomplete journal transactions.
+- Add read-only salvage mode that exports recoverable files into `/var/recovery/fsck/<timestamp>` without mutating the damaged tree.
+- Add mount-driver-specific checks for `memfs`, `opfsfs`, `pkgfs`, `zipfs`, `overlayfs`, `procfs`, `devfs`, local mounts, and future encrypted volumes.
+- Add policy that prevents third-party packages from running repair actions unless trusted admin policy grants it.
+- Add repair reports that list every mutation, every refused repair, and every browser-limited condition.
+
+Verification:
+
+- Add smoke coverage with synthetic corrupt VFS fixtures for orphan repair, duplicate-id refusal, broken package mount cleanup, stale local mount record cleanup, symlink loop detection, and salvage export.
+- Add tests proving dry-run repair mutates nothing and full repair emits auditable mutation records.
+- Add regression tests proving repair never weakens file ownership, permission bits, ACLs, quarantine labels, or encrypted volume lock state.
+
+Completion criteria:
+
+- DindbOS can diagnose and repair known filesystem inconsistencies without asking the user to reset the entire OS.
+- Repair results are deterministic, auditable, and conservative when data safety is uncertain.
+
+### Native-Like 99: Bootloader, Kernel Profiles, And Safe Boot Selection
+
+Status: Later.
+
+Goal: add a browser-native bootloader layer that selects runtime profiles, validates boot manifests, enters safe mode, and exposes boot diagnostics before the desktop starts.
+
+Why it matters:
+
+- Native OSes separate boot selection, kernel command line, safe mode, recovery mode, and normal user sessions.
+- DindbOS already boots directly into the runtime, but native-like recovery and managed deployments need a pre-desktop boundary that can decide how the OS starts.
+- Browser-native boot selection is possible through signed boot manifests, local storage/OPFS boot records, URL boot parameters, deployment policy, and safe-mode service filtering.
+
+Implementation tasks:
+
+- Define boot entries for normal boot, safe mode, recovery shell, storage repair, base-system repair, companion-disabled boot, package-disabled boot, managed-policy boot, and developer profile boot.
+- Add `/boot/dindbos/boot.json`, boot entry signatures, kernel profile records, boot count, last boot result, fallback entry, and failure threshold policy.
+- Add `bootctl status|list|set-default|once|verify|rollback`, Settings boot diagnostics, and recovery shell boot entry selection.
+- Add a restricted pre-desktop recovery shell that can run `doctor`, `fsck`, `distctl repair`, `pkg verify`, `storage status`, and `bootctl rollback` without launching ordinary apps.
+- Add kernel command-line style flags for diagnostics, disabled services, disabled packages, readonly mode, trace boot, safe graphics, and companion quarantine.
+- Add boot measurement records that feed secure boot, attestation, update rollback, and crash correlation.
+- Add automatic fallback to last-known-good boot entry after repeated boot failure or failed update activation.
+
+Verification:
+
+- Add smoke coverage for normal boot entry, safe-mode service filtering, package-disabled boot, recovery shell command allowlist, boot rollback, failed-boot counter, and boot measurement records.
+- Add tests proving untrusted URL parameters cannot silently enable admin, disable security policy, unlock keychain, or bypass package quarantine.
+- Add regression tests proving boot profile selection is persisted only through trusted runtime APIs and signed managed-policy records.
+
+Completion criteria:
+
+- DindbOS can start in different audited boot modes with explicit guarantees and limits.
+- A failed update or damaged package set can be bypassed through safe boot without deleting user data.
+
+### Native-Like 100: System Installer, Partitioning Model, And Multi-Installation Manager
+
+Status: Later.
+
+Goal: let one browser profile host multiple DindbOS installations with explicit install, clone, repair, erase, and migration flows.
+
+Why it matters:
+
+- Native OSes distinguish installer media, installed systems, partitions, user volumes, recovery partitions, and cloned disks.
+- DindbOS can approximate this inside browser storage by treating each installation as a named system root with its own boot records, VFS roots, package DB, users, policies, and storage quota.
+- This makes experiments, demos, managed profiles, and recovery safer than mutating one global runtime forever.
+
+Implementation tasks:
+
+- Define installation records with id, display name, storage backend, quota, boot profile, runtime version, package set, user roots, encryption state, managed policy, and last health check.
+- Add `installer create|clone|import|erase|repair|migrate|list|select`, first-boot setup, and a pre-boot installation picker.
+- Add logical partitions such as system, user, package, cache, recovery, snapshots, and local-mount metadata, even when they share the same browser storage backend.
+- Add clone modes for full clone, base-system clone, user-data clone, package-only clone, safe diagnostic clone, and redacted bug-report image.
+- Add migration rules between storage schema versions and runtime compatibility tiers.
+- Add quota planning before install/clone and cleanup plans when browser storage cannot reserve enough space.
+- Add managed installation profiles that can lock package sources, boot entries, update channels, remote admin, and identity providers.
+
+Verification:
+
+- Add smoke coverage for new installation creation, clone, selected boot, erase refusal for active install, schema migration, quota denial, and redacted export.
+- Add tests proving installations cannot read each other's encrypted homes, keychain vaults, package state, boot records, or managed policies.
+- Add regression tests for interrupted clone/import/migration and rollback to the previous active installation.
+
+Completion criteria:
+
+- Users and developers can create isolated DindbOS installations inside one browser profile.
+- Installing, cloning, repairing, and erasing a system are explicit OS operations, not ad hoc local storage mutations.
+
+### Native-Like 101: Kernel/User Boundary Fuzzing Lab And Compatibility Corpus
+
+Status: Later.
+
+Goal: continuously stress syscalls, VFS paths, descriptor operations, package sandboxes, WASM imports, NodeCompat facades, network policy, and browser API brokers with reproducible fuzz tests.
+
+Why it matters:
+
+- Native OS kernels rely on fuzzing and compatibility suites because the hardest bugs occur at privilege boundaries and weird syscall combinations.
+- DindbOS is becoming a real platform boundary; random app inputs, malicious packages, corrupt files, and browser lifecycle events must not break invariants.
+- Browser-native fuzzing is possible with deterministic seeds, worker-backed fuzz runners, small WASM fixtures, synthetic package manifests, and redacted crash bundles.
+
+Implementation tasks:
+
+- Add a fuzz runner service with deterministic seeds, corpus storage, minimization, timeout control, crash capture, policy profile selection, and safe resource limits.
+- Create corpora for path normalization, symlink/link traversal, descriptor lifecycle, pipes, PTY IO, syscall argument validation, package manifests, app sandbox scopes, network rules, and local mount metadata.
+- Add WASM and NodeCompat fuzz fixtures that call the syscall ABI, VFS, descriptors, and package APIs through real runtime boundaries.
+- Add `fuzzctl run|minimize|replay|corpus|report`, CI-friendly focused fuzz jobs, and nightly longer fuzz jobs.
+- Add invariant checks for no leaked handles, no unauthorized file mutation, no permission widening, no unbounded queues, no unredacted secrets, and no cross-user state leak.
+- Add crash-bundle redaction and reproduction scripts that can replay the exact runtime seed without exposing private user data.
+- Add compatibility corpus tests for known POSIX/WASI/Node package edge cases so fixes remain stable.
+
+Verification:
+
+- Add smoke coverage for deterministic fuzz replay, timeout kill, minimized reproducer generation, invariant failure reporting, and crash bundle redaction.
+- Add tests proving fuzz runners execute in a bounded service account and cannot mutate ordinary user data outside a disposable test installation.
+- Add regression tests that replay every previously fixed kernel-boundary bug before PR merge.
+
+Completion criteria:
+
+- DindbOS can discover kernel-boundary bugs before real packages or users hit them.
+- Every fuzz failure produces a small, replayable, redacted artifact that can become a regression test.
+
+### Native-Like 102: Policy-As-Code For Managed Browser OS Deployments
+
+Status: Later.
+
+Goal: let schools, teams, labs, and managed demos deploy DindbOS with declarative policy bundles that control identity, packages, devices, networking, storage, update channels, and remote access.
+
+Why it matters:
+
+- Native OSes become operationally useful when admins can manage policy, not just click settings by hand.
+- DindbOS already has many brokered runtime boundaries; policy-as-code would make those boundaries configurable, testable, reviewable, and signed.
+- This is technically feasible with signed JSON/YAML policy bundles, runtime validation, policy compilation, and explicit managed-mode diagnostics.
+
+Implementation tasks:
+
+- Define policy bundle schemas for accounts, groups, package repositories, allowed packages, denied packages, device grants, network allowlists, companion trust, keychain export policy, storage quotas, update rings, and remote administration.
+- Add `policyctl validate|apply|diff|rollback|status|explain`, managed-mode Settings pages, and `/etc/dindbos/policy.d`.
+- Compile high-level policy into syscall filters, package profiles, service account grants, browser API broker rules, companion permissions, network firewall rules, and trusted UI requirements.
+- Add signed policy issuer trust roots, expiration, emergency revoke lists, local override rules, and read-only managed sections.
+- Add policy simulation mode that explains what would change before mutation and which apps/services/users would be blocked.
+- Add drift detection that reports when local state no longer matches the active policy bundle.
+- Add admin audit exports for policy application, denied override, expired bundle, invalid signature, and rollback.
+
+Verification:
+
+- Add smoke coverage for valid policy apply, invalid policy refusal, signed bundle verification, policy diff, rollback, denied unmanaged override, and drift detection.
+- Add tests proving policy compilation produces identical enforcement decisions across syscalls, AppSandbox, packages, devices, network, keychain, and companions.
+- Add regression tests proving malformed policy cannot disable security checks, widen package scopes, or hide audit records.
+
+Completion criteria:
+
+- A managed DindbOS deployment can be reproduced from a signed policy bundle.
+- Runtime behavior can be explained as policy decisions rather than scattered hand-coded exceptions.
+
+### Native-Like 103: OS-Level Automation, Scripting, And Accessibility-Safe Control
+
+Status: Later.
+
+Goal: expose automation as a permissioned OS service that can script apps, files, windows, packages, services, and trusted UI without granting raw runtime access.
+
+Why it matters:
+
+- Native OSes often provide automation through shells, task schedulers, accessibility APIs, launch services, and workflow engines.
+- DindbOS has shell commands, app APIs, and accessibility metadata, but general automation needs a broker that can act across apps safely and explain every grant.
+- Browser-native automation is technically possible through DindbOS-owned window surfaces, accessibility trees, filesystem APIs, package manifests, service APIs, and trusted UI prompts.
+
+Implementation tasks:
+
+- Add an automation broker with script identities, declared scopes, user prompts, event triggers, rate limits, dry-run mode, and audit records.
+- Add `automationctl`, scheduled workflow records, app action manifests, file action manifests, and service action endpoints.
+- Define an app action API for open, close, focus, command palette action, document action, accessibility action, export, import, and status.
+- Add automation triggers for file changes, package events, service events, lifecycle transitions, network events, time schedules, keychain grant changes, and trusted UI approvals.
+- Add accessibility-safe selectors that target OS-published accessibility nodes instead of private DOM selectors.
+- Add policy that blocks automation from approving its own permission prompts, reading keychain secrets, bypassing quarantine, or impersonating trusted UI.
+- Add workflow export/import with signatures, compatibility tier requirements, and redacted logs.
+
+Verification:
+
+- Add smoke coverage for an automation workflow that opens an app, performs an app-declared action, writes a file, waits for a service event, and records an audit log.
+- Add tests proving automation cannot click through trusted prompts, read another user's files, bypass app sandbox scopes, or automate a window that did not publish safe actions.
+- Add regression tests for cancelled workflows, browser reload recovery, rate limiting, and dry-run no-mutation behavior.
+
+Completion criteria:
+
+- Users can automate real OS workflows without giving scripts direct access to private runtime objects.
+- Automation behavior is permissioned, observable, revocable, and safe around trusted UI.
+
+### Native-Like 104: Native-Like Storage Classes, Tiering, And Quota Arbitration
+
+Status: Later.
+
+Goal: treat browser storage as OS-managed storage classes with priorities, quotas, eviction policy, cache tiers, and user-visible pressure handling.
+
+Why it matters:
+
+- Native OSes distinguish system files, user data, caches, temporary files, logs, snapshots, backups, and removable/local mounts.
+- Browsers expose storage with quota and eviction behavior that varies by browser and user settings; DindbOS needs to manage those limits instead of discovering them only when writes fail.
+- This is technically feasible by assigning every file and mount to a storage class, maintaining accounting metadata, and routing writes through a quota arbiter.
+
+Implementation tasks:
+
+- Define storage classes such as system, user-home, package-root, package-state, cache, temp, logs, snapshots, backups, sync-staging, local-mount-metadata, encrypted-volume, and recovery.
+- Add quota policies per class, user, package, service, installation, and mount driver.
+- Add a quota arbiter that checks planned writes, journal growth, package installs, encrypted volume expansion, snapshots, logs, and cache growth before mutation.
+- Add eviction policy for cache/temp/log classes with protected data classes that require explicit user/admin action before deletion.
+- Add `storagectl classes|quota|pressure|evict|reserve|explain`, Settings storage class views, and `/proc/storage/classes`.
+- Add browser storage pressure detection with fallback when `navigator.storage.estimate()` is unavailable or imprecise.
+- Add user-facing cleanup plans that explain exactly which caches, logs, snapshots, package artifacts, or temporary files can be removed and what will be preserved.
+
+Verification:
+
+- Add smoke coverage for quota reservation, protected-user-data refusal, cache eviction, temp cleanup, package install quota denial, snapshot quota accounting, and storage pressure diagnostics.
+- Add tests proving eviction never deletes user homes, keychain vaults, encrypted volumes, package roots, managed policy, or active recovery images without explicit authorized action.
+- Add regression tests for quota accounting after rollback, interrupted writes, package uninstall, cache eviction, and multi-installation clones.
+
+Completion criteria:
+
+- DindbOS can predict and manage browser storage pressure before critical writes fail.
+- Users can see which data is protected, which data is disposable, and which OS component owns each byte.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
@@ -3759,7 +4089,7 @@ The next practical sequence:
 3. Add WASM user processes on top of the syscall ABI with VFS, argv/env, stdio, permissions, and `/proc` visibility.
 4. Move heavy NodeCompat/WASM execution into worker-backed process executors with kill, timeout, crash, and descriptor cleanup behavior.
 5. Expand descriptor-backed IO from transient shell pipe descriptors into per-command process groups, pseudo-terminals, richer device nodes, and WASI rights/flags.
-6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, native-adjacent companions, and the hard native-like backlog: compositor/input server, mountable filesystem drivers, package namespaces, keychain, lifecycle policy, session coordination, portable system images, explicit emulation tiers, secure boot, kernel modules, multi-core worker scheduling, origin-isolated app containers, user-mode filesystem servers, accessibility automation, remote administration, transactional registry state, OS-level automation services, OPFS block-device semantics, handle-based kernel objects, process images, browser API brokers, syscall policy compilation, event-sourced replay, cross-origin isolation profiles, service mesh networking, trusted system UI, native-like conformance certification, directory/federated identity, ACL/xattr labels, kernel tracing, hibernation images, virtual VPN/firewall interfaces, quarantine scanning, live runtime update, device-tree capability modeling, remote desktop protocol, and browser-native attestation.
+6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, native-adjacent companions, and the hard native-like backlog: compositor/input server, mountable filesystem drivers, package namespaces, keychain, lifecycle policy, session coordination, portable system images, explicit emulation tiers, secure boot, kernel modules, multi-core worker scheduling, origin-isolated app containers, user-mode filesystem servers, accessibility automation, remote administration, transactional registry state, OS-level automation services, OPFS block-device semantics, handle-based kernel objects, process images, browser API brokers, syscall policy compilation, event-sourced replay, cross-origin isolation profiles, service mesh networking, trusted system UI, native-like conformance certification, directory/federated identity, ACL/xattr labels, kernel tracing, hibernation images, virtual VPN/firewall interfaces, quarantine scanning, live runtime update, device-tree capability modeling, remote desktop protocol, browser-native attestation, base-system distribution sets, least-privilege service accounts, encrypted volumes, `fsck` repair, bootloader profiles, multi-installation management, kernel-boundary fuzzing, policy-as-code, automation brokering, and storage-class quota arbitration.
 7. Continue Browser.app, document viewer, package, and UX work only when real workloads expose gaps in the already completed first-pass surfaces.
 
 ## 0. Immediate Carry-Over Work
