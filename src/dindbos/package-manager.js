@@ -484,6 +484,25 @@ export class PackageManager {
     return strictNamespaceReport(this.os, record, { source: "manifest" });
   }
 
+  evictNamespaceCache(packageId) {
+    const record = this.info(packageId);
+    if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    const cacheRoot = record.namespace?.cacheRoot;
+    if (!cacheRoot) throw new Error(`pkg: ${packageId}: package cache root missing`);
+    const removedBytes = safeRead(() => this.os.countBytes?.(cacheRoot), 0) || 0;
+    if (this.os.fs.exists(cacheRoot)) this.os.fs.remove(cacheRoot, "/", { recursive: true }, this.system);
+    this.ensureDirectoryPath(cacheRoot, { owner: record.id, group: "packages", permissions: "drwx------" });
+    this.emitPackageLifecycle("cache-evict", record, { cacheRoot, removedBytes });
+    return {
+      packageId: record.id,
+      cacheRoot,
+      removedBytes,
+      stateRoot: record.namespace?.stateRoot || "",
+      tempRoot: record.namespace?.tempRoot || "",
+      installPath: record.installPath,
+    };
+  }
+
   async runCli(packageId, argv = [], options = {}) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
