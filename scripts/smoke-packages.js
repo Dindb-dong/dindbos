@@ -6,11 +6,13 @@ import { ShellSession } from "../src/dindbos/shell.js";
 const os = createDindbOSTestRuntime();
 const packages = os.packages;
 const lifecycleEvents = [];
+const activationEvents = [];
 let signedRemoteManifest = null;
 let trustedPublisher = null;
 ["install", "update", "first-run", "uninstall-cleanup", "uninstall"].forEach((type) => {
   os.bus.on(`app:${type}`, (event) => lifecycleEvents.push(`${type}:${event.packageId}:${event.appId}`));
 });
+os.bus.on("package:activation", (event) => activationEvents.push(`${event.type}:${event.packageId}:${event.phase?.phase || event.activation.status}`));
 
 const installed = packages.install(packageManifest("rollback-demo", "0.1.0", [
   { path: "app.js", mime: "text/javascript", content: "export const version = '0.1.0';\n" },
@@ -58,6 +60,10 @@ assert(os.fs.exists("/var/lib/dindbos/packages/rollback-demo.json"), "valid pack
 assert(os.fs.exists("/usr/share/applications/Rollback Demo.app"), "valid package launcher missing");
 assert(os.apps.apps.has("rollback-demo"), "valid package app was not registered");
 assert(lifecycleEvents.includes("install:rollback-demo:rollback-demo"), "app:install lifecycle event missing");
+["package-record", "launcher", "app-registry", "services"].forEach((phase) => {
+  assert(activationEvents.includes(`phase-complete:rollback-demo:${phase}`), `package activation phase missing: ${phase}`);
+});
+assert(activationEvents.includes("complete:rollback-demo:complete"), "package activation completion event missing");
 
 await assertRejects(
   () => packages.install(packageManifest("broken-pkg", "0.1.0", [
@@ -72,6 +78,27 @@ assert(!os.fs.exists("/var/lib/dindbos/packages/broken-pkg.json"), "failed local
 assert(!os.fs.exists("/usr/share/applications/Broken Pkg.app"), "failed local install left launcher");
 assert(!os.apps.apps.has("broken-pkg"), "failed local install registered app");
 assert(!lifecycleEvents.some((event) => event.includes("broken-pkg")), "failed local install emitted lifecycle event");
+
+const activationFailOs = createDindbOSTestRuntime();
+const activationFailureEvents = [];
+activationFailOs.bus.on("package:activation", (event) => activationFailureEvents.push(`${event.type}:${event.packageId}:${event.phase?.phase || event.activation.status}`));
+const originalRegisterApp = activationFailOs.registerApp;
+activationFailOs.registerApp = (app) => {
+  if (app.id === "activation-fail") throw new Error("activation app registry failed");
+  return originalRegisterApp(app);
+};
+await assertRejects(
+  () => activationFailOs.packages.install(packageManifest("activation-fail", "0.1.0", [
+    { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+  ])),
+  "activation app registry failed",
+);
+assert(activationFailureEvents.includes("phase-error:activation-fail:app-registry"), "activation failure did not report app-registry phase error");
+assert(activationFailureEvents.includes("error:activation-fail:error"), "activation failure did not report activation error");
+assert(!activationFailOs.fs.exists("/opt/activation-fail"), "failed activation left install root");
+assert(!activationFailOs.fs.exists("/var/lib/dindbos/packages/activation-fail.json"), "failed activation left package record");
+assert(!activationFailOs.fs.exists("/usr/share/applications/Activation Fail.app"), "failed activation left launcher");
+assert(!activationFailOs.apps.apps.has("activation-fail"), "failed activation registered app");
 
 const quotaOs = createDindbOSTestRuntime();
 const quotaReservations = [];
