@@ -644,7 +644,17 @@ export class VirtualFileSystem {
       node.children.slice().forEach((child) => {
         const childName = child?.name || "";
         const childPath = this.join(path, childName || "<unnamed>");
-        if (!childName) problems.push(problem("missing-name", childPath, "child has no name", false));
+        if (!childName) {
+          problems.push(problem("orphaned-unnamed-node", childPath, "child has no name and cannot be addressed by path", true));
+          if (repair) {
+            repairs.push(repairRecord("remove-orphaned-unnamed-node", childPath, "present", "removed", dryRun));
+            if (!dryRun) {
+              const childIndex = node.children.indexOf(child);
+              if (childIndex >= 0) node.children.splice(childIndex, 1);
+              return;
+            }
+          }
+        }
         if (names.has(childName)) problems.push(problem("duplicate-name", childPath, `duplicates ${this.join(path, childName)}`, false));
         else names.set(childName, child);
         if (child?.atomicStagedFor || isAtomicStagingName(childName)) {

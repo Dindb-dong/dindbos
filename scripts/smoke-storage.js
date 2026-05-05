@@ -95,6 +95,20 @@ assert(reloaded.exists("/home/guest/Documents/.atomic-created.txt.dindbos-tmp"),
 const stagedFsckRepair = reloaded.checkIntegrity({ repair: true, dryRun: false });
 assert(stagedFsckRepair.repairs.some((entry) => entry.kind === "remove-orphaned-atomic-staging" && !entry.dryRun), "fsck repair did not report orphaned staging removal");
 assert(!reloaded.exists("/home/guest/Documents/.atomic-created.txt.dindbos-tmp"), "fsck repair did not remove orphaned staging node");
+documents.children.push({
+  name: "",
+  type: "file",
+  mime: "text/plain",
+  content: "nameless orphan",
+  size: "nameless orphan".length,
+});
+const namelessFsckDryRun = reloaded.checkIntegrity({ repair: true, dryRun: true });
+assert(namelessFsckDryRun.problems.some((entry) => entry.code === "orphaned-unnamed-node"), "fsck did not detect orphaned unnamed node");
+assert(namelessFsckDryRun.repairs.some((entry) => entry.kind === "remove-orphaned-unnamed-node" && entry.dryRun), "fsck dry-run did not plan orphaned unnamed node removal");
+assert(documents.children.some((entry) => entry.name === ""), "fsck dry-run removed orphaned unnamed node");
+const namelessFsckRepair = reloaded.checkIntegrity({ repair: true, dryRun: false });
+assert(namelessFsckRepair.repairs.some((entry) => entry.kind === "remove-orphaned-unnamed-node" && !entry.dryRun), "fsck repair did not report orphaned unnamed node removal");
+assert(!documents.children.some((entry) => entry.name === ""), "fsck repair did not remove orphaned unnamed node");
 reloaded.createDirectory("/var", "/", { owner: "root", group: "root" });
 reloaded.createDirectory("/var/recovery", "/", { owner: "root", group: "root" });
 reloaded.writeOrCreateFile("/var/recovery/skip.txt", "do not recurse", "/", { mime: "text/plain" });

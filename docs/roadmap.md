@@ -208,6 +208,7 @@ Implementation cuts:
 - Extend durability barriers into future mapped-file writes.
 - Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
 - Already present: VFS fsck detects orphaned atomic-write staging nodes and can remove those staged temp files without touching the committed target.
+- Already present: VFS fsck detects unnamed orphan child nodes that cannot be addressed by path and can remove only the unreachable child after dry-run/salvage.
 - Already present: `fsck --dry-run` includes first-pass package DB drift checks for package records whose `/opt/<package>` root is missing and `pkgfs` roots with no package DB record.
 - Already present: package `fsck --repair` conservatively removes orphan `pkgfs` roots that have no package DB record while leaving missing package roots as non-repairable diagnostics.
 - Already present: package `fsck` detects package DB/app registry disagreement when an installed package app is missing from the app registry or its manifest/launcher files are absent, and `fsck --repair` can re-register the package app from the package DB record.
@@ -217,7 +218,7 @@ Implementation cuts:
 - Already present: Shell `fsck --dry-run --explain` includes PersistentStorage partial journal diagnostics for active OPFS transaction markers with missing replay manifests and pending replay manifests.
 - Already present: LocalFolderMountManager exposes fsck diagnostics for stale persisted local mount metadata and can conservatively remove invalid persisted records without touching valid mounts.
 - Already present: `fsck --salvage` writes a conservative read-only recovery archive under `/var/recovery/fsck/<timestamp>/salvage.dindbos-fsck-export.json`, skipping recovery output paths to avoid recursive exports.
-- Extend `fsck.dindbos check|repair|dry-run|explain` to broader orphaned node classes.
+- Continue broadening `fsck.dindbos check|repair|dry-run|explain` as new orphaned node classes are identified.
 - Already present: large app writes and Files.app imports reserve storage bytes before VFS mutation so quota denial preserves existing files and prevents archive staging.
 - Already present: PersistentStorage supports first-pass storage-class quota arbitration for package roots, package state, cache, temp, snapshots, logs, backups, sync staging, recovery data, and user data using explicit reservation metadata or path/transaction inference.
 - Already present: VFS repair operations run through a protected-metadata guard so fsck repair never weakens ownership, group, permissions, security labels, quarantine state, or encrypted-volume locks while applying safe metadata repairs.
@@ -238,6 +239,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package fsck reports a missing declared app entry file inside an existing package root.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Already present: `npm run smoke:storage` verifies fsck dry-run reports orphaned atomic staging nodes without mutation and fsck repair removes only the staged temp node.
+- Already present: `npm run smoke:storage` verifies fsck dry-run reports unnamed orphan child nodes without mutation and fsck repair removes only the unreachable child node.
 - Already present: `npm run smoke:shell` verifies `fsck --explain` prints repair policy explanations, `/var/log/dindbos/fsck.log` records dry-run and repaired runs, and `/var/log/dindbos/fsck-audit.log` records planned and applied repair actions.
 - Already present: `npm run smoke:shell`, `npm run smoke:sdk`, `npm run smoke:permissions`, `npm run smoke:npm-node`, `npm run smoke:descriptors`, `npm run smoke:services`, `npm run smoke:packages`, and `npm run smoke:wasm` verify `storage.sync` succeeds through Shell, SDK async helpers, AppSandbox storage facades, NodeCompat async fsync/fdatasync paths, descriptor-backed `fd.sync`, service/package-service lifecycle sync barriers, and WASM async syscall / WASI `fd_sync` barriers, while sandboxed callers without `storage.read` are denied.
 - Already present: `npm run smoke:files` and `npm run smoke:permissions` verify quota denial happens before Files.app import replacement/archive staging and AppSandbox write mutation.
@@ -267,6 +269,9 @@ Why next:
 
 Implementation cuts:
 
+- Already present: `KernelObjectRegistry` assigns kernel object ids for processes and descriptors, tracks owner pid, namespace, user, rights, status, revocation reason, expiry metadata, and exposes `/proc/objects` plus `/proc/objects.json`.
+- Already present: `ProcessManager` registers each process as a kernel object, writes the object id into `/proc/<pid>/status` and `/proc/processes.json`, refreshes process-object metadata as windows/executors/activity change, and revokes process-owned objects on exit or crash.
+- Already present: `DescriptorManager` registers stdio, opened files, devices, pipes, PTYs, and preopen directories as descriptor kernel objects, writes descriptor object ids into `/proc/<pid>/fd.json`, updates offset/TTY metadata after IO, and revokes descriptor objects on fd close, process exit, and process crash.
 - Define kernel object ids for processes, descriptors, files, mounts, windows, services, devices, sockets, IPC endpoints, timers, keychain grants, package namespaces, and companion sessions.
 - Add per-process handle tables with rights, owner pid, namespace, user credentials, expiry, close-on-exec behavior, duplicate/transfer policy, and revocation reason.
 - Route high-value APIs through handles first: open files, descriptor IO, window capture, IPC endpoints, device opens, keychain grants, companion sessions, and network sockets.
@@ -276,6 +281,8 @@ Implementation cuts:
 
 Verification:
 
+- Already present: `npm run smoke:processes` verifies process object ids, `/proc/objects.json` ownership/status, child-pid metadata refresh, and process-object revocation after crash and restart cleanup.
+- Already present: `npm run smoke:descriptors` verifies descriptor object ids in fd listings, active descriptor objects in `/proc/objects.json`, offset metadata refresh after read/write, fd-close revocation, process-exit revocation, and process-crash revocation.
 - Add smoke coverage for valid handle use, stale handle denial, wrong-right denial, duplicated handle cleanup, cross-process transfer, inherited stdio handles, and revoked keychain/device/companion handles.
 - Add fuzz-style invalid handle tests for unknown id, wrong object type, double close, use-after-close, cross-user use, and package namespace escape.
 
@@ -3466,6 +3473,8 @@ Why it matters:
 
 Implementation tasks:
 
+- Already present: first-pass `KernelObjectRegistry` stores process and descriptor kernel object ids with owner pid, namespace, user, rights, status, revocation reason, expiry metadata, and procfs exports.
+- Already present: process objects and descriptor objects are registered through the existing process/descriptor managers and revoked during fd close, process exit, and process crash cleanup.
 - Define kernel object types, ids, owners, lifetimes, refcounts, capabilities, namespace membership, and audit labels.
 - Add a handle table per process that can contain file descriptors, windows, IPC channels, devices, sockets, timers, service controls, mount handles, and keychain grants.
 - Route app, shell, WASM, NodeCompat, service, and worker calls through handle resolution instead of direct object references where practical.
@@ -3476,6 +3485,7 @@ Implementation tasks:
 
 Verification:
 
+- Already present: process and descriptor smokes cover object id exposure, `/proc/objects.json` diagnostics, live metadata refresh, and revoke reasons for close, exit, crash, and restart cleanup.
 - Add smoke coverage for allowed handle use, stale handle denial, cross-process handle transfer, close-on-exit cleanup, inherited package namespace handles, and revoked grant behavior.
 - Add tests proving a sandboxed app cannot use an object id unless it owns a valid handle with the required capability.
 - Add fuzz-style tests for invalid handle ids, wrong object types, double close, duplicate close, and crash cleanup.

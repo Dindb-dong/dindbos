@@ -6,6 +6,7 @@ import { RuntimeCacheStore } from "./cache-store.js?v=20260422-browserd";
 import { DesktopShell } from "./desktop-shell.js?v=20260422-browserd";
 import { EventBus } from "./event-bus.js?v=20260422-browserd";
 import { KeychainManager } from "./keychain.js?v=20260422-browserd";
+import { KernelObjectRegistry } from "./kernel-objects.js?v=20260422-browserd";
 import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260422-browserd";
 import { NetworkBroker } from "./network-broker.js?v=20260422-browserd";
 import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
@@ -238,6 +239,7 @@ export class DindbOS {
     this.installSessionChannel(options.broadcastChannelFactory);
     this.shell = new DesktopShell(this);
     this.windows = new WindowManager(this);
+    this.objects = new KernelObjectRegistry(this);
     this.processes = new ProcessManager(this);
     this.services = new ServiceManager(this);
     this.executor = new ProcessExecutor(this);
@@ -3827,4 +3829,4 @@ function base64ToBytes(value) {
   return new Uint8Array(Buffer.from(text, "base64"));
 }
 
-export { AppRegistry, AppSandbox, DescriptorManager, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WasmRunner, WindowManager };
+export { AppRegistry, AppSandbox, DescriptorManager, KernelObjectRegistry, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WasmRunner, WindowManager };

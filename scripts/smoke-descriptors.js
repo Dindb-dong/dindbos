@@ -34,27 +34,36 @@ const context = {
 
 let result = os.syscall("fd.list", {}, context);
 assert(result.ok && result.value.length === 3, `initial fd table mismatch: ${JSON.stringify(result)}`);
+assert(result.value.every((descriptor) => descriptor.objectId), `initial fd table missing object ids: ${JSON.stringify(result)}`);
 assert(os.fs.readFile(`/proc/${process.pid}/fd.json`).includes('"fd": 0'), "procfs fd table was not written");
+assert(JSON.parse(os.fs.readFile("/proc/objects.json")).filter((entry) => entry.type === "descriptor" && entry.ownerPid === process.pid && entry.status === "active").length === 3, "initial descriptor objects were not registered");
 
 result = os.syscall("fd.open", { path: "input.txt", flags: "r" }, context);
 assert(result.ok && result.value.fd === 3, `fd.open read mismatch: ${JSON.stringify(result)}`);
 const inputFd = result.value.fd;
+const inputObjectId = result.value.objectId;
+assert(os.objects.get(inputObjectId)?.metadata?.path === "/home/guest/input.txt", "input descriptor object metadata path mismatch");
 result = os.syscall("fd.read", { fd: inputFd, length: 5 }, context);
 assert(result.ok && result.value.data === "hello", `fd.read first chunk mismatch: ${JSON.stringify(result)}`);
+assert(os.objects.get(inputObjectId)?.metadata?.offset === 5, "input descriptor object offset did not update after read");
 result = os.syscall("fd.seek", { fd: inputFd, offset: 6 }, context);
 assert(result.ok && result.value.offset === 6, `fd.seek mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: inputFd, length: 5 }, context);
 assert(result.ok && result.value.data === "world", `fd.read second chunk mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.close", { fd: inputFd }, context);
 assert(result.ok && result.value.closed, `fd.close mismatch: ${JSON.stringify(result)}`);
+assert(os.objects.get(inputObjectId)?.status === "revoked", "closed descriptor object was not revoked");
+assert(os.objects.get(inputObjectId)?.revocationReason === "fd-close", "closed descriptor object revocation reason mismatch");
 result = os.syscall("fd.read", { fd: inputFd, length: 1 }, context);
 assert(!result.ok && result.error.code === "EBADF", `closed fd did not return EBADF: ${JSON.stringify(result)}`);
 
 result = os.syscall("fd.open", { path: "output.txt", flags: "w+" }, context);
 assert(result.ok, `fd.open write mismatch: ${JSON.stringify(result)}`);
 const outputFd = result.value.fd;
+const outputObjectId = result.value.objectId;
 result = os.syscall("fd.write", { fd: outputFd, data: "alpha" }, context);
 assert(result.ok && result.value.bytes === 5, `fd.write mismatch: ${JSON.stringify(result)}`);
+assert(os.objects.get(outputObjectId)?.metadata?.offset === 5, "output descriptor object offset did not update after write");
 result = os.syscall("fd.sync", { fd: outputFd }, context);
 assert(!result.ok && result.error.code === "EAGAIN", `sync fd.sync did not require async dispatch: ${JSON.stringify(result)}`);
 const beforeFdSyncFlushes = storage.flushes;
@@ -161,6 +170,8 @@ assert(!result.ok && result.error.code === "EACCES", `fd.open denied path did no
 const pid = process.pid;
 os.processes.kill(pid, "smoke-exit");
 assert(!os.descriptors.tables.has(pid), "descriptor table remained after process kill");
+assert(os.objects.get(outputObjectId)?.status === "revoked", "process exit did not revoke open descriptor object");
+assert(os.objects.get(outputObjectId)?.revocationReason === "smoke-exit", "process exit descriptor revocation reason mismatch");
 
 const crashProcess = os.processes.spawn(app, { cwd: "/home/guest" });
 const crashContext = {
@@ -169,9 +180,12 @@ const crashContext = {
 };
 result = os.syscall("fd.open", { path: "input.txt", flags: "r" }, crashContext);
 assert(result.ok && result.value.fd === 3, `crash fd.open mismatch: ${JSON.stringify(result)}`);
+const crashObjectId = result.value.objectId;
 assert(os.descriptors.tables.has(crashProcess.pid), "descriptor table missing before crash");
 os.processes.crash(crashProcess.pid, new Error("fd crash smoke"));
 assert(!os.descriptors.tables.has(crashProcess.pid), "descriptor table remained after process crash");
+assert(os.objects.get(crashObjectId)?.status === "revoked", "process crash did not revoke open descriptor object");
+assert(os.objects.get(crashObjectId)?.revocationReason === "process-crash", "process crash descriptor revocation reason mismatch");
 assert(os.fs.exists(`/var/log/dindbos/crash-${crashProcess.pid}.log`), "descriptor crash smoke did not write crash report");
 assert(!os.fs.exists(`/proc/${crashProcess.pid}/fd.json`), "crashed process fd procfs remained after cleanup");
 

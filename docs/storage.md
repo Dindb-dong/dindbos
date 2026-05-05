@@ -46,6 +46,7 @@ Current implementation:
 - `fsck --salvage` exports readable VFS files into `/var/recovery/fsck/<timestamp>/salvage.dindbos-fsck-export.json` while skipping existing recovery output paths.
 - VFS fsck repair uses a protected-metadata guard so safe repairs cannot weaken ownership, group, permissions, security labels, quarantine state, or encrypted-volume lock flags.
 - VFS fsck detects interrupted atomic-write staging nodes and can remove only the orphaned staged temp file while preserving the committed target.
+- VFS fsck detects unnamed orphan child nodes that cannot be addressed by path and can remove only that unreachable child after dry-run/salvage.
 - Package fsck detects package DB/app registry disagreement and can restore a missing package app manifest/launcher from the package DB record.
 - Package fsck reports broken package roots whose declared app entry file is missing even when the package DB record and `pkgfs` root still exist.
 - Viewer.app caches document and image preview bytes through the runtime Cache API store with memory fallback, using path, MIME type, size, and modified time in the cache key.

@@ -22,15 +22,19 @@ export class DescriptorManager {
     table.descriptors.set(STDOUT_FD, streamDescriptor(STDOUT_FD, "stdout", "stdout", { writable: true, tty: pty }));
     table.descriptors.set(STDERR_FD, streamDescriptor(STDERR_FD, "stderr", "stderr", { writable: true, tty: pty }));
     this.tables.set(Number(process.pid), table);
+    table.descriptors.forEach((descriptor) => this.registerDescriptorObject(process, descriptor));
     (options.preopens || []).forEach((path) => this.preopen(process.pid, path));
     this.writeProcfs(process.pid);
     return this.list(process.pid);
   }
 
-  closeProcess(pid) {
+  closeProcess(pid, reason = "process-close") {
     const normalizedPid = Number(pid);
     const table = this.tables.get(normalizedPid);
     const pipeIds = table ? pipeIdsForTable(table) : [];
+    if (table) {
+      table.descriptors.forEach((descriptor) => this.revokeDescriptorObject(descriptor, reason));
+    }
     this.tables.delete(normalizedPid);
     pipeIds.forEach((pipeId) => this.cleanupPipe(pipeId));
     const path = `/proc/${normalizedPid}/fd.json`;
@@ -67,6 +71,7 @@ export class DescriptorManager {
     descriptor.rights = normalizeDescriptorRights(args.rights, descriptor);
     descriptor.wasi = args.wasi || null;
     table.descriptors.set(fd, descriptor);
+    this.registerDescriptorObject(process, descriptor);
     this.writeProcfs(process.pid);
     return publicDescriptor(descriptor);
   }
@@ -84,8 +89,12 @@ export class DescriptorManager {
     const readFd = table.nextFd;
     const writeFd = table.nextFd + 1;
     table.nextFd += 2;
-    table.descriptors.set(readFd, pipeDescriptor(readFd, pipe, "read"));
-    table.descriptors.set(writeFd, pipeDescriptor(writeFd, pipe, "write"));
+    const readDescriptor = pipeDescriptor(readFd, pipe, "read");
+    const writeDescriptor = pipeDescriptor(writeFd, pipe, "write");
+    table.descriptors.set(readFd, readDescriptor);
+    table.descriptors.set(writeFd, writeDescriptor);
+    this.registerDescriptorObject(process, readDescriptor);
+    this.registerDescriptorObject(process, writeDescriptor);
     this.writeProcfs(process.pid);
     return { readFd, writeFd, pipeId: pipe.id };
   }
@@ -98,7 +107,9 @@ export class DescriptorManager {
     const table = this.tableFor(process.pid);
     const fd = table.nextFd;
     table.nextFd += 1;
-    table.descriptors.set(fd, pipeDescriptor(fd, pipe, mode));
+    const descriptor = pipeDescriptor(fd, pipe, mode);
+    table.descriptors.set(fd, descriptor);
+    this.registerDescriptorObject(process, descriptor);
     this.writeProcfs(process.pid);
     return publicDescriptor(table.descriptors.get(fd));
   }
@@ -124,6 +135,7 @@ export class DescriptorManager {
     else throw descriptorError("EINVAL", `fd.read: ${descriptor.fd}: unsupported descriptor kind`);
     const readBytes = Number.isFinite(descriptor.readBytes) ? descriptor.readBytes : byteLength(data);
     delete descriptor.readBytes;
+    this.syncDescriptorObject(process, descriptor);
     this.writeProcfs(process.pid);
     return { fd: descriptor.fd, data, bytes: readBytes, offset: descriptor.offset || 0, eof: data.length < length };
   }
@@ -147,6 +159,7 @@ export class DescriptorManager {
       bytes = byteLength(data);
     }
     else throw descriptorError("EINVAL", `fd.write: ${descriptor.fd}: unsupported descriptor kind`);
+    this.syncDescriptorObject(process, descriptor);
     this.writeProcfs(process.pid);
     return { fd: descriptor.fd, bytes, offset: descriptor.offset || 0 };
   }
@@ -162,6 +175,7 @@ export class DescriptorManager {
     else if (whence === "end") descriptor.offset = size + offset;
     else throw descriptorError("EINVAL", `fd.seek: unsupported whence: ${whence}`);
     descriptor.offset = Math.max(0, descriptor.offset);
+    this.syncDescriptorObject(process, descriptor);
     this.writeProcfs(process.pid);
     return { fd: descriptor.fd, offset: descriptor.offset };
   }
@@ -219,6 +233,7 @@ export class DescriptorManager {
       const size = ttySize({ tty: args });
       descriptor.tty = descriptor.tty ? { ...descriptor.tty, ...size } : size;
       if (descriptor.tty?.id) descriptor.tty = this.os.pty?.resizeSession?.(descriptor.tty.id, size) || descriptor.tty;
+      this.syncDescriptorObject(process, descriptor);
       this.writeProcfs(process.pid);
       return {
         fd: descriptor.fd,
@@ -239,7 +254,9 @@ export class DescriptorManager {
     const table = this.tableFor(process.pid);
     if (!table.descriptors.has(fd)) throw descriptorError("EBADF", `fd.close: ${fd}: bad descriptor`);
     if (table.descriptors.get(fd)?.preopen) throw descriptorError("EINVAL", `fd.close: ${fd}: cannot close preopen descriptor yet`);
-    const pipeId = table.descriptors.get(fd)?.pipe?.id;
+    const descriptor = table.descriptors.get(fd);
+    const pipeId = descriptor?.pipe?.id;
+    this.revokeDescriptorObject(descriptor, "fd-close");
     table.descriptors.delete(fd);
     if (pipeId) this.cleanupPipe(pipeId);
     this.writeProcfs(process.pid);
@@ -251,7 +268,7 @@ export class DescriptorManager {
     const normalized = this.os.fs.normalize(path || this.os.session?.home || "/");
     const fd = table.nextFd;
     table.nextFd += 1;
-    table.descriptors.set(fd, {
+    const descriptor = {
       fd,
       kind: "directory",
       path: normalized,
@@ -261,8 +278,43 @@ export class DescriptorManager {
       offset: 0,
       flags: "preopen",
       preopen: true,
-    });
+    };
+    table.descriptors.set(fd, descriptor);
+    this.registerDescriptorObject(this.processFor(pid), descriptor);
     return fd;
+  }
+
+  registerDescriptorObject(process, descriptor) {
+    if (!process || descriptor.objectId) return null;
+    const object = this.os.objects?.register?.("descriptor", {
+      ref: `pid:${process.pid}:fd:${descriptor.fd}`,
+      name: `${process.pid}:${descriptor.fd}:${descriptor.kind}`,
+      ownerPid: process.pid,
+      namespace: process.manifest?.namespace || null,
+      user: process.user || this.os.session?.user || "",
+      rights: descriptorRightsList(descriptor),
+      metadata: descriptorObjectMetadata(descriptor),
+    }) || null;
+    descriptor.objectId = object?.id || "";
+    return object;
+  }
+
+  syncDescriptorObject(process, descriptor) {
+    if (!descriptor?.objectId) return null;
+    return this.os.objects?.update?.(descriptor.objectId, {
+      name: `${process.pid}:${descriptor.fd}:${descriptor.kind}`,
+      rights: descriptorRightsList(descriptor),
+      metadata: descriptorObjectMetadata(descriptor),
+    }) || null;
+  }
+
+  revokeDescriptorObject(descriptor, reason = "fd-close") {
+    if (!descriptor?.objectId) return null;
+    return this.os.objects?.revoke?.(descriptor.objectId, reason) || null;
+  }
+
+  processFor(pid) {
+    return this.os.processes?.processes?.get(Number(pid)) || this.os.processes?.get?.(pid) || null;
   }
 
   tableFor(pid) {
@@ -454,6 +506,7 @@ function pipeIdsForTable(table) {
 function publicDescriptor(descriptor) {
   return {
     fd: descriptor.fd,
+    objectId: descriptor.objectId || "",
     kind: descriptor.kind,
     path: descriptor.path,
     name: descriptor.name || "",
@@ -465,6 +518,37 @@ function publicDescriptor(descriptor) {
     rights: descriptor.rights ? { ...descriptor.rights } : null,
     wasi: descriptor.wasi ? { ...descriptor.wasi } : null,
     tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
+  };
+}
+
+function descriptorRightsList(descriptor) {
+  if (descriptor.rights) {
+    return Object.entries(descriptor.rights)
+      .filter(([, allowed]) => allowed)
+      .map(([right]) => right);
+  }
+  return [
+    descriptor.readable ? "read" : "",
+    descriptor.writable ? "write" : "",
+    descriptor.kind === "directory" ? "list" : "",
+    isTtyDescriptor(descriptor) ? "ioctl" : "",
+  ].filter(Boolean);
+}
+
+function descriptorObjectMetadata(descriptor) {
+  return {
+    fd: descriptor.fd,
+    kind: descriptor.kind,
+    path: descriptor.path,
+    name: descriptor.name || "",
+    readable: Boolean(descriptor.readable),
+    writable: Boolean(descriptor.writable),
+    offset: Number(descriptor.offset || 0),
+    flags: descriptor.flags || "",
+    preopen: Boolean(descriptor.preopen),
+    wasi: descriptor.wasi ? { ...descriptor.wasi } : null,
+    tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
+    pipeId: descriptor.pipe?.id ? Number(descriptor.pipe.id) : 0,
   };
 }
 
