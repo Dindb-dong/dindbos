@@ -36,6 +36,14 @@ export class SyscallDispatcher {
     if (name === "fs.stat") return this.fsStat(args, context);
     if (name === "fs.readText") return this.fsReadText(args, context);
     if (name === "fs.writeText") return this.fsWriteText(args, context);
+    if (name === "env.get") return this.envGet(args, context);
+    if (name === "env.list") return this.envList(context);
+    if (name === "app.list") return this.appList();
+    if (name === "app.manifest") return this.appManifest(args);
+    if (name === "package.list") return this.packageList(context);
+    if (name === "package.info") return this.packageInfo(args, context);
+    if (name === "storage.status") return this.storageStatus(context);
+    if (name === "localMount.status") return this.localMountStatus(context);
     if (name === "process.list") return this.processList(context);
     if (name === "process.get") return this.processGet(args, context);
     if (name === "process.log") return this.processLog(args, context);
@@ -80,6 +88,78 @@ export class SyscallDispatcher {
     const content = String(args.content ?? "");
     this.os.fs.writeOrCreateFile(path, content, "/", args.options || {}, context.principal);
     return { path, bytes: byteLength(content) };
+  }
+
+  envGet(args, context) {
+    const key = String(args.key || "").trim();
+    if (!key) throw syscallError("EINVAL", "syscall: env.get needs key");
+    return this.environment(context)[key] ?? "";
+  }
+
+  envList(context) {
+    return this.environment(context);
+  }
+
+  environment(context) {
+    return Object.freeze({
+      USER: context.env?.USER || this.os.session?.user || "guest",
+      HOME: context.env?.HOME || this.os.session?.home || "/home/guest",
+      SHELL: context.env?.SHELL || "/bin/dindbsh",
+      PATH: context.env?.PATH || "/bin:/usr/bin",
+      PWD: context.env?.PWD || context.process?.cwd || this.os.session?.home || "/",
+    });
+  }
+
+  appList() {
+    return this.os.apps.list().map((app) => ({
+      id: app.id,
+      name: app.name,
+      icon: app.icon,
+      pinned: Boolean(app.pinned),
+      accepts: [...(app.accepts || [])],
+    }));
+  }
+
+  appManifest(args) {
+    const appId = String(args.appId || "").trim();
+    if (!appId) throw syscallError("EINVAL", "syscall: app.manifest needs appId");
+    const manifest = this.os.apps.getManifest(appId);
+    if (!manifest) throw syscallError("ENOENT", `syscall: app.manifest: ${appId}: no such app`);
+    return manifest;
+  }
+
+  packageList(context) {
+    this.assertCapability("package.read", context);
+    return this.os.packages.list().map((record) => packageSummary(record));
+  }
+
+  packageInfo(args, context) {
+    const packageId = String(args.packageId || args.id || "").trim();
+    if (!packageId) throw syscallError("EINVAL", "syscall: package.info needs packageId");
+    this.assertCapability("package.read", context);
+    const record = this.os.packages.info(packageId);
+    if (!record) throw syscallError("ENOENT", `syscall: package.info: ${packageId}: package not installed`);
+    return packageSummary(record, true);
+  }
+
+  storageStatus(context) {
+    this.assertCapability("storage.read", context);
+    return {
+      ...safeRead(() => this.os.storage.status(), {}),
+      ...safeRead(() => this.os.persistenceStatus?.(), {}),
+      bucketPolicy: safeRead(() => this.os.storageBucketPolicy?.(), null),
+    };
+  }
+
+  localMountStatus(context) {
+    this.assertCapability("localMount.read", context);
+    const mounts = safeRead(() => this.os.localMounts.listMounts?.(), []);
+    return {
+      supported: Boolean(safeRead(() => this.os.localMounts.supported?.(), false)),
+      mounted: Array.isArray(mounts) ? mounts : [],
+      helper: safeRead(() => this.os.localMounts.nativeHelperStatus?.(), { status: "unavailable" }),
+      copyPolicy: safeRead(() => this.os.localMounts.copyPolicy?.(), null),
+    };
   }
 
   processList(context) {
@@ -210,8 +290,45 @@ function formatTrace(entry) {
   return `${entry.at} pid=${entry.pid || "-"} app=${entry.appId || "-"} ${entry.name} ${entry.code} ${entry.durationMs}ms`;
 }
 
+function packageSummary(record, detailed = false) {
+  const summary = {
+    id: record.id,
+    name: record.name,
+    version: record.version,
+    description: record.description || "",
+    installPath: record.installPath || "",
+    sourcePath: record.sourcePath || "",
+    compatibility: record.compatibility || { tier: "A", status: "supported" },
+  };
+  if (!detailed) return summary;
+  return {
+    ...summary,
+    app: record.app ? {
+      id: record.app.id,
+      title: record.app.title,
+      entry: record.app.entry,
+      entryPath: record.app.entryPath,
+      capabilities: [...(record.app.capabilities || [])],
+      fileSystem: {
+        read: [...(record.app.fileSystem?.read || [])],
+        write: [...(record.app.fileSystem?.write || [])],
+      },
+    } : null,
+    trust: record.trust || {},
+    dependencies: record.dependencies || {},
+  };
+}
+
 function ensureDirectory(os, path, principal) {
   if (!os.fs.exists(path)) os.fs.createDirectory(path, "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, principal);
+}
+
+function safeRead(read, fallback) {
+  try {
+    return read();
+  } catch {
+    return fallback;
+  }
 }
 
 function byteLength(value) {
