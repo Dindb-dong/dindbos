@@ -3435,6 +3435,7 @@ export async function settingsRuntimeSnapshot(os) {
   const lifecycle = safeRead(() => os.lifecycleStatus?.(), null);
   const recovery = safeRead(() => os.recoveryStatus?.(), null);
   const coordination = safeRead(() => os.sessionCoordinationStatus?.(), safeRead(() => os.sessionStatus?.().coordination, null));
+  const sync = safeRead(() => os.remoteSyncStatus?.(), null);
   return {
     user,
     home,
@@ -3448,6 +3449,7 @@ export async function settingsRuntimeSnapshot(os) {
     lifecycle,
     recovery,
     coordination,
+    sync,
   };
 }
 
@@ -3466,6 +3468,7 @@ export function settingsRuntimeMarkup(snapshot) {
         <div><dt>Lifecycle</dt><dd>${escapeHtml(snapshot.lifecycle?.state || "unknown")}</dd></div>
         <div><dt>Session Role</dt><dd>${escapeHtml(snapshot.coordination?.role || "unknown")}</dd></div>
         <div><dt>Recovery</dt><dd>${escapeHtml(formatRecoverySummary(snapshot.recovery))}</dd></div>
+        <div><dt>Sync</dt><dd>${escapeHtml(formatSyncSummary(snapshot.sync))}</dd></div>
         <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(snapshot.storage)}</dd></div>
         <div><dt>Desktop</dt><dd>${escapeHtml(snapshot.desktop)}</dd></div>
         <div><dt>Local Mounts</dt><dd>${snapshot.mounts.length ? `${snapshot.mounts.length} folder${snapshot.mounts.length === 1 ? "" : "s"}` : "none"}</dd></div>
@@ -3497,12 +3500,30 @@ export function settingsRuntimeMarkup(snapshot) {
       </section>
       <section class="settings-panel">
         <header>
+          <h3>Remote Sync</h3>
+        </header>
+        ${renderSettingsRemoteSync(snapshot.sync)}
+      </section>
+      <section class="settings-panel">
+        <header>
           <h3>Local Folders</h3>
           <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
         </header>
         ${renderSettingsMounts(snapshot.mounts)}
       </section>
     </section>
+  `;
+}
+
+function renderSettingsRemoteSync(sync) {
+  const snapshot = sync?.lastSuccessfulSnapshot;
+  return `
+    <dl>
+      <div><dt>Backend</dt><dd>${escapeHtml(sync?.backend || "unavailable")}</dd></div>
+      <div><dt>Encrypted</dt><dd>${Boolean(sync?.encrypted)}</dd></div>
+      <div><dt>Last Snapshot</dt><dd>${snapshot ? `${escapeHtml(shortTime(snapshot.createdAt))} · files=${Number(snapshot.fileCount || 0)}` : "none"}</dd></div>
+      <div><dt>Last Error</dt><dd>${escapeHtml(sync?.lastError || "-")}</dd></div>
+    </dl>
   `;
 }
 
@@ -3522,6 +3543,12 @@ function renderSettingsSessionCoordination(coordination) {
       <div><dt>Session Recovery</dt><dd>${coordination?.recovery?.recovered ? `recovered · conflicts=${Number(coordination.recovery.pendingConflicts || 0)}` : "none"}</dd></div>
     </dl>
   `;
+}
+
+function formatSyncSummary(sync) {
+  const snapshot = sync?.lastSuccessfulSnapshot;
+  if (!snapshot) return `${sync?.backend || "unavailable"} no-snapshot`;
+  return `${sync?.backend || "sync"} encrypted=${Boolean(sync?.encrypted)} last=${shortTime(snapshot.createdAt)} files=${Number(snapshot.fileCount || 0)}`;
 }
 
 function renderSettingsLifecycle(lifecycle, recovery) {

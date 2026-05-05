@@ -182,8 +182,16 @@ const reloadRecovery = reloadOs.recoveryStatus().lastRecovery;
 assert(reloadRecovery.sessionRecovery.pendingConflicts === 1, "reload recovery did not preserve pending conflict count");
 assert(reloadOs.sessionCoordinationStatus().recovery.pendingConflicts === 1, "session coordination did not expose reload recovery");
 assert(JSON.parse(reloadOs.fs.readFile("/proc/sessions")).recovery.recovered === true, "/proc/sessions did not expose reload recovery");
+const syncSnapshot = await tabB.createRemoteSyncSnapshot({
+  passphrase: "session-sync-secret",
+  paths: ["/home/guest/Documents"],
+});
+assert(syncSnapshot.encrypted === true && syncSnapshot.ciphertext, "remote sync snapshot was not encrypted");
+assert(syncSnapshot.fileCount >= 1, "remote sync snapshot did not include selected files");
+assert(!syncSnapshot.ciphertext.includes("peer edit"), "remote sync snapshot leaked plaintext content");
+assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.fileCount === syncSnapshot.fileCount, "remote sync status did not record last snapshot");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages package-lock reload-recovery");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages package-lock reload-recovery sync-snapshot");
 
 function createStorage(values = new Map()) {
   return {

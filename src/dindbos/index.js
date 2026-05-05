@@ -54,6 +54,7 @@ const LAST_SHUTDOWN_RECOVERY_PATH = `${RECOVERY_DIR}/last-shutdown.json`;
 const LAST_RECOVERY_PATH = `${RECOVERY_DIR}/last-recovery.json`;
 const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
 const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
+const REMOTE_SYNC_SNAPSHOT_KEY = "dindbos:remote-sync:last-snapshot";
 
 export class DindbOS {
   constructor(options = {}) {
@@ -137,6 +138,13 @@ export class DindbOS {
       pendingConflicts: 0,
       packageLockOwner: "",
       lastPackageOperation: "",
+    };
+    this.remoteSync = {
+      supported: true,
+      backend: "storage-value",
+      encrypted: true,
+      lastSuccessfulSnapshot: null,
+      lastError: "",
     };
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
@@ -622,6 +630,82 @@ export class DindbOS {
         "service suspend/degrade records",
         "recovery records for the next boot",
       ],
+    };
+  }
+
+  remoteSyncStatus() {
+    return {
+      ...this.remoteSync,
+      lastSuccessfulSnapshot: this.remoteSync.lastSuccessfulSnapshot
+        ? { ...this.remoteSync.lastSuccessfulSnapshot }
+        : null,
+    };
+  }
+
+  async createRemoteSyncSnapshot(options = {}) {
+    const passphrase = String(options.passphrase || "");
+    if (!passphrase) throw new Error("remote sync snapshot requires a passphrase");
+    const createdAt = new Date().toISOString();
+    const paths = Array.isArray(options.paths) && options.paths.length
+      ? options.paths.map((path) => this.fs.normalize(path, "/"))
+      : [this.session.home, "/var/lib/dindbos/app-state", "/var/lib/dindbos/packages", "/etc/dindbos"];
+    const payload = this.collectRemoteSyncPayload(paths, createdAt);
+    const encrypted = await encryptRemoteSyncPayload(payload, passphrase);
+    const snapshot = {
+      id: `sync-${Date.now().toString(36)}`,
+      version: 1,
+      createdAt,
+      backend: "storage-value",
+      encrypted: true,
+      algorithm: encrypted.algorithm,
+      instanceId: this.instanceId,
+      user: this.session.user,
+      paths,
+      fileCount: payload.files.length,
+      bytes: byteLength(JSON.stringify(payload)),
+      packageRecords: payload.files.filter((file) => file.path.startsWith("/var/lib/dindbos/packages/")).length,
+      appStateRecords: payload.files.filter((file) => file.path.startsWith("/var/lib/dindbos/app-state/")).length,
+      salt: encrypted.salt,
+      iv: encrypted.iv,
+      ciphertext: encrypted.ciphertext,
+    };
+    this.storage.writeValue?.(REMOTE_SYNC_SNAPSHOT_KEY, JSON.stringify(snapshot));
+    this.remoteSync.lastSuccessfulSnapshot = snapshotSummary(snapshot);
+    this.remoteSync.lastError = "";
+    this.bus.emit("sync:snapshot", this.remoteSyncStatus());
+    return { ...snapshot };
+  }
+
+  collectRemoteSyncPayload(paths, createdAt = new Date().toISOString()) {
+    const system = this.permissions.systemPrincipal();
+    const files = [];
+    const visit = (path) => {
+      const normalized = this.fs.normalize(path, "/");
+      const node = this.fs.resolve(normalized);
+      if (!node) return;
+      if (node.type === "file") {
+        const bytes = this.fs.readFileBytes(normalized, "/", system);
+        files.push({
+          path: normalized,
+          mime: node.mime || "application/octet-stream",
+          modified: node.modified || "",
+          bytes: bytes.length,
+          content: bytesToBase64(bytes),
+        });
+        return;
+      }
+      if (node.type === "directory" || node.type === "mount") {
+        (node.children || []).forEach((child) => visit(this.fs.join(normalized, child.name)));
+      }
+    };
+    paths.forEach((path) => visit(path));
+    return {
+      version: 1,
+      createdAt,
+      instanceId: this.instanceId,
+      user: this.session.user,
+      paths,
+      files: files.sort((left, right) => left.path.localeCompare(right.path)),
     };
   }
 
@@ -1610,6 +1694,55 @@ function boundedInteger(value, fallback, min, max) {
 
 function byteLength(value) {
   return new TextEncoder().encode(String(value ?? "")).byteLength;
+}
+
+function snapshotSummary(snapshot) {
+  return {
+    id: snapshot.id,
+    createdAt: snapshot.createdAt,
+    backend: snapshot.backend,
+    encrypted: Boolean(snapshot.encrypted),
+    fileCount: Number(snapshot.fileCount || 0),
+    bytes: Number(snapshot.bytes || 0),
+    packageRecords: Number(snapshot.packageRecords || 0),
+    appStateRecords: Number(snapshot.appStateRecords || 0),
+  };
+}
+
+async function encryptRemoteSyncPayload(payload, passphrase) {
+  const subtle = globalThis.crypto?.subtle;
+  const random = globalThis.crypto?.getRandomValues?.bind(globalThis.crypto);
+  if (!subtle || !random) throw new Error("remote sync encryption requires WebCrypto");
+  const encoder = new TextEncoder();
+  const salt = new Uint8Array(16);
+  const iv = new Uint8Array(12);
+  random(salt);
+  random(iv);
+  const keyMaterial = await subtle.importKey("raw", encoder.encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+  const key = await subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"],
+  );
+  const ciphertext = await subtle.encrypt({ name: "AES-GCM", iv }, key, encoder.encode(JSON.stringify(payload)));
+  return {
+    algorithm: "AES-GCM/PBKDF2-SHA-256",
+    salt: bytesToBase64(salt),
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
+  };
+}
+
+function bytesToBase64(bytes) {
+  const value = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  let binary = "";
+  value.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  if (typeof btoa === "function") return btoa(binary);
+  return Buffer.from(value).toString("base64");
 }
 
 export { AppRegistry, AppSandbox, DescriptorManager, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WasmRunner, WindowManager };

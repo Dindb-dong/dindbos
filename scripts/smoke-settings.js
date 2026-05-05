@@ -12,6 +12,7 @@ const calls = {
   status: 0,
   lifecycle: 0,
   coordination: 0,
+  sync: 0,
 };
 
 const os = {
@@ -116,6 +117,20 @@ const os = {
       recovery: { recovered: true, pendingConflicts: 2 },
     };
   },
+  remoteSyncStatus() {
+    calls.sync += 1;
+    return {
+      backend: "storage-value",
+      encrypted: true,
+      lastSuccessfulSnapshot: {
+        id: "sync-smoke",
+        createdAt: "2026-05-05T00:01:00.000Z",
+        fileCount: 4,
+        bytes: 128,
+      },
+      lastError: "",
+    };
+  },
   fs: {
     join(base, name) {
       return `${base}/${name}`;
@@ -135,6 +150,7 @@ assert(calls.mounts === 1, "settings snapshot did not read local mount status");
 assert(calls.lifecycle === 1, "settings snapshot did not read lifecycle status");
 assert(calls.recovery === 1, "settings snapshot did not read recovery status");
 assert(calls.coordination === 1, "settings snapshot did not read session coordination status");
+assert(calls.sync === 1, "settings snapshot did not read remote sync status");
 
 assert(snapshot.user === "guest", "settings snapshot user mismatch");
 assert(snapshot.home === "/home/guest", "settings snapshot home mismatch");
@@ -148,6 +164,7 @@ assert(snapshot.mounts[0].path === "/mnt/project", "settings snapshot mount path
 assert(snapshot.lifecycle.state === "recovered", "settings snapshot lifecycle state mismatch");
 assert(snapshot.recovery.lastRecovery.recoveredAt, "settings snapshot recovery status missing");
 assert(snapshot.coordination.role === "secondary", "settings snapshot coordination role mismatch");
+assert(snapshot.sync.lastSuccessfulSnapshot.fileCount === 4, "settings snapshot sync status mismatch");
 
 const markup = settingsRuntimeMarkup(snapshot);
 
@@ -165,6 +182,8 @@ assert(markup.includes("<dt>Peer Flush</dt><dd>primary-tab · complete</dd>"), "
 assert(markup.includes("<dt>Peer App State</dt><dd>api-lab · set</dd>"), "settings markup did not render app-state diagnostics");
 assert(markup.includes("<dt>Peer Package</dt><dd>api-lab · install · complete</dd>"), "settings markup did not render package operation diagnostics");
 assert(markup.includes("<dt>Session Recovery</dt><dd>recovered · conflicts=2</dd>"), "settings markup did not render session recovery diagnostics");
+assert(markup.includes("<dt>Sync</dt><dd>storage-value encrypted=true") && markup.includes("files=4</dd>"), "settings markup did not render sync summary");
+assert(markup.includes("<dt>Last Snapshot</dt><dd>") && markup.includes("· files=4</dd>"), "settings markup did not render remote sync panel");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");
