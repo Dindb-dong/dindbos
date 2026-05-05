@@ -75,6 +75,7 @@ export class SyscallDispatcher {
     if (name === "package.list") return this.packageList(context);
     if (name === "package.info") return this.packageInfo(args, context);
     if (name === "storage.status") return this.storageStatus(context);
+    if (name === "storage.transactions") return this.storageTransactions(context);
     if (name === "storage.sync") throw syscallError("EAGAIN", "syscall: storage.sync requires async syscall dispatch");
     if (name === "timer.status") return this.timerStatus(args, context);
     if (name === "timer.create") return this.timerCreate(args, context);
@@ -250,6 +251,11 @@ export class SyscallDispatcher {
       ...safeRead(() => this.os.persistenceStatus?.(), {}),
       bucketPolicy: safeRead(() => this.os.storageBucketPolicy?.(), null),
     };
+  }
+
+  storageTransactions(context) {
+    this.assertCapability("storage.read", context);
+    return this.os.storageTransactions?.status?.() || [];
   }
 
   async storageSync(context) {

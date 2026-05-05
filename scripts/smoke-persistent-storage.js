@@ -16,6 +16,7 @@ await verifyInodeContentMismatchDiagnostics();
 await verifyQuotaReservationDeniesBeforeMutation();
 await verifyOpfsFailureFallsBackToSnapshot();
 await verifyLifecyclePendingWriteFlushes();
+await verifyRuntimeStorageTransactionHandles();
 await verifyStorageClassQuotaArbitration();
 
 console.log(`persistent storage smoke ok binaryBytes=${binary.byteLength} journal=write quota=reservation`);
@@ -375,6 +376,37 @@ function bootVfs() {
   fs.createDirectory("/home/guest");
   fs.createDirectory("/home/guest/Documents");
   return fs;
+}
+
+async function verifyRuntimeStorageTransactionHandles() {
+  const storage = createRuntimeStorage();
+  const os = new DindbOS({ root: {}, storage, persistDelayMs: 0 });
+  const system = os.permissions.systemPrincipal();
+  os.ensureDirectoryPath("/home/guest/Documents", { leafOwner: "guest", leafGroup: "users", principal: system });
+  os.fs.writeOrCreateFile("/home/guest/Documents/storage-tx.txt", "transaction\n", "/", {
+    owner: "guest",
+    group: "users",
+  }, system);
+  await os.flushPersistentFileSystem();
+  const transactions = os.storageTransactions.status();
+  const transaction = transactions.at(-1);
+  assert(transaction?.kind === "persistence-flush", `runtime storage transaction kind mismatch: ${JSON.stringify(transaction)}`);
+  assert(transaction.status === "committed", `runtime storage transaction did not commit: ${JSON.stringify(transaction)}`);
+  assert(transaction.objectId && transaction.handleId, "runtime storage transaction did not expose object and handle ids");
+  assert(os.objects.get(transaction.objectId)?.type === "storage-transaction", "storage transaction kernel object type mismatch");
+  assert(os.objects.get(transaction.objectId)?.status === "revoked", "committed storage transaction object was not revoked");
+  assert(os.objects.get(transaction.objectId)?.revocationReason === "storage-transaction-committed", "storage transaction revoke reason mismatch");
+  assert(os.objects.getHandle(transaction.handleId)?.status === "revoked", "committed storage transaction handle was not revoked");
+  assert(os.fs.readFile("/proc/storage-transactions").includes(transaction.id), "/proc/storage-transactions did not list committed transaction");
+  const status = os.persistenceStatus();
+  assert(status.storageTransactions.some((entry) => entry.id === transaction.id), "persistence status did not include storage transaction history");
+
+  const result = os.syscall("storage.transactions", {}, {
+    principal: system,
+    process: { pid: 0 },
+    assertCapability: () => {},
+  });
+  assert(result.ok && result.value.some((entry) => entry.id === transaction.id), `storage.transactions syscall mismatch: ${JSON.stringify(result)}`);
 }
 
 function createAdapter() {

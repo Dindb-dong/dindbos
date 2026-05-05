@@ -9,6 +9,7 @@ export const KERNEL_OBJECT_TYPES = [
   "socket",
   "ipc",
   "timer",
+  "storage-transaction",
   "keychain-grant",
   "package-namespace",
   "companion-session",

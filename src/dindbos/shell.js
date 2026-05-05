@@ -2062,6 +2062,8 @@ function formatStorage(status) {
     `persistScheduled=${status.persistScheduled || 0}`,
     `persistCoalesced=${status.persistCoalesced || 0}`,
     `persistFlushes=${status.persistFlushes || 0}`,
+    `storageTransactions=${status.storageTransactions?.length || 0}`,
+    `lastStorageTransaction=${status.storageTransactions?.at?.(-1)?.id || "-"}`,
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
   ].join("\n");

@@ -17,6 +17,7 @@ import { PersistentStorage } from "./persistent-storage.js?v=20260422-browserd";
 import { ProcessExecutor } from "./process-executor.js?v=20260422-browserd";
 import { ProcessManager } from "./process-manager.js?v=20260422-browserd";
 import { ServiceManager } from "./service-manager.js?v=20260422-browserd";
+import { StorageTransactionManager } from "./storage-transaction-manager.js?v=20260422-browserd";
 import { SyscallDispatcher } from "./syscalls.js?v=20260422-browserd";
 import { TimerManager } from "./timer-manager.js?v=20260422-browserd";
 import { VirtualFileSystem } from "./vfs.js?v=20260422-browserd";
@@ -246,6 +247,7 @@ export class DindbOS {
     this.executor = new ProcessExecutor(this);
     this.descriptors = new DescriptorManager(this);
     this.timers = new TimerManager(this, options.timers || {});
+    this.storageTransactions = new StorageTransactionManager(this);
     this.syscalls = new SyscallDispatcher(this);
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);
@@ -3165,6 +3167,15 @@ export class DindbOS {
     }
     this.persisting = true;
     const startedAt = Date.now();
+    const transaction = this.storageTransactions?.begin?.("persistence-flush", {
+      metadata: {
+        pending: Boolean(this.persistPending),
+        scheduled: this.persistenceStats.scheduled,
+        coalesced: this.persistenceStats.coalesced,
+        lastAction: this.persistenceStats.lastAction,
+        lastPath: this.persistenceStats.lastPath,
+      },
+    }) || null;
     this.persistenceStats.lastFlushStartedAt = new Date(startedAt).toISOString();
     this.persistenceStats.lastFlushError = "";
     this.publishSessionStorageFlush("start");
@@ -3185,9 +3196,21 @@ export class DindbOS {
       } while (this.persistRequestedDuringFlush || this.persistPending);
     } catch (error) {
       failure = error;
+      if (transaction?.id) this.storageTransactions?.fail?.(transaction.id, error, {
+        metadata: {
+          flushed: this.persistenceStats.flushed,
+          durationMs: Date.now() - startedAt,
+        },
+      });
       this.persistenceStats.lastFlushError = error?.message || String(error);
       throw error;
     } finally {
+      if (!failure && transaction?.id) this.storageTransactions?.commit?.(transaction.id, {
+        metadata: {
+          flushed: this.persistenceStats.flushed,
+          durationMs: Date.now() - startedAt,
+        },
+      });
       this.persisting = false;
       this.persistenceStats.lastFlushDurationMs = Date.now() - startedAt;
       this.publishSessionStorageFlush(failure ? "error" : "complete", { error: this.persistenceStats.lastFlushError });
@@ -3219,6 +3242,7 @@ export class DindbOS {
       persistLastFlushedAt: this.persistenceStats.lastFlushedAt,
       persistLastFlushDurationMs: this.persistenceStats.lastFlushDurationMs,
       persistLastFlushError: this.persistenceStats.lastFlushError,
+      storageTransactions: this.storageTransactions?.status?.().slice(-20) || [],
     };
   }
 
