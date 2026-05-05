@@ -12,6 +12,7 @@ const calls = {
   status: 0,
   lifecycle: 0,
   coordination: 0,
+  keychain: 0,
   sync: 0,
   syncMerge: 0,
   syncConflicts: 0,
@@ -183,6 +184,38 @@ const os = {
       bytes: 12,
     }];
   },
+  keychain: {
+    settingsStatus() {
+      calls.keychain += 1;
+      return {
+        locked: false,
+        records: 2,
+        activeGrants: [
+          {
+            name: "registry.token",
+            kind: "repository-token",
+            appId: "secret-package",
+            grantedAt: "2026-05-05T00:02:00.000Z",
+            expiresAt: "2026-05-05T00:12:00.000Z",
+          },
+        ],
+        deniedRequests: [
+          {
+            at: "2026-05-05T00:03:00.000Z",
+            action: "get",
+            name: "api.token",
+            requester: "other-app",
+            result: "denied",
+          },
+        ],
+        staleCredentials: [
+          { name: "old.token", kind: "generic", ownerAppId: "legacy-app", updatedAt: "2025-01-01T00:00:00.000Z" },
+        ],
+        exportWarnings: ["2 secrets require keychain-mediated export"],
+        recoveryWarnings: ["recovery packages must be explicitly exported by the keychain service"],
+      };
+    },
+  },
   fs: {
     join(base, name) {
       return `${base}/${name}`;
@@ -205,6 +238,7 @@ assert(calls.coordination === 1, "settings snapshot did not read session coordin
 assert(calls.sync === 1, "settings snapshot did not read remote sync status");
 assert(calls.syncMerge === 1, "settings snapshot did not read remote sync merge policy");
 assert(calls.syncConflicts === 1, "settings snapshot did not read remote sync conflicts");
+assert(calls.keychain === 1, "settings snapshot did not read keychain status");
 
 assert(snapshot.user === "guest", "settings snapshot user mismatch");
 assert(snapshot.home === "/home/guest", "settings snapshot home mismatch");
@@ -223,6 +257,7 @@ assert(snapshot.sync.lastSuccessfulSnapshot.cacheRecords === 1, "settings snapsh
 assert(snapshot.sync.lastSuccessfulSnapshot.settingsRecords === 2, "settings snapshot sync settings coverage mismatch");
 assert(snapshot.syncMerge.planner === "offline-first", "settings snapshot sync merge policy mismatch");
 assert(snapshot.syncConflicts.length === 1, "settings snapshot sync conflict count mismatch");
+assert(snapshot.keychain.activeGrants.length === 1, "settings snapshot keychain grant count mismatch");
 
 const markup = settingsRuntimeMarkup(snapshot);
 
@@ -250,6 +285,14 @@ assert(markup.includes("<dt>Apply Run</dt><dd>interrupted · next=2/4</dd>"), "s
 assert(markup.includes("<dt>Last Retry</dt><dd>") && markup.includes("· applied=1 · refused=0</dd>"), "settings markup did not render remote sync retry status");
 assert(markup.includes("<dt>Last Repair</dt><dd>") && markup.includes("· remaining=0</dd>"), "settings markup did not render remote sync repair status");
 assert(markup.includes("<dt>Merge Rules</dt><dd>6</dd>"), "settings markup did not render remote sync merge rules");
+assert(markup.includes("<h3>Keychain</h3>"), "settings markup did not render keychain panel");
+assert(markup.includes("<dt>Active Grants</dt><dd>1</dd>"), "settings markup did not render keychain active grant count");
+assert(markup.includes("<dt>Denied Requests</dt><dd>1</dd>"), "settings markup did not render keychain denied request count");
+assert(markup.includes("<dt>Stale Credentials</dt><dd>1</dd>"), "settings markup did not render keychain stale credential count");
+assert(markup.includes("2 secrets require keychain-mediated export"), "settings markup did not render keychain export warning");
+assert(markup.includes("recovery packages must be explicitly exported"), "settings markup did not render keychain recovery warning");
+assert(markup.includes('data-keychain-grant="registry.token"'), "settings markup did not render active keychain grant");
+assert(markup.includes('data-keychain-denied="api.token"'), "settings markup did not render denied keychain request");
 assert(markup.includes('data-sync-action="use-conflict"') && markup.includes('data-sync-action="keep-local"') && markup.includes('data-sync-action="delete-conflict"'), "settings markup did not render sync repair actions");
 assert(markup.includes("/home/guest/Documents/note.txt"), "settings markup did not render sync conflict target");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
