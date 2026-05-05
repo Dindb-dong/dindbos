@@ -372,7 +372,7 @@ export class AppSandbox {
         const normalizedKey = normalizeStateKey(key);
         const record = this.readStateRecord();
         record.values[normalizedKey] = normalizeStateValue(value);
-        this.writeStateRecord(record);
+        this.writeStateRecord(record, { action: "set", key: normalizedKey });
         return cloneJson(record.values[normalizedKey]);
       },
       remove: (key) => {
@@ -380,13 +380,13 @@ export class AppSandbox {
         const record = this.readStateRecord();
         const existed = Object.hasOwn(record.values, normalizedKey);
         delete record.values[normalizedKey];
-        this.writeStateRecord(record);
+        this.writeStateRecord(record, { action: "remove", key: normalizedKey });
         return existed;
       },
       keys: () => Object.keys(this.readStateRecord().values).sort(),
       snapshot: () => cloneJson(this.readStateRecord().values),
       clear: () => {
-        this.writeStateRecord(this.emptyStateRecord());
+        this.writeStateRecord(this.emptyStateRecord(), { action: "clear" });
         return true;
       },
       path: () => this.statePath(),
@@ -421,7 +421,7 @@ export class AppSandbox {
     };
   }
 
-  writeStateRecord(record) {
+  writeStateRecord(record, event = {}) {
     ensureStateDirectory(this.os);
     const payload = {
       version: 1,
@@ -436,6 +436,12 @@ export class AppSandbox {
       { mime: "application/json", owner: "root", group: "root", permissions: "-rw-------" },
       this.os.permissions.systemPrincipal(),
     );
+    this.os.publishSessionAppStateChange?.(event.action || "write", {
+      appId: this.process.appId,
+      key: event.key || "",
+      path: this.statePath(),
+      updatedAt: payload.updatedAt,
+    });
   }
 
   createLocalMountFacade() {
@@ -540,6 +546,7 @@ export function appStatePath(appId) {
 export function removeAppState(os, appId) {
   const path = appStatePath(appId);
   if (os.fs.exists(path)) os.fs.remove(path, "/", {}, os.permissions.systemPrincipal());
+  os.publishSessionAppStateChange?.("remove-app", { appId, path });
   return path;
 }
 

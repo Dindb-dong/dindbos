@@ -3517,6 +3517,7 @@ function renderSettingsSessionCoordination(coordination) {
       <div><dt>Channel</dt><dd>${coordination?.channel?.connected ? `connected · received=${Number(coordination.channel.received || 0)}` : "unavailable"}</dd></div>
       <div><dt>Conflicts</dt><dd>${Number(coordination?.conflicts?.pending || 0)} pending · total=${Number(coordination?.conflicts?.total || 0)}</dd></div>
       <div><dt>Peer Flush</dt><dd>${coordination?.storageFlush?.lastPeerSource ? `${escapeHtml(coordination.storageFlush.lastPeerSource)} · ${escapeHtml(coordination.storageFlush.lastPeerPhase || "unknown")}` : "none"}</dd></div>
+      <div><dt>Peer App State</dt><dd>${coordination?.appState?.lastPeerAppId ? `${escapeHtml(coordination.appState.lastPeerAppId)} · ${escapeHtml(coordination.appState.lastPeerAction || "change")}` : "none"}</dd></div>
     </dl>
   `;
 }

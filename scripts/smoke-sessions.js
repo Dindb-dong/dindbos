@@ -147,8 +147,14 @@ tabB.bus.on("session:storage-flush", (event) => flushEvents.push(`${event.source
 await tabA.flushPersistentFileSystem();
 assert(flushEvents.includes("tab-a:start") && flushEvents.includes("tab-a:complete"), "peer storage flush events were not delivered");
 assert(tabB.sessionCoordinationStatus().storageFlush.lastPeerPhase === "complete", "peer storage flush status was not recorded");
+const appStateEvents = [];
+tabB.bus.on("session:app-state", (event) => appStateEvents.push(`${event.source}:${event.appId}:${event.action}:${event.key}`));
+const sandbox = tabA.createSandbox({ appId: "session-state-app", user: "guest", manifest: {}, cwd: "/" });
+sandbox.state.set("prefs", { theme: "dark" });
+assert(appStateEvents.includes("tab-a:session-state-app:set:prefs"), "peer app-state event was not delivered");
+assert(tabB.sessionCoordinationStatus().appState.lastPeerAppId === "session-state-app", "peer app-state status was not recorded");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state");
 
 function createStorage(values = new Map()) {
   return {
