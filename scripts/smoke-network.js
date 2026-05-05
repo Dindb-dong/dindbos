@@ -155,6 +155,26 @@ rawTcp.close("done");
 const rawUdp = allowedSandbox.net.openRawSocket("udp", "api.example.test", 53);
 rawUdp.close("done");
 assert(os.network.status().rawSockets.history.some((entry) => entry.protocol === "udp" && entry.state === "closed"), "raw UDP close was not recorded");
+os.companionPermissionStatus = () => ({
+  identity: "networkd",
+  protocolVersion: "dindbos-networkd-v1",
+  approved: false,
+  capabilities: ["rawTcp", "rawUdp"],
+});
+await assertRejects(() => allowedSandbox.net.openRawSocket("tcp", "api.example.test", 443), "requires approved networkd companion");
+os.companionPermissionStatus = () => ({
+  identity: "networkd",
+  protocolVersion: "dindbos-networkd-v1",
+  approved: true,
+  capabilities: ["rawUdp"],
+});
+await assertRejects(() => allowedSandbox.net.openRawSocket("tcp", "api.example.test", 443), "requires approved networkd companion");
+os.companionPermissionStatus = () => ({
+  identity: "networkd",
+  protocolVersion: "dindbos-networkd-v1",
+  approved: true,
+  capabilities: ["rawTcp", "rawUdp"],
+});
 await assertRejects(() => allowedSandbox.net.openRawSocket("tcp", "blocked.example.test", 443), "host denied");
 assert(rawCompanionCalls.some((entry) => entry.action === "open" && entry.protocol === "tcp") && rawCompanionCalls.some((entry) => entry.action === "close"), "raw companion adapter was not called");
 const netStatusSyscall = allowedSandbox.syscall("net.status");

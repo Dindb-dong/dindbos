@@ -8,6 +8,7 @@ const BUILTIN_MANUALS = {
   cd: "cd [path] - change current directory",
   chmod: "chmod <mode> <path> - change mode bits, for example chmod 644 note.txt",
   clear: "clear - clear terminal output",
+  companion: "companion list|grant|revoke - inspect or administer companion permissions",
   cp: "cp [-r] <source> <destination> - copy files or directories",
   curl: "curl <url> - fetch a URL through the DindbOS network broker",
   doctor: "doctor [compat] - print runtime diagnostics or compatibility tiers for troubleshooting",
@@ -67,6 +68,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "netstat",
   "npm",
   "ping",
+  "companion",
   "pkg",
   "stat",
   "su",
@@ -284,6 +286,7 @@ export class ShellSession {
     if (command === "mount-local") return this.mountLocal(args);
     if (command === "umount") return this.umount(args);
     if (command === "pkg") return this.pkg(args);
+    if (command === "companion") return this.companion(args);
     if (command === "ps") return this.os.processes.table();
     if (command === "kill") return this.kill(args);
     if (command === "keychain") return this.keychain(args);
@@ -782,6 +785,27 @@ export class ShellSession {
       return `trusted publisher removed ${this.os.packages.removeTrustedPublisher(idOrKey)}`;
     }
     return "pkg: usage: pkg trust list | add <publisher-id> <public-key> [name] | remove <publisher-id|public-key>";
+  }
+
+  companion(args) {
+    const [action, identity, protocolVersion, ...capabilities] = args;
+    if (!action || action === "list") {
+      const records = this.os.listCompanionPermissions?.() || [];
+      return records.length
+        ? records.map((record) => formatCompanionPermission(record)).join("\n")
+        : "companion: no companion permissions";
+    }
+    if (action === "grant" || action === "approve") {
+      if (!identity || !protocolVersion) return "companion: usage: companion grant <identity> <protocol-version> [capability...]";
+      const record = this.os.grantCompanionPermission(identity, protocolVersion, capabilities, { principal: this.principal });
+      return `companion granted ${record.identity} ${record.protocolVersion} capabilities=${record.capabilities.join(",") || "-"}`;
+    }
+    if (action === "revoke" || action === "remove") {
+      if (!identity) return "companion: usage: companion revoke <identity>";
+      const record = this.os.revokeCompanionPermission(identity, { principal: this.principal });
+      return `companion revoked ${record.identity}`;
+    }
+    return "companion: usage: companion list | grant <identity> <protocol-version> [capability...] | revoke <identity>";
   }
 
   keychain(args) {
@@ -1905,6 +1929,16 @@ function formatDependencies(dependencies) {
   const npmDeps = Object.entries(dependencies.npm || {})
     .map(([name, dependency]) => `npm ${name}@${dependency.version || "latest"} ${dependency.url || ""}`);
   return [...packageDeps, ...npmDeps].join("\n") || "pkg: no dependencies";
+}
+
+function formatCompanionPermission(record = {}) {
+  return [
+    record.identity || "-",
+    `protocol=${record.protocolVersion || "-"}`,
+    `approved=${Boolean(record.approved)}`,
+    `capabilities=${record.capabilities?.join(",") || "-"}`,
+    record.revokedAt ? `revokedAt=${record.revokedAt}` : `grantedAt=${record.grantedAt || "-"}`,
+  ].join(" ");
 }
 
 function formatKeychainRecord(record = {}) {
