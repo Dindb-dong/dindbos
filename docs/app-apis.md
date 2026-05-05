@@ -26,6 +26,19 @@ Capabilities are checked before sensitive runtime APIs run. Filesystem access is
 
 Denied operations throw explicit errors such as `capability denied` or `sandbox denied`.
 
+## Syscall ABI
+
+Available as `os.syscall(name, args)`.
+
+The syscall ABI is the low-level runtime boundary shared by shell diagnostics, package apps, and future WASM/worker user processes. It returns structured results instead of throwing raw stack traces:
+
+```js
+const write = os.syscall("fs.writeText", { path: "/home/guest/Documents/report.txt", content: "hello" });
+if (!write.ok) throw new Error(write.error.message);
+```
+
+Sandboxed apps use the same filesystem scopes and capability checks through syscall calls as they do through the high-level facades below. Syscall traces are written under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`. See `docs/syscalls.md` for the current syscall table and errno-style failures.
+
 ## Filesystem
 
 Available as `os.fs`.

@@ -110,10 +110,12 @@ It reports the active session, current working directory, storage backend and di
 
 `doctor compat` prints the DindbOS compatibility tiers, browser capability probes, storage backend, browser provider companion endpoint, and hard unsupported native boundaries. Use it before installing a package that declares a required compatibility tier.
 
+`syscall <name> [json]` calls the DindbOS syscall ABI and prints the structured JSON result. See `docs/syscalls.md` for the supported syscall names, errno-style failures, and trace files under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`.
+
 ## Verification
 
 ```bash
 npm run smoke:shell
 ```
 
-The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, compatibility diagnostics, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.
+The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, compatibility diagnostics, raw syscall ABI calls, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures.

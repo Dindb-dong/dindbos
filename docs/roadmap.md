@@ -177,7 +177,7 @@ The principle is strict: each item must create a reusable OS primitive. A termin
 
 ### Convergence 1: Browser-Native Syscall ABI
 
-Status: Next.
+Status: In progress.
 
 Goal: define a stable syscall-style interface between user programs and the DindbOS runtime.
 
@@ -189,18 +189,22 @@ Why it matters:
 
 Implementation tasks:
 
-- Define a numbered or named syscall table for filesystem, process, clock, entropy, terminal IO, environment, permissions, package metadata, app launch, and diagnostics.
-- Add `os.syscall(nameOrNumber, args)` as an internal low-level runtime API.
+- Already present: a named first-pass syscall table covers clock, entropy, filesystem existence/stat/read/write, process list/get/log, and app launch.
+- Already present: `os.syscall(name, args)` returns structured `{ ok, value }` or `{ ok: false, error: { code, message, syscall } }` results.
+- Already present: Terminal exposes raw ABI calls through `syscall <name> [json]`.
+- Already present: sandboxed apps receive `os.syscall()` and use the same manifest filesystem scopes and capability checks as high-level facades.
+- Already present: syscall tracing writes `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls` for process-backed calls.
+- Already present: `docs/syscalls.md` documents the current ABI, errno-style failures, shell usage, tracing, and browser-native compatibility boundary.
 - Route existing high-level app APIs through the syscall layer where practical, instead of letting every surface call kernel services differently.
-- Return structured errno-style failures such as `ENOENT`, `EACCES`, `EINVAL`, `ENOSYS`, `EIO`, and `EPERM`.
-- Add syscall tracing under `/proc/<pid>/syscalls` and `/var/log/dindbos/syscall.log`.
-- Add permission checks at the syscall boundary, not only in high-level app wrappers.
-- Document ABI stability rules in `docs/syscalls.md`.
+- Expand the syscall table to terminal IO, environment, package metadata, app metadata, local mount status, and storage diagnostics.
+- Add ABI stability/version negotiation rules once a second caller runtime, such as WASM or workers, starts targeting it.
 
 Verification:
 
-- Add smoke coverage proving the same file read/write, process lookup, app launch, and permission denial behavior through shell, app API, NodeCompat, and raw syscall calls.
-- Add regression tests for unknown syscall, invalid arguments, permission denial, and syscall trace output.
+- Already present: `npm run smoke:shell` verifies raw shell `syscall` write/read calls and `ENOSYS` for unknown syscalls.
+- Already present: `npm run smoke:packages` verifies a sandboxed package app writes/reads/logs through `os.syscall()` and emits `/proc/<pid>/syscalls` plus global syscall traces.
+- Add smoke coverage proving the same operation through NodeCompat and future WASM/worker callers once those runtimes target the ABI.
+- Add focused regression tests for invalid arguments and explicit permission denial through raw syscalls.
 
 Completion criteria:
 
