@@ -52,9 +52,21 @@ assert(!os.apps.apps.has("broken-pkg"), "failed local install registered app");
 assert(!lifecycleEvents.some((event) => event.includes("broken-pkg")), "failed local install emitted lifecycle event");
 
 packages.install(packageManifest("namespace-target", "0.1.0", [
-  { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export function mount({ content, os }) {",
+      "  os.ipc.register('namespace-target.echo', (message) => ({ ok: true, from: message.fromAppId }));",
+      "  content.innerHTML = '<main data-namespace-target>ipc-ready</main>';",
+      "}",
+    ].join("\n"),
+  },
   { path: "secret.txt", mime: "text/plain", content: "target secret\n" },
-]));
+], { namespace: { ipcEndpoints: ["namespace-target.echo"] } }));
+const namespaceTargetWindow = os.apps.launch("namespace-target");
+await namespaceTargetWindow.rendered;
+await waitFor(() => namespaceTargetWindow.content.innerHTML.includes("data-namespace-target"), `namespace target did not render: ${namespaceTargetWindow.content.innerHTML}`);
 os.registerApp({
   id: "namespace-child",
   name: "Namespace Child",
@@ -75,8 +87,11 @@ packages.install(packageManifest("namespace-probe", "0.1.0", [
       "  let dependencyIsolation = 'not-denied';",
       "  try { os.node.evaluate(\"const secret = require('secret-lib'); console.log(secret);\", pkg.installPath); }",
       "  catch (error) { dependencyIsolation = error.message.includes('dependency not declared') ? 'dependency-denied' : error.message; }",
+      "  let ipcIsolation = 'not-denied';",
+      "  try { os.ipc.send('namespace-target.echo', { probe: true }); }",
+      "  catch (error) { ipcIsolation = error.message.includes('send denied') ? 'ipc-denied' : error.message; }",
       "  const child = os.launch('namespace-child');",
-      "  content.innerHTML = `<main data-namespace-probe data-child-pid=\"${child.pid}\">${rootIsolation}:${dependencyIsolation}</main>`;",
+      "  content.innerHTML = `<main data-namespace-probe data-child-pid=\"${child.pid}\">${rootIsolation}:${dependencyIsolation}:${ipcIsolation}</main>`;",
       "}",
     ].join("\n"),
   },
@@ -85,7 +100,7 @@ packages.install(packageManifest("namespace-probe", "0.1.0", [
 const namespaceProbeWindow = os.apps.launch("namespace-probe");
 await namespaceProbeWindow.rendered;
 await waitFor(() => namespaceProbeWindow.content.innerHTML.includes("data-namespace-probe"), `namespace probe did not render: ${namespaceProbeWindow.content.innerHTML}`);
-assert(namespaceProbeWindow.content.innerHTML.includes("root-denied:dependency-denied"), `package namespace isolation mismatch: ${namespaceProbeWindow.content.innerHTML}`);
+assert(namespaceProbeWindow.content.innerHTML.includes("root-denied:dependency-denied:ipc-denied"), `package namespace isolation mismatch: ${namespaceProbeWindow.content.innerHTML}`);
 const namespaceChild = os.processes.list().find((process) => process.parentPid === namespaceProbeWindow.pid && process.appId === "namespace-child");
 assert(namespaceChild?.manifest?.namespace?.processGroup === "package:namespace-probe", `child process did not inherit package namespace: ${JSON.stringify(namespaceChild)}`);
 const namespaceChildStatus = os.fs.readFile(`/proc/${namespaceChild.pid}/status`);
@@ -101,6 +116,8 @@ const namespaceLimits = JSON.parse(os.fs.readFile(`/proc/${namespaceChild.pid}/l
 assert(namespaceLimits.processGroup === "package:namespace-probe", "child /proc limits missing process group");
 os.processes.kill(namespaceChild.pid, "namespace-test-cleanup");
 os.processes.kill(namespaceProbeWindow.pid, "namespace-test-cleanup");
+os.processes.kill(namespaceTargetWindow.pid, "namespace-test-cleanup");
+assert(!os.ipcEndpoints.has("namespace-target.echo"), "package IPC endpoint remained after owner process exit");
 packages.remove("namespace-probe");
 packages.remove("namespace-target");
 

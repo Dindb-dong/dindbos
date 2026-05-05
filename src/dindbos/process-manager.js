@@ -134,6 +134,7 @@ export class ProcessManager {
     process.crashIndexPath = report.indexPath;
     this.os.windows?.releaseProcessCapture?.(process.pid, "process-crash");
     this.os.descriptors?.closeProcess?.(process.pid);
+    this.os.unregisterIpcEndpointsForPid?.(process.pid, "process-crash");
     this.syncProcfs();
     this.os.bus.emit("process:crash", process);
     this.emitAppLifecycle("crash", process, { error: error?.message || String(error) });
@@ -182,6 +183,7 @@ export class ProcessManager {
     this.sampleActivity(process.pid, "exit", 1);
     this.processes.delete(process.pid);
     this.os.descriptors?.closeProcess?.(process.pid);
+    this.os.unregisterIpcEndpointsForPid?.(process.pid, reason);
     this.history.push({ ...this.withRuntimeMetrics(process) });
     this.syncProcfs();
     if (process.windowId && this.os.windows.has(process.windowId)) {
