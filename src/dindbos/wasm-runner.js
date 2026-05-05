@@ -203,6 +203,28 @@ export class WasmRunner {
             return errnoNumber(error.code || (String(error.message || "").includes("file exists") ? "EEXIST" : "EIO"));
           }
         },
+        path_unlink_file: (dirfd, pathPtr, pathLength) => {
+          try {
+            const target = this.scopedDirectoryTarget(process, context, Number(dirfd), readString(pathPtr, pathLength));
+            const stat = this.os.fs.stat(target, "/", context.principal);
+            if (stat?.type === "directory") return errnoNumber("EISDIR");
+            this.os.fs.remove(target, "/", {}, context.principal);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
+        path_remove_directory: (dirfd, pathPtr, pathLength) => {
+          try {
+            const target = this.scopedDirectoryTarget(process, context, Number(dirfd), readString(pathPtr, pathLength));
+            const stat = this.os.fs.stat(target, "/", context.principal);
+            if (stat?.type !== "directory") return errnoNumber("ENOTDIR");
+            this.os.fs.remove(target, "/", {}, context.principal);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
         path_open: (dirfd, dirflags, pathPtr, pathLength, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) => {
           void dirflags;
           try {
@@ -341,6 +363,18 @@ export class WasmRunner {
     if ((process.manifest.capabilities || []).includes(capability)) return;
     throw new Error(`wasm: capability denied: ${capability}`);
   }
+
+  scopedDirectoryTarget(process, context, dirfd, path) {
+    const directory = this.os.descriptors.stat(process, { fd: dirfd }, context);
+    if (directory.kind !== "directory") {
+      const error = new Error(`wasi: fd ${dirfd}: descriptor is not a directory`);
+      error.code = "ENOTDIR";
+      throw error;
+    }
+    const target = this.os.fs.normalize(path, directory.path);
+    context.assertFileSystem(target, "write");
+    return target;
+  }
 }
 
 function toUint8Array(bytes) {
@@ -360,7 +394,7 @@ function parseSyscallRequest(text) {
 }
 
 function errnoNumber(code) {
-  const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EBADF: 8, EEXIST: 20, ENOTDIR: 54, EIO: 5 };
+  const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EBADF: 8, EEXIST: 20, EISDIR: 31, ENOTDIR: 54, EIO: 5 };
   return values[code] || 1;
 }
 

@@ -310,6 +310,7 @@ Implementation tasks:
 - Already present: WASI `path_open` maps first-pass `rightsBase` read/write rights onto descriptor read/write checks.
 - Already present: WASI `fd_readdir` can enumerate directory descriptors such as the preopened cwd.
 - Already present: WASI `path_create_directory` can create directories under a scoped directory descriptor.
+- Already present: WASI `path_unlink_file` and `path_remove_directory` can remove files and directories under a scoped directory descriptor.
 - Already present: shell pipelines pass segment output through transient pipe descriptors owned by a short-lived `shell:pipeline` process while preserving existing shell pipeline output semantics.
 - Already present: runtime pipe objects can be attached across process descriptor tables, allowing descriptor-backed multi-process pipe chaining.
 - Already present: `fd.ioctl` exposes first-pass TTY control requests for window size and `isatty` checks, returning `ENOTTY` for non-TTY descriptors.
@@ -317,7 +318,7 @@ Implementation tasks:
 - Already present: `/dev/tty` can be opened through descriptor syscalls and maps reads/writes to the process stdin/stdout streams.
 - Already present: `/dev/clipboard` can be opened through descriptor syscalls and maps reads/writes to the DindbOS runtime clipboard service inside the browser policy boundary.
 - Already present: Terminal.app creates a DindbOS pseudo-terminal session; PTY-backed processes share TTY size, input, and output through standard streams and `/dev/tty`.
-- Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags, `fd_readdir`, and `path_create_directory` subset.
+- Broaden WASI descriptor coverage beyond the first scoped `path_open` rights/flags, directory read, and directory mutation subset.
 
 Verification:
 
@@ -334,7 +335,8 @@ Verification:
 - Already present: `npm run smoke:wasm` verifies WASI `fd_readdir` returns directory records from the preopened cwd descriptor.
 - Already present: `npm run smoke:descriptors` verifies writer, middle, and reader processes can chain bytes through attached pipe descriptors and that closed pipes are removed from the pipe registry.
 - Already present: `npm run smoke:wasm` verifies WASI `path_create_directory` creates a directory under the preopened cwd descriptor.
-- Add smoke coverage for broader WASI directory mutation operations as more WASI calls are mapped.
+- Already present: `npm run smoke:wasm` verifies WASI `path_unlink_file` and `path_remove_directory` remove scoped files and directories.
+- Add smoke coverage for broader WASI rename/link metadata operations as more WASI calls are mapped.
 
 Completion criteria:
 
@@ -585,6 +587,290 @@ Verification:
 Completion criteria:
 
 - Users and package authors can tell whether a workload is supported, degraded, companion-required, or impossible in browser-only mode.
+
+## Hard But Feasible Native-OS Backlog
+
+These tasks are deliberately ambitious. They are still technically possible if DindbOS keeps the browser sandbox honest, pushes browser-safe work into workers/WASM, and uses optional native-adjacent companions only for capabilities the browser cannot expose directly.
+
+The acceptance bar is the same as the rest of this roadmap: each item must become a reusable OS primitive with shell/API/package tests. Cosmetic desktop behavior does not count.
+
+### Native-Like 1: POSIX-Lite Compatibility Surface
+
+Status: Later.
+
+Goal: make common Unix-style programs easier to port by filling in the practical POSIX subset that maps cleanly to DindbOS.
+
+Implementation tasks:
+
+- Add symlink support in VFS path resolution, including loop detection, relative symlink targets, `readlink`, and `lstat` semantics.
+- Add hard-link-like alias records where the storage backend can support shared content references without corrupting metadata.
+- Expand file metadata to include mode bits, uid/gid, timestamps, link count, inode-like stable ids, device ids, and extended attributes.
+- Add POSIX-like commands and syscalls for `stat`, `lstat`, `chmod`, `chown`, `umask`, `link`, `unlink`, `rename`, `truncate`, `mkdir`, `rmdir`, `readdir`, and `realpath`.
+- Map NodeCompat, WASI, shell commands, and app APIs onto the same metadata and path-resolution rules.
+- Document the exact POSIX gaps that remain impossible or intentionally unsupported inside browser-only mode.
+
+Verification:
+
+- Add smoke coverage for symlink traversal, symlink loop failure, link count behavior, metadata preservation across copy/move, and permission-denied paths.
+- Add cross-runtime tests proving shell, NodeCompat, WASI, and app APIs see the same path and metadata results.
+
+Completion criteria:
+
+- Small POSIX-oriented packages can run without private DindbOS shims for basic file and directory operations.
+- Unsupported POSIX features fail with explicit compatibility errors instead of silent browser-shaped behavior.
+
+### Native-Like 2: Init System And Service Supervisor
+
+Status: Later.
+
+Goal: replace ad hoc background behavior with a real boot-time service model.
+
+Implementation tasks:
+
+- Add an `init` process as PID 1 for boot orchestration, service startup, orphan reparenting, and shutdown sequencing.
+- Add service units for package update checks, mount sync, search indexing, storage repair, companion monitoring, and network broker maintenance.
+- Add dependency ordering, restart policy, health checks, backoff, degraded mode, and service logs.
+- Add `service`, `journalctl`, and `dmesg`-style shell commands backed by runtime state.
+- Add recovery boot modes: normal boot, safe mode without third-party services, storage repair mode, and companion-disabled mode.
+- Persist boot/service state under `/var/run`, durable service configuration under `/etc/dindbos`, and logs under `/var/log/dindbos`.
+
+Verification:
+
+- Add smoke coverage for service dependency order, crash restart, disabled service skip, degraded boot, safe mode, and orphaned child reparenting.
+- Add regression tests proving failed services do not block the desktop unless marked boot-critical.
+
+Completion criteria:
+
+- DindbOS can boot into a predictable service graph and explain which service failed, restarted, or degraded.
+
+### Native-Like 3: Job Control, Signals, And Process Groups
+
+Status: Later.
+
+Goal: make Terminal and process management behave closer to a real Unix-like userland.
+
+Implementation tasks:
+
+- Add process groups, sessions, foreground process ownership, and controlling TTY metadata.
+- Add signal-like runtime events for `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGKILL`, `SIGPIPE`, and resize notifications.
+- Implement shell job control primitives: foreground/background launch, `jobs`, `fg`, `bg`, `kill`, pipeline group cleanup, and exit status aggregation.
+- Propagate cancellation through workers, WASM, NodeCompat, descriptor tables, pipes, and service-managed processes.
+- Add signal delivery auditing under `/proc/<pid>/status` and `/var/log/dindbos/process.log`.
+
+Verification:
+
+- Add smoke coverage for Ctrl-C-style interruption, background jobs, foreground resume, killed pipeline cleanup, broken pipe behavior, and worker termination.
+
+Completion criteria:
+
+- Long-running CLI workloads can be interrupted, resumed where supported, or killed without stale descriptors or frozen shell state.
+
+### Native-Like 4: IPC And Local Message Bus
+
+Status: Later.
+
+Goal: give apps and services native-like communication primitives beyond direct function calls.
+
+Implementation tasks:
+
+- Add a runtime IPC broker with named channels, process credentials, capability checks, backpressure, and message size limits.
+- Add Unix-domain-socket-like endpoints in VFS, such as `/run/dindbos/bus` and service-owned sockets.
+- Support stream IPC over descriptors and datagram-style IPC over structured messages.
+- Add shared-memory-like channels using transferable `ArrayBuffer` or `SharedArrayBuffer` when cross-origin isolation allows it.
+- Add request/response, publish/subscribe, and service discovery APIs for apps and packages.
+- Add `busctl` or equivalent shell diagnostics for listing endpoints, owners, permissions, and live subscribers.
+
+Verification:
+
+- Add smoke coverage for allowed IPC, denied IPC, service discovery, descriptor-stream IPC, message backpressure, endpoint cleanup, and crashed peer behavior.
+
+Completion criteria:
+
+- Apps can integrate through a stable OS bus without importing each other's private modules or receiving raw runtime access.
+
+### Native-Like 5: Device Driver Model
+
+Status: Later.
+
+Goal: expose browser hardware and browser-mediated capabilities as explicit DindbOS devices.
+
+Implementation tasks:
+
+- Define a device registry with device id, class, owner, permissions, health, capabilities, and backing provider.
+- Map browser-safe devices into `/dev` and Settings: clipboard, notifications, audio input/output, camera, gamepad, serial, HID, MIDI, battery, screen, pointer lock, file picker, and storage quota.
+- Require manifest capabilities and user approval for sensitive devices.
+- Route device reads/writes through descriptors or explicit device APIs, not direct browser calls from apps.
+- Add hotplug events, permission revocation, device busy state, and degraded fallback behavior.
+- Keep companion-backed devices separate from browser-backed devices with visible trust labels.
+
+Verification:
+
+- Add smoke coverage for device permission denial, device open/read/write where mockable, hotplug event dispatch, revoked permission, and descriptor cleanup.
+
+Completion criteria:
+
+- Hardware-facing apps use DindbOS device permissions and diagnostics instead of calling browser APIs directly.
+
+### Native-Like 6: Virtual Memory, Shared Memory, And Memory Pressure
+
+Status: Later.
+
+Goal: approximate native memory controls within browser limits so heavy programs can be contained and diagnosed.
+
+Implementation tasks:
+
+- Track per-process WASM memory pages, worker heap estimates, output buffers, open binary blobs, cache allocations, and VFS write buffers.
+- Add runtime memory limits by process, app, package, service, and user.
+- Add shared-memory channels when `SharedArrayBuffer` is available, with fallback transfer channels when it is not.
+- Add memory-pressure events that can ask apps/services to release caches before forced termination.
+- Add crash reports for out-of-memory, quota denial, runaway output, and excessive descriptor allocation.
+- Add Activity Monitor memory views with best-effort browser estimates and honest unsupported markers.
+
+Verification:
+
+- Add smoke coverage for WASM page limit, output buffer limit, blob cleanup, memory-pressure callback, shared-memory capability probe, and kill-on-limit behavior.
+
+Completion criteria:
+
+- A memory-heavy workload can be limited, reported, and cleaned up without destabilizing the desktop runtime.
+
+### Native-Like 7: Filesystem Watchers, Indexing, And Search
+
+Status: Later.
+
+Goal: support native-style file change observation and system search as runtime services.
+
+Implementation tasks:
+
+- Add VFS watcher APIs with recursive and non-recursive subscriptions, event coalescing, backpressure, and permission checks.
+- Map local mount refresh events into the same watcher model where browser APIs provide enough metadata.
+- Add an indexing daemon for filenames, metadata, app manifests, package docs, and selected text files.
+- Add shell and app APIs for `find`, `locate`, metadata search, and recent-file queries.
+- Persist index state under `/var/lib/dindbos/search` with repair and rebuild commands.
+- Add privacy controls for per-user indexes and app-accessible search scopes.
+
+Verification:
+
+- Add smoke coverage for create/update/delete/rename watcher events, denied watch scopes, index rebuild, stale index repair, and cross-user search isolation.
+
+Completion criteria:
+
+- Apps can react to file changes and search runtime-owned files without polling private internals.
+
+### Native-Like 8: Virtual Socket Layer
+
+Status: Later.
+
+Goal: provide socket-shaped APIs for portable programs while respecting browser networking restrictions.
+
+Implementation tasks:
+
+- Add descriptor-backed virtual sockets for HTTP fetch streams, WebSocket sessions, WebRTC data channels, and loopback-only DindbOS services.
+- Add DNS policy objects and host allowlists shared by shell, NodeCompat, WASI, apps, and packages.
+- Add loopback service binding so local DindbOS services can expose ports inside the runtime without host OS sockets.
+- Add `connect`, `listen`, `accept`, `send`, `recv`, `shutdown`, and socket option compatibility where practical.
+- Add companion-backed raw TCP/UDP only as an explicit Tier E capability with separate approval and audit logs.
+- Make `node:http`, `node:https`, and future WASI socket calls fail closed until they are routed through this broker.
+
+Verification:
+
+- Add smoke coverage for loopback service connect, denied host connect, WebSocket descriptor IO, fetch stream cancellation, and companion-required raw socket refusal.
+
+Completion criteria:
+
+- Networked programs can target a DindbOS socket boundary without receiving unrestricted browser or host networking.
+
+### Native-Like 9: Security Profiles And Mandatory Access Control
+
+Status: Later.
+
+Goal: move beyond simple manifest permissions into enforceable runtime security profiles.
+
+Implementation tasks:
+
+- Add per-app security profiles that constrain syscalls, filesystem roots, devices, network hosts, IPC endpoints, companion access, child process spawning, and service registration.
+- Add profile inheritance for child processes and package-launched tools.
+- Add deny-by-default syscall filters for WASM and worker processes.
+- Add temporary grants with expiry, user prompts, audit records, and revocation.
+- Add signed package trust tiers that determine which profiles can be requested.
+- Add `security inspect`, `security audit`, and Settings views for active grants and denied operations.
+
+Verification:
+
+- Add smoke coverage for syscall filter denial, inherited profile denial, temporary grant expiry, revoked grant behavior, and signed/unsigned package profile differences.
+
+Completion criteria:
+
+- A compromised app has a bounded runtime profile that is visible, testable, and revocable.
+
+### Native-Like 10: Observability, Debugging, And Diagnostics
+
+Status: Later.
+
+Goal: make the OS understandable when programs fail.
+
+Implementation tasks:
+
+- Add `strace`-style syscall tracing per process, with filters and redaction.
+- Add `lsof`-style descriptor and device usage reporting.
+- Add `top`/`vmstat`/`iostat`-style Activity Monitor backends using honest browser-available metrics.
+- Add crash dump bundles that include process metadata, syscall tail, descriptors, package info, service state, and relevant logs.
+- Add developer debugger hooks for WASM stdout/stderr, source maps where available, package install traces, and worker message logs.
+- Add `doctor` subcommands for storage, permissions, packages, network, devices, companions, workers, and compatibility tiers.
+
+Verification:
+
+- Add smoke coverage for trace filtering, crash bundle creation, descriptor listing, package install diagnostics, and `doctor` failure classification.
+
+Completion criteria:
+
+- A developer can diagnose a broken package without stepping through private DindbOS internals.
+
+### Native-Like 11: Offline-First Update And Recovery System
+
+Status: Later.
+
+Goal: make runtime and package updates recoverable like a small operating system distribution.
+
+Implementation tasks:
+
+- Add signed runtime build metadata and package repository metadata.
+- Add staged update downloads into cache volumes with checksum verification before activation.
+- Add A/B-style runtime data migration records where feasible for VFS schema and package DB changes.
+- Add package snapshots before update, uninstall, and permission profile changes.
+- Add rollback commands for failed runtime migrations and failed package upgrades.
+- Add offline repository mirrors that packages can install from when network is unavailable.
+
+Verification:
+
+- Add smoke coverage for checksum failure, interrupted update, package rollback, offline install from cache, migration failure recovery, and trust refusal.
+
+Completion criteria:
+
+- Updates are transactional enough that a failed package or runtime migration does not leave the system half-mutated.
+
+### Native-Like 12: Developer Toolchain Inside DindbOS
+
+Status: Later.
+
+Goal: let DindbOS build, test, and package DindbOS programs from inside the OS environment.
+
+Implementation tasks:
+
+- Add project workspaces under `/home/<user>/Projects` with package templates, manifests, permissions, and tests.
+- Add browser-safe build tasks for TypeScript/JavaScript packages through NodeCompat or worker-backed bundlers.
+- Add WASM compile workflows where supported by browser-loadable toolchains or companion build providers.
+- Add `dindb build`, `dindb test`, `dindb pack`, `dindb install`, and `dindb publish` commands.
+- Add SDK linting for forbidden raw browser APIs, missing permissions, unsupported compatibility tiers, and package signing gaps.
+- Add AppRegistry hot-reload for development packages without bypassing install/remove lifecycle semantics.
+
+Verification:
+
+- Add smoke coverage that creates a sample project, builds it, installs it, launches it, runs its tests, updates it, and removes it through normal package flows.
+
+Completion criteria:
+
+- A developer can create and ship a small DindbOS app from inside DindbOS itself.
 
 ## Status Legend
 
