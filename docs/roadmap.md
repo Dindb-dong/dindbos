@@ -205,8 +205,9 @@ Verification:
 - Already present: `npm run smoke:packages` verifies a sandboxed package app writes/reads/logs through `os.syscall()` and emits `/proc/<pid>/syscalls` plus global syscall traces.
 - Already present: `npm run smoke:shell` verifies env, app, package, storage, and local mount diagnostic syscalls.
 - Already present: `npm run smoke:packages` verifies sandboxed package metadata access through syscall tracing.
+- Already present: `npm run smoke:permissions` verifies invalid raw syscall arguments return `EINVAL` and shell/sandbox permission denials return `EACCES`.
 - Add smoke coverage proving the same operation through NodeCompat and future WASM/worker callers once those runtimes target the ABI.
-- Add focused regression tests for invalid arguments and explicit permission denial through raw syscalls.
+- Add focused regression tests for future syscall families when terminal IO, mutation, and management actions are implemented.
 
 Completion criteria:
 

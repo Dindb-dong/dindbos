@@ -3,6 +3,7 @@ import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { DindbOS } from "../src/dindbos/index.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { ShellSession } from "../src/dindbos/shell.js";
+import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 
 const os = bootOs();
@@ -24,6 +25,14 @@ result = await shell.executeAsync("echo nope > /root/new.txt");
 assert(result.status === 1, `shell denied write status mismatch: ${result.status}`);
 assert(result.output.includes("permission denied"), `shell denied write output mismatch: ${result.output}`);
 
+result = await shell.executeAsync("syscall fs.readText '{}'");
+assert(result.status === 2, `raw syscall invalid args status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).error.code === "EINVAL", `raw syscall invalid args code mismatch: ${result.output}`);
+
+result = await shell.executeAsync("syscall fs.readText '{\"path\":\"/root/secret.txt\"}'");
+assert(result.status === 1, `raw syscall denied read status mismatch: ${result.status}`);
+assert(JSON.parse(result.output).error.code === "EACCES", `raw syscall denied read code mismatch: ${result.output}`);
+
 const process = {
   pid: 100,
   appId: "limited",
@@ -39,6 +48,14 @@ const process = {
 };
 const sandbox = new AppSandbox(os, process);
 sandbox.fs.readFile("/home/guest/readable.txt");
+let syscallResult = sandbox.syscall("fs.readText", {});
+assert(syscallResult.ok === false && syscallResult.error.code === "EINVAL", `sandbox syscall invalid args mismatch: ${JSON.stringify(syscallResult)}`);
+syscallResult = sandbox.syscall("fs.readText", { path: "/root/secret.txt" });
+assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied fs mismatch: ${JSON.stringify(syscallResult)}`);
+syscallResult = sandbox.syscall("package.list", {});
+assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied package mismatch: ${JSON.stringify(syscallResult)}`);
+syscallResult = sandbox.syscall("storage.status", {});
+assert(syscallResult.ok === false && syscallResult.error.code === "EACCES", `sandbox syscall denied storage mismatch: ${JSON.stringify(syscallResult)}`);
 sandbox.state.set("prefs", { theme: "dark", count: 1 });
 assert(sandbox.state.path() === "/var/lib/dindbos/app-state/limited.json", "app state path was not namespaced by app id");
 assert(sandbox.state.get("prefs").theme === "dark", "app state did not read back its own value");
@@ -97,7 +114,7 @@ function bootOs() {
   fs.createDirectory("/root", "/", { owner: "root", group: "root", permissions: "drwx------" }, system);
   fs.writeOrCreateFile("/root/secret.txt", "secret", "/", { owner: "root", group: "root", permissions: "-rw-------" }, system);
   fs.writeOrCreateFile("/root/public.txt", "public", "/", { owner: "root", group: "root", permissions: "-rw-r--r--" }, system);
-  return {
+  const os = {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
@@ -126,6 +143,9 @@ function bootOs() {
     openNode: () => null,
     launch: () => null,
   };
+  os.syscalls = new SyscallDispatcher(os);
+  os.syscall = (name, args = {}, context = {}) => os.syscalls.call(name, args, context);
+  return os;
 }
 
 function createRuntimeStorage() {
