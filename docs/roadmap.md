@@ -1006,7 +1006,8 @@ Implementation tasks:
 - Already present: Process procfs writes namespace-aware `/proc/<pid>/root`, `/proc/<pid>/cwd`, `/proc/<pid>/mounts`, and `/proc/<pid>/limits` diagnostics, including package root, synthetic state/cache/temp/dependency namespace mounts, and namespace limits.
 - Already present: AppSandbox exposes a first-pass IPC facade backed by an in-runtime broker; package namespaces can register declared IPC endpoints, cross-package sends are denied unless the sender namespace declares the endpoint, and process exit/crash unregisters owned endpoints.
 - Already present: package manifests support a normalized `sandbox` section for root policy, state policy, cache policy, temp policy, device grants, network hosts, IPC endpoints, and child-process limits; package records, app manifests, package public records, and namespace metadata expose the resolved policy.
-- Add namespace cleanup for package uninstall, cache eviction, app state removal, temporary files, child processes, descriptors, and IPC endpoints.
+- Already present: package uninstall kills running package namespace processes, which closes their descriptors and unregisters owned IPC endpoints, then removes package root, app state, package record, launcher, and private state/cache/temp namespace roots.
+- Add namespace cleanup for cache eviction, package service units, and future non-process IPC endpoints.
 - Add developer tooling that can run a package in strict namespace mode before publishing.
 
 Verification:
@@ -1017,6 +1018,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies namespace-aware process procfs root, cwd, mounts, and limits diagnostics for package-launched child processes.
 - Already present: `npm run smoke:packages` verifies denied cross-package IPC against a real package-registered endpoint.
 - Already present: `npm run smoke:packages` verifies package sandbox manifest policy normalization and exposure through package records, app manifests, and namespace metadata.
+- Already present: `npm run smoke:packages` verifies package uninstall cleans running package app processes, inherited child processes, IPC endpoints, and state/cache/temp namespace roots.
 - Add tests proving namespace restrictions apply identically to GUI apps, CLI apps, WASM entries, NodeCompat tools, and background services.
 
 Completion criteria:
