@@ -270,14 +270,14 @@ export class DescriptorManager {
   }
 
   openDevice(path, flags) {
-    if (!["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty"].includes(path)) {
+    if (!["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/dev/clipboard"].includes(path)) {
       throw descriptorError("ENODEV", `fd.open: ${path}: no such device`);
     }
     return {
       kind: "device",
       path,
       readable: path !== "/dev/null" && flags.readable,
-      writable: true,
+      writable: path === "/dev/clipboard" ? flags.writable : true,
       offset: 0,
       flags: flags.raw,
     };
@@ -302,6 +302,14 @@ export class DescriptorManager {
   }
 
   readDeviceDescriptor(process, descriptor, length) {
+    if (descriptor.path === "/dev/clipboard") {
+      const content = String(this.os.clipboard?.readText?.() ?? "");
+      const offset = Number(descriptor.offset || 0);
+      const data = content.slice(offset, offset + length);
+      descriptor.offset = offset + data.length;
+      descriptor.readBytes = byteLength(data);
+      return data;
+    }
     if (descriptor.path === "/dev/tty") {
       const stdin = this.descriptorFor(process.pid, STDIN_FD);
       const data = readBufferedDescriptor(stdin, length);
@@ -326,6 +334,11 @@ export class DescriptorManager {
   }
 
   writeDeviceDescriptor(process, descriptor, data) {
+    if (descriptor.path === "/dev/clipboard") {
+      const result = this.os.clipboard?.writeText?.(data) || { bytes: byteLength(data) };
+      descriptor.offset = 0;
+      return Number(result.bytes || byteLength(data));
+    }
     if (descriptor.path === "/dev/tty") {
       const stdout = this.descriptorFor(process.pid, STDOUT_FD);
       stdout.buffer = `${stdout.buffer || ""}${data}`;

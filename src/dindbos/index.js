@@ -50,6 +50,7 @@ export class DindbOS {
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1" });
+    this.clipboard = options.clipboard || createRuntimeClipboard(options.clipboardText || "");
     this.browserProvider = {
       url: normalizeBrowserProviderUrl(options.browserProviderUrl),
       label: options.browserProviderLabel || "Local browserd",
@@ -786,6 +787,32 @@ function normalizeBrowserProviderUrl(url) {
   } catch {
     return "ws://127.0.0.1:8787/browser";
   }
+}
+
+function createRuntimeClipboard(initialText = "") {
+  let text = String(initialText || "");
+  let updatedAt = "";
+  return {
+    readText() {
+      return text;
+    },
+    writeText(value = "") {
+      text = String(value ?? "");
+      updatedAt = new Date().toISOString();
+      return { bytes: byteLength(text), updatedAt };
+    },
+    status() {
+      return {
+        backend: "runtime",
+        bytes: byteLength(text),
+        updatedAt,
+      };
+    },
+  };
+}
+
+function byteLength(value) {
+  return new TextEncoder().encode(String(value ?? "")).byteLength;
 }
 
 export { AppRegistry, AppSandbox, DescriptorManager, RuntimeCacheStore, DesktopShell, EventBus, LocalFolderMountManager, NodeCompat, NpmInstaller, PackageManager, PermissionPolicy, PersistentStorage, ProcessManager, SyscallDispatcher, VirtualFileSystem, WasmRunner, WindowManager };
