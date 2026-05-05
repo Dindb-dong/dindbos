@@ -131,6 +131,14 @@ export class SyscallDispatcher {
     const path = this.normalizedPath(args, context);
     this.assertFileSystem(path, "write", context);
     const content = String(args.content ?? "");
+    reserveStorageBytes(this.os, byteLength(content), {
+      scope: "syscall-fs-write",
+      syscall: "fs.writeText",
+      appId: context.process?.appId || context.appId || "",
+      pid: context.process?.pid || context.pid || 0,
+      path,
+      operation: "writeText",
+    });
     this.os.fs.writeOrCreateFile(path, content, "/", args.options || {}, context.principal);
     return { path, bytes: byteLength(content) };
   }
@@ -482,4 +490,9 @@ function safeRead(read, fallback) {
 
 function byteLength(value) {
   return new TextEncoder().encode(String(value)).byteLength;
+}
+
+function reserveStorageBytes(os, bytes, details = {}) {
+  if (typeof os.storage?.reserveStorageBytes !== "function") return;
+  os.storage.reserveStorageBytes(bytes, details);
 }

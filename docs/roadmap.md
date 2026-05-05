@@ -194,6 +194,7 @@ Why first:
 Implementation cuts:
 
 - Extend the existing write journal into replayable transaction records for package installs, editor saves, archive imports, remote sync apply, registry mutations, and image import.
+- Already present: OPFS filesystem-save transactions write a replay manifest before final manifest commit, and boot/load promotes that replay manifest when an active transaction marker proves the last commit was interrupted.
 - Already present: VFS user-document writes support atomic write-then-rename semantics through staged sibling files, abort cleanup, metadata preservation, and AppSandbox/TextEdit access.
 - Already present: package files, package DB records, AppRegistry manifest records, and ServiceManager state records use the same VFS atomic write-then-rename primitive.
 - Already present: package activation groups record package-record, launcher, app-registry, and services phases as one activation boundary and roll the whole install back if a phase fails.
@@ -239,8 +240,8 @@ Verification:
 - Already present: `npm run smoke:packages` verifies interrupted package activation at the app-registry phase rolls back package root, staging root, package DB record, launcher, app registry state, and package DB operation lock.
 - Already present: `npm run smoke:files` verifies an interrupted TextEdit save through the app save helper preserves the existing file, cleans staged temp files, and still commits on the next successful save.
 - Already present: `npm run smoke:packages` verifies failed package-root repair fallback preserves the package DB record and audits the refused repair through shell fsck.
-- Add smoke coverage for journal replay.
-- Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
+- Already present: `npm run smoke:persistent-storage` verifies interrupted OPFS journal replay applies a pending manifest, records a replay recovery decision, and clears active/replay journal markers.
+- Already present: Shell redirection/copy/touch, Files.app import paths, AppSandbox file writes, NodeCompat `fs` writes, and WASM syscall/WASI descriptor writes all reserve storage before VFS mutation; `npm run smoke:shell`, `npm run smoke:files`, `npm run smoke:permissions`, `npm run smoke:npm-node`, and `npm run smoke:wasm` cover the cross-runtime quota boundary.
 
 Completion criteria:
 

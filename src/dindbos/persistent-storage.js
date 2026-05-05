@@ -51,9 +51,9 @@ export class PersistentStorage {
 
   async loadFileSystem() {
     const interruptedTransaction = await this.readActiveStorageTransaction();
-    const raw = await this.read(this.key);
+    let raw = await this.read(this.key);
     this.updateStatus(raw);
-    if (interruptedTransaction) this.recordStorageRecoveryDecision(interruptedTransaction, raw);
+    if (interruptedTransaction) raw = await this.replayInterruptedStorageTransaction(interruptedTransaction, raw);
     if (!raw) return null;
     try {
       const payload = JSON.parse(raw);
@@ -450,19 +450,24 @@ export class PersistentStorage {
   }
 
   async writeInodeRecordPayload(payload, transaction = {}) {
-    await this.writeActiveStorageTransaction(transaction);
+    const activeTransaction = {
+      ...transaction,
+      replayManifestKey: transaction.transactionId ? this.replayStorageTransactionKey(transaction.transactionId) : "",
+    };
+    await this.writeActiveStorageTransaction(activeTransaction);
     for (const record of payload.dirtyFileRecords) {
       await this.opfsSet(record.key, record.content);
     }
     for (const record of payload.dirtyInodeRecords) {
       await this.opfsSet(record.key, record.metadata);
     }
+    if (activeTransaction.replayManifestKey) await this.opfsSet(activeTransaction.replayManifestKey, payload.manifest);
     await this.opfsSet(this.key, payload.manifest);
     await this.cleanupOpfsFileRecords(new Set(payload.fileRecords.map((record) => opfsFileName(record.key))));
     await this.cleanupOpfsInodeRecords(new Set(payload.inodeRecords.map((record) => opfsFileName(record.key))));
     this.savedInodeHashes = new Map(payload.inodeRecords.map((record) => [record.ref, record.hash]));
     this.savedContentHashes = new Map(payload.fileRecords.map((record) => [record.ref, record.hash]));
-    await this.clearActiveStorageTransaction();
+    await this.clearActiveStorageTransaction(activeTransaction);
   }
 
   rememberRecordHashes(payload) {
@@ -760,6 +765,10 @@ export class PersistentStorage {
     return `${this.key}:journal:active`;
   }
 
+  replayStorageTransactionKey(transactionId) {
+    return `${this.key}:journal:replay:${String(transactionId || "pending")}`;
+  }
+
   async writeActiveStorageTransaction(transaction = {}) {
     if (!transaction.transactionId) return;
     await this.opfsSet(this.activeStorageTransactionKey(), JSON.stringify({
@@ -769,8 +778,14 @@ export class PersistentStorage {
     }));
   }
 
-  async clearActiveStorageTransaction() {
+  async clearActiveStorageTransaction(transaction = null) {
     if (!this.opfsProvider) return;
+    const active = transaction || await this.readActiveStorageTransaction();
+    if (active?.replayManifestKey) {
+      try {
+        await this.opfsDelete(active.replayManifestKey);
+      } catch {}
+    }
     await this.opfsDelete(this.activeStorageTransactionKey());
   }
 
@@ -786,7 +801,7 @@ export class PersistentStorage {
   }
 
   recordStorageRecoveryDecision(transaction = {}, raw = "") {
-    const decision = raw ? "load-last-complete-manifest" : "no-complete-manifest";
+    const decision = transaction.decision || (raw ? "load-last-complete-manifest" : "no-complete-manifest");
     const entry = this.recordStorageJournal("write-recovery", {
       ...transaction,
       transactionId: transaction.transactionId || "",
@@ -804,6 +819,36 @@ export class PersistentStorage {
       },
     };
     return this.lastStatus.storageRecoveryDecision;
+  }
+
+  async replayInterruptedStorageTransaction(transaction = {}, raw = "") {
+    if (!transaction.replayManifestKey) {
+      this.recordStorageRecoveryDecision(transaction, raw);
+      return raw;
+    }
+    try {
+      const replayRaw = await this.opfsGet(transaction.replayManifestKey);
+      const replayPayload = JSON.parse(replayRaw);
+      if (replayPayload.version !== STORAGE_VERSION || replayPayload.format !== INODE_RECORD_FORMAT) {
+        throw new Error("replay manifest is not an inode-record filesystem payload");
+      }
+      const mismatches = await this.validateInodeRecordPayload(replayPayload);
+      if (mismatches.length) throw new Error("replay manifest records failed integrity validation");
+      await this.opfsSet(this.key, replayRaw);
+      await this.clearActiveStorageTransaction(transaction);
+      this.recordStorageRecoveryDecision({
+        ...transaction,
+        decision: "replay-pending-manifest",
+      }, replayRaw);
+      return replayRaw;
+    } catch (error) {
+      this.recordStorageRecoveryDecision({
+        ...transaction,
+        decision: raw ? "load-last-complete-manifest" : "no-complete-manifest",
+        replayError: error?.message || String(error),
+      }, raw);
+      return raw;
+    }
   }
 
   recordStorageJournal(action, details = {}) {
