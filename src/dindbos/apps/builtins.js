@@ -1367,8 +1367,13 @@ export async function importDroppedFiles(os, currentPath, fileList, reporter = n
 export async function importDindbArchive(os, currentPath, file, reporter = null, options = {}) {
   const archive = JSON.parse(await file.text());
   if (archive?.kind !== "dindbos-export-v1" || !Array.isArray(archive.entries)) throw new Error("Invalid DindbOS export");
+  if (os.localMounts?.isMountedPath(currentPath)) return importDindbArchiveDirect(os, currentPath, archive, reporter, options, file.name || "archive");
+  return importDindbArchiveAtomic(os, currentPath, archive, reporter, options, file.name || "archive");
+}
+
+async function importDindbArchiveDirect(os, currentPath, archive, reporter = null, options = {}, archiveName = "archive") {
   const imported = [];
-  if (!reporter?.started) reporter?.start(archive.entries.length, file.name || "archive");
+  if (!reporter?.started) reporter?.start(archive.entries.length, archiveName);
   for (const entry of archive.entries) {
     const relative = sanitizeRelativePath(entry.path || entry.name || "file.bin");
     const target = await allocateImportPath(os, currentPath, relative, { ...options, reporter });
@@ -1392,13 +1397,80 @@ export async function importDindbArchive(os, currentPath, file, reporter = null,
   return imported;
 }
 
+async function importDindbArchiveAtomic(os, currentPath, archive, reporter = null, options = {}, archiveName = "archive") {
+  const beforeRoot = os.fs.snapshot();
+  const stagingParent = "/tmp/dindbos/archive-import-staging";
+  const imported = [];
+  const plan = [];
+  if (!reporter?.started) reporter?.start(archive.entries.length, archiveName);
+  try {
+    ensureVirtualDirectory(os, stagingParent);
+    const stagingRoot = uniquePath(os, stagingParent, `archive-${Date.now().toString(36)}`);
+    ensureVirtualDirectory(os, stagingRoot);
+    for (const entry of archive.entries) {
+      const relative = sanitizeRelativePath(entry.path || entry.name || "file.bin");
+      const conflict = await planImportPath(os, currentPath, relative, { ...options, reporter });
+      if (!conflict) {
+        reporter?.step(relative);
+        await scheduleFilesOperation(reporter, relative);
+        continue;
+      }
+      const stageDirectory = os.fs.join(stagingRoot, `entry-${plan.length + 1}`);
+      const stagePath = os.fs.join(stageDirectory, os.fs.basename(conflict.path));
+      ensureVirtualDirectory(os, stageDirectory);
+      os.fs.atomicWriteOrCreateFileBytes(stagePath, base64ToBytes(entry.data || ""), "/", {
+        mime: entry.mime || mimeFromName(conflict.path),
+        owner: entry.owner || "guest",
+        group: entry.group || "users",
+        permissions: entry.permissions || "-rw-r--r--",
+      });
+      plan.push({ conflict, stagePath });
+      imported.push(conflict.path);
+      reporter?.step(conflict.path);
+      await scheduleFilesOperation(reporter, conflict.path);
+    }
+    if (typeof options.beforeArchiveCommit === "function") {
+      await options.beforeArchiveCommit({
+        imported: [...imported],
+        stagingRoot,
+        entries: plan.map((item) => ({ path: item.conflict.path, stagePath: item.stagePath })),
+      });
+    }
+    for (let index = 0; index < plan.length; index += 1) {
+      const item = plan[index];
+      await ensureImportParent(os, os.fs.dirname(item.conflict.path));
+      await replaceExistingPath(os, item.conflict.path, item.conflict, reporter);
+      os.fs.move(item.stagePath, item.conflict.path);
+      if (typeof options.afterArchiveCommitStep === "function") {
+        await options.afterArchiveCommitStep({
+          index,
+          path: item.conflict.path,
+          stagePath: item.stagePath,
+          imported: [...imported],
+        });
+      }
+    }
+    if (os.fs.exists(stagingRoot)) os.fs.remove(stagingRoot, "/", { recursive: true });
+    return imported;
+  } catch (error) {
+    os.fs.root = beforeRoot;
+    throw error;
+  }
+}
+
 async function allocateImportPath(os, directory, relativePath, options = {}) {
+  const conflict = await planImportPath(os, directory, relativePath, options);
+  if (!conflict) return null;
+  await ensureImportParent(os, os.fs.dirname(conflict.path));
+  await replaceExistingPath(os, conflict.path, conflict, options.reporter || null);
+  return conflict.path;
+}
+
+async function planImportPath(os, directory, relativePath, options = {}) {
   const relative = sanitizeRelativePath(relativePath);
   const target = os.fs.normalize(relative, directory);
-  await ensureImportParent(os, os.fs.dirname(target));
   const conflict = await resolveFilesConflict(os, target, options);
-  await replaceExistingPath(os, conflict.path, conflict, options.reporter || null);
-  return conflict.action === "skip" ? null : conflict.path;
+  return conflict.action === "skip" ? null : conflict;
 }
 
 async function ensureImportParent(os, directory) {

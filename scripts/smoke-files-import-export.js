@@ -91,6 +91,38 @@ await importDroppedFiles(os, "/home/guest/Documents/import-scheduled", [archiveF
 assert(importSchedulerReporter.yields >= 3, `large import did not yield often enough: ${importSchedulerReporter.yields}`);
 assertBytes(os.fs.readFileBytes("/home/guest/Documents/import-scheduled/nested/payload.bin"), binary, "scheduled import binary bytes changed");
 
+const archiveNote = entries.find((entry) => entry.path === "note.txt");
+assert(archiveNote, "archive note fixture missing");
+const archiveNestedEntries = entries.filter((entry) => entry.path !== "note.txt");
+const atomicArchiveFile = archiveFileWithEntries([archiveNote, ...archiveNestedEntries]);
+const atomicRoot = "/home/guest/Documents/import-atomic";
+os.fs.createDirectory(atomicRoot);
+os.fs.writeOrCreateFile(`${atomicRoot}/note.txt`, "atomic existing", "/", { mime: "text/plain" });
+await assertRejects(
+  () => importDroppedFiles(os, atomicRoot, [atomicArchiveFile], null, {
+    conflictPolicy: "prompt",
+    resolveConflict: () => "replace",
+    afterArchiveCommitStep: () => {
+      throw new Error("archive activation failed");
+    },
+  }),
+  "archive activation failed",
+);
+assert(os.fs.readFile(`${atomicRoot}/note.txt`) === "atomic existing", "failed archive activation changed existing file");
+assert(!os.fs.exists(`${atomicRoot}/nested/payload.bin`), "failed archive activation left a nested file behind");
+assert(
+  !os.fs.exists("/tmp/dindbos/archive-import-staging") || os.fs.list("/tmp/dindbos/archive-import-staging").length === 0,
+  "failed archive activation left staging roots behind",
+);
+const atomicImported = await importDroppedFiles(os, atomicRoot, [atomicArchiveFile], null, {
+  conflictPolicy: "prompt",
+  resolveConflict: () => "replace",
+});
+assert(atomicImported.includes(`${atomicRoot}/note.txt`), "atomic archive import missing replaced note path");
+assert(atomicImported.includes(`${atomicRoot}/nested/payload.bin`), "atomic archive import missing nested path");
+assert(os.fs.readFile(`${atomicRoot}/note.txt`) === text, "atomic archive import did not replace note after successful activation");
+assertBytes(os.fs.readFileBytes(`${atomicRoot}/nested/payload.bin`), binary, "atomic archive import changed nested binary bytes");
+
 os.fs.createDirectory("/home/guest/Documents/large-source");
 os.fs.createDirectory("/home/guest/Documents/large-source/nested");
 os.fs.createDirectory("/home/guest/Documents/large-target");
@@ -369,6 +401,20 @@ function fileLike(name, content, type = "text/plain") {
     type,
     async arrayBuffer() {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+  };
+}
+
+function archiveFileWithEntries(archiveEntries) {
+  return {
+    name: "atomic-export.dindbos-export.json",
+    async text() {
+      return JSON.stringify({
+        kind: "dindbos-export-v1",
+        exportedAt: new Date().toISOString(),
+        root: sourceRoot,
+        entries: archiveEntries,
+      });
     },
   };
 }

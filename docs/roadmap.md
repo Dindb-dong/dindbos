@@ -198,7 +198,8 @@ Implementation cuts:
 - Already present: package files, package DB records, AppRegistry manifest records, and ServiceManager state records use the same VFS atomic write-then-rename primitive.
 - Already present: package activation groups record package-record, launcher, app-registry, and services phases as one activation boundary and roll the whole install back if a phase fails.
 - Already present: package install/update writes package image files into `/tmp/dindbos/package-staging` first, then activates the staged `pkgfs` root into `/opt/<package>` during the package-root activation phase.
-- Extend staged activation to archive imports and broader registry/service/app-state transaction groups.
+- Already present: VFS archive imports stage extracted entries under `/tmp/dindbos/archive-import-staging` and activate them only after the full archive plan is ready, rolling back existing files and staged entries if activation fails.
+- Extend staged activation to broader registry/service/app-state transaction groups.
 - Add `fsync`-style barriers to Shell, SDK, WASM, and NodeCompat paths so programs can request durability before reporting success.
 - Already present: first-pass `fsck --dry-run` / `fsck --repair` checks VFS structure, duplicate child names, broken symlinks, file size drift, invalid directory children, and safe size/children metadata repairs through the shell.
 - Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts, bad link counts, partial journals, stale local mount metadata, package DB drift, and conservative salvage export.
@@ -211,6 +212,7 @@ Verification:
 - Already present: `npm run smoke:packages` verifies package install atomically creates package DB records and AppRegistry manifest records; `npm run smoke:services` verifies service state records are atomically created.
 - Already present: `npm run smoke:packages` verifies package activation phase events for package-record, launcher, app-registry, and services, plus rollback when the app-registry phase fails.
 - Already present: `npm run smoke:packages` verifies package-root activation from staging, successful staging cleanup, failed activation staging cleanup, and no staging path persisted in the package DB record.
+- Already present: `npm run smoke:files` verifies VFS archive import activation rollback preserves existing files, removes staged entries, and successful activation preserves nested file bytes.
 - Already present: `npm run smoke:storage` and `npm run smoke:shell` verify fsck dry-run reports file size drift without mutation and fsck repair restores safe size metadata.
 - Add smoke coverage for interrupted package activation, interrupted editor save through the app surface, quota denial before mutation, journal replay, broader repair audit records, and failed repair fallback.
 - Add cross-runtime write tests proving Shell, Files.app, AppSandbox, NodeCompat, and WASM writes all use the same transaction and quota boundary.
