@@ -1511,6 +1511,398 @@ Completion criteria:
 - DindbOS can become progressively more native when installed or paired, while the runtime still reports browser-only limitations accurately.
 - Apps request host capabilities through DindbOS brokers instead of assuming direct host OS access.
 
+## Next Technically Feasible Native-OS Push
+
+These items go beyond the first native-like backlog. They are not cosmetic desktop features. They are the next layer of work that is technically feasible, even if it requires deep runtime redesign, stricter browser capability probes, cross-origin isolation, advanced worker orchestration, WebCrypto/WebAuthn, Service Workers, WebRTC, or narrowly scoped companion processes.
+
+The rule remains: no feature counts as native-like unless it becomes a reusable OS primitive with a syscall/API boundary, shell diagnostics, package manifest policy, and smoke coverage.
+
+### Native-Like 31: Secure Boot, Measured Runtime Integrity, And Trust Chain
+
+Status: Later.
+
+Goal: make DindbOS boot through a verifiable trust chain instead of trusting whichever JavaScript bundle and VFS records are present.
+
+Why it matters:
+
+- Native OSes protect boot, kernel, drivers, system configuration, and update state with integrity checks.
+- Browser-delivered code cannot be treated exactly like firmware, but DindbOS can still measure runtime assets, verify signed system images, and refuse unsafe package or companion activation.
+- This is the foundation for managed mode, trusted repositories, encrypted volumes, keychain unlock, and safe remote sync.
+
+Implementation tasks:
+
+- Define a signed system manifest that covers runtime version, boot schema version, core module hashes, built-in app hashes, syscall ABI version, migration ids, and compatibility tier.
+- Add a measured boot record under `/var/run/dindbos/boot-measurements.json` and durable audit history under `/var/log/dindbos/boot-measurements.log`.
+- Verify core package records, service units, trusted publisher records, companion manifests, and policy profiles before enabling privileged runtime services.
+- Add boot trust states: trusted, degraded, unsigned, mismatched, recovered, safe-mode, and refused.
+- Add recovery behavior that can boot a minimal safe mode when optional services, third-party packages, or companions fail trust verification.
+- Add `bootctl status`, `bootctl verify`, `bootctl safe-mode`, and `doctor boot` diagnostics.
+- Use WebCrypto for signature verification, digest calculation, and trust-root pinning stored outside ordinary app-writable files.
+- Integrate with portable system images so an imported image cannot silently replace trusted runtime state without verification.
+
+Verification:
+
+- Add smoke coverage for valid signed boot manifest, hash mismatch, unsigned companion refusal, invalid policy signature, safe-mode fallback, and boot measurement logging.
+- Add tests proving a compromised package record cannot register a privileged service before trust verification completes.
+- Add tests proving safe mode disables third-party services while keeping Files, Terminal, Settings, and recovery tools usable.
+
+Completion criteria:
+
+- DindbOS can explain whether the current boot is trusted, degraded, recovered, or refused.
+- Privileged package, service, policy, and companion activation is gated by measured runtime state.
+
+### Native-Like 32: Kernel Module And Driver ABI
+
+Status: Later.
+
+Goal: let core runtime capabilities evolve through signed, permissioned kernel modules or driver modules instead of hard-coding every future primitive into the main bundle.
+
+Why it matters:
+
+- Native OSes extend kernels through drivers, filesystems, security modules, network stacks, and device providers.
+- DindbOS will need new devices, filesystem drivers, network providers, codecs, package resolvers, and companion protocols without turning the core runtime into one monolith.
+- A module ABI also makes experimental native-adjacent work testable behind explicit trust gates.
+
+Implementation tasks:
+
+- Define module manifests with id, version, ABI range, provided capabilities, requested kernel hooks, trust state, signature, and rollback metadata.
+- Add module types for filesystem drivers, device drivers, network providers, package resolvers, security policy modules, sync providers, and diagnostics providers.
+- Add a kernel module loader that verifies signatures, checks ABI compatibility, registers hooks, and rolls back failed activation.
+- Add a module capability boundary so modules receive only the kernel hooks they declare and are denied direct access to unrelated runtime internals.
+- Add module lifecycle states: discovered, verified, loaded, active, degraded, disabled, failed, and revoked.
+- Add `/proc/modules`, `modctl list|load|unload|verify|disable`, and Settings diagnostics.
+- Require safe-mode boot to skip non-critical modules and report which native-like capabilities are unavailable.
+- Document stable and unstable hook families so package authors know which module APIs can be targeted.
+
+Verification:
+
+- Add smoke coverage for signed module load, invalid signature refusal, ABI mismatch refusal, failed activation rollback, safe-mode skip, and `/proc/modules` reporting.
+- Add tests proving a filesystem driver module cannot register network hooks unless its manifest declares them and policy allows them.
+
+Completion criteria:
+
+- New native-like subsystems can be delivered as auditable modules with explicit trust and rollback behavior.
+- Failed modules cannot corrupt core boot, VFS, process, package, or security state.
+
+### Native-Like 33: Multi-Core Worker Scheduler And Atomic Runtime Primitives
+
+Status: Later.
+
+Goal: use browser workers, SharedArrayBuffer where available, Atomics, and transferable memory to approximate multi-core execution for CPU-heavy programs.
+
+Why it matters:
+
+- Native OSes schedule work across CPU cores.
+- Browser JavaScript cannot expose arbitrary kernel scheduling, but DindbOS can assign worker-backed processes to pools, enforce quotas, and use shared memory when cross-origin isolation allows it.
+- This would make compute-heavy WASM, package builds, indexing, media processing, and emulator workloads more realistic.
+
+Implementation tasks:
+
+- Add worker pool classes for interactive, background, service, build, WASM, and emulator workloads.
+- Add scheduler policy for priority, fairness, CPU time estimates, cooperative yield checks, timeout budgets, and kill escalation.
+- Add SharedArrayBuffer capability probing and a fallback path using transferable ArrayBuffers when shared memory is unavailable.
+- Add atomic wait/notify style primitives for worker processes where browser support allows.
+- Add per-process worker affinity hints, pool limits, and package manifest resource declarations.
+- Add runtime metrics for queue time, run time, yield count, cancellation latency, timeout count, and memory transfer volume.
+- Expose diagnostics through Activity Monitor, `/proc/scheduler`, `/proc/<pid>/limits`, and `schedctl`.
+- Ensure hidden-tab throttling is reported as degraded scheduling, not as native CPU control.
+
+Verification:
+
+- Add smoke coverage for worker pool assignment, priority ordering, forced termination, timeout, transferable binary output, SharedArrayBuffer unavailable fallback, and scheduler diagnostics.
+- Add tests proving UI process spawning remains responsive while a background worker pool is saturated.
+
+Completion criteria:
+
+- CPU-heavy workloads can run concurrently without freezing the desktop runtime.
+- Scheduling limits and browser throttling are visible, enforceable, and explainable.
+
+### Native-Like 34: Origin-Isolated App Containers
+
+Status: Later.
+
+Goal: run untrusted GUI apps in stronger browser isolation boundaries while still giving them DindbOS syscalls, files, windows, and permissions.
+
+Why it matters:
+
+- Native OSes isolate apps with process boundaries, sandboxes, containers, and security profiles.
+- DindbOS package apps currently run inside the browser runtime boundary; stronger isolation is possible through sandboxed iframes, credentialless frames, workers, origin partitioning, and message-based syscall bridges.
+- This is necessary before running less-trusted third-party GUI apps at scale.
+
+Implementation tasks:
+
+- Define app container modes: same-runtime trusted, sandboxed iframe, credentialless iframe, worker-rendered surface, and companion-rendered surface.
+- Move containerized app access to a postMessage syscall bridge with structured clone validation, capability filtering, rate limits, and audit logging.
+- Add per-container filesystem scopes, network scopes, device scopes, IPC scopes, and child-process scopes inherited from package security profiles.
+- Add a compositor surface contract so sandboxed apps do not need direct access to other app DOM nodes or desktop internals.
+- Add CSP, Trusted Types, import-map, and module loading policy for package app containers.
+- Add crash, hang, and heartbeat detection for isolated app containers.
+- Add `/proc/<pid>/container.json`, Settings security view, and Activity Monitor isolation badges.
+
+Verification:
+
+- Add smoke coverage for sandboxed app launch, allowed syscall bridge call, denied raw DOM/runtime access, crash isolation, heartbeat timeout, and container cleanup.
+- Add tests proving a sandboxed app cannot read another app window, keychain secret, package root, or local mount without a declared grant.
+
+Completion criteria:
+
+- Third-party GUI apps can run with stronger browser isolation while still behaving like DindbOS apps.
+- Container failures are visible and recoverable without taking down the desktop.
+
+### Native-Like 35: User-Mode Filesystem Servers
+
+Status: Later.
+
+Goal: allow apps or services to implement mountable filesystems through a FUSE-like user-mode filesystem protocol.
+
+Why it matters:
+
+- Native OSes can mount filesystems implemented outside the kernel.
+- DindbOS can use the same idea for archive mounts, remote sync views, package images, search result folders, encrypted volumes, cloud providers, and emulator disks.
+- This keeps special file trees out of app-specific code and routes everything through the same VFS, descriptor, permission, and mount APIs.
+
+Implementation tasks:
+
+- Define a user-mode filesystem protocol for lookup, stat, read, write, readdir, mkdir, unlink, rename, watch, flush, and unmount.
+- Let services register filesystem providers with mount permissions, durability hints, quota behavior, and trust state.
+- Add descriptor-backed streaming reads/writes so large remote or generated files do not require full in-memory materialization.
+- Add mount leases, provider heartbeat, timeout policy, read-only fallback, and crash cleanup.
+- Add provider-scoped cache under `/var/cache/dindbos/fs/<provider>` with invalidation rules.
+- Add `/proc/filesystems`, `/proc/mounts`, provider logs, and `mount -t userfs` diagnostics.
+- Require explicit policy for providers that bridge to remote storage, companions, encrypted volumes, or package images.
+
+Verification:
+
+- Add smoke coverage for mounting a userfs provider, listing generated files, reading bytes, write denial, provider crash cleanup, timeout fallback, and unmount behavior.
+- Add tests proving shell, Files.app, NodeCompat, WASI, and app APIs see the same mounted userfs tree.
+
+Completion criteria:
+
+- New filesystem-like capabilities can be plugged into DindbOS without bypassing VFS permissions or descriptor semantics.
+- A crashed filesystem provider cannot leave stale writable mounts behind.
+
+### Native-Like 36: Print, Scan, And Document Spooler
+
+Status: Later.
+
+Goal: provide native-style document output and capture services through a brokered spooler.
+
+Why it matters:
+
+- Native OSes treat printing, scanning, PDF generation, print queues, and document capture as system services.
+- Browsers expose limited print dialogs and file generation, while deeper printer/scanner access requires user action or companions.
+- DindbOS can still provide an OS-level spooler that apps target consistently.
+
+Implementation tasks:
+
+- Add a print service with jobs, queues, status, owner credentials, document MIME type, page count, options, and output destination.
+- Support browser print, PDF export, image export, local file save, and companion-assisted printer/scanner providers as separate capabilities.
+- Add package manifest capabilities for print, scan, PDF generation, and companion print providers.
+- Add `/var/spool/dindbos/print`, `/proc/print`, `lp`, `lpstat`, `cancel`, and Settings print queue UI.
+- Add job retention, privacy policy, per-user visibility, retry behavior, and failure diagnostics.
+- Add scan/import flow that writes captured documents into a selected VFS path through a brokered file grant.
+- Add audit records for companion-assisted host printer or scanner access.
+
+Verification:
+
+- Add smoke coverage for PDF spool job creation, queue listing, cancel, denied app print permission, failed provider retry state, and per-user queue isolation.
+- Add companion-mock tests for printer unavailable, scanner denied, and successful document import.
+
+Completion criteria:
+
+- Apps can print or scan through a reusable OS spooler instead of each app inventing export behavior.
+- Host-adjacent print and scan access is permissioned, visible, and revocable.
+
+### Native-Like 37: Accessibility Server And UI Automation Boundary
+
+Status: Later.
+
+Goal: expose app windows, controls, focus, labels, actions, and text surfaces through an OS-owned accessibility and automation tree.
+
+Why it matters:
+
+- Native OSes provide accessibility APIs and automation hooks for screen readers, testing, macros, and assistive tools.
+- Browser accessibility exists, but DindbOS needs a runtime-level model that works across sandboxed apps, worker-rendered surfaces, remote sessions, and compositor-managed windows.
+- This also improves testability and makes real app workflows easier to verify.
+
+Implementation tasks:
+
+- Add an accessibility tree per window with role, name, value, bounds, state, actions, focus state, and text selection metadata.
+- Let apps publish accessibility nodes through the compositor surface API without exposing private DOM internals.
+- Add action routing for click, focus, type, select, invoke, scroll, copy, paste, and custom app actions through permissioned automation.
+- Add screen-reader-friendly event streams for focus changes, live regions, alerts, window creation, and app crashes.
+- Add automation permissions so tests, macros, and remote control sessions cannot manipulate other apps without approval.
+- Add `/proc/accessibility`, `accessctl`, and developer diagnostics for missing labels or invalid control states.
+- Add fallback mapping from DOM-backed apps when explicit app accessibility metadata is not provided.
+
+Verification:
+
+- Add smoke coverage for accessibility tree publication, focus event delivery, denied automation across apps, allowed own-window action, crashed app tree cleanup, and missing-label diagnostics.
+- Add tests proving sandboxed app DOM remains private while accessibility metadata remains inspectable through the OS boundary.
+
+Completion criteria:
+
+- Assistive tools and automated tests can inspect and operate apps through DindbOS APIs.
+- Accessibility metadata survives compositor, container, and remote session boundaries.
+
+### Native-Like 38: System-Wide Clipboard, Drag, And Data Exchange Broker
+
+Status: Later.
+
+Goal: turn clipboard, drag/drop, paste, share, and cross-app data transfer into a permissioned OS data exchange service.
+
+Why it matters:
+
+- Native OSes broker data exchange between apps through typed formats, ownership, privacy prompts, and pasteboard lifetimes.
+- DindbOS already has clipboard and file flows in some places, but a unified broker would make document workflows and sandboxed apps much more native-like.
+
+Implementation tasks:
+
+- Add a data exchange broker with typed flavors such as text, HTML, Markdown, image, file reference, file bytes, URL, app-specific JSON, and stream handles.
+- Add per-app read/write clipboard permissions, paste prompts for sensitive data, and automatic expiry for temporary grants.
+- Route drag/drop through the compositor so source and target apps receive scoped file handles or copied bytes according to policy.
+- Add share target integration for browser/PWA share APIs and companion-assisted native share targets where available.
+- Add `/proc/clipboard`, `clip`, `paste`, and Settings privacy diagnostics.
+- Add audit logs for cross-app paste, file drag, external share, and denied data flavor access.
+- Prevent sandboxed apps from directly scraping other app DOM or clipboard state.
+
+Verification:
+
+- Add smoke coverage for text copy/paste, denied clipboard read, file drag scoped grant, HTML flavor sanitization, temporary grant expiry, and clipboard cleanup on app uninstall.
+- Add tests proving binary file transfer preserves bytes and does not grant the target broader folder access.
+
+Completion criteria:
+
+- Apps exchange data through one OS broker with typed formats, explicit scope, and revocable permissions.
+- Clipboard and drag behavior remains coherent across sandboxed, worker-rendered, and remote apps.
+
+### Native-Like 39: Login Manager, Lock Screen, And Session Switching
+
+Status: Later.
+
+Goal: make authentication, lock state, and session switching first-class runtime states rather than simple user labels.
+
+Why it matters:
+
+- Native OSes distinguish boot, login, unlock, active session, fast user switching, guest sessions, and locked screens.
+- DindbOS needs that boundary before multi-user homes, keychain, managed mode, remote sessions, and encrypted volumes can be credible.
+
+Implementation tasks:
+
+- Add a login manager service that owns user selection, guest reset, lock/unlock, idle lock policy, session timeout, and failed authentication diagnostics.
+- Add per-user session records under `/var/run/dindbos/sessions` and durable account policy under `/etc/dindbos/users.json`.
+- Integrate passkey/WebAuthn and password-derived fallback with the keychain unlock service.
+- Suspend or hide user apps when a session locks, while keeping shutdown-critical services controlled by policy.
+- Add fast user switching with separate homes, app state, desktop layout, package preferences, shell history, and keychain vault state.
+- Add `loginctl`, lock-screen UI, Settings account policy, and `/proc/sessions` credential details.
+- Add audit logs for login, logout, lock, unlock, failed auth, session switch, and guest reset.
+
+Verification:
+
+- Add smoke coverage for guest login, lock, unlock, failed unlock, fast user switch, per-user app state isolation, keychain locked denial, and guest reset cleanup.
+- Add tests proving a locked session cannot leak window contents, clipboard contents, or keychain material to another user.
+
+Completion criteria:
+
+- DindbOS can host multiple user sessions with explicit authentication, lock state, and per-user runtime boundaries.
+- Session state is visible to shell, Settings, Activity Monitor, and recovery diagnostics.
+
+### Native-Like 40: Remote Administration And Headless Control Plane
+
+Status: Later.
+
+Goal: allow trusted remote administration, scripted diagnostics, and headless maintenance without exposing raw runtime internals.
+
+Why it matters:
+
+- Native OSes can be administered through SSH, MDM, remote desktop, remote logs, and management APIs.
+- DindbOS can provide a browser-native equivalent through WebRTC, WebSocket providers, signed admin tokens, local pairing, or managed policy channels.
+- This would make demos, labs, CI, and support workflows more realistic.
+
+Implementation tasks:
+
+- Add an admin service with signed session tokens, pairing state, role-based permissions, command audit logs, and revocation.
+- Define remote control modes: observe-only, terminal-only, file-transfer, settings-management, package-management, and full desktop handoff.
+- Add a headless command API that routes through shell/syscall/package/service boundaries instead of private JavaScript objects.
+- Add remote log streaming, crash bundle collection, storage diagnostics, package verification, and safe-mode reboot request.
+- Add WebRTC data channel and WebSocket provider transports with explicit browser-only, hosted-provider, and companion-assisted trust labels.
+- Add Settings and shell controls for pairing, active admins, revoke, session recording, and policy enforcement.
+- Add rate limits, command allowlists, and managed-mode restrictions.
+
+Verification:
+
+- Add smoke coverage for pairing, observe-only denial of mutation, terminal command execution, revoked token refusal, audit log creation, and remote crash bundle export.
+- Add tests proving remote admin cannot bypass local user permissions, keychain lock state, or package trust policy.
+
+Completion criteria:
+
+- A trusted admin can inspect and maintain DindbOS through a documented control plane.
+- Remote access is opt-in, role-scoped, auditable, and revocable.
+
+### Native-Like 41: Runtime Database, Registry, And Configuration Store
+
+Status: Later.
+
+Goal: move scattered JSON files into a transactional OS configuration and registry service where appropriate.
+
+Why it matters:
+
+- Native OSes usually have durable registries, configuration databases, launch databases, package databases, and policy stores.
+- DindbOS currently uses many files under `/etc`, `/var`, `/opt`, and app state roots. That is transparent, but complex system state needs transactions, schema versions, indexes, and repair.
+- A registry service should not replace user files; it should protect system records that need consistency.
+
+Implementation tasks:
+
+- Define a registry service for package records, app associations, users/groups, policies, trusted publishers, companions, services, mounts, devices, repositories, and compatibility declarations.
+- Add typed schemas, schema versions, migrations, integrity hashes, and repair commands.
+- Add transactions for multi-record updates such as package install, service registration, policy activation, and companion pairing.
+- Expose registry access through syscalls and SDK helpers with read/write permissions and audit logs.
+- Add export/import and diff tools for system configuration, excluding secrets unless keychain policy allows export.
+- Add `/var/lib/dindbos/registry`, `regctl`, `doctor registry`, and Settings diagnostics.
+- Keep human-readable mirror files where useful, but treat the registry transaction log as the source of truth for critical state.
+
+Verification:
+
+- Add smoke coverage for transaction commit, rollback, migration, corrupt record repair, permission denial, export/import, and package DB drift detection.
+- Add tests proving failed registry writes cannot leave app registration and package records disagreeing.
+
+Completion criteria:
+
+- Critical OS configuration changes are transactional, versioned, inspectable, and repairable.
+- Apps and packages cannot mutate registry state without explicit runtime permissions.
+
+### Native-Like 42: Local AI/Automation Service As An OS Facility
+
+Status: Later.
+
+Goal: expose automation, semantic search, document understanding, and assistant workflows as permissioned OS services instead of app-specific integrations.
+
+Why it matters:
+
+- Modern native OSes increasingly provide system-level automation, search, summarization, dictation, and intent routing.
+- DindbOS can support this without pretending the model is local-only: it can distinguish browser-local models, remote providers, and companion-assisted providers through explicit policy.
+- The OS value is the permission boundary, audit trail, file scope, and workflow integration, not a chat panel.
+
+Implementation tasks:
+
+- Add an automation service with provider registry, model capability probes, local/remote/companion trust labels, and per-user settings.
+- Add permissioned file grants so automation can read only selected documents, directories, app state, logs, or package metadata.
+- Add semantic index service for user-approved folders, package docs, help pages, and recent workflows.
+- Add task execution boundaries so automation can propose shell/package/file actions, but mutation requires policy or user approval.
+- Add audit logs for every file read, command proposal, command execution, network call, and provider request.
+- Add `assistctl`, semantic search commands, Settings provider controls, and package APIs for app-local automation.
+- Keep secrets and keychain material unavailable unless a specific secret grant exists.
+
+Verification:
+
+- Add smoke coverage for provider unavailable fallback, denied file scope, approved document indexing, command proposal without execution, approved command execution, and audit log creation.
+- Add tests proving automation cannot bypass sandbox, keychain, network, package trust, or managed policy boundaries.
+
+Completion criteria:
+
+- Automation becomes a reusable OS service that respects permissions, user intent, and auditability.
+- Apps can request automation through DindbOS without embedding unbounded provider access.
+
 ## Status Legend
 
 - Done: usable first implementation exists.
@@ -1531,7 +1923,7 @@ The next practical sequence:
 3. Add WASM user processes on top of the syscall ABI with VFS, argv/env, stdio, permissions, and `/proc` visibility.
 4. Move heavy NodeCompat/WASM execution into worker-backed process executors with kill, timeout, crash, and descriptor cleanup behavior.
 5. Expand descriptor-backed IO from transient shell pipe descriptors into per-command process groups, pseudo-terminals, richer device nodes, and WASI rights/flags.
-6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, native-adjacent companions, and the hard native-like backlog: compositor/input server, mountable filesystem drivers, package namespaces, keychain, lifecycle policy, session coordination, portable system images, and explicit emulation tiers.
+6. Broaden into virtual networking, stronger multi-user access control, storage journaling/snapshots, resource quotas, background services, native-adjacent companions, and the hard native-like backlog: compositor/input server, mountable filesystem drivers, package namespaces, keychain, lifecycle policy, session coordination, portable system images, explicit emulation tiers, secure boot, kernel modules, multi-core worker scheduling, origin-isolated app containers, user-mode filesystem servers, accessibility automation, remote administration, transactional registry state, and OS-level automation services.
 7. Continue Browser.app, document viewer, package, and UX work only when real workloads expose gaps in the already completed first-pass surfaces.
 
 ## 0. Immediate Carry-Over Work
