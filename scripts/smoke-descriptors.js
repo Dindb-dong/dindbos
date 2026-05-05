@@ -45,13 +45,19 @@ assert(result.ok && result.value.fd === 3, `fd.open read mismatch: ${JSON.string
 const inputFd = result.value.fd;
 const inputObjectId = result.value.objectId;
 const inputHandleId = result.value.handleId;
+const inputFileObjectId = result.value.fileObjectId;
+const inputFileHandleId = result.value.fileHandleId;
 assert(os.objects.get(inputObjectId)?.metadata?.path === "/home/guest/input.txt", "input descriptor object metadata path mismatch");
 assert(os.objects.getHandle(inputHandleId)?.objectId === inputObjectId, "input descriptor handle did not reference object");
 assert(os.objects.getHandle(inputHandleId)?.rights.includes("read"), "input descriptor handle missing read right");
+assert(os.objects.get(inputFileObjectId)?.type === "file" && os.objects.get(inputFileObjectId)?.metadata?.path === "/home/guest/input.txt", "input file object metadata path mismatch");
+assert(os.objects.getHandle(inputFileHandleId)?.objectType === "file" && os.objects.getHandle(inputFileHandleId)?.rights.includes("read"), "input file handle missing read right");
 result = os.syscall("fd.read", { fd: inputFd, length: 5 }, context);
 assert(result.ok && result.value.data === "hello", `fd.read first chunk mismatch: ${JSON.stringify(result)}`);
 assert(os.objects.get(inputObjectId)?.metadata?.offset === 5, "input descriptor object offset did not update after read");
 assert(os.objects.getHandle(inputHandleId)?.metadata?.offset === 5, "input descriptor handle offset did not update after read");
+assert(os.objects.get(inputFileObjectId)?.metadata?.offset === 5, "input file object offset did not update after read");
+assert(os.objects.getHandle(inputFileHandleId)?.metadata?.offset === 5, "input file handle offset did not update after read");
 result = os.syscall("fd.seek", { fd: inputFd, offset: 6 }, context);
 assert(result.ok && result.value.offset === 6, `fd.seek mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: inputFd, length: 5 }, context);
@@ -62,6 +68,8 @@ assert(os.objects.get(inputObjectId)?.status === "revoked", "closed descriptor o
 assert(os.objects.get(inputObjectId)?.revocationReason === "fd-close", "closed descriptor object revocation reason mismatch");
 assert(os.objects.getHandle(inputHandleId)?.status === "revoked", "closed descriptor handle was not revoked");
 assert(os.objects.getHandle(inputHandleId)?.revocationReason === "fd-close", "closed descriptor handle revocation reason mismatch");
+assert(os.objects.get(inputFileObjectId)?.status === "revoked", "closed file object was not revoked");
+assert(os.objects.getHandle(inputFileHandleId)?.status === "revoked", "closed file handle was not revoked");
 result = os.syscall("fd.read", { fd: inputFd, length: 1 }, context);
 assert(!result.ok && result.error.code === "EBADF", `closed fd did not return EBADF: ${JSON.stringify(result)}`);
 
@@ -77,6 +85,13 @@ const staleHandleId = result.value.handleId;
 os.objects.revokeHandle(staleHandleId, "smoke-stale");
 result = os.syscall("fd.read", { fd: staleFd, length: 1 }, context);
 assert(!result.ok && result.error.code === "ESTALE", `stale descriptor handle did not return ESTALE: ${JSON.stringify(result)}`);
+
+result = os.syscall("fd.open", { path: "input.txt", flags: "r" }, context);
+assert(result.ok, `fd.open stale file target mismatch: ${JSON.stringify(result)}`);
+const staleFileFd = result.value.fd;
+os.objects.revokeHandle(result.value.fileHandleId, "smoke-file-stale");
+result = os.syscall("fd.read", { fd: staleFileFd, length: 1 }, context);
+assert(!result.ok && result.error.code === "ESTALE", `stale file handle did not return ESTALE: ${JSON.stringify(result)}`);
 
 result = os.syscall("fd.open", { path: "output.txt", flags: "w+" }, context);
 assert(result.ok, `fd.open write mismatch: ${JSON.stringify(result)}`);
