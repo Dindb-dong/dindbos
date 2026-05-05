@@ -3,6 +3,7 @@ import { EventBus } from "../src/dindbos/event-bus.js";
 import { PermissionPolicy } from "../src/dindbos/permission-policy.js";
 import { ProcessExecutor } from "../src/dindbos/process-executor.js";
 import { ProcessManager } from "../src/dindbos/process-manager.js";
+import { SyscallDispatcher } from "../src/dindbos/syscalls.js";
 import { VirtualFileSystem } from "../src/dindbos/vfs.js";
 import { filterAndSortActivityProcesses } from "../src/dindbos/apps/builtins.js";
 
@@ -146,11 +147,38 @@ const killResult = await killRun.then(
 assert(killResult?.code === "ETERMINATED", "worker kill did not terminate worker execution");
 assert(!os.processes.get(killTarget.pid), "worker kill left process running");
 
+const syscallTask = await os.executor.runSyscallTask({
+  appId: "worker:syscall",
+  name: "Worker Syscall",
+  fileSystem: {
+    read: ["/home/guest"],
+    write: ["/home/guest"],
+  },
+  operations: [
+    { type: "stdout", data: "bridge:" },
+    { type: "syscall", name: "fs.writeText", args: { path: "worker-bridge.txt", content: "from worker bridge" } },
+    { type: "syscall", name: "fs.readText", args: { path: "worker-bridge.txt" }, stdoutValue: true },
+    { type: "syscall", name: "entropy.randomBytes", args: { length: 6 }, binaryResult: true },
+    { type: "syscall", name: "fs.writeText", args: { path: "/root/worker-denied.txt", content: "no" }, expectErrorCode: "EACCES", stderrErrorCode: true },
+  ],
+});
+assert(syscallTask.backend === "worker" && syscallTask.status === 0, "worker syscall task did not complete through worker backend");
+assert(syscallTask.stdout === "bridge:from worker bridge", `worker syscall stdout mismatch: ${JSON.stringify(syscallTask.stdout)}`);
+assert(syscallTask.stderr === "EACCES", `worker syscall stderr mismatch: ${JSON.stringify(syscallTask.stderr)}`);
+assert(syscallTask.binaryBytes === 6, "worker syscall binary transfer byte count mismatch");
+assert(os.fs.readFile("/home/guest/worker-bridge.txt") === "from worker bridge", "worker syscall bridge did not write VFS content");
+assert(!os.fs.exists("/root/worker-denied.txt"), "worker syscall denial mutated root path");
+assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("fs.writeText OK"), "worker syscall bridge did not write success trace");
+assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("fs.writeText EACCES"), "worker syscall bridge did not write denied trace");
+
 console.log(`process smoke ok pid=${process.pid} relaunched=${launched[0]}`);
 
 function bootOs() {
   const permissions = new PermissionPolicy();
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
+  const system = permissions.systemPrincipal();
+  fs.createDirectory("/home", "/", { owner: "root", group: "root", permissions: "drwxr-xr-x" }, system);
+  fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users", permissions: "drwxr-xr-x" }, system);
   const os = {
     fs,
     permissions,
@@ -159,6 +187,11 @@ function bootOs() {
     windows: null,
   };
   os.processes = new ProcessManager(os);
+  os.syscalls = new SyscallDispatcher(os);
+  os.syscall = (name, args = {}, context = {}) => {
+    const principal = context.principal || os.permissions.principal({ user: os.session.user, groups: os.session.groups });
+    return os.syscalls.call(name, args, { ...context, principal });
+  };
   os.executor = new ProcessExecutor(os);
   return os;
 }
