@@ -665,6 +665,7 @@ export class ShellSession {
     const processes = safeRead(() => this.os.processes?.list?.(), []);
     const lifecycle = safeRead(() => this.os.lifecycleStatus?.(), null);
     const recovery = safeRead(() => this.os.recoveryStatus?.(), null);
+    const sync = safeRead(() => this.os.remoteSyncStatus?.(), null);
     const groups = this.os.session.groups || ["users"];
     const localMountSupported = Boolean(safeRead(() => this.os.localMounts?.supported?.(), false));
     const mounted = Array.isArray(mounts) ? mounts.filter((mount) => mount.status !== "forgotten").length : 0;
@@ -681,6 +682,7 @@ export class ShellSession {
       `processes running=${Array.isArray(processes) ? processes.length : 0}`,
       `lifecycle state=${lifecycle?.state || "unknown"} reason=${lifecycle?.reason || "-"} updated=${lifecycle?.updatedAt || "-"}`,
       `recovery lastShutdown=${recovery?.lastShutdown?.recordedAt || "-"} lastRecovery=${recovery?.lastRecovery?.recoveredAt || "-"} closedPagePersistent=${Boolean(recovery?.closedPagePersistence)}`,
+      `sync backend=${sync?.backend || "unavailable"} encrypted=${Boolean(sync?.encrypted)} lastSnapshot=${sync?.lastSuccessfulSnapshot?.createdAt || "-"} files=${Number(sync?.lastSuccessfulSnapshot?.fileCount || 0)}`,
       "troubleshooting docs=docs/support.md command=storage|mount-local --list|ps|pkg list",
     ].join("\n");
   }

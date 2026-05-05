@@ -37,6 +37,8 @@ Each runtime has an `instanceId` and participates in a storage-backed session lo
 
 When BroadcastChannel is available, DindbOS publishes VFS file-change messages to peer runtimes and emits them as `session:file-change` events. Same-path edits from different runtime instances are recorded as pending session conflicts and surfaced through `/proc/sessions` plus Settings. Storage flush start/complete/error phases are broadcast as `session:storage-flush` diagnostics so peer runtimes can see active persistence work. App-state set/remove/clear/uninstall changes are broadcast as `session:app-state` diagnostics. Package install/update/remove phases are broadcast as `session:package-operation` diagnostics, and package DB mutations acquire a runtime operation lock before changing package records.
 
+Remote sync starts as an optional storage-backed snapshot backend. `os.createRemoteSyncSnapshot({ passphrase, paths })` collects selected VFS paths, encrypts the payload with WebCrypto AES-GCM/PBKDF2, stores the encrypted snapshot record in runtime storage, and exposes the last successful snapshot through `os.remoteSyncStatus()`, Settings, and `doctor`.
+
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
 - `app:install`: package app installed
