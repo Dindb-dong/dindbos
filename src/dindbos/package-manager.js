@@ -399,6 +399,9 @@ export class PackageManager {
       if (root?.mountType !== "pkgfs") {
         problems.push(packageFsckProblem("package-root-invalid", installPath, `mountType=${root?.mountType || root?.type || "unknown"} record=${recordPath}`));
       }
+      const appProblems = this.checkPackageAppRegistry(record, { repair, dryRun });
+      problems.push(...appProblems.problems);
+      repairs.push(...appProblems.repairs);
     });
     this.os.fs.list(PACKAGE_INSTALL_ROOT, "/", this.system)
       .filter((node) => node.mountType === "pkgfs")
@@ -422,6 +425,44 @@ export class PackageManager {
       problems,
       repairs,
     };
+  }
+
+  checkPackageAppRegistry(record, options = {}) {
+    const repair = Boolean(options.repair);
+    const dryRun = options.dryRun !== false;
+    const problems = [];
+    const repairs = [];
+    if (!record?.app?.id) return { problems, repairs };
+    const appId = record.app.id;
+    const expectedEntry = `package:${record.id}`;
+    const registeredApp = this.os.apps?.apps?.get?.(appId) || null;
+    const manifestPath = `/usr/share/dindbos/manifests/${appId}.json`;
+    let repairQueued = false;
+    const queueRegisterRepair = (path) => {
+      if (!repair || repairQueued) return;
+      repairs.push(packageFsckRepair("register-package-app", path, "missing", "registered", dryRun));
+      repairQueued = true;
+      if (!dryRun) this.registerPackageApp(record);
+    };
+    if (!registeredApp) {
+      problems.push(packageFsckProblem("package-app-missing", manifestPath, `package=${record.id} app=${appId}`, true));
+      queueRegisterRepair(manifestPath);
+      return { problems, repairs };
+    }
+    if (registeredApp.manifest?.entry !== expectedEntry) {
+      problems.push(packageFsckProblem("package-app-mismatch", manifestPath, `expected=${expectedEntry} actual=${registeredApp.manifest?.entry || "unknown"}`));
+      return { problems, repairs };
+    }
+    if (!this.os.fs.exists(manifestPath)) {
+      problems.push(packageFsckProblem("package-app-manifest-missing", manifestPath, `package=${record.id} app=${appId}`, true));
+      queueRegisterRepair(manifestPath);
+    }
+    const launcherPath = this.os.apps?.applicationPathFor?.(registeredApp, registeredApp.manifest);
+    if (launcherPath && !this.os.fs.exists(launcherPath)) {
+      problems.push(packageFsckProblem("package-app-launcher-missing", launcherPath, `package=${record.id} app=${appId}`, true));
+      queueRegisterRepair(launcherPath);
+    }
+    return { problems, repairs };
   }
 
   info(packageId) {
