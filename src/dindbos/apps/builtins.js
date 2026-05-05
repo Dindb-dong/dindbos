@@ -3117,6 +3117,7 @@ function renderActivityMonitor(os, content) {
               <span>PID</span>
               <span>App</span>
               <span>State</span>
+              <span>Backend</span>
               <span>Uptime</span>
               <span>Activity</span>
               <span>Runtime</span>
@@ -3126,6 +3127,7 @@ function renderActivityMonitor(os, content) {
                 <span>${process.pid}</span>
                 <span>${escapeHtml(process.appId)}</span>
                 <span>${escapeHtml(process.state)}</span>
+                <span>${escapeHtml(process.executionBackend || "main-thread")}</span>
                 <span>${escapeHtml(formatDuration(process.uptimeMs))}</span>
                 <span>${escapeHtml(formatActivityScore(process.activityScore))}</span>
                 <span>${escapeHtml(formatBytes(process.runtimeBytes))}</span>
@@ -3194,6 +3196,9 @@ export function filterAndSortActivityProcesses(processes = [], options = {}) {
         process.name,
         process.state,
         process.windowState,
+        process.executionBackend,
+        process.executorState,
+        process.executorKind,
         process.user,
         process.windowId,
       ].some((value) => String(value || "").toLowerCase().includes(query));
@@ -3250,6 +3255,8 @@ function renderActivityDetail(process, processLog) {
       <div><dt>Children</dt><dd>${escapeHtml(process.childPids?.join(", ") || "-")}</dd></div>
       <div><dt>User</dt><dd>${escapeHtml(process.user)}</dd></div>
       <div><dt>State</dt><dd>${escapeHtml(process.state)} · ${escapeHtml(process.windowState || "-")}</dd></div>
+      <div><dt>Executor</dt><dd>${escapeHtml(process.executionBackend || "main-thread")} · ${escapeHtml(process.executorState || "-")}</dd></div>
+      <div><dt>Executor Detail</dt><dd>${escapeHtml(process.executorDetail || process.executorKind || "-")}</dd></div>
       <div><dt>Window</dt><dd>${escapeHtml(process.windowId || "-")}</dd></div>
       <div><dt>Started</dt><dd>${escapeHtml(shortTime(process.startedAt))}</dd></div>
       <div><dt>Active</dt><dd>${escapeHtml(shortTime(process.lastActiveAt))}</dd></div>

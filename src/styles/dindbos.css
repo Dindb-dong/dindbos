@@ -1210,7 +1210,7 @@ button {
 /* Activity row */
 .activity-row {
   display: grid;
-  grid-template-columns: 58px minmax(120px, 1fr) 86px 78px 82px;
+  grid-template-columns: 58px minmax(120px, 1fr) 86px 88px 78px 82px 82px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -2110,7 +2110,9 @@ button {
 
   /* Mobile activity trimmed cells */
   .activity-row span:nth-child(4),
-  .activity-row span:nth-child(5) {
+  .activity-row span:nth-child(5),
+  .activity-row span:nth-child(6),
+  .activity-row span:nth-child(7) {
     display: none;
   }
 
