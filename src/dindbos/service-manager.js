@@ -151,9 +151,12 @@ export class ServiceManager {
       this.log(serviceId, "running");
       this.emit("start", record);
       this.writeState();
-      return this.get(serviceId);
+      const state = this.get(serviceId);
+      await this.sync(context, `service:${serviceId}:start`);
+      return state;
     } catch (error) {
       this.crash(serviceId, error, context);
+      await this.sync(context, `service:${serviceId}:crash`);
       throw error;
     }
   }
@@ -206,15 +209,31 @@ export class ServiceManager {
       if (record.state === "degraded") record.state = record.pid ? "running" : "stopped";
       this.emit("scheduled-run", record);
       this.writeState();
-      return this.get(serviceId);
+      const state = this.get(serviceId);
+      await this.sync(context, `service:${serviceId}:scheduled-run`);
+      return state;
     } catch (error) {
       record.state = "degraded";
       record.lastError = error?.message || String(error);
       this.log(serviceId, `degraded ${record.lastError}`, "error");
       this.emit("degraded", record);
       this.writeState();
-      return this.get(serviceId);
+      const state = this.get(serviceId);
+      await this.sync(context, `service:${serviceId}:degraded`);
+      return state;
     }
+  }
+
+  async sync(context = {}, reason = "service-state") {
+    this.assertManage(context);
+    const flush = typeof this.os.flushPersistentFileSystem === "function"
+      ? await this.os.flushPersistentFileSystem()
+      : await this.os.storage?.flush?.();
+    return {
+      synced: true,
+      reason: String(reason || "service-state"),
+      flush: flush || null,
+    };
   }
 
   suspend(reason = "page-hidden") {
@@ -262,6 +281,10 @@ export class ServiceManager {
       assertFileSystem: (path, access = "read") => this.assertServiceFileSystem(service, path, access),
       fs: this.serviceFileSystemFacade(service),
       log: (message, level = "info") => this.log(service.id, message, level),
+      sync: (reason = "service-context") => this.sync(
+        { principal: this.os.permissions.systemPrincipal() },
+        `service:${service.id}:${reason}`,
+      ),
     };
   }
 
