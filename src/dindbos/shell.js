@@ -768,12 +768,14 @@ export class ShellSession {
     if (action === "add") {
       const [id, publicKey, ...nameParts] = args;
       if (!id || !publicKey) return "pkg: usage: pkg trust add <publisher-id> <public-key> [name]";
+      this.os.assertAdminOperation?.("package-trust:add", { principal: this.principal, target: id });
       const publisher = this.os.packages.addTrustedPublisher({ id, publicKey, name: nameParts.join(" ") || id });
       return `trusted publisher added ${publisher.id}`;
     }
     if (action === "remove") {
       const [idOrKey] = args;
       if (!idOrKey) return "pkg: usage: pkg trust remove <publisher-id|public-key>";
+      this.os.assertAdminOperation?.("package-trust:remove", { principal: this.principal, target: idOrKey });
       return `trusted publisher removed ${this.os.packages.removeTrustedPublisher(idOrKey)}`;
     }
     return "pkg: usage: pkg trust list | add <publisher-id> <public-key> [name] | remove <publisher-id|public-key>";
