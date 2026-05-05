@@ -189,20 +189,22 @@ Why it matters:
 
 Implementation tasks:
 
-- Already present: a named first-pass syscall table covers clock, entropy, filesystem existence/stat/read/write, process list/get/log, and app launch.
+- Already present: a named first-pass syscall table covers clock, entropy, filesystem existence/stat/read/write, environment reads, app metadata, package metadata, storage diagnostics, local mount diagnostics, process list/get/log, and app launch.
 - Already present: `os.syscall(name, args)` returns structured `{ ok, value }` or `{ ok: false, error: { code, message, syscall } }` results.
 - Already present: Terminal exposes raw ABI calls through `syscall <name> [json]`.
 - Already present: sandboxed apps receive `os.syscall()` and use the same manifest filesystem scopes and capability checks as high-level facades.
 - Already present: syscall tracing writes `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls` for process-backed calls.
 - Already present: `docs/syscalls.md` documents the current ABI, errno-style failures, shell usage, tracing, and browser-native compatibility boundary.
 - Route existing high-level app APIs through the syscall layer where practical, instead of letting every surface call kernel services differently.
-- Expand the syscall table to terminal IO, environment, package metadata, app metadata, local mount status, and storage diagnostics.
+- Expand the syscall table to terminal IO, environment mutation, package lifecycle actions, storage management actions, and local mount management actions.
 - Add ABI stability/version negotiation rules once a second caller runtime, such as WASM or workers, starts targeting it.
 
 Verification:
 
 - Already present: `npm run smoke:shell` verifies raw shell `syscall` write/read calls and `ENOSYS` for unknown syscalls.
 - Already present: `npm run smoke:packages` verifies a sandboxed package app writes/reads/logs through `os.syscall()` and emits `/proc/<pid>/syscalls` plus global syscall traces.
+- Already present: `npm run smoke:shell` verifies env, app, package, storage, and local mount diagnostic syscalls.
+- Already present: `npm run smoke:packages` verifies sandboxed package metadata access through syscall tracing.
 - Add smoke coverage proving the same operation through NodeCompat and future WASM/worker callers once those runtimes target the ABI.
 - Add focused regression tests for invalid arguments and explicit permission denial through raw syscalls.
 

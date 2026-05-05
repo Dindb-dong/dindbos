@@ -47,13 +47,21 @@ fs.exists
 fs.stat
 fs.readText
 fs.writeText
+env.get
+env.list
+app.list
+app.manifest
+package.list
+package.info
+storage.status
+localMount.status
 process.list
 process.get
 process.log
 app.launch
 ```
 
-Filesystem syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process and app syscalls run through the same capability checks used by the existing high-level app facade.
+Filesystem syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process, package, storage, local mount, and app launch syscalls run through the same capability checks used by the existing high-level app facade.
 
 ## Shell Usage
 
@@ -62,6 +70,8 @@ Terminal can call the ABI directly:
 ```text
 syscall fs.writeText '{"path":"note.txt","content":"hello"}'
 syscall fs.readText '{"path":"note.txt"}'
+syscall package.info '{"packageId":"hello-notes"}'
+syscall storage.status
 syscall process.list
 ```
 
