@@ -271,6 +271,8 @@ const apiLab = packages.installFromManifestPath("/opt/dindbos/packages/api-lab/d
 assert(apiLab.id === "api-lab", "API Lab sample install returned wrong id");
 assert(apiLab.app.capabilities.includes("package.read"), "API Lab sample did not declare package.read capability");
 const apiSource = os.fs.readFile("/opt/api-lab/app.js");
+assert(apiSource.includes("sdk.packages.info"), "API Lab sample does not use the DindbOS syscall SDK fixture");
+assert(apiSource.includes("sdk.fs.writeText"), "API Lab sample does not use SDK-backed VFS writes");
 const apiModule = await import(`data:text/javascript;base64,${Buffer.from(apiSource).toString("base64")}`);
 assert(typeof apiModule.mount === "function", "API Lab sample entry did not export mount");
 const apiWindow = os.apps.launch("api-lab");
