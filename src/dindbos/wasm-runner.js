@@ -29,6 +29,7 @@ export class WasmRunner {
       executable: options.path || "",
       parentPid: options.parentPid || 0,
       stdin: options.stdin || "",
+      preopens: [options.cwd || this.os.session.home || "/"],
       runtime: "wasm",
     });
     const stdout = [];
@@ -157,6 +158,51 @@ export class WasmRunner {
           writeU32(nreadPtr, read);
           return 0;
         },
+        fd_close: (fd) => {
+          try {
+            this.os.descriptors.close(process, { fd }, context);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
+        path_open: (dirfd, dirflags, pathPtr, pathLength, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) => {
+          void dirflags;
+          void rightsBase;
+          void rightsInheriting;
+          try {
+            const path = readString(pathPtr, pathLength);
+            const descriptor = this.os.descriptors.openAt(process, Number(dirfd), path, {
+              flags: wasiOpenFlags(Number(oflags || 0), Number(fdflags || 0)),
+            }, context);
+            writeU32(openedFdPtr, descriptor.fd);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
+        fd_prestat_get: (fd, resultPtr) => {
+          try {
+            const descriptor = this.os.descriptors.stat(process, { fd }, context);
+            if (!descriptor.preopen) return errnoNumber("EBADF");
+            writeU32(resultPtr, 0);
+            writeU32(Number(resultPtr || 0) + 4, new TextEncoder().encode(descriptor.path).length);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
+        fd_prestat_dir_name: (fd, pathPtr, pathLength) => {
+          try {
+            const descriptor = this.os.descriptors.stat(process, { fd }, context);
+            if (!descriptor.preopen) return errnoNumber("EBADF");
+            const bytes = new TextEncoder().encode(descriptor.path).slice(0, Number(pathLength || 0));
+            writeMemory(pathPtr, bytes);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
         proc_exit: (code) => {
           throw new WasmExit(code);
         },
@@ -276,8 +322,17 @@ function parseSyscallRequest(text) {
 }
 
 function errnoNumber(code) {
-  const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EIO: 5 };
+  const values = { EINVAL: 22, ENOSYS: 38, ENOENT: 2, ESRCH: 3, EACCES: 13, EBADF: 8, ENOTDIR: 54, EIO: 5 };
   return values[code] || 1;
+}
+
+function wasiOpenFlags(oflags, fdflags) {
+  const create = Boolean(oflags & 1);
+  const truncate = Boolean(oflags & 8);
+  const append = Boolean(fdflags & 1);
+  if (append) return "a+";
+  if (create || truncate) return "w+";
+  return "r";
 }
 
 function cStringBytes(values) {

@@ -18,6 +18,7 @@ export class DescriptorManager {
     table.descriptors.set(STDOUT_FD, streamDescriptor(STDOUT_FD, "stdout", "stdout", { writable: true }));
     table.descriptors.set(STDERR_FD, streamDescriptor(STDERR_FD, "stderr", "stderr", { writable: true }));
     this.tables.set(Number(process.pid), table);
+    (options.preopens || []).forEach((path) => this.preopen(process.pid, path));
     this.writeProcfs(process.pid);
     return this.list(process.pid);
   }
@@ -54,6 +55,12 @@ export class DescriptorManager {
     table.descriptors.set(fd, descriptor);
     this.writeProcfs(process.pid);
     return publicDescriptor(descriptor);
+  }
+
+  openAt(process, dirFd, path, args = {}, context = {}) {
+    const directory = this.descriptorFor(process.pid, dirFd);
+    if (directory.kind !== "directory") throw descriptorError("ENOTDIR", `fd.openAt: ${dirFd}: descriptor is not a directory`);
+    return this.open(process, { ...args, path, cwd: directory.path }, context);
   }
 
   read(process, args = {}) {
@@ -109,9 +116,29 @@ export class DescriptorManager {
     if (fd < 3) throw descriptorError("EINVAL", `fd.close: ${fd}: cannot close standard descriptor yet`);
     const table = this.tableFor(process.pid);
     if (!table.descriptors.has(fd)) throw descriptorError("EBADF", `fd.close: ${fd}: bad descriptor`);
+    if (table.descriptors.get(fd)?.preopen) throw descriptorError("EINVAL", `fd.close: ${fd}: cannot close preopen descriptor yet`);
     table.descriptors.delete(fd);
     this.writeProcfs(process.pid);
     return { fd, closed: true };
+  }
+
+  preopen(pid, path) {
+    const table = this.tableFor(pid);
+    const normalized = this.os.fs.normalize(path || this.os.session?.home || "/");
+    const fd = table.nextFd;
+    table.nextFd += 1;
+    table.descriptors.set(fd, {
+      fd,
+      kind: "directory",
+      path: normalized,
+      name: this.os.fs.basename(normalized) || "/",
+      readable: true,
+      writable: true,
+      offset: 0,
+      flags: "preopen",
+      preopen: true,
+    });
+    return fd;
   }
 
   tableFor(pid) {
@@ -241,6 +268,7 @@ function publicDescriptor(descriptor) {
     writable: Boolean(descriptor.writable),
     offset: Number(descriptor.offset || 0),
     flags: descriptor.flags || "",
+    preopen: Boolean(descriptor.preopen),
   };
 }
 

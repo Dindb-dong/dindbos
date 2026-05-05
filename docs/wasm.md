@@ -53,12 +53,16 @@ environ_sizes_get(environCountPtr, environBufSizePtr) -> errno
 environ_get(environPtr, environBufPtr) -> errno
 fd_write(fd, iovsPtr, iovsLen, nwrittenPtr) -> errno
 fd_read(fd, iovsPtr, iovsLen, nreadPtr) -> errno
+fd_close(fd) -> errno
+path_open(dirfd, dirflags, pathPtr, pathLen, oflags, rightsBase, rightsInheriting, fdflags, openedFdPtr) -> errno
+fd_prestat_get(fd, resultPtr) -> errno
+fd_prestat_dir_name(fd, pathPtr, pathLen) -> errno
 proc_exit(code)
 random_get(ptr, len) -> errno
 clock_time_get(id, precision, resultPtr) -> errno
 ```
 
-`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read` reads through the same table, including stdin data supplied by shell pipelines and `runFile({ stdin })`. Opened WASI file descriptors and pipe-backed TTY behavior remain roadmap work.
+`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read` reads through the same table, including stdin data supplied by shell pipelines and `runFile({ stdin })`. WASI programs receive a preopened cwd descriptor and can use `path_open` for scoped VFS file read/write. Pipe-backed TTY behavior remains roadmap work.
 
 ## Process Model
 
@@ -79,4 +83,4 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 npm run smoke:wasm
 ```
 
-The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, basic WASI `fd_write`/`fd_read`/`proc_exit`, stdin pipeline delivery, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
+The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, basic WASI `fd_write`/`fd_read`/`path_open`/`fd_close`/`proc_exit`, stdin pipeline delivery, VFS file read/write through opened WASI descriptors, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
