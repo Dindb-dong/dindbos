@@ -153,8 +153,19 @@ const sandbox = tabA.createSandbox({ appId: "session-state-app", user: "guest", 
 sandbox.state.set("prefs", { theme: "dark" });
 assert(appStateEvents.includes("tab-a:session-state-app:set:prefs"), "peer app-state event was not delivered");
 assert(tabB.sessionCoordinationStatus().appState.lastPeerAppId === "session-state-app", "peer app-state status was not recorded");
+const packageEvents = [];
+tabB.bus.on("session:package-operation", (event) => packageEvents.push(`${event.source}:${event.packageId}:${event.operation}:${event.phase}`));
+tabA.packages.install({
+  id: "session-pkg",
+  name: "Session Package",
+  version: "1.0.0",
+  app: { id: "session-pkg", name: "Session Package", entry: "app.js" },
+  files: [{ path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" }],
+});
+assert(packageEvents.includes("tab-a:session-pkg:install:start") && packageEvents.includes("tab-a:session-pkg:install:complete"), "peer package install events were not delivered");
+assert(tabB.sessionCoordinationStatus().packageOperation.lastPeerPackageId === "session-pkg", "peer package operation status was not recorded");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages");
 
 function createStorage(values = new Map()) {
   return {

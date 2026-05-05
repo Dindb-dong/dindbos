@@ -400,7 +400,7 @@ export class PackageManager {
     });
     const previous = this.info(record.id);
     record.lifecycle = packageLifecycle(record, previous);
-    return this.runPackageTransactionAsync(record, async () => {
+    return this.runPackageTransactionAsync(record, previous ? "update" : "install", async () => {
       this.ensurePackageRoots();
       this.ensurePackageDirectory(record);
       await this.installDeclaredFiles(record, manifest.files || [], sourceUrl, fetcher);
@@ -416,7 +416,7 @@ export class PackageManager {
     const record = this.normalizePackage(manifest, options);
     const previous = this.info(record.id);
     record.lifecycle = packageLifecycle(record, previous);
-    return this.runPackageTransaction(record, () => {
+    return this.runPackageTransaction(record, previous ? "update" : "install", () => {
       this.ensurePackageRoots();
       this.ensurePackageDirectory(record);
       this.installDeclaredInlineFiles(record, manifest.files || []);
@@ -529,22 +529,29 @@ export class PackageManager {
   remove(packageId) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    this.emitSessionPackageOperation("remove", record, "start");
     const cleanup = {
       installPath: record.installPath,
       launcher: this.launcherPath(record),
       recordPath: this.packageRecordPath(record.id),
       appStatePath: removeAppState(this.os, record.app.id),
     };
-    const launcher = this.launcherPath(record);
-    if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
-    if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
-    if (this.os.fs.exists(this.packageRecordPath(record.id))) {
-      this.os.fs.remove(this.packageRecordPath(record.id), "/", {}, this.system);
+    try {
+      const launcher = this.launcherPath(record);
+      if (this.os.fs.exists(launcher)) this.os.fs.remove(launcher, "/", {}, this.system);
+      if (this.os.fs.exists(record.installPath)) this.os.fs.remove(record.installPath, "/", { recursive: true }, this.system);
+      if (this.os.fs.exists(this.packageRecordPath(record.id))) {
+        this.os.fs.remove(this.packageRecordPath(record.id), "/", {}, this.system);
+      }
+      this.os.unregisterApp(record.app.id);
+      this.emitPackageLifecycle("uninstall-cleanup", record, { cleanup });
+      this.emitPackageLifecycle("uninstall", record, { cleanup });
+      this.emitSessionPackageOperation("remove", record, "complete");
+      return record;
+    } catch (error) {
+      this.emitSessionPackageOperation("remove", record, "error", error);
+      throw error;
     }
-    this.os.unregisterApp(record.app.id);
-    this.emitPackageLifecycle("uninstall-cleanup", record, { cleanup });
-    this.emitPackageLifecycle("uninstall", record, { cleanup });
-    return record;
   }
 
   markFirstRun(packageId) {
@@ -576,26 +583,44 @@ export class PackageManager {
     this.list().forEach((record) => this.registerPackageApp(record));
   }
 
-  runPackageTransaction(record, install) {
+  runPackageTransaction(record, operation, install) {
     const beforeRoot = this.os.fs.snapshot();
     const previousApp = this.os.apps?.apps?.get?.(record.app.id) || null;
+    this.emitSessionPackageOperation(operation, record, "start");
     try {
-      return install();
+      const result = install();
+      this.emitSessionPackageOperation(operation, record, "complete");
+      return result;
     } catch (error) {
       this.rollbackPackageTransaction(record, beforeRoot, previousApp);
+      this.emitSessionPackageOperation(operation, record, "error", error);
       throw error;
     }
   }
 
-  async runPackageTransactionAsync(record, install) {
+  async runPackageTransactionAsync(record, operation, install) {
     const beforeRoot = this.os.fs.snapshot();
     const previousApp = this.os.apps?.apps?.get?.(record.app.id) || null;
+    this.emitSessionPackageOperation(operation, record, "start");
     try {
-      return await install();
+      const result = await install();
+      this.emitSessionPackageOperation(operation, record, "complete");
+      return result;
     } catch (error) {
       this.rollbackPackageTransaction(record, beforeRoot, previousApp);
+      this.emitSessionPackageOperation(operation, record, "error", error);
       throw error;
     }
+  }
+
+  emitSessionPackageOperation(operation, record, phase, error = null) {
+    this.os.publishSessionPackageOperation?.(operation, {
+      phase,
+      packageId: record.id,
+      appId: record.app?.id || "",
+      version: record.version,
+      error: error?.message || "",
+    });
   }
 
   rollbackPackageTransaction(record, beforeRoot, previousApp) {

@@ -112,6 +112,7 @@ const os = {
       conflicts: { pending: 1, total: 3 },
       storageFlush: { lastPeerSource: "primary-tab", lastPeerPhase: "complete" },
       appState: { lastPeerAppId: "api-lab", lastPeerAction: "set" },
+      packageOperation: { lastPeerPackageId: "api-lab", lastPeerOperation: "install", lastPeerPhase: "complete" },
     };
   },
   fs: {
@@ -161,6 +162,7 @@ assert(markup.includes("<dt>Channel</dt><dd>connected · received=2</dd>"), "set
 assert(markup.includes("<dt>Conflicts</dt><dd>1 pending · total=3</dd>"), "settings markup did not render conflict diagnostics");
 assert(markup.includes("<dt>Peer Flush</dt><dd>primary-tab · complete</dd>"), "settings markup did not render peer flush diagnostics");
 assert(markup.includes("<dt>Peer App State</dt><dd>api-lab · set</dd>"), "settings markup did not render app-state diagnostics");
+assert(markup.includes("<dt>Peer Package</dt><dd>api-lab · install · complete</dd>"), "settings markup did not render package operation diagnostics");
 assert(markup.includes("recovered"), "settings markup did not render recovery summary");
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");
