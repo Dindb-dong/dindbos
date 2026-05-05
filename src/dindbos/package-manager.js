@@ -1,5 +1,5 @@
 import { removeAppState } from "./app-sandbox.js?v=20260422-browserd";
-import { compatibilityRequirementForManifest } from "./compat.js?v=20260422-browserd";
+import { apiRequirementForManifest, compatibilityRequirementForManifest } from "./compat.js?v=20260422-browserd";
 import { createDindbOSSDK } from "./sdk.js?v=20260422-browserd";
 
 const APPLICATION_DIR = "/usr/share/applications";
@@ -634,6 +634,10 @@ export class PackageManager {
     if (!compatibility.supported) {
       throw new Error(`pkg: ${id}: requires unsupported compatibility tier ${compatibility.tier} (${compatibility.name})`);
     }
+    const api = apiRequirementForManifest(manifest);
+    if (!api.supported) {
+      throw new Error(`pkg: ${id}: requires unsupported API version ${api.minVersion === api.maxVersion ? api.targetVersion : `${api.minVersion}-${api.maxVersion}`} (runtime supports ${api.supportedVersions.join(", ")})`);
+    }
     const app = manifest.app || {};
     const appId = normalizeAppId(app.id || id);
     const name = String(manifest.name || app.name || id);
@@ -656,6 +660,7 @@ export class PackageManager {
       sourcePath: options.sourcePath || manifest.sourcePath || "",
       trust: options.trust || packageTrust(options.sourcePath || manifest.sourcePath || "", options.registry || ""),
       compatibility,
+      api,
       installedAt: new Date().toISOString(),
       originalManifest: manifest,
       files: [],
@@ -672,6 +677,7 @@ export class PackageManager {
         entry,
         entryPath: entry ? `${installPath}/${entry}` : "",
         runtime,
+        api,
         content: String(app.content || manifest.content || ""),
         capabilities: unique(capabilities),
         fileSystem: {
@@ -972,6 +978,7 @@ export class PackageManager {
         runtime: record.app.runtime,
         description: record.description,
         compatibility: record.compatibility,
+        api: record.api,
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
       },
@@ -1176,6 +1183,7 @@ function packagePublicRecord(record) {
     installPath: record.installPath,
     sourcePath: record.sourcePath,
     compatibility: cloneJson(record.compatibility || { tier: "A", status: "supported" }),
+    api: cloneJson(record.api || { targetVersion: 1, negotiatedVersion: 1, status: "matched" }),
     dependencies: cloneJson(record.dependencies || {}),
     files: [...(record.files || [])],
     lifecycle: cloneJson(record.lifecycle || {}),
