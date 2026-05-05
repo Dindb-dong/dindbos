@@ -426,6 +426,7 @@ export class AppSandbox {
       fetch: (url, options = {}) => this.os.network.fetch(url, options, context()),
       openWebSocket: (url, options = {}) => this.os.network.openWebSocket(url, options, context()),
       openDataChannel: (peer, options = {}) => this.os.network.openDataChannel(peer, options, context()),
+      openRawSocket: (protocol, host, port, options = {}) => this.os.network.openRawSocket(protocol, host, port, options, context()),
       policy: (url, capability = "net.fetch") => this.os.network.policyProbe(url, context(), capability),
       status: () => {
         this.assertCapability("net.fetch");

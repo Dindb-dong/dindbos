@@ -389,7 +389,7 @@ Implementation tasks:
 - Already present: first-pass `net.status`, `net.policy`, and `net.dns` syscalls expose broker diagnostics and policy probes through the syscall ABI.
 - Already present: package manifest `sandbox.networkHosts` scopes flow into package namespace metadata and AppSandbox network policy.
 - Already present: traffic logging redacts sensitive URL query values so debugging is possible without leaking tokens or secrets.
-- Add optional companion protocol for capabilities browsers cannot expose, such as raw TCP/UDP experiments, only behind explicit trust prompts.
+- Already present: optional raw TCP/UDP companion boundary requires an approved `networkd` companion with protocol `dindbos-networkd-v1`, declared raw socket capabilities, app network capability, and host allowlist before brokered raw sessions can open.
 
 Verification:
 
@@ -397,6 +397,7 @@ Verification:
 - Already present: `npm run smoke:network` verifies apps without `net.fetch` cannot use the broker through AppSandbox runtime APIs.
 - Already present: `npm run smoke:network` verifies apps without `net.websocket` cannot open brokered WebSocket sessions through AppSandbox runtime APIs.
 - Already present: `npm run smoke:network` verifies apps without `net.webrtc` cannot open brokered WebRTC data channels through AppSandbox runtime APIs.
+- Already present: `npm run smoke:network` verifies raw TCP/UDP are refused without an approved companion, allowed only through an approved `networkd` companion boundary, denied by host policy, closed through the companion adapter, and exposed in `/proc/net`.
 
 Completion criteria:
 

@@ -70,6 +70,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
     fetch: options.networkFetch,
     webSocket: options.networkWebSocket,
     rtcPeerConnection: options.networkPeerConnection,
+    rawSocketCompanion: options.networkRawSocketCompanion,
   });
 
   return os;
