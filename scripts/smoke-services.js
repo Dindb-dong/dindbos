@@ -101,15 +101,22 @@ async function verifyBrowserServiceLifecycleHooks() {
     await browserOs.services.start("lifecycle-sync");
     windowListeners.get("pagehide")({});
     assert(browserOs.services.get("lifecycle-sync").state === "suspended", "pagehide did not suspend service");
+    assert(browserOs.lifecycleStatus().state === "suspended", "pagehide did not suspend OS lifecycle");
     windowListeners.get("pageshow")({});
     assert(browserOs.services.get("lifecycle-sync").state === "running", "pageshow did not resume service");
+    assert(browserOs.lifecycleStatus().state === "active", "pageshow did not reactivate OS lifecycle");
 
     globalThis.document.visibilityState = "hidden";
     documentListeners.get("visibilitychange")({});
     assert(browserOs.services.get("lifecycle-sync").state === "suspended", "hidden visibility did not suspend service");
+    assert(browserOs.lifecycleStatus().state === "suspended", "hidden visibility did not suspend OS lifecycle");
     globalThis.document.visibilityState = "visible";
     documentListeners.get("visibilitychange")({});
     assert(browserOs.services.get("lifecycle-sync").state === "running", "visible visibility did not resume service");
+    assert(browserOs.lifecycleStatus().state === "active", "visible visibility did not reactivate OS lifecycle");
+    windowListeners.get("beforeunload")({});
+    assert(browserOs.lifecycleStatus().state === "shutting-down", "beforeunload did not mark OS lifecycle shutting-down");
+    assert(browserOs.fs.readFile("/var/run/dindbos/lifecycle.json").includes("shutting-down"), "lifecycle diagnostics missing shutting-down state");
 
     const messages = browserOs.services.readLog("lifecycle-sync").map((entry) => entry.message).join("\n");
     assert(messages.includes("suspended pagehide"), "service log missing pagehide suspend reason");

@@ -1053,10 +1053,11 @@ Why it matters:
 
 Implementation tasks:
 
-- Add OS lifecycle states: booting, active, idle, suspending, suspended, resuming, shutting-down, crashed, and recovered.
+- Already present: first-pass OS lifecycle states include `booting`, `active`, `idle`, `suspending`, `suspended`, `resuming`, `shutting-down`, `crashed`, and `recovered`, exposed through `os.lifecycleStatus()`, `os:lifecycle`, `/var/run/dindbos/lifecycle.json`, and `/var/log/dindbos/lifecycle.log`.
 - Add per-process lifecycle callbacks for prepare-suspend, suspend, resume, prepare-shutdown, and recovery inspection.
 - Already present: browser event integration covers storage persistence prompts/unload-safe flush windows plus service suspend/resume on `visibilitychange`, `pagehide`, and `pageshow`.
-- Add broader OS lifecycle state transitions around `idle`, `suspending`, `resuming`, `shutting-down`, dirty shutdown, and recovered sessions.
+- Already present: browser `pagehide`, `pageshow`, hidden/visible `visibilitychange`, and `beforeunload` drive first-pass OS transitions around `suspending`, `suspended`, `resuming`, `active`, and `shutting-down`.
+- Add broader OS lifecycle state transitions around `idle`, dirty shutdown, and recovered sessions.
 - Add service policies for foreground-only, visible-tab-only, resumable, scheduled-when-visible, and companion-required work.
 - Add recovery records under `/var/run/dindbos/recovery` for dirty shutdown, pending writes, suspended services, and killed workers.
 - Add user-facing diagnostics explaining which background tasks cannot continue when the browser page closes.
@@ -1064,7 +1065,7 @@ Implementation tasks:
 
 Verification:
 
-- Already present: smoke coverage verifies pending-write lifecycle flushes and service visibility/pagehide suspend/resume wiring.
+- Already present: smoke coverage verifies pending-write lifecycle flushes, boot-time lifecycle diagnostics, service visibility/pagehide suspend/resume wiring, and OS lifecycle transitions for pagehide/pageshow/visibility/beforeunload.
 - Add smoke coverage for dirty shutdown recovery, service degradation after pagehide, and recovery diagnostics after reload.
 - Add tests proving unsupported background persistence is reported as unsupported instead of silently promised.
 

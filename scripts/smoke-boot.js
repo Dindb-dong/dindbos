@@ -49,6 +49,8 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.exists("/proc/processes.json"), "process init did not write /proc/processes.json");
   assert(os.fs.exists("/var/log/dindbos/boot.json"), "boot diagnostics JSON was not written");
   assert(os.fs.exists("/var/log/dindbos/boot.log"), "boot diagnostics log was not written");
+  assert(os.fs.exists("/var/run/dindbos/lifecycle.json"), "lifecycle diagnostics JSON was not written");
+  assert(os.fs.exists("/var/log/dindbos/lifecycle.log"), "lifecycle diagnostics log was not written");
   assert(os.fs.exists("/var/cache"), "cache policy root /var/cache was not created");
   assert(os.diskPolicyForPath("/home/guest/Documents").type === "user", "/home did not resolve to user disk policy");
   assert(os.diskPolicyForPath("/opt/hello-notes").type === "packages", "/opt did not resolve to package disk policy");
@@ -66,6 +68,10 @@ async function verifySuccessfulBootPhases() {
   assert(bootDiagnostics.phases.every((phase) => phase.status === "complete"), "boot diagnostics included incomplete phases");
   assert(bootDiagnostics.storageBuckets.decision === "fallback-to-current-storage-stack", "boot diagnostics missing storage bucket policy");
   assert(os.fs.readFile("/var/log/dindbos/boot.log").includes("[complete] desktop-render"), "boot log missing desktop-render completion");
+  const lifecycleDiagnostics = JSON.parse(os.fs.readFile("/var/run/dindbos/lifecycle.json"));
+  assert(lifecycleDiagnostics.state === "active", `boot lifecycle state mismatch: ${lifecycleDiagnostics.state}`);
+  assert(lifecycleDiagnostics.transitions.some((entry) => entry.reason === "boot-complete"), "boot lifecycle transition missing boot-complete");
+  assert(os.fs.readFile("/var/log/dindbos/lifecycle.log").includes("boot-complete"), "lifecycle log missing boot-complete");
 }
 
 async function verifyBootPhaseFailure() {

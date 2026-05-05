@@ -37,6 +37,18 @@ export const DISK_POLICY_AREAS = [
   { root: "/mnt", type: "external", durability: "user-granted", policy: "local and virtual mounts" },
 ];
 
+export const OS_LIFECYCLE_STATES = [
+  "booting",
+  "active",
+  "idle",
+  "suspending",
+  "suspended",
+  "resuming",
+  "shutting-down",
+  "crashed",
+  "recovered",
+];
+
 export class DindbOS {
   constructor(options = {}) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
@@ -65,6 +77,13 @@ export class DindbOS {
     this.persistRequestedDuringFlush = false;
     this.persistenceHooksInstalled = false;
     this.serviceLifecycleHooksInstalled = false;
+    this.lifecycleState = {
+      state: "booting",
+      previousState: "",
+      reason: "constructor",
+      updatedAt: new Date().toISOString(),
+    };
+    this.lifecycleTransitions = [{ ...this.lifecycleState }];
     this.persistenceStats = {
       scheduled: 0,
       coalesced: 0,
@@ -154,6 +173,7 @@ export class DindbOS {
     });
     this.installServiceLifecycleHooks();
     this.installPersistenceLifecycleHooks();
+    this.transitionLifecycle("active", "boot-complete");
     this.writeBootDiagnostics();
     this.bus.emit("boot", { session: this.session, phases: this.bootStatus() });
   }
@@ -227,6 +247,57 @@ export class DindbOS {
     return [...this.bootPhases.values()]
       .sort((left, right) => left.index - right.index)
       .map((phase) => ({ ...phase }));
+  }
+
+  lifecycleStatus() {
+    return {
+      ...this.lifecycleState,
+      transitions: this.lifecycleTransitions.map((entry) => ({ ...entry })),
+    };
+  }
+
+  transitionLifecycle(state, reason = "") {
+    if (!OS_LIFECYCLE_STATES.includes(state)) throw new Error(`unknown lifecycle state: ${state}`);
+    const previousState = this.lifecycleState?.state || "";
+    const entry = {
+      state,
+      previousState,
+      reason: String(reason || ""),
+      updatedAt: new Date().toISOString(),
+    };
+    this.lifecycleState = entry;
+    this.lifecycleTransitions.push(entry);
+    this.lifecycleTransitions = this.lifecycleTransitions.slice(-50);
+    this.bus.emit("os:lifecycle", this.lifecycleStatus());
+    this.writeLifecycleDiagnostics();
+    return this.lifecycleStatus();
+  }
+
+  writeLifecycleDiagnostics() {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/run", "root", system);
+    this.ensureSystemDirectory("/var/run/dindbos", "root", system);
+    this.ensureSystemDirectory("/var/log", "root", system);
+    this.ensureSystemDirectory("/var/log/dindbos", "root", system);
+    const status = this.lifecycleStatus();
+    this.fs.writeOrCreateFile("/var/run/dindbos/lifecycle.json", `${JSON.stringify(status, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    const line = `${status.updatedAt} ${status.previousState || "-"} -> ${status.state} ${status.reason}\n`;
+    if (this.fs.exists("/var/log/dindbos/lifecycle.log")) {
+      this.fs.appendFile("/var/log/dindbos/lifecycle.log", line, "/", system);
+    } else {
+      this.fs.writeOrCreateFile("/var/log/dindbos/lifecycle.log", line, "/", {
+        owner: "root",
+        group: "root",
+        permissions: "-rw-r--r--",
+        mime: "text/plain",
+      }, system);
+    }
   }
 
   writeBootDiagnostics() {
@@ -731,13 +802,18 @@ export class DindbOS {
     if (this.serviceLifecycleHooksInstalled || typeof globalThis.window === "undefined") return;
     this.serviceLifecycleHooksInstalled = true;
     const suspend = (reason) => {
+      this.transitionLifecycle("suspending", reason);
       this.services?.suspend?.(reason);
+      this.transitionLifecycle("suspended", reason);
     };
     const resume = (reason) => {
+      this.transitionLifecycle("resuming", reason);
       this.services?.resume?.(reason);
+      this.transitionLifecycle("active", reason);
     };
     globalThis.window.addEventListener("pagehide", () => suspend("pagehide"));
     globalThis.window.addEventListener("pageshow", () => resume("pageshow"));
+    globalThis.window.addEventListener("beforeunload", () => this.transitionLifecycle("shutting-down", "beforeunload"));
     globalThis.document?.addEventListener?.("visibilitychange", () => {
       if (globalThis.document.visibilityState === "hidden") {
         suspend("visibility-hidden");

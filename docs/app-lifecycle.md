@@ -17,9 +17,13 @@ Current boot phases:
 
 Each phase records `status`, `detail`, `startedAt`, `finishedAt`, `durationMs`, and `error`. Recoverable storage-load and VFS mount restore failures are marked `recovered` and continue booting. Strict callers can pass `{ recover: false }` to `loadPersistentFileSystem()` when they need startup to stop on the first storage error.
 
-After desktop render, DindbOS writes selected boot diagnostics to `/var/log/dindbos/boot.json` and `/var/log/dindbos/boot.log`. These files are part of the VFS, so Terminal, Files.app, and packaged diagnostic tools can inspect the same runtime evidence.
+After desktop render, DindbOS writes selected boot diagnostics to `/var/log/dindbos/boot.json` and `/var/log/dindbos/boot.log`. It also transitions the OS lifecycle state to `active` and writes `/var/run/dindbos/lifecycle.json` plus `/var/log/dindbos/lifecycle.log`. These files are part of the VFS, so Terminal, Files.app, and packaged diagnostic tools can inspect the same runtime evidence.
 
 ## Lifecycle States
+
+The OS-level lifecycle is exposed through `os.lifecycleStatus()` and `os:lifecycle` events. The first-pass state set is `booting`, `active`, `idle`, `suspending`, `suspended`, `resuming`, `shutting-down`, `crashed`, and `recovered`.
+
+Browser `pagehide` and hidden-tab `visibilitychange` events transition the OS through `suspending` to `suspended` while service records are suspended. `pageshow` and visible-tab `visibilitychange` transition through `resuming` back to `active`. `beforeunload` records `shutting-down` before the persistence lifecycle hook performs its best-effort flush.
 
 Lifecycle events are emitted on the runtime event bus with explicit app-level names:
 
