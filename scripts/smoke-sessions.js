@@ -164,6 +164,24 @@ tabA.packages.install({
 });
 assert(packageEvents.includes("tab-a:session-pkg:install:start") && packageEvents.includes("tab-a:session-pkg:install:complete"), "peer package install events were not delivered");
 assert(tabB.sessionCoordinationStatus().packageOperation.lastPeerPackageId === "session-pkg", "peer package operation status was not recorded");
+const handoffEvents = [];
+tabB.bus.on("session:handoff", (event) => handoffEvents.push(`${event.source}:${event.action}:${event.mode}:${event.offerId}`));
+const handoffOffer = tabA.createSessionHandoffOffer({
+  mode: "control",
+  targetInstanceId: "tab-b",
+  transport: "broadcast-channel",
+});
+assert(handoffOffer.status === "offered" && handoffOffer.mode === "control", "session handoff offer was not created");
+assert(handoffEvents.includes(`tab-a:offer:control:${handoffOffer.offerId}`), "peer session handoff offer event was not delivered");
+assert(tabB.sessionCoordinationStatus().handoff.lastPeerOfferId === handoffOffer.offerId, "peer session handoff offer status was not recorded");
+const acceptedHandoff = tabB.acceptSessionHandoff(handoffOffer.offerId);
+assert(acceptedHandoff.status === "active" && acceptedHandoff.acceptedBy === "tab-b", "session handoff accept did not activate");
+assert(tabA.sessionCoordinationStatus().handoff.activeOfferId === handoffOffer.offerId, "source session handoff active status was not recorded");
+assert(tabA.sessionCoordinationStatus().handoff.activePeerInstanceId === "tab-b", "source session handoff active peer was not recorded");
+assert(JSON.parse(tabA.fs.readFile("/proc/sessions")).handoff.activeOfferId === handoffOffer.offerId, "/proc/sessions did not expose active session handoff");
+const cancelledHandoff = tabA.cancelSessionHandoff(handoffOffer.offerId, "smoke-complete");
+assert(cancelledHandoff.status === "cancelled", "session handoff cancel status mismatch");
+assert(tabB.sessionCoordinationStatus().handoff.activeOfferId === "", "peer session handoff active status was not cleared");
 const packageDbLock = tabA.acquireRuntimeOperationLock("package-db", { operation: "install", packageId: "locked-pkg" });
 assertRejects(() => tabB.packages.install({
   id: "locked-pkg",
@@ -212,7 +230,7 @@ assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.fileCount === syncSnapshot
 assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.cacheRecords === syncSnapshot.cacheRecords, "remote sync status did not record cache coverage");
 assert(tabB.remoteSyncStatus().lastSuccessfulSnapshot.settingsRecords === syncSnapshot.settingsRecords, "remote sync status did not record settings coverage");
 
-console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages package-lock reload-recovery sync-snapshot sync-coverage");
+console.log("sessions smoke ok generated-home user-scopes ownership login-lock coordination file-events conflicts storage-flush app-state packages handoff package-lock reload-recovery sync-snapshot sync-coverage");
 
 function createStorage(values = new Map()) {
   return {

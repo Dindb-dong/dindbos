@@ -3540,9 +3540,24 @@ function renderSettingsSessionCoordination(coordination) {
       <div><dt>Peer Flush</dt><dd>${coordination?.storageFlush?.lastPeerSource ? `${escapeHtml(coordination.storageFlush.lastPeerSource)} · ${escapeHtml(coordination.storageFlush.lastPeerPhase || "unknown")}` : "none"}</dd></div>
       <div><dt>Peer App State</dt><dd>${coordination?.appState?.lastPeerAppId ? `${escapeHtml(coordination.appState.lastPeerAppId)} · ${escapeHtml(coordination.appState.lastPeerAction || "change")}` : "none"}</dd></div>
       <div><dt>Peer Package</dt><dd>${coordination?.packageOperation?.lastPeerPackageId ? `${escapeHtml(coordination.packageOperation.lastPeerPackageId)} · ${escapeHtml(coordination.packageOperation.lastPeerOperation || "package")} · ${escapeHtml(coordination.packageOperation.lastPeerPhase || "unknown")}` : "none"}</dd></div>
+      <div><dt>Session Handoff</dt><dd>${formatSessionHandoff(coordination?.handoff)}</dd></div>
       <div><dt>Session Recovery</dt><dd>${coordination?.recovery?.recovered ? `recovered · conflicts=${Number(coordination.recovery.pendingConflicts || 0)}` : "none"}</dd></div>
     </dl>
   `;
+}
+
+function formatSessionHandoff(handoff) {
+  if (!handoff) return "none";
+  if (handoff.activeOfferId) {
+    return `active · ${escapeHtml(handoff.activeMode || "view")} · peer=${escapeHtml(handoff.activePeerInstanceId || "-")}`;
+  }
+  if (handoff.lastPeerOfferId) {
+    return `${escapeHtml(handoff.lastPeerAction || "offer")} · ${escapeHtml(handoff.lastPeerMode || "view")} · peer=${escapeHtml(handoff.lastPeerSource || "-")}`;
+  }
+  if (handoff.lastLocalOfferId) {
+    return `${escapeHtml(handoff.lastLocalAction || "offer")} · ${escapeHtml(handoff.lastLocalMode || "view")} · local`;
+  }
+  return "none";
 }
 
 function formatSyncSummary(sync) {

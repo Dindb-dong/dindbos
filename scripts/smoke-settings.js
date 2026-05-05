@@ -114,6 +114,7 @@ const os = {
       storageFlush: { lastPeerSource: "primary-tab", lastPeerPhase: "complete" },
       appState: { lastPeerAppId: "api-lab", lastPeerAction: "set" },
       packageOperation: { lastPeerPackageId: "api-lab", lastPeerOperation: "install", lastPeerPhase: "complete" },
+      handoff: { activeOfferId: "handoff-1", activeMode: "control", activePeerInstanceId: "primary-tab" },
       recovery: { recovered: true, pendingConflicts: 2 },
     };
   },
@@ -185,6 +186,7 @@ assert(markup.includes("<dt>Conflicts</dt><dd>1 pending · total=3</dd>"), "sett
 assert(markup.includes("<dt>Peer Flush</dt><dd>primary-tab · complete</dd>"), "settings markup did not render peer flush diagnostics");
 assert(markup.includes("<dt>Peer App State</dt><dd>api-lab · set</dd>"), "settings markup did not render app-state diagnostics");
 assert(markup.includes("<dt>Peer Package</dt><dd>api-lab · install · complete</dd>"), "settings markup did not render package operation diagnostics");
+assert(markup.includes("<dt>Session Handoff</dt><dd>active · control · peer=primary-tab</dd>"), "settings markup did not render session handoff diagnostics");
 assert(markup.includes("<dt>Session Recovery</dt><dd>recovered · conflicts=2</dd>"), "settings markup did not render session recovery diagnostics");
 assert(markup.includes("<dt>Sync</dt><dd>storage-value encrypted=true") && markup.includes("files=4 cache=1 settings=2</dd>"), "settings markup did not render sync summary");
 assert(markup.includes("<dt>Last Snapshot</dt><dd>") && markup.includes("· files=4 · cache=1 · settings=2</dd>"), "settings markup did not render remote sync panel");
