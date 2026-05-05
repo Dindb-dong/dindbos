@@ -250,6 +250,11 @@ assert(result.status === 0, `storage fsck status mismatch: ${result.status}`);
 assert(result.output.includes("storage=1") && result.output.includes("storage-journal-partial"), `storage fsck output mismatch: ${result.output}`);
 assert(result.output.includes("last complete manifest remains authoritative"), `storage fsck explanation mismatch: ${result.output}`);
 assert(shell.os.fs.readFile("/var/log/dindbos/fsck.log").includes("codes=storage-journal-partial"), "storage fsck did not write partial journal code");
+shell.os.setLocalMountFsckProblem("local-mount-stale-metadata", "/mnt/stale", "persisted local mount record is missing a directory handle or mount path");
+result = await shell.executeAsync("fsck --dry-run --explain");
+assert(result.status === 0, `local mount fsck status mismatch: ${result.status}`);
+assert(result.output.includes("localMounts=1") && result.output.includes("local-mount-stale-metadata"), `local mount fsck output mismatch: ${result.output}`);
+assert(result.output.includes("safe repair removes only that stale record"), `local mount fsck explanation mismatch: ${result.output}`);
 result = await shell.executeAsync("syscall localMount.status '{}'");
 assert(result.status === 0, `syscall localMount.status status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).value.supported === false, `syscall localMount.status output mismatch: ${result.output}`);
@@ -364,6 +369,7 @@ function bootOs() {
   const storageReservations = [];
   let nextStorageDenial = "";
   let storageFsckProblem = null;
+  let localMountFsckProblem = null;
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
@@ -386,6 +392,19 @@ function bootOs() {
         capabilities: [],
         renameSupported: false,
       }),
+      checkIntegrity: ({ dryRun = true } = {}) => {
+        const problems = localMountFsckProblem ? [{ ...localMountFsckProblem }] : [];
+        localMountFsckProblem = null;
+        return {
+          ok: problems.length === 0,
+          dryRun: Boolean(dryRun),
+          checkedLocalMounts: 1,
+          problemCount: problems.length,
+          repairCount: 0,
+          problems,
+          repairs: [],
+        };
+      },
     },
     mountTable() {
       return [
@@ -472,6 +491,9 @@ function bootOs() {
     },
     setStorageFsckProblem(code, path, message) {
       storageFsckProblem = { code, path, message, repairable: false };
+    },
+    setLocalMountFsckProblem(code, path, message) {
+      localMountFsckProblem = { code, path, message, repairable: true };
     },
     flushPersistentFileSystem: async () => {
       storageFlushes += 1;

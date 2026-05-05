@@ -1092,6 +1092,7 @@ export class ShellSession {
     let result = this.os.fs.checkIntegrity({ repair, dryRun });
     result = mergeFsckResults(result, safeRead(() => this.os.packages?.checkIntegrity?.({ repair, dryRun }), null));
     result = mergeFsckResults(result, await safeAsync(() => this.os.storage?.checkIntegrity?.({ repair, dryRun }), null));
+    result = mergeFsckResults(result, await safeAsync(() => this.os.localMounts?.checkIntegrity?.({ repair, dryRun }), null));
     this.recordFsckLog(result);
     return formatFsck(result, { explain });
   }
@@ -1112,6 +1113,7 @@ export class ShellSession {
       `checked=${Number(result.checkedNodes || 0)}`,
       `packages=${Number(result.checkedPackages || 0)}`,
       `storage=${Number(result.checkedStorage || 0)}`,
+      `localMounts=${Number(result.checkedLocalMounts || 0)}`,
       `problems=${Number(result.problemCount || 0)}`,
       `repairs=${Number(result.repairCount || 0)}`,
       `auditRecords=${auditRecords.length}`,
@@ -1885,7 +1887,7 @@ function formatStorage(status) {
 
 function formatFsck(result = {}, options = {}) {
   const lines = [
-    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} packages=${Number(result.checkedPackages || 0)} storage=${Number(result.checkedStorage || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
+    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} packages=${Number(result.checkedPackages || 0)} storage=${Number(result.checkedStorage || 0)} localMounts=${Number(result.checkedLocalMounts || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
   ];
   (result.problems || []).slice(0, 20).forEach((entry) => {
     lines.push(`${entry.code} ${entry.path} repairable=${Boolean(entry.repairable)} ${entry.message}`);
@@ -1912,6 +1914,8 @@ function fsckExplanation(code, repairable = false) {
     "storage-journal-invalid": "A persisted storage transaction marker cannot be parsed; reload or manual recovery is required.",
     "storage-journal-partial": "A storage transaction marker is present without a replay manifest; the last complete manifest remains authoritative.",
     "storage-journal-pending-replay": "A storage replay manifest exists and should be promoted during the next storage load before normal boot continues.",
+    "local-mount-metadata-invalid": "Persisted local mount metadata is malformed; inspect or forget the local mount record.",
+    "local-mount-stale-metadata": "A persisted local mount record no longer contains a usable directory handle or mount path; safe repair removes only that stale record.",
   };
   return `${explanations[code] || "DindbOS detected an integrity invariant violation."} ${suffix}`;
 }
@@ -1926,6 +1930,7 @@ function mergeFsckResults(base = {}, extra = null) {
     repaired: Boolean(base.repaired || extra.repaired),
     checkedPackages: Number(base.checkedPackages || 0) + Number(extra.checkedPackages || 0),
     checkedStorage: Number(base.checkedStorage || 0) + Number(extra.checkedStorage || 0),
+    checkedLocalMounts: Number(base.checkedLocalMounts || 0) + Number(extra.checkedLocalMounts || 0),
     problemCount: problems.length,
     repairCount: repairs.length,
     problems,

@@ -260,12 +260,29 @@ assert(conflicts[0].reason === "modified-both", `sync conflict reason mismatch: 
 assert(mounts.operationStatus().some((operation) => operation.kind === "sync-conflict" && operation.status === "conflict"), "sync conflict operation was not reported");
 const status = await mounts.status();
 assert(status[0].conflicts.length === 1, "mount status did not expose sync conflict");
+await os.storage.writeValue("dindbos:local-folder-mounts", {
+  version: 1,
+  mounts: [
+    { path: "/mnt/stale", name: "stale", handle: { kind: "file" }, mode: "readwrite" },
+    { path: "/mnt/disk", name: "disk", handle, mode: "readwrite" },
+  ],
+});
+let fsck = await mounts.checkIntegrity({ repair: true, dryRun: true });
+assert(!fsck.ok, "local mount fsck did not detect stale metadata");
+assert(fsck.checkedLocalMounts === 2, `local mount fsck checked count mismatch: ${fsck.checkedLocalMounts}`);
+assert(fsck.problems.some((entry) => entry.code === "local-mount-stale-metadata" && entry.path === "/mnt/stale"), "local mount fsck stale problem missing");
+assert(fsck.repairs.some((entry) => entry.kind === "remove-stale-local-mount" && entry.dryRun), "local mount fsck dry-run repair plan missing");
+fsck = await mounts.checkIntegrity({ repair: true, dryRun: false });
+assert(fsck.repaired, "local mount fsck repair did not report repaired state");
+const persistedAfterRepair = await os.storage.readValue("dindbos:local-folder-mounts");
+assert(persistedAfterRepair.mounts.length === 1 && persistedAfterRepair.mounts[0].path === "/mnt/disk", "local mount fsck repair did not remove only stale metadata");
 
 console.log("local mounts smoke ok permission-denied metadata-limits directory-copy-policy native-rename sync-conflict");
 
 function bootOs() {
   const permissions = new PermissionPolicy();
   const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
+  const storageValues = new Map();
   return {
     fs,
     permissions,
@@ -275,10 +292,12 @@ function bootOs() {
       this.mountTableWrites.push(reason);
     },
     storage: {
-      async readValue() {
-        return null;
+      async readValue(key) {
+        return storageValues.get(key) || null;
       },
-      writeValue() {},
+      async writeValue(key, value) {
+        storageValues.set(key, value);
+      },
       async flush() {},
     },
   };
