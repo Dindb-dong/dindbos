@@ -24,6 +24,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
     fs,
     permissions,
     bus: new EventBus(),
+    ipcEndpoints: new Map(),
     cache: new RuntimeCacheStore({ cacheApi: null }),
     apps: null,
     packages: null,
@@ -39,6 +40,10 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
     unregisterApp: (appId) => os.apps.unregister(appId),
     launch: (appId, context = {}) => os.apps.launch(appId, context),
   };
+  os.registerIpcEndpoint = (process, endpoint, handler) => registerIpcEndpoint(os, process, endpoint, handler);
+  os.sendIpcMessage = (process, endpoint, payload = {}) => sendIpcMessage(os, process, endpoint, payload);
+  os.listIpcEndpoints = (process = null) => listIpcEndpoints(os, process);
+  os.unregisterIpcEndpointsForPid = (pid) => unregisterIpcEndpointsForPid(os, pid);
 
   os.windows = createTestWindowManager();
   os.descriptors = new DescriptorManager(os);
@@ -54,6 +59,98 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
   os.packages = new PackageManager(os);
 
   return os;
+}
+
+function registerIpcEndpoint(os, process, endpoint, handler) {
+  const id = normalizeIpcEndpoint(endpoint);
+  if (typeof handler !== "function") throw new Error(`ipc: ${id}: handler is required`);
+  assertIpcEndpointAllowed(process, id, "register");
+  const namespace = process?.manifest?.namespace || {};
+  const record = {
+    endpoint: id,
+    ownerPid: process?.pid || 0,
+    ownerAppId: process?.appId || "",
+    ownerNamespace: namespace.processGroup || "",
+    handler,
+    createdAt: new Date().toISOString(),
+  };
+  os.ipcEndpoints.set(id, record);
+  return publicIpcEndpoint(record);
+}
+
+function sendIpcMessage(os, process, endpoint, payload = {}) {
+  const id = normalizeIpcEndpoint(endpoint);
+  const record = os.ipcEndpoints.get(id);
+  if (!record) throw new Error(`ipc: ${id}: no such endpoint`);
+  assertIpcSendAllowed(process, record);
+  return cloneJson(record.handler({
+    endpoint: id,
+    fromPid: process?.pid || 0,
+    fromAppId: process?.appId || "",
+    fromNamespace: process?.manifest?.namespace?.processGroup || "",
+    toPid: record.ownerPid,
+    toAppId: record.ownerAppId,
+    toNamespace: record.ownerNamespace,
+    payload: cloneJson(payload),
+    sentAt: new Date().toISOString(),
+  }));
+}
+
+function listIpcEndpoints(os, process = null) {
+  return [...os.ipcEndpoints.values()]
+    .filter((record) => !process || canSeeIpcEndpoint(process, record))
+    .map(publicIpcEndpoint);
+}
+
+function unregisterIpcEndpointsForPid(os, pid) {
+  [...os.ipcEndpoints.entries()].forEach(([endpoint, record]) => {
+    if (Number(record.ownerPid || 0) === Number(pid || 0)) os.ipcEndpoints.delete(endpoint);
+  });
+}
+
+function normalizeIpcEndpoint(endpoint) {
+  const value = String(endpoint || "").trim();
+  if (!value || value.length > 128 || /[\s/]/.test(value)) throw new Error(`ipc: invalid endpoint: ${endpoint || ""}`);
+  return value;
+}
+
+function assertIpcEndpointAllowed(process, endpoint, action) {
+  const namespace = process?.manifest?.namespace || null;
+  if (!namespace) return;
+  if ((namespace.ipcEndpoints || []).includes(endpoint)) return;
+  throw new Error(`ipc: ${endpoint}: ${action} denied by package namespace`);
+}
+
+function assertIpcSendAllowed(process, record) {
+  const namespace = process?.manifest?.namespace || null;
+  if (!namespace) return;
+  if (namespace.processGroup && namespace.processGroup === record.ownerNamespace) return;
+  if ((namespace.ipcEndpoints || []).includes(record.endpoint)) return;
+  throw new Error(`ipc: ${record.endpoint}: send denied by package namespace`);
+}
+
+function canSeeIpcEndpoint(process, record) {
+  try {
+    assertIpcSendAllowed(process, record);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function publicIpcEndpoint(record) {
+  return {
+    endpoint: record.endpoint,
+    ownerPid: record.ownerPid,
+    ownerAppId: record.ownerAppId,
+    ownerNamespace: record.ownerNamespace,
+    createdAt: record.createdAt,
+  };
+}
+
+function cloneJson(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
 }
 
 export async function launchRuntimeApp(os, appId, options = {}) {

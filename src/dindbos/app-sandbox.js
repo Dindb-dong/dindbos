@@ -16,6 +16,7 @@ export class AppSandbox {
     this.services = this.createServiceFacade();
     this.npm = this.createNpmFacade();
     this.node = this.createNodeFacade();
+    this.ipc = this.createIpcFacade();
     this.storage = this.createStorageFacade();
     this.state = this.createStateFacade();
     this.localMounts = this.createLocalMountFacade();
@@ -341,6 +342,14 @@ export class AppSandbox {
         this.assertFileSystem(normalized, "read");
         return node.evaluate(source, normalized);
       },
+    };
+  }
+
+  createIpcFacade() {
+    return {
+      register: (endpoint, handler) => this.os.registerIpcEndpoint(this.process, endpoint, handler),
+      send: (endpoint, payload = {}) => this.os.sendIpcMessage(this.process, endpoint, payload),
+      list: () => this.os.listIpcEndpoints(this.process),
     };
   }
 

@@ -185,6 +185,7 @@ export class DindbOS {
       lastRetry: null,
       lastError: "",
     };
+    this.ipcEndpoints = new Map();
     this.virtualMounts = new Map();
     this.overlayMounts = new Map();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
@@ -2510,6 +2511,68 @@ export class DindbOS {
     return new AppSandbox(this, process);
   }
 
+  registerIpcEndpoint(process, endpoint, handler) {
+    const id = normalizeIpcEndpoint(endpoint);
+    if (typeof handler !== "function") throw new Error(`ipc: ${id}: handler is required`);
+    assertIpcEndpointAllowed(process, id, "register");
+    const namespace = process?.manifest?.namespace || {};
+    const record = {
+      endpoint: id,
+      ownerPid: process?.pid || 0,
+      ownerAppId: process?.appId || "",
+      ownerNamespace: namespace.processGroup || "",
+      handler,
+      createdAt: new Date().toISOString(),
+    };
+    this.ipcEndpoints.set(id, record);
+    this.bus.emit("ipc:endpoint", {
+      action: "register",
+      endpoint: id,
+      ownerPid: record.ownerPid,
+      ownerAppId: record.ownerAppId,
+      ownerNamespace: record.ownerNamespace,
+    });
+    return publicIpcEndpoint(record);
+  }
+
+  sendIpcMessage(process, endpoint, payload = {}) {
+    const id = normalizeIpcEndpoint(endpoint);
+    const record = this.ipcEndpoints.get(id);
+    if (!record) throw new Error(`ipc: ${id}: no such endpoint`);
+    assertIpcSendAllowed(process, record);
+    const message = {
+      endpoint: id,
+      fromPid: process?.pid || 0,
+      fromAppId: process?.appId || "",
+      fromNamespace: process?.manifest?.namespace?.processGroup || "",
+      toPid: record.ownerPid,
+      toAppId: record.ownerAppId,
+      toNamespace: record.ownerNamespace,
+      payload: cloneJson(payload),
+      sentAt: new Date().toISOString(),
+    };
+    this.bus.emit("ipc:message", { ...message, payload: cloneJson(message.payload) });
+    return cloneJson(record.handler(message));
+  }
+
+  listIpcEndpoints(process = null) {
+    return [...this.ipcEndpoints.values()]
+      .filter((record) => !process || canSeeIpcEndpoint(process, record))
+      .map(publicIpcEndpoint);
+  }
+
+  unregisterIpcEndpointsForPid(pid, reason = "process-exit") {
+    const ownerPid = Number(pid || 0);
+    const removed = [];
+    [...this.ipcEndpoints.entries()].forEach(([endpoint, record]) => {
+      if (Number(record.ownerPid || 0) !== ownerPid) return;
+      this.ipcEndpoints.delete(endpoint);
+      removed.push(publicIpcEndpoint(record));
+    });
+    if (removed.length) this.bus.emit("ipc:endpoint", { action: "unregister", reason, ownerPid, endpoints: removed });
+    return removed;
+  }
+
   persistFileSystem() {
     this.storage.saveFileSystem(this.fs.snapshot());
   }
@@ -3135,6 +3198,51 @@ function formatMountTableLine(entry) {
     `support=${entry.support || "browser-vfs"}`,
     `caps=${caps}`,
   ].join(" ");
+}
+
+function normalizeIpcEndpoint(endpoint) {
+  const value = String(endpoint || "").trim();
+  if (!value || value.length > 128 || /[\s/]/.test(value)) throw new Error(`ipc: invalid endpoint: ${endpoint || ""}`);
+  return value;
+}
+
+function assertIpcEndpointAllowed(process, endpoint, action) {
+  const namespace = process?.manifest?.namespace || null;
+  if (!namespace) return;
+  if ((namespace.ipcEndpoints || []).includes(endpoint)) return;
+  throw new Error(`ipc: ${endpoint}: ${action} denied by package namespace`);
+}
+
+function assertIpcSendAllowed(process, record) {
+  const namespace = process?.manifest?.namespace || null;
+  if (!namespace) return;
+  if (namespace.processGroup && namespace.processGroup === record.ownerNamespace) return;
+  if ((namespace.ipcEndpoints || []).includes(record.endpoint)) return;
+  throw new Error(`ipc: ${record.endpoint}: send denied by package namespace`);
+}
+
+function canSeeIpcEndpoint(process, record) {
+  try {
+    assertIpcSendAllowed(process, record);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function publicIpcEndpoint(record) {
+  return {
+    endpoint: record.endpoint,
+    ownerPid: record.ownerPid,
+    ownerAppId: record.ownerAppId,
+    ownerNamespace: record.ownerNamespace,
+    createdAt: record.createdAt,
+  };
+}
+
+function cloneJson(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
 }
 
 function codedError(code, message) {
