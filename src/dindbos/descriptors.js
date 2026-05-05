@@ -161,6 +161,21 @@ export class DescriptorManager {
     return publicDescriptor(this.descriptorFor(process.pid, args.fd));
   }
 
+  readDirectory(process, args = {}, context = {}) {
+    const descriptor = this.descriptorFor(process.pid, args.fd);
+    if (descriptor.kind !== "directory") throw descriptorError("ENOTDIR", `fd.readdir: ${descriptor.fd}: descriptor is not a directory`);
+    assertFileSystem(descriptor.path, "read", context);
+    const cookie = Math.max(0, numberArg(args.cookie || 0, "cookie"));
+    return this.os.fs.list(descriptor.path, "/", context.principal)
+      .map((entry, index) => ({
+        cookie: index + 1,
+        name: entry.name,
+        path: entry.path,
+        type: entry.type,
+      }))
+      .filter((entry) => entry.cookie > cookie);
+  }
+
   ioctl(process, args = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     const request = String(args.request || args.command || "").trim();
