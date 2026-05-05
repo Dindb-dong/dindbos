@@ -12,6 +12,7 @@ export function normalizeAppManifest(app) {
     runtime: declared.runtime || app.runtime || "javascript",
     description: declared.description || app.description || "",
     api: declared.api || app.api || null,
+    sandbox: declared.sandbox || app.sandbox || null,
     namespace: declared.namespace || app.namespace || null,
     singleton: Boolean(app.singleton),
     pinned: Boolean(app.pinned),

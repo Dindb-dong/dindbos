@@ -28,6 +28,27 @@ assert(os.fs.exists(rollbackNamespace.stateRoot), "package namespace state root 
 assert(os.fs.exists(rollbackNamespace.cacheRoot), "package namespace cache root missing");
 assert(os.fs.exists(rollbackNamespace.tempRoot), "package namespace temp root missing");
 assert(os.apps.getManifest("rollback-demo").namespace.processGroup === "package:rollback-demo", "package namespace was not exposed through app manifest");
+const sandboxPolicy = {
+  rootPolicy: "readonly-strict",
+  statePolicy: "private-encrypted",
+  cachePolicy: "private-evictable-test",
+  tempPolicy: "private-runtime-test",
+  deviceGrants: ["clipboard.read"],
+  networkHosts: ["api.example.test"],
+  ipcEndpoints: ["sandbox-policy.echo"],
+  childProcessLimit: 2,
+};
+const sandboxPackage = packages.install(packageManifest("sandbox-policy", "0.1.0", [
+  { path: "app.js", mime: "text/javascript", content: "export function mount() {}\n" },
+], { sandbox: sandboxPolicy }));
+assert(sandboxPackage.sandbox.rootPolicy === "readonly-strict", "package sandbox root policy was not normalized");
+assert(sandboxPackage.sandbox.deviceGrants.includes("clipboard.read"), "package sandbox device grants missing");
+assert(sandboxPackage.namespace.rootPolicy === "readonly-strict", "package namespace root policy did not use sandbox policy");
+assert(sandboxPackage.namespace.childProcessLimit === 2, "package namespace child process limit mismatch");
+const sandboxManifest = os.apps.getManifest("sandbox-policy");
+assert(sandboxManifest.sandbox.networkHosts.includes("api.example.test"), "app manifest sandbox network hosts missing");
+assert(sandboxManifest.namespace.ipcEndpoints.includes("sandbox-policy.echo"), "app manifest namespace IPC endpoints missing");
+packages.remove("sandbox-policy");
 const rollbackRoot = os.fs.stat("/opt/rollback-demo");
 assert(rollbackRoot.type === "mount" && rollbackRoot.resolvedType === "directory", `package root was not mounted as a directory: ${JSON.stringify(rollbackRoot)}`);
 assert(rollbackRoot.permissions === "dr-xr-xr-x", `package image mount permissions mismatch: ${rollbackRoot.permissions}`);

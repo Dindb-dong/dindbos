@@ -719,6 +719,7 @@ export class PackageManager {
     ];
     const fileSystem = app.fileSystem || manifest.fileSystem || manifest.permissions?.fileSystem || {};
     const dependencies = normalizeDependencies(manifest.dependencies || app.dependencies || {});
+    const sandbox = normalizePackageSandbox(manifest.sandbox || manifest.namespace || {});
     return {
       id,
       name,
@@ -733,7 +734,8 @@ export class PackageManager {
       originalManifest: manifest,
       files: [],
       dependencies,
-      namespace: packageNamespace(id, appId, installPath, manifest.sandbox || manifest.namespace || {}, dependencies),
+      sandbox,
+      namespace: packageNamespace(id, appId, installPath, sandbox, dependencies),
       app: {
         id: appId,
         name: String(app.name || name),
@@ -1101,6 +1103,7 @@ export class PackageManager {
         description: record.description,
         compatibility: record.compatibility,
         api: record.api,
+        sandbox: cloneJson(record.sandbox || {}),
         namespace: cloneJson(record.namespace || {}),
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
@@ -1312,8 +1315,22 @@ function packagePublicRecord(record) {
     files: [...(record.files || [])],
     lifecycle: cloneJson(record.lifecycle || {}),
     trust: cloneJson(record.trust || {}),
+    sandbox: cloneJson(record.sandbox || {}),
     namespace: cloneJson(record.namespace || {}),
   });
+}
+
+function normalizePackageSandbox(sandbox = {}) {
+  return {
+    rootPolicy: String(sandbox.rootPolicy || "readonly-package-image"),
+    statePolicy: String(sandbox.statePolicy || "private"),
+    cachePolicy: String(sandbox.cachePolicy || "private-evictable"),
+    tempPolicy: String(sandbox.tempPolicy || "private-runtime"),
+    deviceGrants: [...(sandbox.deviceGrants || sandbox.devices || [])].map(String),
+    networkHosts: [...(sandbox.networkHosts || sandbox.network || [])].map(String),
+    ipcEndpoints: [...(sandbox.ipcEndpoints || sandbox.ipc || [])].map(String),
+    childProcessLimit: Math.max(0, Number(sandbox.childProcessLimit || 0)),
+  };
 }
 
 function packageNamespace(packageId, appId, installPath, sandbox = {}, dependencies = {}) {
