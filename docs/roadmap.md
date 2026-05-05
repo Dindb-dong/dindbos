@@ -936,9 +936,8 @@ Implementation tasks:
 
 Verification:
 
-- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, shortcut scope routing, stable surface geometry, last-input recording, IME/drop routing, compositor clipboard copy/paste policy, pointer-lock policy, accessibility metadata publication, surface capture own-window allowance, cross-app/desktop capture denial, capability-approved desktop capture, process-suspend and window-close pointer capture cleanup, input/shortcut/clipboard/pointer-lock/capture router state, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
+- Already present: `npm run smoke:window-manager` verifies focus transfer, shortcut precedence, shortcut scope routing, stable surface geometry, last-input recording, IME/drop routing, compositor clipboard copy/paste policy, pointer-lock policy, accessibility metadata publication, surface capture own-window allowance, cross-app/desktop capture denial, capability-approved desktop capture, process-suspend and window-close pointer capture cleanup, closed-surface removal from `/proc/compositor`, input/shortcut/clipboard/pointer-lock/capture/cleanup router state, and `/proc/compositor`; `npm run smoke:shell` verifies `doctor` compositor diagnostics.
 - Already present: `npm run smoke:processes` verifies minimized, suspended, and crashed processes release compositor capture ownership through the process manager.
-- Add smoke coverage for broader surface cleanup.
 
 Completion criteria:
 
