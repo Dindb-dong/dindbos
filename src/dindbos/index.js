@@ -237,7 +237,10 @@ export class DindbOS {
     this.apps = new AppRegistry(this);
     this.packages = new PackageManager(this);
     this.keychain = new KeychainManager(this);
-    this.network = new NetworkBroker(this, { fetch: options.networkFetch || options.fetch });
+    this.network = new NetworkBroker(this, {
+      fetch: options.networkFetch || options.fetch,
+      webSocket: options.networkWebSocket,
+    });
     this.npm = new NpmInstaller(this);
     this.node = new NodeCompat(this);
     this.wasm = new WasmRunner(this);

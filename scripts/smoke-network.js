@@ -4,7 +4,34 @@ import { ShellSession } from "../src/dindbos/shell.js";
 import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
 
 const fetchCalls = [];
+const sockets = [];
 let slowReject = null;
+class FakeWebSocket {
+  constructor(url, protocols = undefined) {
+    this.url = url;
+    this.protocols = protocols;
+    this.listeners = {};
+    this.sent = [];
+    sockets.push(this);
+  }
+
+  addEventListener(type, handler) {
+    this.listeners[type] = handler;
+  }
+
+  send(data) {
+    this.sent.push(data);
+  }
+
+  close(code = 1000, reason = "closed") {
+    this.listeners.close?.({ code, reason });
+  }
+
+  emit(type, event = {}) {
+    this.listeners[type]?.(event);
+  }
+}
+
 const os = createDindbOSTestRuntime(null, {
   networkFetch: async (url, options = {}) => {
     fetchCalls.push({ url, options });
@@ -25,6 +52,7 @@ const os = createDindbOSTestRuntime(null, {
       text: async () => `ok:${new URL(url).hostname}:${new URL(url).pathname}`,
     };
   },
+  networkWebSocket: FakeWebSocket,
 });
 const shell = new ShellSession(os);
 
@@ -40,22 +68,38 @@ assert(result.status === 0 && result.output.includes("raw ICMP unsupported"), `p
 result = await shell.executeAsync("dig shell.example.test");
 assert(result.status === 0 && result.output.includes("browser-policy-only"), `dig policy probe mismatch: ${JSON.stringify(result)}`);
 
-const allowedProcess = processFor("network-app", ["net.fetch"], { networkHosts: ["api.example.test"] });
+const allowedProcess = processFor("network-app", ["net.fetch", "net.websocket", "net.dns"], { networkHosts: ["api.example.test"] });
 const allowedSandbox = new AppSandbox(os, allowedProcess);
 const response = await allowedSandbox.net.fetch("https://api.example.test/data?token=package-secret");
 assert(response.text === "ok:api.example.test:/data", "sandbox net.fetch did not return broker response");
 assert(!os.fs.readFile("/var/log/dindbos/network.log").includes("package-secret"), "network log exposed package query secret");
 await assertRejects(() => allowedSandbox.net.fetch("https://blocked.example.test/data"), "host denied");
+const ws = allowedSandbox.net.openWebSocket("wss://api.example.test/socket");
+sockets.at(-1).emit("open");
+ws.send("hello socket");
+sockets.at(-1).emit("message", { data: "reply" });
+assert(os.network.status().websocket.sessions.some((entry) => entry.id === ws.id && entry.state === "open" && entry.messagesSent === 1 && entry.messagesReceived === 1), "websocket session did not open through broker");
+ws.close(1000, "done");
+assert(os.network.status().websocket.history.some((entry) => entry.id === ws.id && entry.state === "closed"), "websocket close was not recorded");
+await assertRejects(() => allowedSandbox.net.openWebSocket("wss://blocked.example.test/socket"), "host denied");
+const netStatusSyscall = allowedSandbox.syscall("net.status");
+assert(netStatusSyscall.ok && netStatusSyscall.value.websocket.history.length > 0, "net.status syscall did not expose broker status");
+const netPolicySyscall = allowedSandbox.syscall("net.policy", { url: "https://api.example.test/data" });
+assert(netPolicySyscall.ok && netPolicySyscall.value.allowed === true, "net.policy syscall did not allow declared host");
+const netDnsSyscall = allowedSandbox.syscall("net.dns", { host: "api.example.test" });
+assert(netDnsSyscall.ok && netDnsSyscall.value.addresses.includes("browser-policy-only"), "net.dns syscall did not expose browser DNS policy");
 
 const deniedProcess = processFor("no-network-app", [], { networkHosts: ["api.example.test"] });
 const deniedSandbox = new AppSandbox(os, deniedProcess);
 await assertRejects(() => deniedSandbox.net.fetch("https://api.example.test/data"), "capability denied");
+await assertRejects(() => deniedSandbox.net.openWebSocket("wss://api.example.test/socket"), "capability denied");
+assert(deniedSandbox.syscall("net.status").ok === false, "net.status syscall allowed app without network capability");
 
 os.packages.install({
   id: "network-package",
   name: "Network Package",
   version: "0.1.0",
-  permissions: { capabilities: ["net.fetch"] },
+  permissions: { capabilities: ["net.fetch", "net.websocket", "net.dns"] },
   sandbox: { networkHosts: ["api.example.test"] },
   app: { id: "network-package", name: "Network Package", title: "Network Package.app", entry: "app.js" },
   files: [
@@ -65,10 +109,12 @@ os.packages.install({
       content: [
         "export async function mount({ content, os, pkg }) {",
         "  const allowed = await os.net.fetch('https://api.example.test/from-package');",
+        "  const socket = os.net.openWebSocket('wss://api.example.test/from-package');",
+        "  socket.close(1000, 'package-done');",
         "  let denied = 'not-denied';",
         "  try { await os.net.fetch('https://blocked.example.test/from-package'); }",
         "  catch (error) { denied = error.message.includes('host denied') ? 'host-denied' : error.message; }",
-        "  content.innerHTML = `<main data-network-package>${pkg.namespace.networkHosts[0]}:${allowed.text}:${denied}</main>`;",
+        "  content.innerHTML = `<main data-network-package>${pkg.namespace.networkHosts[0]}:${allowed.text}:${socket.host}:${denied}</main>`;",
         "}",
       ].join("\n"),
     },
@@ -77,7 +123,7 @@ os.packages.install({
 assert(os.packages.info("network-package").namespace.networkHosts[0] === "api.example.test", "package namespace did not expose network host allowlist");
 const window = os.apps.launch("network-package");
 await window.rendered;
-assert(window.content.innerHTML.includes("api.example.test:ok:api.example.test:/from-package:host-denied"), `network package render mismatch: ${window.content.innerHTML}`);
+assert(window.content.innerHTML.includes("api.example.test:ok:api.example.test:/from-package:api.example.test:host-denied"), `network package render mismatch: ${window.content.innerHTML}`);
 
 const controller = new AbortController();
 const pending = os.network.fetch("https://api.example.test/slow", { signal: controller.signal }, { appId: "shell", principal: os.permissions.principal(os.session) });
@@ -90,10 +136,11 @@ if (slowReject) slowReject(new Error("cleanup"));
 
 const netStatus = JSON.parse(os.fs.readFile("/proc/net/status.json"));
 assert(netStatus.deniedHosts.some((entry) => entry.host === "blocked.example.test"), "/proc/net status missing denied host");
+assert(netStatus.websocket.history.some((entry) => entry.host === "api.example.test" && entry.state === "closed"), "/proc/net status missing WebSocket history");
 assert(netStatus.totals.bytesReceived > 0, "/proc/net status missing bandwidth estimate");
 assert(fetchCalls.some((call) => call.url.includes("api.example.test")), "network fetch adapter was not called for allowed host");
 
-console.log("network smoke ok broker fetch policy procfs shell package cancellation");
+console.log("network smoke ok broker fetch websocket policy procfs syscalls shell package cancellation");
 
 function processFor(appId, capabilities, namespace = {}) {
   return {
