@@ -5,6 +5,7 @@ import { ShellSession } from "../src/dindbos/shell.js";
 const os = new DindbOS({ root: {}, storage: memoryStorage() });
 const system = os.permissions.systemPrincipal();
 os.ensureDirectoryPath("/home/guest/bin", { leafOwner: "guest", leafGroup: "users", principal: system });
+os.ensureDirectoryPath("/home/guest/shared", { leafOwner: "guest", leafGroup: "users", principal: system });
 
 os.fs.writeOrCreateFileBytes("/home/guest/bin/hello.wasm", helloWasm(), "/", {
   owner: "guest",
@@ -25,6 +26,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/exit7.wasm", exitWasm(), "/", {
   mime: "application/wasm",
 }, system);
 os.fs.writeOrCreateFileBytes("/home/guest/bin/denied.wasm", deniedWriteWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/scoped-write.wasm", scopedWriteWasm(), "/", {
   owner: "guest",
   group: "users",
   permissions: "-rwxr-xr-x",
@@ -160,6 +167,22 @@ const deniedRun = await os.wasm.runFile("/home/guest/bin/denied.wasm", "/home/gu
 assert(deniedRun.status === 13, `wasm denied syscall status mismatch: ${deniedRun.status}`);
 assert(!os.fs.exists("/root/wasm-denied.txt"), "wasm denied syscall mutated a root-owned path");
 assert(os.fs.readFile("/var/log/dindbos/syscall.log").includes("fs.writeText EACCES"), "wasm denied syscall did not write EACCES trace");
+
+const scopedWriteDenied = await os.wasm.runFile("/home/guest/bin/scoped-write.wasm", "/home/guest/bin", {
+  principal: os.permissions.principal(os.session),
+});
+assert(scopedWriteDenied.status === 13, `wasm default scoped write status mismatch: ${scopedWriteDenied.status}`);
+assert(!os.fs.exists("/home/guest/shared/wasm-scoped.txt"), "wasm default scope wrote outside executable directory");
+
+const scopedWriteAllowed = await os.wasm.runFile("/home/guest/bin/scoped-write.wasm", "/home/guest/bin", {
+  fileSystem: {
+    read: ["/home/guest/bin"],
+    write: ["/home/guest/shared"],
+  },
+  principal: os.permissions.principal(os.session),
+});
+assert(scopedWriteAllowed.status === 0, `wasm explicit scoped write status mismatch: ${scopedWriteAllowed.status}`);
+assert(os.fs.readFile("/home/guest/shared/wasm-scoped.txt") === "scoped wasm", "wasm explicit scope did not write shared file");
 
 const trapRun = await os.wasm.runFile("/home/guest/bin/trap.wasm", "/home/guest/bin", {
   principal: os.permissions.principal(os.session),
@@ -303,7 +326,7 @@ os.fs.remove("/home/guest/bin/wasi-hardlink-source.txt", "/", {}, os.permissions
 assert(os.fs.readFile("/home/guest/bin/wasi-hardlink.txt") === "changed through link\n", "wasi hard link did not survive source removal");
 assert(os.fs.stat("/home/guest/bin/wasi-hardlink.txt")?.linkCount === 1, "wasi hard link count did not update after source removal");
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash memory wasi worker stdin path-open rights readdir mkdir remove rename symlink hardlink process");
+console.log("wasm smoke ok shell argv env syscall exit permission scopes crash memory wasi worker stdin path-open rights readdir mkdir remove rename symlink hardlink process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -368,6 +391,26 @@ function deniedWriteWasm() {
   const request = bytes(JSON.stringify({
     name: "fs.writeText",
     args: { path: "/root/wasm-denied.txt", content: "denied" },
+  }));
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32"], results: ["i32"] },
+      { params: [], results: ["i32"] },
+    ],
+    imports: [{ name: "syscall", type: 0 }],
+    startType: 1,
+    body: [
+      0x41, 0x00, 0x41, ...i32(request.length), 0x10, 0x00,
+      0x0b,
+    ],
+    data: request,
+  });
+}
+
+function scopedWriteWasm() {
+  const request = bytes(JSON.stringify({
+    name: "fs.writeText",
+    args: { path: "/home/guest/shared/wasm-scoped.txt", content: "scoped wasm" },
   }));
   return wasmModule({
     types: [
