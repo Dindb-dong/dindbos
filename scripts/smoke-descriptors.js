@@ -65,7 +65,7 @@ assert(os.objects.getHandle(inputHandleId)?.revocationReason === "fd-close", "cl
 result = os.syscall("fd.read", { fd: inputFd, length: 1 }, context);
 assert(!result.ok && result.error.code === "EBADF", `closed fd did not return EBADF: ${JSON.stringify(result)}`);
 
-result = os.syscall("fd.open", { path: "input.txt", flags: "r" }, context);
+result = os.syscall("fd.open", { path: "input.txt", flags: "r+", rights: { read: true, write: false } }, context);
 assert(result.ok, `fd.open wrong-right target mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.write", { fd: result.value.fd, data: "blocked" }, context);
 assert(!result.ok && result.error.code === "EACCES", `write through read-only handle did not return EACCES: ${JSON.stringify(result)}`);

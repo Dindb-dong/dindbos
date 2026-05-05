@@ -125,9 +125,9 @@ export class DescriptorManager {
 
   read(process, args = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
-    this.assertDescriptorHandle(process, descriptor, ["read"]);
     if (!descriptor.readable) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor is not readable`);
     if (descriptor.rights && !descriptor.rights.read) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor lacks read rights`);
+    this.assertDescriptorHandle(process, descriptor, ["read"]);
     const length = readLength(args.length);
     let data = "";
     if (descriptor.kind === "file") data = this.readFileDescriptor(descriptor, length);
@@ -144,8 +144,8 @@ export class DescriptorManager {
 
   write(process, args = {}, context = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
-    this.assertDescriptorHandle(process, descriptor, ["write"]);
     if (!descriptor.writable) throw descriptorError("EBADF", `fd.write: ${descriptor.fd}: descriptor is not writable`);
+    this.assertDescriptorHandle(process, descriptor, ["write"]);
     if (descriptor.rights && !descriptor.rights.write) throw descriptorError("EBADF", `fd.write: ${descriptor.fd}: descriptor lacks write rights`);
     const data = String(args.data ?? args.content ?? "");
     let bytes = 0;
