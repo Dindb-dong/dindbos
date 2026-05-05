@@ -36,6 +36,12 @@ os.fs.writeOrCreateFileBytes("/home/guest/bin/trap.wasm", trapWasm(), "/", {
   permissions: "-rwxr-xr-x",
   mime: "application/wasm",
 }, system);
+os.fs.writeOrCreateFileBytes("/home/guest/bin/wasi-hello.wasm", wasiHelloWasm(), "/", {
+  owner: "guest",
+  group: "users",
+  permissions: "-rwxr-xr-x",
+  mime: "application/wasm",
+}, system);
 
 const shell = new ShellSession(os);
 let result = await shell.executeAsync("export PATH=$PATH:/home/guest/bin && hello.wasm max");
@@ -72,7 +78,14 @@ assert(os.fs.exists(trapRun.crashReportPath), "wasm trap crash report was not wr
 assert(os.fs.readFile(trapRun.crashReportPath).includes("unreachable"), "wasm trap crash report missing trap message");
 assert(os.fs.readFile("/var/log/dindbos/crashes.log").includes(`pid=${trapRun.pid} app=wasm:trap.wasm`), "wasm trap crash index missing pid/app");
 
-console.log("wasm smoke ok shell argv env syscall exit permission crash process");
+const wasiRun = await os.wasm.runFile("/home/guest/bin/wasi-hello.wasm", "/home/guest/bin", {
+  argv: ["wasi-hello.wasm"],
+  principal: os.permissions.principal(os.session),
+});
+assert(wasiRun.status === 0, `wasi fd_write status mismatch: ${wasiRun.status} ${wasiRun.stderr}`);
+assert(wasiRun.stdout === "wasi hello\n", `wasi fd_write stdout mismatch: ${JSON.stringify(wasiRun.stdout)}`);
+
+console.log("wasm smoke ok shell argv env syscall exit permission crash wasi process");
 
 function helloWasm() {
   const data = bytes("hello \nuser=USER\n");
@@ -165,11 +178,39 @@ function trapWasm() {
   });
 }
 
+function wasiHelloWasm() {
+  const text = bytes("wasi hello\n");
+  const iovOffset = 16;
+  const writtenOffset = 32;
+  const data = new Uint8Array(40);
+  data.set(text, 0);
+  data.set(u32le(0), iovOffset);
+  data.set(u32le(text.length), iovOffset + 4);
+  return wasmModule({
+    types: [
+      { params: ["i32", "i32", "i32", "i32"], results: ["i32"] },
+      { params: ["i32"], results: [] },
+      { params: [], results: [] },
+    ],
+    imports: [
+      { module: "wasi_snapshot_preview1", name: "fd_write", type: 0 },
+      { module: "wasi_snapshot_preview1", name: "proc_exit", type: 1 },
+    ],
+    startType: 2,
+    body: [
+      0x41, 0x01, 0x41, iovOffset, 0x41, 0x01, 0x41, writtenOffset, 0x10, 0x00, 0x1a,
+      0x41, 0x00, 0x10, 0x01,
+      0x0b,
+    ],
+    data,
+  });
+}
+
 function wasmModule({ types, imports, startType, body, data }) {
   const importCount = imports.length;
   const sections = [
     section(1, [types.length, ...types.flatMap(typeBytes)]),
-    section(2, [imports.length, ...imports.flatMap((entry) => [...stringBytes("dindbos"), ...stringBytes(entry.name), 0x00, ...u32(entry.type)])]),
+    section(2, [imports.length, ...imports.flatMap((entry) => [...stringBytes(entry.module || "dindbos"), ...stringBytes(entry.name), 0x00, ...u32(entry.type)])]),
     section(3, [0x01, ...u32(startType)]),
     section(5, [0x01, 0x00, 0x01]),
     section(7, [
@@ -234,6 +275,16 @@ function i32(value) {
     out.push(byte);
   }
   return out;
+}
+
+function u32le(value) {
+  const number = Number(value >>> 0);
+  return new Uint8Array([
+    number & 0xff,
+    (number >> 8) & 0xff,
+    (number >> 16) & 0xff,
+    (number >> 24) & 0xff,
+  ]);
 }
 
 function memoryStorage() {

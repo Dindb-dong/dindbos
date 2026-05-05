@@ -2,7 +2,7 @@
 
 DindbOS can run small WebAssembly modules from the VFS as browser-native user processes.
 
-This is an early DindbOS ABI runner, not full WASI yet. Modules run through `WebAssembly.instantiate`, get a process record, and use the `dindbos` import namespace for stdout, argv/env helpers, syscall calls, and exit status.
+This is an early DindbOS ABI runner, not full WASI yet. Modules run through `WebAssembly.instantiate`, get a process record, and use the `dindbos` import namespace for stdout, argv/env helpers, syscall calls, and exit status. A small `wasi_snapshot_preview1` import subset is also available for basic CLI-style programs.
 
 ## Shell Usage
 
@@ -44,6 +44,21 @@ exit(code)
 
 It returns `0` on success or an errno-style number for failure. The structured syscall result is still recorded through DindbOS syscall tracing.
 
+Current modules can also import these WASI-style functions from `wasi_snapshot_preview1`:
+
+```text
+args_sizes_get(argcPtr, argvBufSizePtr) -> errno
+args_get(argvPtr, argvBufPtr) -> errno
+environ_sizes_get(environCountPtr, environBufSizePtr) -> errno
+environ_get(environPtr, environBufPtr) -> errno
+fd_write(fd, iovsPtr, iovsLen, nwrittenPtr) -> errno
+proc_exit(code)
+random_get(ptr, len) -> errno
+clock_time_get(id, precision, resultPtr) -> errno
+```
+
+`fd_write` currently supports descriptor `1` for stdout and descriptor `2` for stderr. Broader descriptor tables, stdin, file descriptors, and pipe-backed TTY behavior remain roadmap work.
+
 ## Process Model
 
 Each run spawns a process with an app id like `wasm:hello.wasm`. The process receives argv, cwd, a browser-native environment, and a manifest-scoped filesystem policy rooted at the executable directory for first-pass shell runs.
@@ -63,4 +78,4 @@ When the module exits, DindbOS records the process lifecycle and removes the run
 npm run smoke:wasm
 ```
 
-The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.
+The smoke verifies shell execution, argv/env output, syscall-backed file write, denied syscall EACCES tracing, trap crash report capture, basic WASI `fd_write`/`proc_exit`, nonzero exit status, and process tracking for `.wasm` files. `npm run smoke:packages` verifies install and AppRegistry launch for a WASM-backed package app.

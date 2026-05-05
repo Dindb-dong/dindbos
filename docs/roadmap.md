@@ -235,7 +235,8 @@ Implementation tasks:
 - Already present: the `dindbos` WASM import namespace exposes stdout/stderr helpers, argv/env helpers, `syscall(ptr,len)`, and `exit(code)`.
 - Already present: first-pass WASM syscalls map to the DindbOS syscall ABI and are covered by global syscall tracing.
 - Already present: package manifests support DindbOS ABI WASM entry points through `app.runtime: "wasm"` or `.wasm` entries, launched through AppRegistry and rendered into package windows.
-- Support fuller WASI-style imports where possible, mapped to the DindbOS syscall ABI.
+- Already present: a basic `wasi_snapshot_preview1` import subset covers args/env sizing and buffers, `fd_write` for stdout/stderr, `proc_exit`, `random_get`, and `clock_time_get`.
+- Expand WASI-style imports where possible, mapped to the DindbOS syscall ABI and future descriptor tables.
 - Mount process-local descriptors for files, pipes, and terminal streams.
 - Broaden process filesystem scopes beyond the first-pass executable-directory policy.
 - Already present: WASM trap paths flow through process crash handling and return crash report paths for `/var/log/dindbos/crash-<pid>.log` diagnostics.
@@ -246,6 +247,7 @@ Verification:
 
 - Already present: `npm run smoke:wasm` verifies shell execution, argv/env stdout, syscall-backed file write, syscall tracing, nonzero exit status, and process tracking.
 - Already present: `npm run smoke:wasm` verifies permission-denied syscall behavior, EACCES syscall tracing, trap crash report files, and crash index entries.
+- Already present: `npm run smoke:wasm` verifies basic WASI `fd_write` stdout and `proc_exit`.
 - Already present: `npm run smoke:packages` verifies a WASM-backed package install, AppRegistry launch, stdout rendering, package-scoped syscall write, and package removal.
 
 Completion criteria:
