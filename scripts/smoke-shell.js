@@ -106,6 +106,10 @@ assert(
 result = await shell.executeAsync("su root");
 assert(result.status === 1, `su unsupported status mismatch: ${result.status}`);
 assert(result.output === "su: unsupported in DindbOS browser runtime; session user is fixed to guest", `su unsupported output mismatch: ${JSON.stringify(result.output)}`);
+let securityAuditLog = shell.os.fs.readFile("/var/log/dindbos/security-audit.log");
+assert(securityAuditLog.includes("action=permission-escalation:sudo decision=denied"), "security audit missing denied sudo escalation");
+assert(securityAuditLog.includes("action=permission-escalation:su decision=denied"), "security audit missing denied su escalation");
+assert(securityAuditLog.includes("reason=unsupported-browser-runtime"), "security audit missing privilege escalation reason");
 
 result = await shell.executeAsync('echo "cat: no such text is still file content" > literal.txt && cat literal.txt');
 assert(result.status === 0, `literal content status mismatch: ${result.status}`);
@@ -312,7 +316,12 @@ console.log("shell smoke ok parser chaining status scripts");
 
 function bootOs() {
   const permissions = new PermissionPolicy();
-  const fs = new VirtualFileSystem(null, { home: "/home/guest", policy: permissions });
+  let os;
+  const fs = new VirtualFileSystem(null, {
+    home: "/home/guest",
+    policy: permissions,
+    onAccessDenied: (event) => os?.auditDeniedFileSystemAccess?.(event),
+  });
   const trustedPublishers = [];
   let storageFlushes = 0;
   let storagePersists = 0;
@@ -321,7 +330,7 @@ function bootOs() {
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
   fs.createDirectory("/mnt", "/", { owner: "root", group: "root" }, system);
   const virtualMounts = new Map();
-  const os = {
+  os = {
     fs,
     permissions,
     session: { user: "guest", groups: ["users"], home: "/home/guest" },
@@ -527,6 +536,15 @@ function bootOs() {
       if (this.fs.exists("/var/log/dindbos/security-audit.log")) this.fs.appendFile("/var/log/dindbos/security-audit.log", line, "/", system);
       else this.fs.writeOrCreateFile("/var/log/dindbos/security-audit.log", line, "/", { owner: "root", group: "root", permissions: "-rw-r--r--" }, system);
       return { action, decision };
+    },
+    auditDeniedFileSystemAccess(event = {}) {
+      const principal = event.principal || {};
+      if (principal.system || principal.user === "root") return null;
+      return this.auditSecurity(`fs-access:${event.access || "unknown"}`, "denied", {
+        principal,
+        target: event.path || "",
+        reason: event.reason || "permission-denied",
+      });
     },
     openPath: () => null,
   };

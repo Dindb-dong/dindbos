@@ -277,6 +277,7 @@ export class DindbOS {
         const message = this.publishSessionEvent("file-change", event);
         this.recordSessionFileChange(this.instanceId, event, message?.at);
       },
+      onAccessDenied: (event) => this.auditDeniedFileSystemAccess(event),
     });
   }
 
@@ -2008,6 +2009,16 @@ export class DindbOS {
       mime: "text/plain",
     }, system);
     return entry;
+  }
+
+  auditDeniedFileSystemAccess(event = {}) {
+    const principal = event.principal || {};
+    if (principal.system || principal.user === "root") return null;
+    return this.auditSecurity(`fs-access:${event.access || "unknown"}`, "denied", {
+      principal,
+      target: event.path || "",
+      reason: event.reason || "permission-denied",
+    });
   }
 
   companionPermissions() {
