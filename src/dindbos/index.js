@@ -2908,9 +2908,12 @@ export class DindbOS {
       ownerAppId: process?.appId || "",
       ownerNamespace: namespace.processGroup || "",
       ownerPackageId: namespace.packageId || "",
+      objectId: "",
+      handleId: "",
       handler,
       createdAt: new Date().toISOString(),
     };
+    this.registerIpcKernelObject(record, process);
     this.ipcEndpoints.set(id, record);
     this.bus.emit("ipc:endpoint", {
       action: "register",
@@ -2928,6 +2931,7 @@ export class DindbOS {
     const record = this.ipcEndpoints.get(id);
     if (!record) throw new Error(`ipc: ${id}: no such endpoint`);
     assertIpcSendAllowed(process, record);
+    this.assertIpcEndpointHandle(record);
     const message = {
       endpoint: id,
       fromPid: process?.pid || 0,
@@ -2955,6 +2959,7 @@ export class DindbOS {
     [...this.ipcEndpoints.entries()].forEach(([endpoint, record]) => {
       if (Number(record.ownerPid || 0) !== ownerPid) return;
       this.ipcEndpoints.delete(endpoint);
+      this.revokeIpcKernelObject(record, reason);
       removed.push(publicIpcEndpoint(record));
     });
     if (removed.length) this.bus.emit("ipc:endpoint", { action: "unregister", reason, ownerPid, endpoints: removed });
@@ -2970,6 +2975,7 @@ export class DindbOS {
       const samePackage = packageId && record.ownerPackageId === packageId;
       if (!sameProcessGroup && !samePackage) return;
       this.ipcEndpoints.delete(endpoint);
+      this.revokeIpcKernelObject(record, reason);
       removed.push(publicIpcEndpoint(record));
     });
     if (removed.length) this.bus.emit("ipc:endpoint", {
@@ -2980,6 +2986,51 @@ export class DindbOS {
       endpoints: removed,
     });
     return removed;
+  }
+
+  registerIpcKernelObject(record, process = null) {
+    const object = this.objects?.register?.("ipc", {
+      ref: `ipc:${record.endpoint}`,
+      name: record.endpoint,
+      ownerPid: record.ownerPid,
+      namespace: process?.manifest?.namespace || null,
+      user: process?.user || this.session.user || "",
+      rights: ["inspect", "receive", "send", "close"],
+      metadata: ipcObjectMetadata(record),
+    }) || null;
+    record.objectId = object?.id || "";
+    const handle = record.objectId ? this.objects?.createHandle?.(record.objectId, {
+      ownerPid: record.ownerPid,
+      user: process?.user || this.session.user || "",
+      uid: process?.uid || 0,
+      gid: process?.gid || 0,
+      groups: process?.groups || [],
+      namespace: process?.manifest?.namespace || null,
+      rights: ["inspect", "receive", "close"],
+      closeOnExec: true,
+      transferPolicy: "no-duplicate",
+      metadata: ipcHandleMetadata(record),
+    }) : null;
+    record.handleId = handle?.id || "";
+    return publicIpcEndpoint(record);
+  }
+
+  assertIpcEndpointHandle(record) {
+    if (!record?.handleId) return null;
+    try {
+      return this.objects?.assertHandle?.(record.handleId, {
+        ownerPid: record.ownerPid,
+        objectType: "ipc",
+        rights: ["receive"],
+      }) || null;
+    } catch (error) {
+      throw codedError(error.code || "EACCES", error.message);
+    }
+  }
+
+  revokeIpcKernelObject(record, reason = "ipc-unregister") {
+    if (!record?.objectId) return null;
+    return this.objects?.revoke?.(record.objectId, reason) || null;
   }
 
   persistFileSystem() {
@@ -3747,7 +3798,30 @@ function publicIpcEndpoint(record) {
     ownerAppId: record.ownerAppId,
     ownerNamespace: record.ownerNamespace,
     ownerPackageId: record.ownerPackageId || "",
+    objectId: record.objectId || "",
+    handleId: record.handleId || "",
     createdAt: record.createdAt,
+  };
+}
+
+function ipcObjectMetadata(record) {
+  return {
+    endpoint: record.endpoint,
+    ownerPid: record.ownerPid || 0,
+    ownerAppId: record.ownerAppId || "",
+    ownerNamespace: record.ownerNamespace || "",
+    ownerPackageId: record.ownerPackageId || "",
+    createdAt: record.createdAt || "",
+  };
+}
+
+function ipcHandleMetadata(record) {
+  return {
+    endpoint: record.endpoint,
+    objectId: record.objectId || "",
+    ownerAppId: record.ownerAppId || "",
+    ownerNamespace: record.ownerNamespace || "",
+    ownerPackageId: record.ownerPackageId || "",
   };
 }
 

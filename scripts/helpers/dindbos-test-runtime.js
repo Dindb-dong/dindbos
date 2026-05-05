@@ -3,6 +3,7 @@ import { AppSandbox } from "../../src/dindbos/app-sandbox.js";
 import { RuntimeCacheStore } from "../../src/dindbos/cache-store.js";
 import { DescriptorManager } from "../../src/dindbos/descriptors.js";
 import { EventBus } from "../../src/dindbos/event-bus.js";
+import { KernelObjectRegistry } from "../../src/dindbos/kernel-objects.js";
 import { KeychainManager } from "../../src/dindbos/keychain.js";
 import { NetworkBroker } from "../../src/dindbos/network-broker.js";
 import { PackageManager } from "../../src/dindbos/package-manager.js";
@@ -40,6 +41,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
     wasm: null,
     keychain: null,
     network: null,
+    objects: null,
     operationLocks: new Map(),
     session,
     createSandbox: (process) => new AppSandbox(os, process),
@@ -58,6 +60,7 @@ export function createDindbOSTestRuntime(root = null, options = {}) {
   os.readRuntimeOperationLock = (name) => os.operationLocks.get(operationLockKey(name)) || null;
 
   os.windows = createTestWindowManager();
+  os.objects = new KernelObjectRegistry(os);
   os.descriptors = new DescriptorManager(os);
   os.processes = new ProcessManager(os);
   os.executor = new ProcessExecutor(os);
@@ -92,9 +95,12 @@ function registerIpcEndpoint(os, process, endpoint, handler) {
     ownerAppId: process?.appId || "",
     ownerNamespace: namespace.processGroup || "",
     ownerPackageId: namespace.packageId || "",
+    objectId: "",
+    handleId: "",
     handler,
     createdAt: new Date().toISOString(),
   };
+  registerIpcKernelObject(os, record, process);
   os.ipcEndpoints.set(id, record);
   return publicIpcEndpoint(record);
 }
@@ -104,6 +110,7 @@ function sendIpcMessage(os, process, endpoint, payload = {}) {
   const record = os.ipcEndpoints.get(id);
   if (!record) throw new Error(`ipc: ${id}: no such endpoint`);
   assertIpcSendAllowed(process, record);
+  assertIpcEndpointHandle(os, record);
   return cloneJson(record.handler({
     endpoint: id,
     fromPid: process?.pid || 0,
@@ -125,7 +132,10 @@ function listIpcEndpoints(os, process = null) {
 
 function unregisterIpcEndpointsForPid(os, pid) {
   [...os.ipcEndpoints.entries()].forEach(([endpoint, record]) => {
-    if (Number(record.ownerPid || 0) === Number(pid || 0)) os.ipcEndpoints.delete(endpoint);
+    if (Number(record.ownerPid || 0) === Number(pid || 0)) {
+      os.ipcEndpoints.delete(endpoint);
+      revokeIpcKernelObject(os, record, "process-exit");
+    }
   });
 }
 
@@ -138,9 +148,51 @@ function unregisterIpcEndpointsForNamespace(os, namespace = {}) {
     const samePackage = packageId && record.ownerPackageId === packageId;
     if (!sameProcessGroup && !samePackage) return;
     os.ipcEndpoints.delete(endpoint);
+    revokeIpcKernelObject(os, record, "namespace-cleanup");
     removed.push(publicIpcEndpoint(record));
   });
   return removed;
+}
+
+function registerIpcKernelObject(os, record, process = null) {
+  const object = os.objects?.register?.("ipc", {
+    ref: `ipc:${record.endpoint}`,
+    name: record.endpoint,
+    ownerPid: record.ownerPid,
+    namespace: process?.manifest?.namespace || null,
+    user: process?.user || os.session.user || "",
+    rights: ["inspect", "receive", "send", "close"],
+    metadata: ipcObjectMetadata(record),
+  }) || null;
+  record.objectId = object?.id || "";
+  const handle = record.objectId ? os.objects?.createHandle?.(record.objectId, {
+    ownerPid: record.ownerPid,
+    user: process?.user || os.session.user || "",
+    uid: process?.uid || 0,
+    gid: process?.gid || 0,
+    groups: process?.groups || [],
+    namespace: process?.manifest?.namespace || null,
+    rights: ["inspect", "receive", "close"],
+    closeOnExec: true,
+    transferPolicy: "no-duplicate",
+    metadata: ipcHandleMetadata(record),
+  }) : null;
+  record.handleId = handle?.id || "";
+  return publicIpcEndpoint(record);
+}
+
+function assertIpcEndpointHandle(os, record) {
+  if (!record?.handleId) return null;
+  return os.objects?.assertHandle?.(record.handleId, {
+    ownerPid: record.ownerPid,
+    objectType: "ipc",
+    rights: ["receive"],
+  }) || null;
+}
+
+function revokeIpcKernelObject(os, record, reason = "ipc-unregister") {
+  if (!record?.objectId) return null;
+  return os.objects?.revoke?.(record.objectId, reason) || null;
 }
 
 function withRuntimeOperationLock(os, name, details = {}, callback = () => null) {
@@ -223,7 +275,30 @@ function publicIpcEndpoint(record) {
     ownerAppId: record.ownerAppId,
     ownerNamespace: record.ownerNamespace,
     ownerPackageId: record.ownerPackageId || "",
+    objectId: record.objectId || "",
+    handleId: record.handleId || "",
     createdAt: record.createdAt,
+  };
+}
+
+function ipcObjectMetadata(record) {
+  return {
+    endpoint: record.endpoint,
+    ownerPid: record.ownerPid || 0,
+    ownerAppId: record.ownerAppId || "",
+    ownerNamespace: record.ownerNamespace || "",
+    ownerPackageId: record.ownerPackageId || "",
+    createdAt: record.createdAt || "",
+  };
+}
+
+function ipcHandleMetadata(record) {
+  return {
+    endpoint: record.endpoint,
+    objectId: record.objectId || "",
+    ownerAppId: record.ownerAppId || "",
+    ownerNamespace: record.ownerNamespace || "",
+    ownerPackageId: record.ownerPackageId || "",
   };
 }
 

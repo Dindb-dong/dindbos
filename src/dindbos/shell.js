@@ -29,6 +29,7 @@ const BUILTIN_MANUALS = {
   keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing - manage DindbOS secrets",
   loginctl: "loginctl status|users|login|logout|switch|lock|unlock|policy|reset-guest - inspect or change DindbOS session state",
   ls: "ls [-la] [path] - list directory contents",
+  lsof: "lsof [pid] [--all] - list open kernel handles by process",
   man: "man <command> - show command help",
   manifest: "manifest [app] - show app manifests",
   mkdir: "mkdir [-p] <path> - create directories",
@@ -67,6 +68,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "keychain",
   "loginctl",
   "kill",
+  "lsof",
   "man",
   "manifest",
   "mount-local",
@@ -304,6 +306,7 @@ export class ShellSession {
     if (command === "pkg") return this.pkg(args);
     if (command === "companion") return this.companion(args);
     if (command === "ps") return this.os.processes.table();
+    if (command === "lsof") return this.lsof(args);
     if (command === "kill") return this.kill(args);
     if (command === "keychain") return this.keychain(args);
     if (command === "loginctl") return this.loginctl(args);
@@ -1451,6 +1454,16 @@ export class ShellSession {
     return "handlectl: usage: handlectl list [pid] [--all] | stat <handle> | revoke <handle> [reason]";
   }
 
+  lsof(args = []) {
+    if (!this.os.objects) return "lsof: unavailable: kernel object registry is not installed";
+    const includeAll = args.includes("--all");
+    const pidArg = args.find((arg) => !arg.startsWith("-"));
+    const filters = {};
+    if (!includeAll) filters.status = "active";
+    if (pidArg !== undefined) filters.ownerPid = numericShellArg(pidArg, "pid", "lsof");
+    return formatLsofRows(this.os.objects.listHandles(filters), this.os.objects);
+  }
+
   resetFileSystem() {
     this.os.assertAdminOperation?.("system-settings:resetfs", { principal: this.principal, target: "storage.resetFileSystem" });
     if (typeof this.os.resetPersistentFileSystem === "function") this.os.resetPersistentFileSystem();
@@ -1945,6 +1958,24 @@ function formatHandleDetail(handle, object = null) {
     `RevocationReason:\t${handle.revocationReason || "-"}`,
     `ObjectStatus:\t${object?.status || "missing"}`,
     `ObjectRef:\t${object?.ref || "-"}`,
+  ].join("\n");
+}
+
+function formatLsofRows(handles = [], objects = null) {
+  if (!handles.length) return "PID HANDLE TYPE STATUS RIGHTS REF";
+  return [
+    "PID HANDLE TYPE STATUS RIGHTS REF",
+    ...handles.map((handle) => {
+      const object = objects?.get?.(handle.objectId) || null;
+      return [
+        String(handle.ownerPid || 0).padEnd(5),
+        String(handle.id).padEnd(18),
+        String(handle.objectType).padEnd(12),
+        String(handle.status).padEnd(8),
+        String((handle.rights || []).join(",") || "-").padEnd(28),
+        object?.ref || handle.metadata?.path || handle.metadata?.endpoint || handle.metadata?.windowId || "-",
+      ].join(" ");
+    }),
   ].join("\n");
 }
 

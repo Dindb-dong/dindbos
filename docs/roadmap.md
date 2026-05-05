@@ -275,10 +275,13 @@ Implementation cuts:
 - Already present: per-process kernel handle tables track descriptor handles with owner pid, namespace, user credentials, rights, expiry, close-on-exec behavior, duplicate/transfer policy, revocation reason, `/proc/<pid>/handles.json`, and global `/proc/handles`.
 - Already present: descriptor read/write/seek/stat/sync/readdir/ioctl/close now validates an active descriptor handle with the required right before using the underlying descriptor object.
 - Already present: `handlectl list|stat|revoke` exposes handle diagnostics from the shell, including active/revoked state, rights, owner pid, transfer policy, revocation reason, and backing object status.
-- Continue defining kernel object ids beyond processes and descriptors for files, mounts, windows, services, devices, sockets, IPC endpoints, timers, keychain grants, package namespaces, and companion sessions.
-- Route additional high-value APIs through handles first: window capture, IPC endpoints, device opens, keychain grants, companion sessions, and network sockets.
+- Already present: `WindowManager` registers windows as kernel objects with per-process window handles, exports `/proc/<pid>/window.json`, validates surface capture and pointer-lock requests through active window handles, and revokes window objects/handles on window close.
+- Already present: IPC endpoints are registered as `ipc` kernel objects with owner handles; sends validate the endpoint owner handle before dispatch, and process or namespace cleanup revokes the endpoint object.
+- Already present: `lsof [pid] [--all]` lists active or revoked kernel handles with pid, type, rights, status, and backing object reference.
+- Continue defining kernel object ids beyond processes, descriptors, windows, and IPC endpoints for files, mounts, services, devices, sockets, timers, keychain grants, package namespaces, and companion sessions.
+- Route additional high-value APIs through handles first: device opens, keychain grants, companion sessions, network sockets, service controls, and mount handles.
 - Add process-exit, process-crash, logout, session-lock, package-uninstall, permission-revoke, and companion-disconnect cleanup that revokes owned handles.
-- Expose Activity Monitor resource views for `/proc/objects`, `/proc/handles`, and per-process handle tables.
+- Expose Activity Monitor resource views for `/proc/objects`, `/proc/handles`, `lsof`, and per-process handle tables.
 - Keep a compatibility shim while migrating high-level APIs so current apps do not break during the transition.
 
 Verification:
@@ -287,6 +290,9 @@ Verification:
 - Already present: `npm run smoke:descriptors` verifies descriptor object ids in fd listings, active descriptor objects in `/proc/objects.json`, offset metadata refresh after read/write, fd-close revocation, process-exit revocation, and process-crash revocation.
 - Already present: `npm run smoke:descriptors` verifies valid descriptor handle use, stale handle denial, wrong-right denial, cross-process handle transfer, source-handle stale denial after transfer, inherited stdio handle ids, fd-close cleanup, process-exit cleanup, and process-crash cleanup.
 - Already present: `npm run smoke:shell` verifies `handlectl list`, `handlectl stat`, missing-handle status, and revoked handle visibility after process exit.
+- Already present: `npm run smoke:window-manager` verifies window object/handle ids, compositor surface diagnostics, `/proc/<pid>/window.json`, per-process window handles, stale window-handle denial for desktop capture, and window close revocation.
+- Already present: `npm run smoke:packages` verifies IPC endpoint object/handle ids, owner procfs handle visibility, allowed sends through active IPC handles, stale IPC-handle denial, and process-exit revocation.
+- Already present: `npm run smoke:shell` verifies `lsof` active and revoked handle diagnostics.
 - Add smoke coverage for duplicated handle cleanup and revoked keychain/device/companion handles.
 - Add fuzz-style invalid handle tests for unknown id, wrong object type, double close, use-after-close, cross-user use, and package namespace escape.
 
@@ -3481,18 +3487,22 @@ Implementation tasks:
 - Already present: process objects and descriptor objects are registered through the existing process/descriptor managers and revoked during fd close, process exit, and process crash cleanup.
 - Already present: first-pass per-process handle tables contain descriptor handles with owner pid, namespace, user credentials, rights, expiry, close-on-exec, transfer policy, duplicate ancestry, status, revocation reason, `/proc/<pid>/handles.json`, and `/proc/handles`.
 - Already present: descriptor IO routes through handle resolution and required-right checks before touching descriptor objects.
-- Define kernel object types, ids, owners, lifetimes, refcounts, capabilities, namespace membership, and audit labels for non-descriptor resources.
-- Add non-descriptor handles for windows, IPC channels, devices, sockets, timers, service controls, mount handles, and keychain grants.
-- Route app, shell, WASM, NodeCompat, service, and worker calls beyond descriptor IO through handle resolution instead of direct object references where practical.
+- Already present: window and IPC endpoint kernel objects carry owner pid, namespace, rights, revocation state, and procfs/diagnostic visibility.
+- Already present: surface capture, pointer lock, and IPC send dispatch validate active resource handles before accessing the underlying compositor or endpoint object.
+- Define kernel object types, ids, owners, lifetimes, refcounts, capabilities, namespace membership, and audit labels for remaining non-descriptor resources.
+- Add non-descriptor handles for devices, sockets, timers, service controls, mount handles, and keychain grants.
+- Route app, shell, WASM, NodeCompat, service, and worker calls beyond descriptor/window/IPC paths through handle resolution instead of direct object references where practical.
 - Add handle inheritance rules for child processes, package namespaces, service processes, pipelines, app containers, and remote admin sessions.
 - Add weak reference behavior and broaden duplicate/close-on-exec/transfer handling beyond descriptor handles.
-- Expose `lsof` and Activity Monitor resource views for handle/object tables.
+- Already present: `lsof` exposes process handle diagnostics from shell.
+- Expose Activity Monitor resource views for handle/object tables.
 - Add resource limits for handle count, transferred bytes, outstanding events, and cross-process references.
 
 Verification:
 
 - Already present: process and descriptor smokes cover object id exposure, `/proc/objects.json` diagnostics, live metadata refresh, and revoke reasons for close, exit, crash, and restart cleanup.
 - Already present: descriptor and shell smokes cover allowed handle use, stale handle denial, wrong-right denial, cross-process handle transfer, close-on-exit cleanup, inherited stdio handles, and shell diagnostics.
+- Already present: window-manager, package, and shell smokes cover window handles, IPC endpoint handles, stale handle denial, close/process cleanup, procfs exports, and `lsof`.
 - Add smoke coverage for inherited package namespace handles and revoked grant behavior.
 - Add tests proving a sandboxed app cannot use an object id unless it owns a valid handle with the required capability.
 - Add fuzz-style tests for invalid handle ids, wrong object types, double close, duplicate close, and crash cleanup.
