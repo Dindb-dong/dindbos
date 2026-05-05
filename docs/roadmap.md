@@ -212,7 +212,8 @@ Implementation cuts:
 - Already present: package `fsck` detects package DB/app registry disagreement when an installed package app is missing from the app registry or its manifest/launcher files are absent, and `fsck --repair` can re-register the package app from the package DB record.
 - Already present: `fsck --explain` reports why each problem is repairable or non-repairable, every shell `fsck` run appends a summary to `/var/log/dindbos/fsck.log`, and repair/refusal audit JSONL records are written to `/var/log/dindbos/fsck-audit.log`.
 - Already present: OPFS inode-record loads validate manifest inode/file content hashes against actual records and report inode/content mismatches through storage status and the storage journal.
-- Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts beyond DB/root drift, partial journals, stale local mount metadata, and conservative salvage export.
+- Already present: Shell `fsck --dry-run --explain` includes PersistentStorage partial journal diagnostics for active OPFS transaction markers with missing replay manifests and pending replay manifests.
+- Extend `fsck.dindbos check|repair|dry-run|explain` to orphaned nodes, broken package mounts beyond DB/root drift, stale local mount metadata, and conservative salvage export.
 - Already present: large app writes and Files.app imports reserve storage bytes before VFS mutation so quota denial preserves existing files and prevents archive staging.
 - Already present: PersistentStorage supports first-pass storage-class quota arbitration for package roots, package state, cache, temp, snapshots, logs, backups, sync staging, recovery data, and user data using explicit reservation metadata or path/transaction inference.
 - Already present: VFS repair operations run through a protected-metadata guard so fsck repair never weakens ownership, group, permissions, security labels, quarantine state, or encrypted-volume locks while applying safe metadata repairs.
@@ -241,6 +242,7 @@ Verification:
 - Already present: `npm run smoke:files` verifies an interrupted TextEdit save through the app save helper preserves the existing file, cleans staged temp files, and still commits on the next successful save.
 - Already present: `npm run smoke:packages` verifies failed package-root repair fallback preserves the package DB record and audits the refused repair through shell fsck.
 - Already present: `npm run smoke:persistent-storage` verifies interrupted OPFS journal replay applies a pending manifest, records a replay recovery decision, and clears active/replay journal markers.
+- Already present: `npm run smoke:persistent-storage` verifies PersistentStorage `checkIntegrity()` reports partial storage journals and pending replay manifests; `npm run smoke:shell` verifies shell `fsck --dry-run --explain` merges those storage journal diagnostics into fsck output and audit logs.
 - Already present: Shell redirection/copy/touch, Files.app import paths, AppSandbox file writes, NodeCompat `fs` writes, and WASM syscall/WASI descriptor writes all reserve storage before VFS mutation; `npm run smoke:shell`, `npm run smoke:files`, `npm run smoke:permissions`, `npm run smoke:npm-node`, and `npm run smoke:wasm` cover the cross-runtime quota boundary.
 
 Completion criteria:

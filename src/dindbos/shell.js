@@ -1085,14 +1085,13 @@ export class ShellSession {
     return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
   }
 
-  fsck(args = []) {
+  async fsck(args = []) {
     const repair = args.includes("--repair") || args.includes("--dry-run");
     const dryRun = args.includes("--dry-run") || !args.includes("--repair");
     const explain = args.includes("--explain") || args[0] === "explain";
-    const result = mergeFsckResults(
-      this.os.fs.checkIntegrity({ repair, dryRun }),
-      safeRead(() => this.os.packages?.checkIntegrity?.({ repair, dryRun }), null),
-    );
+    let result = this.os.fs.checkIntegrity({ repair, dryRun });
+    result = mergeFsckResults(result, safeRead(() => this.os.packages?.checkIntegrity?.({ repair, dryRun }), null));
+    result = mergeFsckResults(result, await safeAsync(() => this.os.storage?.checkIntegrity?.({ repair, dryRun }), null));
     this.recordFsckLog(result);
     return formatFsck(result, { explain });
   }
@@ -1112,6 +1111,7 @@ export class ShellSession {
       `repaired=${Boolean(result.repaired)}`,
       `checked=${Number(result.checkedNodes || 0)}`,
       `packages=${Number(result.checkedPackages || 0)}`,
+      `storage=${Number(result.checkedStorage || 0)}`,
       `problems=${Number(result.problemCount || 0)}`,
       `repairs=${Number(result.repairCount || 0)}`,
       `auditRecords=${auditRecords.length}`,
@@ -1885,7 +1885,7 @@ function formatStorage(status) {
 
 function formatFsck(result = {}, options = {}) {
   const lines = [
-    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} packages=${Number(result.checkedPackages || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
+    `fsck: ok=${Boolean(result.ok)} checked=${Number(result.checkedNodes || 0)} packages=${Number(result.checkedPackages || 0)} storage=${Number(result.checkedStorage || 0)} problems=${Number(result.problemCount || 0)} repairs=${Number(result.repairCount || 0)} dryRun=${Boolean(result.dryRun)}`,
   ];
   (result.problems || []).slice(0, 20).forEach((entry) => {
     lines.push(`${entry.code} ${entry.path} repairable=${Boolean(entry.repairable)} ${entry.message}`);
@@ -1909,6 +1909,9 @@ function fsckExplanation(code, repairable = false) {
     "package-root-missing": "A package DB record points at a missing package root; reinstall or restore is required.",
     "package-root-invalid": "A package install path exists but is not mounted as pkgfs.",
     "package-record-invalid": "A package DB JSON record cannot be parsed into a package id.",
+    "storage-journal-invalid": "A persisted storage transaction marker cannot be parsed; reload or manual recovery is required.",
+    "storage-journal-partial": "A storage transaction marker is present without a replay manifest; the last complete manifest remains authoritative.",
+    "storage-journal-pending-replay": "A storage replay manifest exists and should be promoted during the next storage load before normal boot continues.",
   };
   return `${explanations[code] || "DindbOS detected an integrity invariant violation."} ${suffix}`;
 }
@@ -1922,6 +1925,7 @@ function mergeFsckResults(base = {}, extra = null) {
     ok: Boolean(base.ok) && Boolean(extra.ok),
     repaired: Boolean(base.repaired || extra.repaired),
     checkedPackages: Number(base.checkedPackages || 0) + Number(extra.checkedPackages || 0),
+    checkedStorage: Number(base.checkedStorage || 0) + Number(extra.checkedStorage || 0),
     problemCount: problems.length,
     repairCount: repairs.length,
     problems,

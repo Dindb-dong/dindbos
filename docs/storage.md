@@ -41,6 +41,7 @@ Current implementation:
 - Local mount directory copy conflicts are explicit: low-level runtime calls default to `error`, while callers can choose `replace`, `merge`, `skip`, `rename`, or `prompt` with a conflict resolver. `merge` is non-destructive and preserves existing conflicting children; `replace` removes the target tree first.
 - Files.app copy, move, import, and export traversals use cooperative scheduling with progress and cancellation checks so large trees are chunked instead of running as one uninterrupted browser task.
 - Shell `fsck` writes summary records to `/var/log/dindbos/fsck.log` and structured repair/refusal audit records to `/var/log/dindbos/fsck-audit.log`.
+- Shell `fsck` merges PersistentStorage partial journal diagnostics, including active OPFS transaction markers whose replay manifests are missing or pending promotion.
 - VFS fsck repair uses a protected-metadata guard so safe repairs cannot weaken ownership, group, permissions, security labels, quarantine state, or encrypted-volume lock flags.
 - Package fsck detects package DB/app registry disagreement and can restore a missing package app manifest/launcher from the package DB record.
 - Viewer.app caches document and image preview bytes through the runtime Cache API store with memory fallback, using path, MIME type, size, and modified time in the cache key.

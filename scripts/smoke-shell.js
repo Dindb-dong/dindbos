@@ -244,6 +244,12 @@ assert(shell.os.fs.stat("/home/guest/syscall-note.txt").size === "via syscall".l
 assert(shell.os.fs.readFile("/var/log/dindbos/fsck.log").includes("repaired=true"), "fsck repair did not write repaired fsck log");
 fsckAudit = shell.os.fs.readFile("/var/log/dindbos/fsck-audit.log");
 assert(fsckAudit.includes('"action":"mutation-applied"') && fsckAudit.includes('"kind":"size"'), "fsck repair did not write applied audit record");
+shell.os.setStorageFsckProblem("storage-journal-partial", "dindbos:vfs:journal:active", "transaction=storage-tx-smoke replay=missing");
+result = await shell.executeAsync("fsck --dry-run --explain");
+assert(result.status === 0, `storage fsck status mismatch: ${result.status}`);
+assert(result.output.includes("storage=1") && result.output.includes("storage-journal-partial"), `storage fsck output mismatch: ${result.output}`);
+assert(result.output.includes("last complete manifest remains authoritative"), `storage fsck explanation mismatch: ${result.output}`);
+assert(shell.os.fs.readFile("/var/log/dindbos/fsck.log").includes("codes=storage-journal-partial"), "storage fsck did not write partial journal code");
 result = await shell.executeAsync("syscall localMount.status '{}'");
 assert(result.status === 0, `syscall localMount.status status mismatch: ${result.status}`);
 assert(JSON.parse(result.output).value.supported === false, `syscall localMount.status output mismatch: ${result.output}`);
@@ -357,6 +363,7 @@ function bootOs() {
   let storagePersists = 0;
   const storageReservations = [];
   let nextStorageDenial = "";
+  let storageFsckProblem = null;
   const system = permissions.systemPrincipal();
   fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
@@ -433,6 +440,19 @@ function bootOs() {
       },
       status: () => ({ backend: "memory", bytes: 0 }),
       estimate: async () => ({ backend: "memory", bytes: 0 }),
+      checkIntegrity: ({ dryRun = true } = {}) => {
+        const problems = storageFsckProblem ? [{ ...storageFsckProblem }] : [];
+        storageFsckProblem = null;
+        return {
+          ok: problems.length === 0,
+          dryRun: Boolean(dryRun),
+          checkedStorage: 1,
+          problemCount: problems.length,
+          repairCount: 0,
+          problems,
+          repairs: [],
+        };
+      },
       persist: async () => {
         storagePersists += 1;
         return { backend: "memory", bytes: 0, persisted: true };
@@ -449,6 +469,9 @@ function bootOs() {
     },
     denyNextStorageReservation(message) {
       nextStorageDenial = message || "simulated storage quota denial";
+    },
+    setStorageFsckProblem(code, path, message) {
+      storageFsckProblem = { code, path, message, repairable: false };
     },
     flushPersistentFileSystem: async () => {
       storageFlushes += 1;

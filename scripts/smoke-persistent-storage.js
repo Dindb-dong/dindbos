@@ -11,6 +11,7 @@ await verifySnapshotAdapterFallback();
 await verifyOpfsTransactionGroupJournal();
 await verifyInterruptedOpfsTransactionRecoveryDecision();
 await verifyInterruptedOpfsTransactionReplay();
+await verifyStorageFsckPartialJournalDiagnostics();
 await verifyInodeContentMismatchDiagnostics();
 await verifyQuotaReservationDeniesBeforeMutation();
 await verifyOpfsFailureFallsBackToSnapshot();
@@ -186,6 +187,30 @@ async function verifyInterruptedOpfsTransactionReplay() {
   assert(reloadedStorage.journal().some((entry) => entry.action === "write-recovery" && entry.transactionId === "storage-tx-replay"), "replay recovery journal entry missing");
   assert(!opfsRoot.files.has(opfsFileName(storage.activeStorageTransactionKey())), "replayed transaction did not clear active marker");
   assert(!opfsRoot.files.has(opfsFileName(replayTransaction.replayManifestKey)), "replayed transaction did not clear replay manifest");
+}
+
+async function verifyStorageFsckPartialJournalDiagnostics() {
+  const opfsRoot = createOpfsRoot();
+  const storage = new PersistentStorage({
+    key: "smoke:opfs-fsck",
+    adapter: createAdapter(),
+    indexedDB: null,
+    opfsProvider: async () => opfsRoot,
+  });
+  const replayKey = storage.replayStorageTransactionKey("storage-tx-fsck");
+  await storage.writeActiveStorageTransaction({
+    transactionId: "storage-tx-fsck",
+    transactionKind: "filesystem-save",
+    replayManifestKey: replayKey,
+  });
+  let report = await storage.checkIntegrity({ repair: true, dryRun: true });
+  assert(!report.ok, "storage fsck did not flag a partial journal");
+  assert(report.checkedStorage === 2, `storage fsck checked count mismatch: ${report.checkedStorage}`);
+  assert(report.problems.some((entry) => entry.code === "storage-journal-partial" && entry.path === storage.activeStorageTransactionKey()), `storage fsck partial journal problem missing: ${JSON.stringify(report.problems)}`);
+
+  await storage.opfsSet(replayKey, JSON.stringify({ version: 2, format: "opfs-inode-records" }));
+  report = await storage.checkIntegrity({ repair: true, dryRun: true });
+  assert(report.problems.some((entry) => entry.code === "storage-journal-pending-replay" && entry.path === replayKey), `storage fsck pending replay problem missing: ${JSON.stringify(report.problems)}`);
 }
 
 async function verifyInodeContentMismatchDiagnostics() {
