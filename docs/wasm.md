@@ -57,7 +57,7 @@ random_get(ptr, len) -> errno
 clock_time_get(id, precision, resultPtr) -> errno
 ```
 
-`fd_write` currently supports descriptor `1` for stdout and descriptor `2` for stderr. Broader descriptor tables, stdin, file descriptors, and pipe-backed TTY behavior remain roadmap work.
+`fd_write` currently writes through the shared DindbOS descriptor table for descriptor `1` stdout and descriptor `2` stderr. `fd_read`, opened WASI file descriptors, stdin pipes, and pipe-backed TTY behavior remain roadmap work.
 
 ## Process Model
 

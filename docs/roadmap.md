@@ -258,7 +258,7 @@ Completion criteria:
 
 ### Convergence 3: Real Process Isolation With Workers
 
-Status: In progress.
+Status: Next.
 
 Goal: move risky or heavy userland execution out of the main UI thread into Web Workers or dedicated worker pools.
 
@@ -291,7 +291,7 @@ Completion criteria:
 
 ### Convergence 4: File Descriptors, Pipes, And Device Nodes
 
-Status: Next.
+Status: In progress.
 
 Goal: add a descriptor table model that supports files, pipes, terminals, sockets, and pseudo-devices consistently.
 
@@ -304,17 +304,18 @@ Implementation tasks:
 
 - Already present: per-process descriptor tables initialize `stdin`, `stdout`, and `stderr`, expose opened file/device handles under `/proc/<pid>/fd.json`, and clean up when the process exits or crashes.
 - Already present: first-pass descriptor syscalls cover `fd.list`, `fd.open`, `fd.read`, `fd.write`, `fd.seek`, `fd.stat`, and `fd.close` for text VFS files.
+- Already present: WASI `fd_write` for stdout/stderr writes through the shared descriptor table instead of a separate direct output path.
 - Add `ioctl`-style descriptor syscalls once terminal and device behavior needs structured control operations.
 - Back shell pipelines with real pipe descriptors instead of only command string plumbing.
 - Already present: `/dev/null`, `/dev/zero`, `/dev/random`, and `/dev/urandom` can be opened through descriptor syscalls.
 - Add `/dev/tty` and `/dev/clipboard` where browser policy allows.
 - Add pseudo-terminal sessions for Terminal.app so interactive programs can read/write through a TTY-like device.
-- Map WASI file-descriptor imports to the shared descriptor table instead of the first-pass direct stdout/stderr handler.
+- Map WASI `fd_read`, opened file descriptors, and stdin streams to the shared descriptor table.
 
 Verification:
 
 - Already present: `npm run smoke:descriptors` verifies descriptor open/read/write/seek/close, `/dev/null`, `/dev/zero`, `/proc/<pid>/fd.json`, and descriptor cleanup after process kill.
-- Add smoke coverage for pipe chaining, entropy devices, TTY output, WASI descriptor mapping, and descriptor cleanup after crash.
+- Add smoke coverage for pipe chaining, entropy devices, TTY output, WASI `fd_read`/file-descriptor mapping, and descriptor cleanup after crash.
 
 Completion criteria:
 
