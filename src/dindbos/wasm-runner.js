@@ -69,6 +69,7 @@ export class WasmRunner {
       return new DataView(memory.buffer);
     };
     const writeMemory = (ptr, bytes) => readMemory(ptr, bytes.length).set(bytes);
+    const writeU16 = (ptr, value) => memoryView().setUint16(Number(ptr || 0), Number(value || 0), true);
     const writeU32 = (ptr, value) => memoryView().setUint32(Number(ptr || 0), Number(value || 0), true);
     const writeU64 = (ptr, value) => {
       const view = memoryView();
@@ -102,6 +103,20 @@ export class WasmRunner {
       writeU64(base + 40, timestamp);
       writeU64(base + 48, timestamp);
       writeU64(base + 56, timestamp);
+    };
+    const writeFdstat = (resultPtr, descriptor = {}) => {
+      const base = Number(resultPtr || 0);
+      const rights = descriptor.rights || {
+        read: Boolean(descriptor.readable),
+        write: Boolean(descriptor.writable),
+      };
+      let rightsBase = 0n;
+      if (rights.read) rightsBase |= WASI_RIGHT_FD_READ;
+      if (rights.write) rightsBase |= WASI_RIGHT_FD_WRITE;
+      readMemory(base, 1)[0] = wasiFileType(descriptor.kind || descriptor.type);
+      writeU16(base + 2, wasiFdFlags(descriptor));
+      writeU64(base + 8, rightsBase);
+      writeU64(base + 16, rightsBase);
     };
     const descriptorStat = (descriptor) => {
       if (String(descriptor.path || "").startsWith("/")) {
@@ -206,6 +221,15 @@ export class WasmRunner {
           try {
             const descriptor = this.os.descriptors.stat(process, { fd }, context);
             writeFilestat(resultPtr, descriptorStat(descriptor), descriptor.path);
+            return 0;
+          } catch (error) {
+            return errnoNumber(error.code || "EIO");
+          }
+        },
+        fd_fdstat_get: (fd, resultPtr) => {
+          try {
+            const descriptor = this.os.descriptors.stat(process, { fd }, context);
+            writeFdstat(resultPtr, descriptor);
             return 0;
           } catch (error) {
             return errnoNumber(error.code || "EIO");
@@ -585,8 +609,16 @@ function wasiError(code, message) {
 function wasiFileType(type) {
   if (type === "directory") return 3;
   if (type === "file") return 4;
+  if (type === "stream" || type === "device") return 2;
+  if (type === "pipe") return 6;
   if (type === "link") return 7;
   return 0;
+}
+
+function wasiFdFlags(descriptor = {}) {
+  let flags = 0;
+  if (descriptor.append || String(descriptor.flags || "").includes("a")) flags |= 1;
+  return flags;
 }
 
 function stableInode(path = "") {
