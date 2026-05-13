@@ -1,4 +1,4 @@
-const DEFAULT_FS_READ = ["/"];
+const DEFAULT_FS_READ = [];
 const DEFAULT_FS_WRITE = [];
 
 export function normalizeAppManifest(app) {
@@ -13,6 +13,7 @@ export function normalizeAppManifest(app) {
     description: declared.description || app.description || "",
     api: declared.api || app.api || null,
     sandbox: declared.sandbox || app.sandbox || null,
+    container: declared.container || app.container || null,
     namespace: declared.namespace || app.namespace || null,
     secrets: [...(declared.secrets || app.secrets || [])],
     singleton: Boolean(app.singleton),
@@ -45,6 +46,7 @@ export function manifestToText(manifest) {
     `entry=${manifest.entry}`,
     `runtime=${manifest.runtime}`,
     `api=${manifest.api?.negotiatedVersion || manifest.api?.targetVersion || "-"}`,
+    `container=${manifest.container?.mode || "-"}`,
     `namespace=${manifest.namespace?.processGroup || "-"}`,
     `secrets=${manifest.secrets?.map((secret) => secret.name || secret.keychainName).join(",") || "-"}`,
     `singleton=${manifest.singleton}`,

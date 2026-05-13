@@ -521,11 +521,71 @@ assert(lifecycleEvents.filter((event) => event === "first-run:flow-demo:flow-dem
 assert(packages.info("flow-demo").lifecycle.firstRunAt, "first-run timestamp was not persisted");
 assert(os.processes.get(launched.pid), "package launch did not create process");
 assert(launched.content.innerHTML.includes("data-flow-run"), "package app did not render mounted UI");
+const flowContainer = JSON.parse(os.fs.readFile(`/proc/${launched.pid}/container.json`));
+assert(flowContainer.mode === "same-realm", `package app container mode mismatch: ${JSON.stringify(flowContainer)}`);
+assert(flowContainer.trust === "package-sandbox", `package app container trust mismatch: ${JSON.stringify(flowContainer)}`);
+assert(flowContainer.packageId === "flow-demo", `package app container package id mismatch: ${JSON.stringify(flowContainer)}`);
+assert(flowContainer.namespace === "package:flow-demo", `package app container namespace mismatch: ${JSON.stringify(flowContainer)}`);
+assert(flowContainer.rawRuntimeGlobal === false, "package app container reported raw runtime global exposure");
+assert(flowContainer.nextIsolationTarget === "origin-isolated-iframe-postmessage", "package app container missing next isolation target");
+assert(os.fs.readFile(`/proc/${launched.pid}/status`).includes("ContainerMode:\tsame-realm"), "package /proc status missing container mode");
+assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === launched.pid && entry.container?.trust === "package-sandbox"), "/proc processes JSON missing package sandbox container");
 const removedFlow = packages.remove("flow-demo");
 assert(removedFlow.id === "flow-demo", "flow package remove returned wrong id");
 assert(!os.apps.has("flow-demo"), "flow package app remained registered after remove");
 assert(!os.fs.exists("/opt/flow-demo"), "flow package install path remained after remove");
 assert(!os.fs.exists("/usr/share/applications/Flow Demo.app"), "flow package launcher remained after remove");
+
+packages.install(packageManifest("import-guard", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export async function mount({ content, imports }) {",
+      "  let status = 'not-checked';",
+      "  try {",
+      "    await imports.url('https://example.com/undeclared-package-module.js');",
+      "    status = 'unexpected-allowed';",
+      "  } catch (error) {",
+      "    status = error.message.includes('not declared') ? 'denied' : error.message;",
+      "  }",
+      "  content.innerHTML = `<main data-import-guard>${status}</main>`;",
+      "}",
+    ].join("\n"),
+  },
+]));
+const importGuardWindow = os.apps.launch("import-guard");
+await importGuardWindow.rendered;
+await waitFor(() => importGuardWindow.content.innerHTML.includes("data-import-guard"), "import guard package did not render");
+assert(importGuardWindow.content.innerHTML.includes(">denied<"), `undeclared import URL was not denied: ${importGuardWindow.content.innerHTML}`);
+packages.remove("import-guard");
+
+packages.install(packageManifest("iframe-bridge", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export async function mount({ content, os }) {",
+      "  const result = await os.syscall('fs.readText', { path: '/opt/iframe-bridge/data.txt' });",
+      "  content.innerHTML = `<main data-iframe-bridge>${result.value}</main>`;",
+      "}",
+    ].join("\n"),
+  },
+  { path: "data.txt", mime: "text/plain", content: "iframe-ok" },
+], {
+  sandbox: { containerMode: "iframe" },
+  permissions: { fileSystem: { read: ["/opt/iframe-bridge"], write: [] } },
+}));
+const iframeBridgeWindow = os.apps.launch("iframe-bridge");
+await iframeBridgeWindow.rendered;
+assert(iframeBridgeWindow.content.innerHTML.includes("data-package-container-unavailable=\"sandboxed-iframe\""), "iframe package container did not report DOM requirement in headless smoke runtime");
+const iframeBridgeContainer = JSON.parse(os.fs.readFile(`/proc/${iframeBridgeWindow.pid}/container.json`));
+assert(iframeBridgeContainer.mode === "sandboxed-iframe", `iframe package container mode mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
+assert(iframeBridgeContainer.isolation === "sandboxed-iframe-opaque-origin", `iframe package container isolation mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
+assert(iframeBridgeContainer.syscallBridge === "postmessage-syscall", `iframe package syscall bridge mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
+assert(iframeBridgeContainer.rawRuntimeGlobal === false, "iframe package container reported raw runtime global exposure");
+assert(os.fs.readFile(`/proc/${iframeBridgeWindow.pid}/status`).includes("ContainerMode:\tsandboxed-iframe"), "iframe package /proc status missing container mode");
+packages.remove("iframe-bridge");
 
 const wasmTool = packages.install({
   id: "wasm-tool",

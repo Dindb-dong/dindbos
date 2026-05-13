@@ -4,6 +4,8 @@ Apps receive a sandboxed runtime object in their `render()` function or package 
 
 For the package-author overview across permissions, filesystem scopes, process lifecycle, app state, package signing, compatibility, and browser limits, see `docs/developer-guide.md`.
 
+The browser page does not expose the raw kernel runtime as a public global. Apps should not depend on `window.dindbos`, private module imports, or direct companion protocols.
+
 ```js
 export function mount({ content, os, pkg, imports, window }) {
   content.textContent = pkg.name;
@@ -26,7 +28,7 @@ Capabilities are checked before sensitive runtime APIs run. Filesystem access is
 }
 ```
 
-Denied operations throw explicit errors such as `capability denied` or `sandbox denied`.
+Denied operations throw explicit errors such as `capability denied` or `sandbox denied`. Apps that do not declare filesystem scopes receive no implicit root read access.
 
 ## Syscall ABI
 
@@ -144,6 +146,7 @@ Process records include browser-native activity metrics:
 - `activityScore`: weighted process events in the recent activity window, not CPU percent
 - `activitySamples`: number of retained activity samples
 - `activityLastSampleAt`: timestamp of the latest activity sample
+- `container`: current execution boundary metadata, also written to `/proc/<pid>/container.json`
 
 The browser does not expose per-app CPU time, so Activity Monitor reports event-based activity instead of pretending to show native CPU usage.
 
