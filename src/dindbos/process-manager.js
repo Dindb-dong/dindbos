@@ -154,6 +154,30 @@ export class ProcessManager {
     return { ...this.withRuntimeMetrics(process) };
   }
 
+  updateContainerState(pid, details = {}, reason = "container-update") {
+    const process = this.processes.get(Number(pid));
+    if (!process) return null;
+    const current = cloneJson(process.container || {});
+    const next = cloneJson(details || {});
+    const lifecycle = {
+      ...(current.lifecycle || {}),
+      ...(next.lifecycle || {}),
+    };
+    delete next.lifecycle;
+    process.container = {
+      ...current,
+      ...next,
+      lifecycle,
+    };
+    process.lastActiveAt = new Date().toISOString();
+    this.log(process.pid, `container ${reason}${process.container.status ? ` ${process.container.status}` : ""}`);
+    this.sampleActivity(process.pid, `container:${reason}`, reason === "heartbeat" ? 0.25 : 1);
+    this.syncProcessObject(process);
+    this.syncProcfs();
+    this.os.bus.emit("process:update", process);
+    return { ...this.withRuntimeMetrics(process) };
+  }
+
   crash(pid, error) {
     const process = this.processes.get(Number(pid));
     if (!process) return null;
