@@ -23,6 +23,9 @@ const MAX_CONTAINER_MESSAGE_BYTES = 64 * 1024;
 const MAX_CONTAINER_SYSCALL_RATE = 120;
 const CONTAINER_RATE_WINDOW_MS = 1000;
 const CONTAINER_SYSCALL_PATTERN = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*){0,4}$/i;
+const CONTAINER_MOUNT_TIMEOUT_MS = 8000;
+const CONTAINER_HEARTBEAT_INTERVAL_MS = 5000;
+const CONTAINER_HEARTBEAT_TIMEOUT_MS = 15000;
 
 const SAMPLE_PACKAGE = {
   id: "hello-notes",
@@ -1865,9 +1868,11 @@ async function mountPackageIframeEntrypoint(content, runtime, record, windowApi,
     const cleanup = installIframeBridge({
       token,
       frame,
+      content,
       runtime,
       windowApi,
       process: runtime.process,
+      record: activeRecord,
     });
     const unsubscribe = runtime.os?.bus?.on?.("process:exit", (process) => {
       if (Number(process.pid) !== Number(runtime.process?.pid)) return;
@@ -1887,28 +1892,125 @@ async function mountPackageIframeEntrypoint(content, runtime, record, windowApi,
   }
 }
 
-function installIframeBridge({ token, frame, runtime, windowApi, process }) {
+function installIframeBridge({ token, frame, content, runtime, windowApi, process, record }) {
   const rate = { windowStartedAt: Date.now(), count: 0 };
+  const state = {
+    cleaned: false,
+    mounted: false,
+    lastHeartbeatAt: Date.now(),
+  };
+  updateContainerState(runtime, process, {
+    status: "booting",
+    health: "starting",
+    heartbeatIntervalMs: CONTAINER_HEARTBEAT_INTERVAL_MS,
+    heartbeatTimeoutMs: CONTAINER_HEARTBEAT_TIMEOUT_MS,
+    mountTimeoutMs: CONTAINER_MOUNT_TIMEOUT_MS,
+    lifecycle: {
+      bootedAt: new Date().toISOString(),
+    },
+  }, "boot");
+  const mountTimer = setTimeout(() => {
+    crashPackageContainer({
+      runtime,
+      process,
+      frame,
+      content,
+      record,
+      code: "EMOUNTTIMEOUT",
+      message: `container mount timed out after ${CONTAINER_MOUNT_TIMEOUT_MS}ms`,
+      traceId: `container-${process?.pid || 0}-${Date.now()}-timeout`,
+      cleanup,
+    });
+  }, CONTAINER_MOUNT_TIMEOUT_MS);
+  const heartbeatTimer = setInterval(() => {
+    if (state.cleaned || !state.mounted) return;
+    if (Date.now() - state.lastHeartbeatAt <= CONTAINER_HEARTBEAT_TIMEOUT_MS) return;
+    crashPackageContainer({
+      runtime,
+      process,
+      frame,
+      content,
+      record,
+      code: "EHEARTBEAT",
+      message: `container heartbeat missed for ${CONTAINER_HEARTBEAT_TIMEOUT_MS}ms`,
+      traceId: `container-${process?.pid || 0}-${Date.now()}-heartbeat`,
+      cleanup,
+    });
+  }, CONTAINER_HEARTBEAT_INTERVAL_MS);
+  function cleanup(reason = "cleanup") {
+    if (state.cleaned) return;
+    state.cleaned = true;
+    clearTimeout(mountTimer);
+    clearInterval(heartbeatTimer);
+    window.removeEventListener("message", listener);
+    updateContainerState(runtime, process, {
+      cleanupReason: reason,
+      lifecycle: {
+        cleanedAt: new Date().toISOString(),
+      },
+    }, "cleanup");
+  }
   const listener = async (event) => {
+    if (state.cleaned) return;
     if (event.source !== frame.contentWindow) return;
     const message = event.data || {};
     if (message.token !== token) return;
     const traceId = `container-${process?.pid || 0}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     if (message.type === "container-ready") {
       frame.dataset.containerStatus = "ready";
+      updateContainerState(runtime, process, {
+        status: "ready",
+        health: "starting",
+        lastTraceId: traceId,
+        lifecycle: {
+          readyAt: new Date().toISOString(),
+        },
+      }, "ready");
       auditPackageContainer(runtime, process, { traceId, type: "ready", status: "ok" });
       return;
     }
     if (message.type === "container-mounted") {
+      clearTimeout(mountTimer);
+      state.mounted = true;
       frame.dataset.containerStatus = "mounted";
+      updateContainerState(runtime, process, {
+        status: "mounted",
+        health: "healthy",
+        lastTraceId: traceId,
+        lifecycle: {
+          mountedAt: new Date().toISOString(),
+        },
+      }, "mounted");
       auditPackageContainer(runtime, process, { traceId, type: "mounted", status: "ok" });
       return;
     }
+    if (message.type === "container-heartbeat") {
+      state.lastHeartbeatAt = Date.now();
+      frame.dataset.containerHeartbeatAt = new Date(state.lastHeartbeatAt).toISOString();
+      updateContainerState(runtime, process, {
+        status: state.mounted ? "mounted" : "ready",
+        health: "healthy",
+        lastTraceId: traceId,
+        lastHeartbeatAt: frame.dataset.containerHeartbeatAt,
+        lifecycle: {
+          lastHeartbeatAt: frame.dataset.containerHeartbeatAt,
+        },
+      }, "heartbeat");
+      auditPackageContainer(runtime, process, { traceId, type: "heartbeat", status: "ok" });
+      return;
+    }
     if (message.type === "container-error") {
-      frame.dataset.containerStatus = "error";
-      frame.dataset.containerError = String(message.message || "");
-      runtime.os?.processes?.log?.(process?.pid, `container-error ${message.message || ""}`, "error");
-      auditPackageContainer(runtime, process, { traceId, type: "error", status: "error", message: String(message.message || "") });
+      crashPackageContainer({
+        runtime,
+        process,
+        frame,
+        content,
+        record,
+        code: "ECONTAINER",
+        message: String(message.message || "container error"),
+        traceId,
+        cleanup,
+      });
       return;
     }
     if (message.type === "window.setTitle") {
@@ -1940,7 +2042,7 @@ function installIframeBridge({ token, frame, runtime, windowApi, process }) {
     event.source?.postMessage?.({ token, type: "syscall-result", requestId, traceId, result }, "*");
   };
   window.addEventListener("message", listener);
-  return () => window.removeEventListener("message", listener);
+  return cleanup;
 }
 
 function validateContainerSyscallMessage(message, rate) {
@@ -1995,6 +2097,45 @@ function auditPackageContainer(runtime, process, entry = {}) {
     permissions: "-rw-r--r--",
   }, system);
   return payload;
+}
+
+function updateContainerState(runtime, process, details = {}, reason = "container-update") {
+  if (!process?.pid) return null;
+  return runtime?.os?.processes?.updateContainerState?.(process.pid, details, reason) || null;
+}
+
+function crashPackageContainer({ runtime, process, frame, content, record, code, message, traceId, cleanup }) {
+  if (!process?.pid) return null;
+  const current = runtime?.os?.processes?.get?.(process.pid);
+  if (!current || current.state === "crashed") return null;
+  frame.dataset.containerStatus = "crashed";
+  frame.dataset.containerError = message;
+  updateContainerState(runtime, process, {
+    status: "crashed",
+    health: "failed",
+    lastTraceId: traceId,
+    lastError: { code, message },
+    lifecycle: {
+      crashedAt: new Date().toISOString(),
+    },
+  }, "crash");
+  auditPackageContainer(runtime, process, { traceId, type: "crash", status: "error", code, message });
+  runtime.os?.processes?.log?.(process.pid, `container-crash ${code} ${message}`, "error");
+  cleanup?.("container-crash");
+  renderPackageContainerCrash(content, record, message);
+  runtime.os?.processes?.crash?.(process.pid, new Error(message));
+  return null;
+}
+
+function renderPackageContainerCrash(content, record, message) {
+  if (!content) return;
+  content.innerHTML = `
+    <section class="crash-app" data-package-container-crash>
+      <p class="dos-kicker">Package container crashed</p>
+      <h2>${escapeHtml(record?.app?.name || record?.name || "Package app")}</h2>
+      <pre>${escapeHtml(message)}</pre>
+    </section>
+  `;
 }
 
 function createImportFacade(record) {
@@ -2065,6 +2206,9 @@ function packageIframeDocument({ token, source, record }) {
       return new Promise((resolve) => pending.set(requestId, { resolve }));
     }
 
+    const heartbeat = setInterval(() => send("container-heartbeat"), ${CONTAINER_HEARTBEAT_INTERVAL_MS});
+    window.addEventListener("pagehide", () => clearInterval(heartbeat));
+
     function unwrap(result, syscallName) {
       if (result && result.ok) return result.value;
       const error = result?.error || {};
@@ -2112,6 +2256,7 @@ function packageIframeDocument({ token, source, record }) {
 
     try {
       send("container-ready");
+      send("container-heartbeat");
       const moduleUrl = URL.createObjectURL(new Blob([SOURCE], { type: "text/javascript" }));
       const module = await import(moduleUrl);
       URL.revokeObjectURL(moduleUrl);
