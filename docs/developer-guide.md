@@ -92,6 +92,8 @@ Processes can be inspected through Activity Monitor, `/proc/processes`, `/proc/p
 
 App render crashes are isolated to the process. The desktop remains alive, a crash panel is rendered in the app window, and crash reports are written under `/var/log/dindbos`.
 
+Packages can opt into the first isolated GUI container with `sandbox.containerMode: "iframe"`. That path runs the package entry inside a sandboxed iframe without `allow-same-origin`; the package talks back to DindbOS through an async postMessage syscall bridge. This mode currently expects async `os.syscall`/`sdk` style APIs rather than synchronous same-realm `os.fs.readFile()` calls.
+
 ## App State
 
 `os.state` stores JSON-serializable values in the current app namespace:

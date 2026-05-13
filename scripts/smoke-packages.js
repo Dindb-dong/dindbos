@@ -560,6 +560,33 @@ await waitFor(() => importGuardWindow.content.innerHTML.includes("data-import-gu
 assert(importGuardWindow.content.innerHTML.includes(">denied<"), `undeclared import URL was not denied: ${importGuardWindow.content.innerHTML}`);
 packages.remove("import-guard");
 
+packages.install(packageManifest("iframe-bridge", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export async function mount({ content, os }) {",
+      "  const result = await os.syscall('fs.readText', { path: '/opt/iframe-bridge/data.txt' });",
+      "  content.innerHTML = `<main data-iframe-bridge>${result.value}</main>`;",
+      "}",
+    ].join("\n"),
+  },
+  { path: "data.txt", mime: "text/plain", content: "iframe-ok" },
+], {
+  sandbox: { containerMode: "iframe" },
+  permissions: { fileSystem: { read: ["/opt/iframe-bridge"], write: [] } },
+}));
+const iframeBridgeWindow = os.apps.launch("iframe-bridge");
+await iframeBridgeWindow.rendered;
+assert(iframeBridgeWindow.content.innerHTML.includes("data-package-container-unavailable=\"sandboxed-iframe\""), "iframe package container did not report DOM requirement in headless smoke runtime");
+const iframeBridgeContainer = JSON.parse(os.fs.readFile(`/proc/${iframeBridgeWindow.pid}/container.json`));
+assert(iframeBridgeContainer.mode === "sandboxed-iframe", `iframe package container mode mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
+assert(iframeBridgeContainer.isolation === "sandboxed-iframe-opaque-origin", `iframe package container isolation mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
+assert(iframeBridgeContainer.syscallBridge === "postmessage-syscall", `iframe package syscall bridge mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
+assert(iframeBridgeContainer.rawRuntimeGlobal === false, "iframe package container reported raw runtime global exposure");
+assert(os.fs.readFile(`/proc/${iframeBridgeWindow.pid}/status`).includes("ContainerMode:\tsandboxed-iframe"), "iframe package /proc status missing container mode");
+packages.remove("iframe-bridge");
+
 const wasmTool = packages.install({
   id: "wasm-tool",
   name: "WASM Tool",

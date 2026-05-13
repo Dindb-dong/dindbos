@@ -385,7 +385,8 @@ Implementation cuts:
 
 - Already present: first-pass same-realm hardening removes the raw `window.dindbos` runtime escape hatch, makes minimal app manifests deny filesystem access by default, and blocks undeclared package `imports.url()` module loads.
 - Already present: process container diagnostics expose same-realm, package-sandbox, and worker-backed execution boundaries through `/proc/<pid>/container.json`, `/proc/<pid>/status`, `/proc/processes.json`, and process kernel-object metadata.
-- Add container modes for trusted same-runtime app, sandboxed iframe, credentialless iframe, worker-rendered surface, and companion-rendered surface.
+- Already present: opt-in `sandbox.containerMode: "iframe"` package apps mount inside a sandboxed iframe without `allow-same-origin` and use a postMessage syscall bridge for async runtime calls.
+- Add broader container modes for trusted same-runtime app, credentialless iframe, worker-rendered surface, and companion-rendered surface.
 - Move containerized apps onto a postMessage syscall bridge with schema validation, capability filtering, rate limits, trace ids, and audit logs.
 - Add CSP, Trusted Types, import-map, and package module loading policy for containerized apps.
 - Add heartbeat, hang detection, crash isolation, and cleanup for sandboxed app containers.
@@ -395,7 +396,7 @@ Implementation cuts:
 
 Verification:
 
-- Already present: `npm run smoke:runtime-boundary` verifies the entrypoint does not expose the raw runtime globally, minimal manifests do not receive implicit root read access, explicit scopes are preserved, and package import URL denials remain in place; `npm run smoke:processes` verifies trusted same-realm and worker container diagnostics; `npm run smoke:packages` verifies package-sandbox container diagnostics and undeclared `imports.url()` denial at package runtime.
+- Already present: `npm run smoke:runtime-boundary` verifies the entrypoint does not expose the raw runtime globally, minimal manifests do not receive implicit root read access, explicit scopes are preserved, and package import URL denials remain in place; `npm run smoke:processes` verifies trusted same-realm and worker container diagnostics; `npm run smoke:packages` verifies package-sandbox and sandboxed-iframe container diagnostics plus undeclared `imports.url()` denial at package runtime.
 - Add smoke coverage for sandboxed app launch, allowed syscall bridge call, denied raw runtime/DOM access, heartbeat timeout, trusted prompt grant/deny/timeout, spoofed dialog denial, and capture denial around trusted surfaces.
 - Add tests proving an app cannot read another window, keychain secret, package root, local mount, or trusted prompt record without a declared grant.
 

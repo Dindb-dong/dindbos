@@ -1534,6 +1534,7 @@ export class PackageManager {
         compatibility: record.compatibility,
         api: record.api,
         sandbox: cloneJson(record.sandbox || {}),
+        container: packageProcessContainer(record),
         namespace: cloneJson(record.namespace || {}),
         secrets: cloneJson(record.secrets || []),
         capabilities: record.app.capabilities,
@@ -1716,6 +1717,9 @@ function renderPackagedApp(content, runtime, record, windowApi, manager = null) 
   if (record.app.entryPath && record.app.runtime === "wasm") {
     return mountPackageWasmEntrypoint(content, runtime, record, windowApi, manager);
   }
+  if (record.app.entryPath && packageContainerMode(record) === "sandboxed-iframe") {
+    return mountPackageIframeEntrypoint(content, runtime, record, windowApi, manager);
+  }
   if (record.app.entryPath) {
     return mountPackageEntrypoint(content, runtime, record, windowApi, manager);
   }
@@ -1822,6 +1826,110 @@ async function mountPackageEntrypoint(content, runtime, record, windowApi, manag
   }
 }
 
+async function mountPackageIframeEntrypoint(content, runtime, record, windowApi, manager = null) {
+  const activeRecord = safeRead(() => manager?.markFirstRun?.(record.id), record) || record;
+  if (!isDomContainerAvailable(content)) {
+    content.innerHTML = `
+      <section class="package-app" data-package-container-unavailable="sandboxed-iframe">
+        <p class="dos-kicker">Package container unavailable</p>
+        <h2>${escapeHtml(activeRecord.app.name)}</h2>
+        <p>sandboxed-iframe containers require a browser DOM surface.</p>
+      </section>
+    `;
+    return null;
+  }
+  try {
+    const source = runtime.fs.readFile(activeRecord.app.entryPath);
+    const token = randomToken();
+    const frame = document.createElement("iframe");
+    frame.className = "package-container-frame";
+    frame.title = `${activeRecord.app.name} isolated container`;
+    frame.sandbox = "allow-scripts";
+    frame.dataset.packageContainer = "sandboxed-iframe";
+    frame.dataset.packageId = activeRecord.id;
+    frame.style.width = "100%";
+    frame.style.height = "100%";
+    frame.style.border = "0";
+    frame.srcdoc = packageIframeDocument({
+      token,
+      source,
+      record: activeRecord,
+    });
+    content.innerHTML = "";
+    content.appendChild(frame);
+    const cleanup = installIframeBridge({
+      token,
+      frame,
+      runtime,
+      windowApi,
+      process: runtime.process,
+    });
+    const unsubscribe = runtime.os?.bus?.on?.("process:exit", (process) => {
+      if (Number(process.pid) !== Number(runtime.process?.pid)) return;
+      cleanup();
+      unsubscribe?.();
+    });
+    return frame;
+  } catch (error) {
+    content.innerHTML = `
+      <section class="package-app">
+        <p class="dos-kicker">Package container error</p>
+        <h2>${escapeHtml(activeRecord.app.name)}</h2>
+        <pre>${escapeHtml(error.message)}</pre>
+      </section>
+    `;
+    return null;
+  }
+}
+
+function installIframeBridge({ token, frame, runtime, windowApi, process }) {
+  const listener = async (event) => {
+    if (event.source !== frame.contentWindow) return;
+    const message = event.data || {};
+    if (message.token !== token) return;
+    if (message.type === "container-ready") {
+      frame.dataset.containerStatus = "ready";
+      return;
+    }
+    if (message.type === "container-mounted") {
+      frame.dataset.containerStatus = "mounted";
+      return;
+    }
+    if (message.type === "container-error") {
+      frame.dataset.containerStatus = "error";
+      frame.dataset.containerError = String(message.message || "");
+      runtime.os?.processes?.log?.(process?.pid, `container-error ${message.message || ""}`, "error");
+      return;
+    }
+    if (message.type === "window.setTitle") {
+      windowApi?.setTitle?.(String(message.title || ""));
+      return;
+    }
+    if (message.type !== "syscall") return;
+    const requestId = String(message.requestId || "");
+    const name = String(message.name || "");
+    const args = cloneJson(message.args || {});
+    let result;
+    try {
+      result = typeof runtime.syscallAsync === "function"
+        ? await runtime.syscallAsync(name, args)
+        : runtime.syscall(name, args);
+    } catch (error) {
+      result = {
+        ok: false,
+        error: {
+          code: "EFAULT",
+          message: error?.message || String(error),
+          syscall: name || "unknown",
+        },
+      };
+    }
+    event.source?.postMessage?.({ token, type: "syscall-result", requestId, result }, "*");
+  };
+  window.addEventListener("message", listener);
+  return () => window.removeEventListener("message", listener);
+}
+
 function createImportFacade(record) {
   return {
     npm: async (name) => {
@@ -1843,6 +1951,147 @@ function declaredImportUrls(record) {
       .map((dependency) => safeRead(() => normalizePackageUrl(dependency.url), ""))
       .filter(Boolean),
   );
+}
+
+function packageIframeDocument({ token, source, record }) {
+  const dependencies = Object.fromEntries(
+    Object.entries(record.dependencies?.npm || {})
+      .map(([name, dependency]) => [name, safeRead(() => normalizePackageUrl(dependency.url), "")])
+      .filter(([, url]) => Boolean(url)),
+  );
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: data: https:; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none';">
+  <style>
+    html, body, #app { min-height: 100%; margin: 0; }
+    body { font: 14px/1.45 system-ui, sans-serif; color: #f7f1e8; background: transparent; }
+  </style>
+</head>
+<body>
+  <main id="app" data-dindbos-container="sandboxed-iframe"></main>
+  <script type="module">
+    const TOKEN = ${safeScriptJson(token)};
+    const SOURCE = ${safeScriptJson(source)};
+    const PKG = ${safeScriptJson(packagePublicRecord(record))};
+    const DEPENDENCIES = ${safeScriptJson(dependencies)};
+    const pending = new Map();
+    let seq = 0;
+
+    window.addEventListener("message", (event) => {
+      const message = event.data || {};
+      if (message.token !== TOKEN || message.type !== "syscall-result") return;
+      const record = pending.get(String(message.requestId || ""));
+      if (!record) return;
+      pending.delete(String(message.requestId || ""));
+      record.resolve(message.result);
+    });
+
+    function send(type, payload = {}) {
+      parent.postMessage({ token: TOKEN, type, ...payload }, "*");
+    }
+
+    function syscall(name, args = {}) {
+      const requestId = String(++seq);
+      send("syscall", { requestId, name, args });
+      return new Promise((resolve) => pending.set(requestId, { resolve }));
+    }
+
+    function unwrap(result, syscallName) {
+      if (result && result.ok) return result.value;
+      const error = result?.error || {};
+      throw new Error(error.message || "syscall failed: " + syscallName);
+    }
+
+    const os = {
+      syscall,
+      syscallAsync: syscall,
+      fs: {
+        readFile: async (path) => unwrap(await syscall("fs.readText", { path }), "fs.readText"),
+        writeFile: async (path, content) => unwrap(await syscall("fs.writeText", { path, content }), "fs.writeText"),
+        writeOrCreateFile: async (path, content) => unwrap(await syscall("fs.writeText", { path, content }), "fs.writeText"),
+      },
+      processes: {
+        log: async (message, level = "info") => unwrap(await syscall("process.log", { message, level }), "process.log"),
+      },
+    };
+
+    const sdk = {
+      syscall,
+      fs: {
+        readText: (path) => os.fs.readFile(path),
+        writeText: (path, content) => os.fs.writeFile(path, content),
+      },
+      processes: {
+        log: (message, level = "info") => os.processes.log(message, level),
+      },
+      packages: {
+        info: async (packageId = PKG.id) => unwrap(await syscall("package.info", { packageId }), "package.info"),
+      },
+    };
+
+    const imports = {
+      npm(name) {
+        if (!DEPENDENCIES[name]) throw new Error("npm dependency not declared: " + name);
+        return import(DEPENDENCIES[name]);
+      },
+      url(url) {
+        const normalized = new URL(url, location.href).href;
+        if (!Object.values(DEPENDENCIES).includes(normalized)) throw new Error("package import URL not declared: " + normalized);
+        return import(normalized);
+      },
+    };
+
+    try {
+      send("container-ready");
+      const moduleUrl = URL.createObjectURL(new Blob([SOURCE], { type: "text/javascript" }));
+      const module = await import(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      const mount = module.mount || module.default;
+      if (typeof mount !== "function") throw new Error(PKG.entry + " must export mount() or default()");
+      await mount({
+        content: document.querySelector("#app"),
+        os,
+        pkg: PKG,
+        package: PKG,
+        sdk,
+        imports,
+        window: {
+          setTitle: (title) => send("window.setTitle", { title }),
+        },
+      });
+      send("container-mounted");
+    } catch (error) {
+      document.querySelector("#app").innerHTML = "<section data-package-container-error><h2>Package runtime error</h2><pre></pre></section>";
+      document.querySelector("pre").textContent = error?.message || String(error);
+      send("container-error", { message: error?.message || String(error) });
+    }
+  </script>
+</body>
+</html>`;
+}
+
+function isDomContainerAvailable(content) {
+  return Boolean(
+    content
+    && typeof content.appendChild === "function"
+    && typeof document !== "undefined"
+    && typeof document.createElement === "function"
+    && typeof window !== "undefined"
+    && typeof window.addEventListener === "function"
+  );
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+  else bytes.forEach((_, index) => { bytes[index] = Math.floor(Math.random() * 256); });
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function safeScriptJson(value) {
+  return JSON.stringify(value).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e").replaceAll("&", "\\u0026");
 }
 
 function resolvePackageCliEntry(os, record, requestedEntry = "") {
@@ -1899,15 +2148,43 @@ function packagePublicRecord(record) {
 }
 
 function normalizePackageSandbox(sandbox = {}) {
+  const containerMode = normalizeContainerMode(sandbox.containerMode || sandbox.container?.mode || sandbox.container || "");
   return {
     rootPolicy: String(sandbox.rootPolicy || "readonly-package-image"),
     statePolicy: String(sandbox.statePolicy || "private"),
     cachePolicy: String(sandbox.cachePolicy || "private-evictable"),
     tempPolicy: String(sandbox.tempPolicy || "private-runtime"),
+    containerMode,
     deviceGrants: [...(sandbox.deviceGrants || sandbox.devices || [])].map(String),
     networkHosts: [...(sandbox.networkHosts || sandbox.network || [])].map(String),
     ipcEndpoints: [...(sandbox.ipcEndpoints || sandbox.ipc || [])].map(String),
     childProcessLimit: Math.max(0, Number(sandbox.childProcessLimit || 0)),
+  };
+}
+
+function normalizeContainerMode(value = "") {
+  const mode = String(value || "").trim().toLowerCase();
+  if (mode === "iframe" || mode === "sandboxed-iframe") return "sandboxed-iframe";
+  if (mode === "same-realm" || mode === "same-runtime" || mode === "trusted") return "same-realm";
+  return "";
+}
+
+function packageContainerMode(record) {
+  return normalizeContainerMode(record.sandbox?.containerMode || record.sandbox?.container?.mode || record.sandbox?.container || "") || "same-realm";
+}
+
+function packageProcessContainer(record) {
+  if (packageContainerMode(record) !== "sandboxed-iframe") return null;
+  return {
+    mode: "sandboxed-iframe",
+    isolation: "sandboxed-iframe-opaque-origin",
+    trust: "package-sandbox",
+    hostDom: "iframe-surface",
+    rawRuntimeGlobal: false,
+    syscallBridge: "postmessage-syscall",
+    filesystem: "manifest-scoped-vfs",
+    nextIsolationTarget: "origin-isolated-iframe-postmessage",
+    notes: ["iframe sandbox omits allow-same-origin"],
   };
 }
 
