@@ -61,6 +61,11 @@ async function verifySuccessfulBootPhases() {
   assert(os.diskPolicyAreas().every((area) => area.exists), "not all disk policy roots exist");
   assert(os.fs.exists("/proc/mounts"), "/proc/mounts was not written");
   assert(os.fs.exists("/proc/mounts.json"), "/proc/mounts.json was not written");
+  assert(os.fs.exists("/proc/browser-capabilities"), "/proc/browser-capabilities was not written");
+  assert(os.fs.exists("/proc/browser-capabilities.json"), "/proc/browser-capabilities.json was not written");
+  assert(os.fs.exists("/proc/device-tree"), "/proc/device-tree was not written");
+  assert(os.fs.exists("/proc/device-tree.json"), "/proc/device-tree.json was not written");
+  assert(os.fs.exists("/dev/browser"), "/dev/browser device root was not created");
   assert(os.mountTable().some((entry) => entry.root === "/home" && entry.driver === "browserfs"), "mount table missing /home browserfs entry");
   assert(os.mountTable().some((entry) => entry.root === "/opt/hello-notes" && entry.driver === "pkgfs" && entry.readonly), "mount table missing readonly package image entry");
   assert(os.mountTable().some((entry) => entry.root === "/proc" && entry.driver === "procfs" && entry.readonly), "mount table missing readonly procfs entry");
@@ -68,6 +73,16 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.readFile("/proc/mounts").includes("usedBytes="), "/proc/mounts missing used byte diagnostics");
   assert(os.fs.readFile("/proc/mounts").includes("support="), "/proc/mounts missing browser support diagnostics");
   assert(JSON.parse(os.fs.readFile("/proc/mounts.json")).mounts.some((entry) => entry.root === "/var/cache" && entry.driver === "cachefs"), "/proc/mounts.json missing cachefs entry");
+  const browserCapabilities = JSON.parse(os.fs.readFile("/proc/browser-capabilities.json"));
+  assert(browserCapabilities.brokerRequired === true, "browser capabilities did not require brokers");
+  assert(browserCapabilities.capabilities.some((entry) => entry.id === "clipboard.read" && entry.available), "browser capabilities missing clipboard read probe");
+  assert(browserCapabilities.capabilities.some((entry) => entry.id === "screen.capture" && entry.available), "browser capabilities missing screen capture probe");
+  assert(browserCapabilities.capabilities.some((entry) => entry.id === "webhid.device" && entry.available), "browser capabilities missing WebHID probe");
+  assert(os.fs.readFile("/proc/browser-capabilities").includes("screen.capture available screen-capture /dev/browser/screen"), "/proc/browser-capabilities text missing screen capture broker");
+  const deviceTree = JSON.parse(os.fs.readFile("/proc/device-tree.json"));
+  assert(deviceTree.devices.some((device) => device.path === "/dev/browser/clipboard" && device.capabilities.includes("clipboard.write")), "device tree missing clipboard device capabilities");
+  assert(deviceTree.devices.some((device) => device.path === "/dev/browser/hid" && device.status === "available"), "device tree missing available WebHID device");
+  assert(os.fs.readFile("/proc/device-tree").includes("/dev/browser/gpu available webgpu-broker"), "/proc/device-tree text missing WebGPU broker");
   const readonlyMount = os.syscall("mount.mount", { path: "/mnt/readonly-smoke", driver: "memfs", readonly: true });
   assert(readonlyMount.ok && readonlyMount.value.root === "/mnt/readonly-smoke", `readonly memfs mount failed: ${JSON.stringify(readonlyMount)}`);
   const readonlyWrite = os.syscall("fs.writeText", { path: "/mnt/readonly-smoke/blocked.txt", content: "blocked" });
@@ -196,6 +211,12 @@ async function verifyBootPhaseFailure() {
 function installDomShim() {
   const originalDocument = globalThis.document;
   const originalWindow = globalThis.window;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const originalNotification = Object.getOwnPropertyDescriptor(globalThis, "Notification");
+  const originalPeerConnection = Object.getOwnPropertyDescriptor(globalThis, "RTCPeerConnection");
+  const originalOpenFile = Object.getOwnPropertyDescriptor(globalThis, "showOpenFilePicker");
+  const originalSaveFile = Object.getOwnPropertyDescriptor(globalThis, "showSaveFilePicker");
+  const originalDirectory = Object.getOwnPropertyDescriptor(globalThis, "showDirectoryPicker");
   globalThis.document = {
     createElement: (tagName) => createElement(tagName),
     addEventListener() {},
@@ -208,10 +229,38 @@ function installDomShim() {
     },
     matchMedia: () => ({ matches: false }),
   };
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      clipboard: { readText() {}, writeText() {} },
+      mediaDevices: { getDisplayMedia() {}, getUserMedia() {}, enumerateDevices() {} },
+      share() {},
+      gpu: {},
+      usb: {},
+      serial: {},
+      hid: {},
+    },
+  });
+  Object.defineProperty(globalThis, "Notification", { configurable: true, value: function Notification() {} });
+  Object.defineProperty(globalThis, "RTCPeerConnection", { configurable: true, value: function RTCPeerConnection() {} });
+  Object.defineProperty(globalThis, "showOpenFilePicker", { configurable: true, value() {} });
+  Object.defineProperty(globalThis, "showSaveFilePicker", { configurable: true, value() {} });
+  Object.defineProperty(globalThis, "showDirectoryPicker", { configurable: true, value() {} });
   return () => {
     globalThis.document = originalDocument;
     globalThis.window = originalWindow;
+    restoreGlobalDescriptor("navigator", originalNavigator);
+    restoreGlobalDescriptor("Notification", originalNotification);
+    restoreGlobalDescriptor("RTCPeerConnection", originalPeerConnection);
+    restoreGlobalDescriptor("showOpenFilePicker", originalOpenFile);
+    restoreGlobalDescriptor("showSaveFilePicker", originalSaveFile);
+    restoreGlobalDescriptor("showDirectoryPicker", originalDirectory);
   };
+}
+
+function restoreGlobalDescriptor(name, descriptor) {
+  if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+  else delete globalThis[name];
 }
 
 function createElement(tagName) {

@@ -66,6 +66,23 @@ const PACKAGE_PREFERENCES_DIR = "/var/lib/dindbos/package-preferences";
 const COMPANION_PERMISSIONS_PATH = "/etc/dindbos/companions.json";
 const WELL_KNOWN_GROUP_IDS = { root: 0, admins: 10, users: 100, packages: 101 };
 const WELL_KNOWN_USER_IDS = { root: 0, guest: 1000 };
+const BROWSER_CAPABILITY_PROBES = [
+  { id: "clipboard.read", api: "navigator.clipboard.readText", broker: "clipboard", device: "/dev/browser/clipboard" },
+  { id: "clipboard.write", api: "navigator.clipboard.writeText", broker: "clipboard", device: "/dev/browser/clipboard" },
+  { id: "notifications.show", api: "Notification", broker: "notifications", device: "/dev/browser/notifications" },
+  { id: "localFile.open", api: "showOpenFilePicker", broker: "local-files", device: "/dev/browser/files" },
+  { id: "localFile.save", api: "showSaveFilePicker", broker: "local-files", device: "/dev/browser/files" },
+  { id: "localDirectory.open", api: "showDirectoryPicker", broker: "local-files", device: "/dev/browser/files" },
+  { id: "screen.capture", api: "navigator.mediaDevices.getDisplayMedia", broker: "screen-capture", device: "/dev/browser/screen" },
+  { id: "media.audioVideo", api: "navigator.mediaDevices.getUserMedia", broker: "media-devices", device: "/dev/browser/media" },
+  { id: "media.enumerate", api: "navigator.mediaDevices.enumerateDevices", broker: "media-devices", device: "/dev/browser/media" },
+  { id: "webShare.share", api: "navigator.share", broker: "web-share", device: "/dev/browser/share" },
+  { id: "webrtc.peerConnection", api: "RTCPeerConnection", broker: "webrtc", device: "/dev/browser/webrtc" },
+  { id: "webgpu.adapter", api: "navigator.gpu", broker: "webgpu", device: "/dev/browser/gpu" },
+  { id: "webusb.device", api: "navigator.usb", broker: "webusb", device: "/dev/browser/usb" },
+  { id: "webserial.port", api: "navigator.serial", broker: "webserial", device: "/dev/browser/serial" },
+  { id: "webhid.device", api: "navigator.hid", broker: "webhid", device: "/dev/browser/hid" },
+];
 
 export class DindbOS {
   constructor(options = {}) {
@@ -772,6 +789,7 @@ export class DindbOS {
     }
     this.ensureDiskPolicyRoots();
     this.writeMountTableProcfs("disk-policy-roots");
+    this.writeBrowserDeviceProcfs("disk-policy-roots");
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
     this.writeSessionStatus();
@@ -2672,6 +2690,84 @@ export class DindbOS {
     return "external-or-virtual";
   }
 
+  browserCapabilityStatus() {
+    const capabilities = BROWSER_CAPABILITY_PROBES.map((probe) => ({
+      ...probe,
+      available: browserApiAvailable(probe.api),
+      permissioned: true,
+      policy: "broker-required",
+    }));
+    return {
+      service: "dindbos-browser-capabilities",
+      runtime: "web",
+      brokerRequired: true,
+      supported: capabilities.filter((capability) => capability.available).length,
+      total: capabilities.length,
+      capabilities,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  deviceTreeStatus() {
+    const capabilityStatus = this.browserCapabilityStatus();
+    const devices = [...new Map(capabilityStatus.capabilities.map((capability) => [capability.device, capability])).keys()]
+      .map((path) => {
+        const capabilities = capabilityStatus.capabilities.filter((capability) => capability.device === path);
+        return {
+          path,
+          type: "browser-api",
+          driver: `${capabilities[0]?.broker || "browser"}-broker`,
+          status: capabilities.some((capability) => capability.available) ? "available" : "unavailable",
+          capabilities: capabilities.map((capability) => capability.id),
+          apis: capabilities.map((capability) => ({
+            id: capability.id,
+            api: capability.api,
+            available: capability.available,
+          })),
+        };
+      });
+    return {
+      service: "dindbos-device-tree",
+      root: "/dev/browser",
+      devices,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  writeBrowserDeviceProcfs(reason = "browser-device-procfs") {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/proc", "root", system);
+    this.ensureSystemDirectory("/dev", "root", system);
+    this.ensureSystemDirectory("/dev/browser", "root", system);
+    const capabilityStatus = { ...this.browserCapabilityStatus(), reason: String(reason || "browser-device-procfs") };
+    const deviceTree = { ...this.deviceTreeStatus(), reason: String(reason || "browser-device-procfs") };
+    this.fs.writeOrCreateFile("/proc/browser-capabilities", `${formatBrowserCapabilities(capabilityStatus.capabilities)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "text/plain",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/browser-capabilities.json", `${JSON.stringify(capabilityStatus, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/device-tree", `${formatDeviceTree(deviceTree.devices)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "text/plain",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/device-tree.json", `${JSON.stringify(deviceTree, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    return { capabilities: capabilityStatus, deviceTree };
+  }
+
   compatibilitySnapshot() {
     return compatibilitySnapshot(this);
   }
@@ -3483,6 +3579,42 @@ function normalizeCompanionCapabilities(capabilities) {
 function hasCompanionCapability(capabilities, capability) {
   const requested = String(capability || "").trim().toLowerCase();
   return normalizeCompanionCapabilities(capabilities).some((entry) => entry.toLowerCase() === requested);
+}
+
+function browserApiAvailable(path) {
+  const parts = String(path || "").split(".").filter(Boolean);
+  if (!parts.length) return false;
+  let cursor = globalThis;
+  for (const part of parts) {
+    if (cursor == null || !(part in Object(cursor))) return false;
+    cursor = cursor[part];
+  }
+  return typeof cursor === "function" || Boolean(cursor);
+}
+
+function formatBrowserCapabilities(capabilities = []) {
+  return [
+    "id status broker device api",
+    ...capabilities.map((capability) => [
+      capability.id,
+      capability.available ? "available" : "unavailable",
+      capability.broker,
+      capability.device,
+      capability.api,
+    ].join(" ")),
+  ].join("\n");
+}
+
+function formatDeviceTree(devices = []) {
+  return [
+    "path status driver capabilities",
+    ...devices.map((device) => [
+      device.path,
+      device.status,
+      device.driver,
+      device.capabilities.join(",") || "-",
+    ].join(" ")),
+  ].join("\n");
 }
 
 function sanitizeIdentifier(value, fallback) {
