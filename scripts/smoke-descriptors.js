@@ -15,7 +15,7 @@ const app = {
   id: "fd-smoke",
   name: "FD Smoke",
   manifest: {
-    capabilities: [],
+    capabilities: ["clipboard.read", "clipboard.write"],
     fileSystem: {
       read: ["/home/guest"],
       write: ["/home/guest"],
@@ -161,6 +161,24 @@ result = os.syscall("fd.read", { fd: result.value.fd, length: 9 }, context);
 assert(result.ok && result.value.data === "clipboard" && result.value.bytes === 9, `fd.read /dev/clipboard first chunk mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.read", { fd: result.value.fd, length: 64 }, context);
 assert(result.ok && result.value.data === " text", `fd.read /dev/clipboard second chunk mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("clipboard.write", { text: "syscall clip" }, context);
+assert(result.ok && result.value.bytes === 12, `clipboard.write syscall mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("clipboard.read", {}, context);
+assert(result.ok && result.value.text === "syscall clip", `clipboard.read syscall mismatch: ${JSON.stringify(result)}`);
+const ledger = os.privacyLedgerStatus({ capability: "clipboard.write" });
+assert(ledger.some((entry) => entry.pid === process.pid && entry.broker === "clipboard" && entry.bytes === 12), "privacy ledger missing clipboard write entry");
+assert(JSON.parse(os.fs.readFile("/proc/privacy-ledger.json")).entries.some((entry) => entry.capability === "clipboard.read" && entry.pid === process.pid), "/proc/privacy-ledger.json missing clipboard read entry");
+assert(os.fs.readFile("/var/log/dindbos/privacy-ledger.jsonl").includes('"capability":"clipboard.write"'), "privacy ledger jsonl missing clipboard write entry");
+const deniedClipboardProcess = os.processes.spawn({
+  id: "fd-clipboard-denied",
+  name: "FD Clipboard Denied",
+  manifest: { capabilities: [], fileSystem: { read: ["/home/guest"], write: ["/home/guest"] } },
+}, { cwd: "/home/guest" });
+const deniedClipboardContext = { ...context, process: deniedClipboardProcess };
+result = os.syscall("fd.open", { path: "/dev/clipboard", flags: "w" }, deniedClipboardContext);
+assert(result.ok, `fd.open /dev/clipboard denied setup mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.write", { fd: result.value.fd, data: "denied" }, deniedClipboardContext);
+assert(!result.ok && result.error.code === "EACCES", `clipboard broker did not deny missing write capability: ${JSON.stringify(result)}`);
 
 result = os.syscall("fd.open", { path: "/dev/tty", flags: "r+" }, context);
 assert(result.ok, `fd.open /dev/tty mismatch: ${JSON.stringify(result)}`);
