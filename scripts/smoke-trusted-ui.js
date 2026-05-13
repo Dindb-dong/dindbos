@@ -28,9 +28,12 @@ let result = os.syscall("trustedPrompt.create", {
 assert(result.ok, `trustedPrompt.create mismatch: ${JSON.stringify(result)}`);
 const prompt = result.value;
 assert(prompt.objectId && prompt.handleId && prompt.requesterHandleId, "trusted prompt did not expose object/control/requester handles");
+assert(prompt.compositorSurfaceId && prompt.compositorOwned && prompt.captureProtected, "trusted prompt did not expose compositor-owned capture-protected surface");
 assert(os.objects.get(prompt.objectId)?.type === "trusted-prompt", "trusted prompt kernel object type mismatch");
 assert(os.objects.getHandle(prompt.requesterHandleId)?.ownerPid === process.pid, "trusted prompt requester handle owner mismatch");
 assert(os.objects.getHandle(prompt.handleId)?.ownerPid === 0, "trusted prompt control handle owner mismatch");
+const compositorPrompt = os.windows.compositorStatus().trustedSurfaces.find((surface) => surface.promptId === prompt.id);
+assert(compositorPrompt?.compositorOwned && compositorPrompt?.captureProtected, "compositor did not own trusted prompt surface");
 assert(os.fs.readFile("/proc/trusted-ui").includes(prompt.id), "/proc/trusted-ui did not list prompt");
 assert(os.fs.readFile("/var/log/dindbos/trusted-ui.log").includes(`prompt=${prompt.id} action=created`), "trusted prompt creation audit missing");
 
@@ -41,6 +44,7 @@ assert(result.ok && result.value.status === "granted", `admin trusted prompt gra
 assert(os.objects.get(prompt.objectId)?.status === "revoked", "trusted prompt decision did not revoke object");
 assert(os.objects.get(prompt.objectId)?.revocationReason === "trusted-prompt-granted", "trusted prompt grant revocation reason mismatch");
 assert(os.objects.getHandle(prompt.handleId)?.status === "revoked", "trusted prompt decision did not revoke control handle");
+assert(!os.windows.compositorStatus().trustedSurfaces.some((surface) => surface.promptId === prompt.id), "trusted prompt surface survived decision cleanup");
 assert(os.fs.readFile("/var/log/dindbos/trusted-ui.log").includes(`prompt=${prompt.id} action=granted`), "trusted prompt grant audit missing");
 
 result = os.syscall("trustedPrompt.create", {

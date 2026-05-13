@@ -87,11 +87,12 @@ Done:
 - Activity Monitor shows container isolation badges and per-process container health.
 - Settings surfaces package-container security history from `/var/log/dindbos/package-container.log`.
 - Iframe package SDK covers clock, entropy, fs, fd, env, apps, packages, storage, mounts, net, timers, trusted prompts, and processes through the postMessage syscall bridge.
+- Trusted prompts now render as compositor-owned, capture-protected surfaces that ordinary app windows cannot cover, embed, or capture.
+- Surface capture policy denies desktop and cross-window captures while trusted UI is visible.
 
 Next:
 
-- Move trusted prompts into compositor-owned surfaces that ordinary apps cannot cover, embed, or spoof.
-- Add capture-denial tests around trusted surfaces.
+- Add visible trusted prompt controls to the permission-specific brokers as those brokers land.
 
 ### 2. Browser API Brokers And Device Tree
 

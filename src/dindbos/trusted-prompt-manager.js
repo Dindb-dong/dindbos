@@ -34,11 +34,22 @@ export class TrustedPromptManager {
       objectId: "",
       handleId: "",
       requesterHandleId: "",
+      compositorSurfaceId: "",
+      compositorOwned: true,
+      captureProtected: true,
       timeoutId: null,
     };
     if (!record.capability) throw promptError("EINVAL", "trusted prompt: capability is required");
     this.registerPromptObject(process, record);
     this.prompts.set(id, record);
+    const surface = this.os.windows?.openTrustedPrompt?.(record, {
+      onDecision: (decision) => this.decide(record.id, decision, {
+        principal: this.os.permissions.systemPrincipal(),
+        reason: "trusted-ui-surface",
+      }),
+    });
+    record.compositorSurfaceId = surface?.id || "";
+    this.syncPromptObject(record);
     if (this.setTimeout) {
       record.timeoutId = this.setTimeout(() => this.expire(id), timeoutMs);
       record.timeoutId?.unref?.();
@@ -65,6 +76,7 @@ export class TrustedPromptManager {
     record.decidedAt = new Date().toISOString();
     this.syncPromptObject(record);
     this.revokePromptObject(record, `trusted-prompt-${normalized}`);
+    this.os.windows?.closeTrustedPrompt?.(record.compositorSurfaceId || record.id, normalized);
     this.audit(record, normalized);
     this.writeProcfs();
     return publicPrompt(record);
@@ -81,6 +93,7 @@ export class TrustedPromptManager {
     record.decidedAt = new Date().toISOString();
     this.syncPromptObject(record);
     this.revokePromptObject(record, reason);
+    this.os.windows?.closeTrustedPrompt?.(record.compositorSurfaceId || record.id, reason);
     this.audit(record, "expired");
     this.writeProcfs();
     return publicPrompt(record);
@@ -238,6 +251,9 @@ function publicPrompt(record) {
     objectId: record.objectId,
     handleId: record.handleId,
     requesterHandleId: record.requesterHandleId,
+    compositorSurfaceId: record.compositorSurfaceId,
+    compositorOwned: Boolean(record.compositorOwned),
+    captureProtected: Boolean(record.captureProtected),
   };
 }
 
@@ -252,6 +268,9 @@ function promptMetadata(record) {
     decision: record.decision,
     reason: record.reason,
     expiresAt: record.expiresAt,
+    compositorSurfaceId: record.compositorSurfaceId,
+    compositorOwned: Boolean(record.compositorOwned),
+    captureProtected: Boolean(record.captureProtected),
   };
 }
 
