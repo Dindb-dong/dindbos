@@ -106,12 +106,12 @@ Browser.app refuses to connect when port `8787` is occupied by a non-DindbOS ser
 DindbOS.js now has browser-native OS primitives:
 
 - `ProcessManager` assigns PIDs to launched apps and exposes `ps`/`kill`.
-- `Activity Monitor.app` reads the process table, process logs, and `/proc/<pid>` status files, then can kill or restart apps.
+- `Activity Monitor.app` reads the process table, process logs, `/proc/<pid>` status files, and container diagnostics, then can kill or restart apps.
 - `AppRegistry` normalizes app manifests and writes them to `/usr/share/dindbos/manifests`.
 - `PackageManager` installs local, remote, or registry-backed `dindbos.app.json` manifests into `/opt/<package>` and `/usr/share/applications/*.app`.
 - `NpmInstaller` fetches npm registry metadata and tarballs, verifies integrity, and writes pure JavaScript packages into VFS-backed `node_modules`.
 - `NodeCompat` runs CommonJS files with `require()`, package resolution, and VFS-backed `fs`, `path`, `process`, and `Buffer` facades.
-- `AppSandbox` gives each app a scoped runtime instead of the raw OS object.
+- `AppSandbox` gives each app a scoped runtime instead of the raw OS object; the page entrypoint does not expose the raw runtime on `window`.
 - `PermissionPolicy` enforces owner/group/other mode bits for VFS reads and writes.
 - `ShellSession` handles `PATH`, environment variables, pipes, redirection, and shell builtins.
 - `PersistentStorage` saves the VFS snapshot to IndexedDB with localStorage and memory fallback; `resetfs` clears it and reloads.
@@ -219,9 +219,11 @@ npm run smoke:browser-addresses
 npm run smoke:browser-client
 npm run smoke:browserd
 npm run smoke:browserd-failures
+npm run qa:visual
 ```
 
 The browser companion smoke starts real Chromium through CDP and fails unless it receives a real JPEG frame. The npm/node smoke fetches a real package from the npm registry and runs it through NodeCompat.
+`npm run qa:visual` uses Playwright's bundled Chrome for Testing by default, launches it headless with low-background-work flags, and disables CSS motion for screenshots. Set `CHROME_PATH` only when debugging a specific installed Chrome build, or `DINDBOS_QA_DISABLE_MOTION=0` when animation fidelity is the thing being tested.
 
 ## Troubleshooting
 
@@ -253,6 +255,16 @@ curl http://127.0.0.1:8787/health
 ```
 
 If `browserd` cannot find Chrome automatically, set `CHROME_PATH`. If the health check does not return `service: "dindbos-browserd"`, stop the process using port `8787` or start `browserd` with `--port`.
+
+Visual QA CPU spikes:
+
+```bash
+npm run qa:visual
+CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" npm run qa:visual
+DINDBOS_QA_DISABLE_MOTION=0 npm run qa:visual
+```
+
+The default visual QA path avoids the user's installed Chrome app. If CPU stays high after QA exits, check for unrelated lingering Playwright or Vite processes from other workspaces before blaming DindbOS.
 
 npm package limits:
 

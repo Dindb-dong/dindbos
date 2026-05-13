@@ -109,6 +109,8 @@ Package apps with `app.entry` load `/opt/<package>/<entry>` as an ES module and 
 
 The first successful package entry launch records `lifecycle.firstRunAt` and emits `app:first-run`/`package:first-run` once. Later launches do not repeat the first-run event.
 
+Each process also records its current runtime container boundary. `/proc/<pid>/container.json`, `/proc/<pid>/status`, `/proc/processes.json`, and the process kernel-object metadata report whether the process is running in the trusted same-realm desktop, a package same-realm sandbox, or a worker-backed process executor. Same-realm package apps currently expose `nextIsolationTarget: "origin-isolated-iframe-postmessage"` so diagnostics stay honest until full iframe/postMessage isolation lands.
+
 ### Ready
 
 The runtime emits `app:ready` when the window manager marks the process ready. An app is considered ready when its render or mount function has produced usable DOM.

@@ -383,16 +383,19 @@ Why next:
 
 Implementation cuts:
 
+- Already present: first-pass same-realm hardening removes the raw `window.dindbos` runtime escape hatch, makes minimal app manifests deny filesystem access by default, and blocks undeclared package `imports.url()` module loads.
+- Already present: process container diagnostics expose same-realm, package-sandbox, and worker-backed execution boundaries through `/proc/<pid>/container.json`, `/proc/<pid>/status`, `/proc/processes.json`, and process kernel-object metadata.
 - Add container modes for trusted same-runtime app, sandboxed iframe, credentialless iframe, worker-rendered surface, and companion-rendered surface.
 - Move containerized apps onto a postMessage syscall bridge with schema validation, capability filtering, rate limits, trace ids, and audit logs.
 - Add CSP, Trusted Types, import-map, and package module loading policy for containerized apps.
 - Add heartbeat, hang detection, crash isolation, and cleanup for sandboxed app containers.
 - Add compositor-owned trusted surfaces for login, lock/unlock, keychain unlock, package install trust, permission grant, companion pairing, remote admin approval, destructive operations, and update activation.
 - Prevent ordinary apps from covering, embedding, capturing, or forging trusted surfaces; route sensitive grant creation only through trusted UI or managed policy.
-- Add `/proc/<pid>/container.json`, `/proc/trusted-ui`, Settings security history, and Activity Monitor isolation badges.
+- Add `/proc/trusted-ui`, Settings security history, and Activity Monitor isolation badges.
 
 Verification:
 
+- Already present: `npm run smoke:runtime-boundary` verifies the entrypoint does not expose the raw runtime globally, minimal manifests do not receive implicit root read access, explicit scopes are preserved, and package import URL denials remain in place; `npm run smoke:processes` verifies trusted same-realm and worker container diagnostics; `npm run smoke:packages` verifies package-sandbox container diagnostics and undeclared `imports.url()` denial at package runtime.
 - Add smoke coverage for sandboxed app launch, allowed syscall bridge call, denied raw runtime/DOM access, heartbeat timeout, trusted prompt grant/deny/timeout, spoofed dialog denial, and capture denial around trusted surfaces.
 - Add tests proving an app cannot read another window, keychain secret, package root, local mount, or trusted prompt record without a declared grant.
 
@@ -2104,7 +2107,7 @@ Implementation tasks:
 - Add a compositor surface contract so sandboxed apps do not need direct access to other app DOM nodes or desktop internals.
 - Add CSP, Trusted Types, import-map, and module loading policy for package app containers.
 - Add crash, hang, and heartbeat detection for isolated app containers.
-- Add `/proc/<pid>/container.json`, Settings security view, and Activity Monitor isolation badges.
+- Extend existing `/proc/<pid>/container.json` diagnostics into Settings security views and Activity Monitor isolation badges.
 
 Verification:
 
@@ -5060,6 +5063,7 @@ Already present:
 - `npm run smoke:browser-client` verifies the Browser.app companion reconnect contract after disconnect.
 - `npm run smoke:browserd-failures` verifies missing Chrome, CDP startup failure, and WebSocket drop behavior.
 - `npm run smoke:browser-addresses` verifies Browser.app address normalization and supported URL scheme policy.
+- `npm run qa:visual` uses Playwright's bundled Chrome for Testing by default, not the user's installed Chrome.app, with reduced motion and low-background-work launch flags for routine screenshot QA.
 - `npm run smoke:storage` verifies VFS text and binary read/write persistence through snapshot reload.
 - `npm run smoke:persistent-storage` verifies localStorage-style snapshot fallback and OPFS write-failure fallback preserve binary bytes.
 - `npm run smoke:files` verifies Files.app archive export/import preserves nested binary bytes.
@@ -5324,6 +5328,7 @@ Already present:
 - `/proc/processes.json`.
 - `/proc/<pid>/status`.
 - `/proc/<pid>/cmdline`.
+- `/proc/<pid>/container.json`.
 - `/proc/<pid>/log`.
 - `npm run smoke:processes` verifies process log reads, `/proc` cleanup, kill window cleanup, and restart relaunch flow.
 - Activity Monitor supports app/state filtering plus PID, app, state, uptime, and runtime sorting; `npm run smoke:processes` verifies the filter/sort logic.
@@ -5333,6 +5338,7 @@ Already present:
 - `docs/app-lifecycle.md` defines crash recovery policy: isolate the crash, keep diagnostics, avoid automatic restart, and let Activity Monitor perform manual restart.
 - `ProcessManager.restart(pid)` centralizes kill -> relaunch behavior so Activity Monitor and sandboxed process managers use the same restart path; `npm run smoke:processes` verifies restart closes the old window, removes stale `/proc`, and relaunches by app id.
 - Parent/child process metadata is recorded when sandboxed apps launch or open other apps; Activity Monitor, `/proc/<pid>/status`, and `/proc/processes.json` expose parent and child PIDs, covered by `npm run smoke:processes`.
+- Process container metadata records same-realm, package-sandbox, and worker execution boundaries in `/proc/<pid>/container.json`, `/proc/<pid>/status`, `/proc/processes.json`, and process object metadata, covered by `npm run smoke:processes` and `npm run smoke:packages`.
 
 Completion criteria:
 

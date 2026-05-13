@@ -16,7 +16,7 @@ Stable app-facing surfaces:
 - `os.packages`: package metadata and package management APIs when granted.
 - `imports.npm(name)`: declared browser-safe npm dependency loader.
 
-Private runtime internals, direct companion protocols, unrestricted browser storage, and undeclared host/browser APIs are not compatibility guarantees.
+Private runtime internals, direct companion protocols, unrestricted browser storage, and undeclared host/browser APIs are not compatibility guarantees. The raw DindbOS runtime is not exposed as `window.dindbos`; package code must use the sandbox object, SDK, or syscall ABI it receives at launch.
 
 ## Permissions
 
@@ -50,7 +50,7 @@ Permission failures should be handled as normal runtime errors. DindbOS reports 
 
 ## Filesystem Scopes
 
-Filesystem scopes are path-based and deny by default for writes.
+Filesystem scopes are path-based and deny by default.
 
 - Read access is allowed inside any declared read or write scope.
 - Write access is allowed only inside declared write scopes.
@@ -71,7 +71,7 @@ The same permission checks apply through `sdk`, `os.syscall()`, and high-level `
 
 ## Process Lifecycle
 
-Launching a package app creates a DindbOS process with a PID, manifest, app id, cwd, user, logs, and `/proc` diagnostics.
+Launching a package app creates a DindbOS process with a PID, manifest, app id, cwd, user, logs, container metadata, and `/proc` diagnostics.
 
 Relevant lifecycle events include:
 
@@ -88,7 +88,7 @@ Relevant lifecycle events include:
 - `app:uninstall-cleanup`
 - `app:uninstall`
 
-Processes can be inspected through Activity Monitor, `/proc/processes`, `/proc/processes.json`, `/proc/<pid>/status`, `/proc/<pid>/fd.json`, and `/proc/<pid>/syscalls`.
+Processes can be inspected through Activity Monitor, `/proc/processes`, `/proc/processes.json`, `/proc/<pid>/status`, `/proc/<pid>/container.json`, `/proc/<pid>/fd.json`, and `/proc/<pid>/syscalls`.
 
 App render crashes are isolated to the process. The desktop remains alive, a crash panel is rendered in the app window, and crash reports are written under `/var/log/dindbos`.
 
