@@ -18,6 +18,11 @@ const LOCAL_REGISTRY_PATH = "/opt/dindbos/registry/index.json";
 const NPM_ESM_BASE_URL = "https://esm.sh";
 const MAX_REMOTE_MANIFEST_BYTES = 512 * 1024;
 const MAX_REMOTE_FILE_BYTES = 1024 * 1024;
+const PACKAGE_CONTAINER_AUDIT_LOG = "/var/log/dindbos/package-container.log";
+const MAX_CONTAINER_MESSAGE_BYTES = 64 * 1024;
+const MAX_CONTAINER_SYSCALL_RATE = 120;
+const CONTAINER_RATE_WINDOW_MS = 1000;
+const CONTAINER_SYSCALL_PATTERN = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*){0,4}$/i;
 
 const SAMPLE_PACKAGE = {
   id: "hello-notes",
@@ -1883,51 +1888,113 @@ async function mountPackageIframeEntrypoint(content, runtime, record, windowApi,
 }
 
 function installIframeBridge({ token, frame, runtime, windowApi, process }) {
+  const rate = { windowStartedAt: Date.now(), count: 0 };
   const listener = async (event) => {
     if (event.source !== frame.contentWindow) return;
     const message = event.data || {};
     if (message.token !== token) return;
+    const traceId = `container-${process?.pid || 0}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     if (message.type === "container-ready") {
       frame.dataset.containerStatus = "ready";
+      auditPackageContainer(runtime, process, { traceId, type: "ready", status: "ok" });
       return;
     }
     if (message.type === "container-mounted") {
       frame.dataset.containerStatus = "mounted";
+      auditPackageContainer(runtime, process, { traceId, type: "mounted", status: "ok" });
       return;
     }
     if (message.type === "container-error") {
       frame.dataset.containerStatus = "error";
       frame.dataset.containerError = String(message.message || "");
       runtime.os?.processes?.log?.(process?.pid, `container-error ${message.message || ""}`, "error");
+      auditPackageContainer(runtime, process, { traceId, type: "error", status: "error", message: String(message.message || "") });
       return;
     }
     if (message.type === "window.setTitle") {
       windowApi?.setTitle?.(String(message.title || ""));
+      auditPackageContainer(runtime, process, { traceId, type: "window.setTitle", status: "ok" });
       return;
     }
     if (message.type !== "syscall") return;
     const requestId = String(message.requestId || "");
     const name = String(message.name || "");
+    const validation = validateContainerSyscallMessage(message, rate);
+    if (!validation.ok) {
+      const result = containerBridgeError(validation.code, validation.message, name || "unknown", traceId);
+      auditPackageContainer(runtime, process, { traceId, type: "syscall", syscall: name, status: "denied", code: validation.code, message: validation.message });
+      event.source?.postMessage?.({ token, type: "syscall-result", requestId, traceId, result }, "*");
+      return;
+    }
     const args = cloneJson(message.args || {});
     let result;
     try {
       result = typeof runtime.syscallAsync === "function"
         ? await runtime.syscallAsync(name, args)
         : runtime.syscall(name, args);
+      auditPackageContainer(runtime, process, { traceId, type: "syscall", syscall: name, status: result?.ok ? "ok" : "error", code: result?.error?.code || "" });
     } catch (error) {
-      result = {
-        ok: false,
-        error: {
-          code: "EFAULT",
-          message: error?.message || String(error),
-          syscall: name || "unknown",
-        },
-      };
+      result = containerBridgeError("EFAULT", error?.message || String(error), name || "unknown", traceId);
+      auditPackageContainer(runtime, process, { traceId, type: "syscall", syscall: name, status: "error", code: "EFAULT", message: error?.message || String(error) });
     }
-    event.source?.postMessage?.({ token, type: "syscall-result", requestId, result }, "*");
+    event.source?.postMessage?.({ token, type: "syscall-result", requestId, traceId, result }, "*");
   };
   window.addEventListener("message", listener);
   return () => window.removeEventListener("message", listener);
+}
+
+function validateContainerSyscallMessage(message, rate) {
+  if (!message || typeof message !== "object") return { ok: false, code: "EINVAL", message: "container bridge: message must be an object" };
+  const requestId = String(message.requestId || "");
+  const name = String(message.name || "");
+  if (!/^[A-Za-z0-9._:-]{1,96}$/.test(requestId)) return { ok: false, code: "EINVAL", message: "container bridge: invalid request id" };
+  if (!CONTAINER_SYSCALL_PATTERN.test(name)) return { ok: false, code: "EINVAL", message: "container bridge: invalid syscall name" };
+  const size = byteLength(JSON.stringify({ name, args: message.args || {} }));
+  if (size > MAX_CONTAINER_MESSAGE_BYTES) return { ok: false, code: "E2BIG", message: `container bridge: message exceeds ${MAX_CONTAINER_MESSAGE_BYTES} bytes` };
+  const now = Date.now();
+  if (now - rate.windowStartedAt > CONTAINER_RATE_WINDOW_MS) {
+    rate.windowStartedAt = now;
+    rate.count = 0;
+  }
+  rate.count += 1;
+  if (rate.count > MAX_CONTAINER_SYSCALL_RATE) return { ok: false, code: "ERATELIMIT", message: "container bridge: syscall rate limit exceeded" };
+  return { ok: true };
+}
+
+function containerBridgeError(code, message, syscall, traceId) {
+  return {
+    ok: false,
+    error: {
+      code,
+      message,
+      syscall,
+      traceId,
+    },
+  };
+}
+
+function auditPackageContainer(runtime, process, entry = {}) {
+  const os = runtime?.os;
+  if (!os?.fs || !os?.permissions) return null;
+  const system = os.permissions.systemPrincipal();
+  ensureRuntimeDirectory(os, "/var/log/dindbos", system);
+  const payload = {
+    at: new Date().toISOString(),
+    pid: process?.pid || 0,
+    appId: process?.appId || "",
+    packageId: process?.manifest?.namespace?.packageId || "",
+    namespace: process?.manifest?.namespace?.processGroup || "",
+    ...entry,
+  };
+  const line = `${JSON.stringify(payload)}\n`;
+  if (os.fs.exists(PACKAGE_CONTAINER_AUDIT_LOG)) os.fs.appendFile(PACKAGE_CONTAINER_AUDIT_LOG, line, "/", system);
+  else os.fs.writeOrCreateFile(PACKAGE_CONTAINER_AUDIT_LOG, line, "/", {
+    mime: "application/jsonl",
+    owner: "root",
+    group: "root",
+    permissions: "-rw-r--r--",
+  }, system);
+  return payload;
 }
 
 function createImportFacade(record) {
@@ -2092,6 +2159,19 @@ function randomToken() {
 
 function safeScriptJson(value) {
   return JSON.stringify(value).replaceAll("<", "\\u003c").replaceAll(">", "\\u003e").replaceAll("&", "\\u0026");
+}
+
+function ensureRuntimeDirectory(os, path, principal) {
+  const normalized = os.fs.normalize(path);
+  const parent = os.fs.dirname(normalized);
+  if (parent && parent !== normalized && !os.fs.exists(parent)) ensureRuntimeDirectory(os, parent, principal);
+  if (!os.fs.exists(normalized)) {
+    os.fs.createDirectory(normalized, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "drwxr-xr-x",
+    }, principal);
+  }
 }
 
 function resolvePackageCliEntry(os, record, requestedEntry = "") {
