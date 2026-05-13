@@ -219,6 +219,7 @@ export class DindbOS {
     this.ipcEndpoints = new Map();
     this.virtualMounts = new Map();
     this.overlayMounts = new Map();
+    this.privacyLedger = [];
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1", user: this.session.user });
@@ -2706,6 +2707,111 @@ export class DindbOS {
       capabilities,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  readClipboard(process = null, options = {}) {
+    this.assertBrowserCapability(process, "clipboard.read");
+    const text = String(this.clipboard?.readText?.() ?? "");
+    this.recordPrivacyAccess({
+      process,
+      capability: "clipboard.read",
+      broker: "clipboard",
+      device: "/dev/browser/clipboard",
+      operation: "read",
+      bytes: byteLength(text),
+      source: options.source || "clipboard",
+      target: options.target || "/dev/clipboard",
+    });
+    return { text, bytes: byteLength(text) };
+  }
+
+  writeClipboard(process = null, text = "", options = {}) {
+    this.assertBrowserCapability(process, "clipboard.write");
+    const value = String(text ?? "");
+    const result = this.clipboard?.writeText?.(value) || { bytes: byteLength(value) };
+    this.recordPrivacyAccess({
+      process,
+      capability: "clipboard.write",
+      broker: "clipboard",
+      device: "/dev/browser/clipboard",
+      operation: "write",
+      bytes: Number(result.bytes || byteLength(value)),
+      source: options.source || "clipboard",
+      target: options.target || "/dev/clipboard",
+    });
+    return { ...result, bytes: Number(result.bytes || byteLength(value)) };
+  }
+
+  assertBrowserCapability(process = null, capability = "") {
+    const requested = String(capability || "").trim();
+    if (!requested) throw codedError("EINVAL", "browser capability is required");
+    const capabilities = [
+      ...(process?.manifest?.capabilities || []),
+      ...(process?.manifest?.permissions?.capabilities || []),
+    ].map(String);
+    if (capabilities.includes(requested)) return true;
+    throw codedError("EACCES", `browser broker: ${requested}: capability denied`);
+  }
+
+  recordPrivacyAccess(event = {}) {
+    const process = event.process || {};
+    const entry = {
+      id: `privacy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      at: new Date().toISOString(),
+      capability: String(event.capability || ""),
+      broker: String(event.broker || ""),
+      device: String(event.device || ""),
+      operation: String(event.operation || ""),
+      source: String(event.source || ""),
+      target: String(event.target || ""),
+      bytes: Number(event.bytes || 0),
+      pid: Number(process.pid || 0),
+      appId: String(process.appId || ""),
+      packageId: String(process.manifest?.namespace?.packageId || ""),
+      user: String(process.user || this.session?.user || "guest"),
+      windowId: String(event.windowId || process.windowId || ""),
+      expiresAt: String(event.expiresAt || ""),
+    };
+    this.privacyLedger.push(entry);
+    this.writePrivacyLedgerProcfs();
+    return { ...entry };
+  }
+
+  privacyLedgerStatus(filters = {}) {
+    const limit = Math.max(1, Math.min(200, Number(filters.limit || 100)));
+    return this.privacyLedger
+      .filter((entry) => filters.capability === undefined || entry.capability === String(filters.capability || ""))
+      .filter((entry) => filters.pid === undefined || entry.pid === Number(filters.pid || 0))
+      .slice(-limit)
+      .map((entry) => ({ ...entry }));
+  }
+
+  writePrivacyLedgerProcfs() {
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/proc", "root", system);
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/log", "root", system);
+    this.ensureSystemDirectory("/var/log/dindbos", "root", system);
+    const entries = this.privacyLedgerStatus({ limit: 200 });
+    const payload = `${JSON.stringify({
+      service: "dindbos-privacy-ledger",
+      count: entries.length,
+      entries,
+      updatedAt: new Date().toISOString(),
+    }, null, 2)}\n`;
+    this.fs.writeOrCreateFile("/proc/privacy-ledger.json", payload, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/var/log/dindbos/privacy-ledger.jsonl", `${entries.map((entry) => JSON.stringify(entry)).join("\n")}${entries.length ? "\n" : ""}`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/jsonl",
+    }, system);
+    return entries;
   }
 
   deviceTreeStatus() {

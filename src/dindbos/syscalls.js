@@ -55,6 +55,9 @@ export class SyscallDispatcher {
   dispatch(name, args, context) {
     if (name === "clock.now") return { iso: new Date().toISOString(), ms: Date.now() };
     if (name === "entropy.randomBytes") return this.randomBytes(args);
+    if (name === "clipboard.read") return this.clipboardRead(context);
+    if (name === "clipboard.write") return this.clipboardWrite(args, context);
+    if (name === "privacy.ledger") return this.privacyLedger(args);
     if (name === "fs.exists") return this.fsExists(args, context);
     if (name === "fs.stat") return this.fsStat(args, context);
     if (name === "fs.readText") return this.fsReadText(args, context);
@@ -114,6 +117,24 @@ export class SyscallDispatcher {
       for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
     }
     return [...bytes];
+  }
+
+  clipboardRead(context) {
+    const process = this.requireProcess(context);
+    return this.os.readClipboard(process, { source: "syscall", target: "/dev/browser/clipboard" });
+  }
+
+  clipboardWrite(args, context) {
+    const process = this.requireProcess(context);
+    return this.os.writeClipboard(process, String(args.text ?? args.value ?? ""), { source: "syscall", target: "/dev/browser/clipboard" });
+  }
+
+  privacyLedger(args = {}) {
+    return this.os.privacyLedgerStatus?.({
+      capability: args.capability,
+      pid: args.pid,
+      limit: args.limit,
+    }) || [];
   }
 
   fsExists(args, context) {

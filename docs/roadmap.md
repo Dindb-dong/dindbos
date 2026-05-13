@@ -101,10 +101,11 @@ Goal: make browser-native power visible, permissioned, and revocable.
 Done:
 
 - `/proc/browser-capabilities` and `/proc/device-tree` expose browser API probes, broker ownership, and `/dev/browser/*` device mappings.
+- Clipboard read/write now routes through declared `clipboard.read`/`clipboard.write` grants and records privacy ledger entries in `/proc/privacy-ledger.json`.
 
 Next:
 
-- Broker clipboard, notifications, local files, screen capture, media devices, Web Share, WebRTC, WebGPU, WebUSB, WebSerial, WebHID, and related APIs through declared grants.
+- Broker notifications, local files, screen capture, media devices, Web Share, WebRTC, WebGPU, WebUSB, WebSerial, WebHID, and related APIs through declared grants.
 - Add a privacy ledger for sensitive access by package id, process id, user, window, capability, and expiry.
 - Add Settings permission panels and `doctor browser`.
 

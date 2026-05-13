@@ -583,7 +583,7 @@ export class DescriptorManager {
 
   readDeviceDescriptor(process, descriptor, length) {
     if (descriptor.path === "/dev/clipboard") {
-      const content = String(this.os.clipboard?.readText?.() ?? "");
+      const content = String(this.os.readClipboard?.(process, { source: "fd", target: descriptor.path, fd: descriptor.fd })?.text ?? "");
       const offset = Number(descriptor.offset || 0);
       const data = content.slice(offset, offset + length);
       descriptor.offset = offset + data.length;
@@ -615,7 +615,7 @@ export class DescriptorManager {
 
   writeDeviceDescriptor(process, descriptor, data) {
     if (descriptor.path === "/dev/clipboard") {
-      const result = this.os.clipboard?.writeText?.(data) || { bytes: byteLength(data) };
+      const result = this.os.writeClipboard?.(process, data, { source: "fd", target: descriptor.path, fd: descriptor.fd }) || { bytes: byteLength(data) };
       descriptor.offset = 0;
       return Number(result.bytes || byteLength(data));
     }
