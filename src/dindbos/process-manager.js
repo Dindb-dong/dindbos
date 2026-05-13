@@ -26,6 +26,12 @@ export class ProcessManager {
       ...(app.manifest || {}),
       namespace: cloneJson(context.namespace || app.manifest?.namespace || parent?.manifest?.namespace || null),
     };
+    const container = normalizeProcessContainer(context.container || manifest.container || app.container || null, {
+      app,
+      context,
+      manifest,
+      parent,
+    });
     const process = {
       pid: this.nextPid++,
       parentPid,
@@ -44,6 +50,7 @@ export class ProcessManager {
       credentials: cloneJson(credentials),
       cwd: context.cwd || this.os.session.home || "/",
       manifest,
+      container,
       context,
       runtime: context.runtime || app.manifest?.runtime || "javascript",
       executionBackend: context.executionBackend || "main-thread",
@@ -393,6 +400,7 @@ export class ProcessManager {
       endedAt: process.endedAt || "",
       lastActiveAt: process.lastActiveAt || "",
       crashReportPath: process.crashReportPath || "",
+      container: cloneJson(process.container || {}),
     };
   }
 
@@ -409,6 +417,7 @@ export class ProcessManager {
       state: process.state,
       runtime: process.runtime || "",
       namespace: process.manifest?.namespace || null,
+      container: process.container || null,
       executionBackend: process.executionBackend || "",
       executorState: process.executorState || "",
       executorKind: process.executorKind || "",
@@ -516,6 +525,12 @@ export class ProcessManager {
       group: "root",
       permissions: "-rw-r--r--",
     }, system);
+    this.os.fs.writeOrCreateFile(`${path}/container.json`, `${JSON.stringify(process.container || {}, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
     this.os.fs.writeOrCreateFile(`${path}/log`, `${this.readLog(process.pid)}\n`, "/", {
       mime: "text/plain",
       owner: "root",
@@ -607,6 +622,7 @@ function estimateRuntimeBytes(process, logs) {
     appId: process.appId,
     context: process.context,
     manifest: process.manifest,
+    container: process.container,
     logs,
   }));
 }
@@ -630,6 +646,9 @@ function formatProcessStatus(process) {
     `State:\t${process.state}`,
     `App:\t${process.appId}`,
     `Runtime:\t${process.runtime || "-"}`,
+    `ContainerMode:\t${process.container?.mode || "-"}`,
+    `ContainerIsolation:\t${process.container?.isolation || "-"}`,
+    `ContainerRawRuntimeGlobal:\t${process.container?.rawRuntimeGlobal ? "true" : "false"}`,
     `Namespace:\t${process.manifest?.namespace?.processGroup || "-"}`,
     `NamespaceRoot:\t${process.manifest?.namespace?.packageRoot || "-"}`,
     `NamespaceState:\t${process.manifest?.namespace?.stateRoot || "-"}`,
@@ -658,6 +677,31 @@ function formatProcessStatus(process) {
 
 function processNamespaceRoot(process) {
   return process.manifest?.namespace?.packageRoot || "/";
+}
+
+function normalizeProcessContainer(container = null, details = {}) {
+  const manifest = details.manifest || {};
+  const namespace = manifest.namespace || {};
+  const input = container && typeof container === "object" ? container : {};
+  const executionBackend = String(details.context?.executionBackend || "");
+  const mode = String(input.mode || input.kind || (executionBackend === "worker" ? "worker" : "same-realm"));
+  const packageId = namespace.packageId || "";
+  const trustedSystem = !packageId && !namespace.processGroup;
+  const isolation = String(input.isolation || (mode === "worker" ? "worker-global" : "shared-js-realm"));
+  const hostDom = String(input.hostDom || (mode === "worker" ? "none" : "shared-desktop-dom"));
+  return {
+    mode,
+    isolation,
+    trust: String(input.trust || input.trustLevel || (trustedSystem ? "trusted-system" : "package-sandbox")),
+    hostDom,
+    rawRuntimeGlobal: Boolean(input.rawRuntimeGlobal),
+    syscallBridge: String(input.syscallBridge || (mode === "worker" ? "postmessage-syscall" : "direct-sandbox-facade")),
+    filesystem: String(input.filesystem || "manifest-scoped-vfs"),
+    packageId: String(packageId),
+    namespace: String(namespace.processGroup || ""),
+    nextIsolationTarget: String(input.nextIsolationTarget || (mode === "same-realm" ? "origin-isolated-iframe-postmessage" : "")),
+    notes: Array.isArray(input.notes) ? input.notes.map(String) : (input.notes ? [String(input.notes)] : []),
+  };
 }
 
 function processLimits(process) {
