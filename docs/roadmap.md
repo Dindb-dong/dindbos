@@ -84,11 +84,12 @@ Done:
 - Iframe bridge syscall messages have schema validation, request size limits, rate limits, trace ids, and audit logs.
 - Iframe containers report heartbeat, mount timeout, cleanup, and crash state into `/proc/<pid>/container.json`.
 - Focused real-browser smoke coverage locks iframe heartbeat and crash paths.
+- Activity Monitor shows container isolation badges and per-process container health.
+- Settings surfaces package-container security history from `/var/log/dindbos/package-container.log`.
 
 Next:
 
 - Expand iframe bridge API coverage from basic async syscalls to the documented SDK surface.
-- Add Activity Monitor isolation badges and Settings security history from `/proc/<pid>/container.json`.
 - Move trusted prompts into compositor-owned surfaces that ordinary apps cannot cover, embed, or spoof.
 - Add capture-denial tests around trusted surfaces.
 

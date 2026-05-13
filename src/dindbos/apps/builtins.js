@@ -3250,6 +3250,7 @@ function renderActivityMonitor(os, content) {
               <span>App</span>
               <span>State</span>
               <span>Backend</span>
+              <span>Isolation</span>
               <span>Uptime</span>
               <span>Activity</span>
               <span>Runtime</span>
@@ -3260,6 +3261,7 @@ function renderActivityMonitor(os, content) {
                 <span>${escapeHtml(process.appId)}</span>
                 <span>${escapeHtml(process.state)}</span>
                 <span>${escapeHtml(process.executionBackend || "main-thread")}</span>
+                <span>${renderContainerBadge(process)}</span>
                 <span>${escapeHtml(formatDuration(process.uptimeMs))}</span>
                 <span>${escapeHtml(formatActivityScore(process.activityScore))}</span>
                 <span>${escapeHtml(formatBytes(process.runtimeBytes))}</span>
@@ -3345,6 +3347,11 @@ export function filterAndSortActivityProcesses(processes = [], options = {}) {
         process.executorKind,
         process.user,
         process.windowId,
+        process.container?.mode,
+        process.container?.isolation,
+        process.container?.trust,
+        process.container?.status,
+        process.container?.health,
       ].some((value) => String(value || "").toLowerCase().includes(query));
       return stateMatch && queryMatch;
     })
@@ -3401,6 +3408,8 @@ export function renderActivityDetail(process, processLog, service = null, servic
       <div><dt>State</dt><dd>${escapeHtml(process.state)} · ${escapeHtml(process.windowState || "-")}</dd></div>
       <div><dt>Executor</dt><dd>${escapeHtml(process.executionBackend || "main-thread")} · ${escapeHtml(process.executorState || "-")}</dd></div>
       <div><dt>Executor Detail</dt><dd>${escapeHtml(process.executorDetail || process.executorKind || "-")}</dd></div>
+      <div><dt>Container</dt><dd>${renderContainerBadge(process)} ${escapeHtml(containerSummary(process.container))}</dd></div>
+      <div><dt>Health</dt><dd>${escapeHtml(containerHealthSummary(process.container))}</dd></div>
       <div><dt>Window</dt><dd>${escapeHtml(process.windowId || "-")}</dd></div>
       <div><dt>Started</dt><dd>${escapeHtml(shortTime(process.startedAt))}</dd></div>
       <div><dt>Active</dt><dd>${escapeHtml(shortTime(process.lastActiveAt))}</dd></div>
@@ -3411,6 +3420,47 @@ export function renderActivityDetail(process, processLog, service = null, servic
     ${service ? renderActivityServiceDetail(service, serviceLog, serviceManifest) : ""}
     <pre>${escapeHtml(processLog || "No process log yet.")}</pre>
   `;
+}
+
+function renderContainerBadge(process = {}) {
+  const container = process.container || {};
+  const label = containerBadgeLabel(container);
+  const tone = containerBadgeTone(container);
+  return `<span class="container-badge ${tone}" data-container-mode="${escapeAttr(container.mode || "unknown")}">${escapeHtml(label)}</span>`;
+}
+
+function containerBadgeLabel(container = {}) {
+  if (container.health === "failed" || container.status === "crashed") return "Failed";
+  if (container.mode === "sandboxed-iframe") return "Iframe";
+  if (container.mode === "worker") return "Worker";
+  if (container.trust === "trusted-system") return "Trusted";
+  if (container.trust === "package-sandbox") return "Sandbox";
+  return container.mode || "Unknown";
+}
+
+function containerBadgeTone(container = {}) {
+  if (container.health === "failed" || container.status === "crashed") return "is-failed";
+  if (container.mode === "sandboxed-iframe" || container.mode === "worker") return "is-isolated";
+  if (container.trust === "trusted-system") return "is-trusted";
+  return "is-shared";
+}
+
+function containerSummary(container = {}) {
+  return [
+    container.mode || "-",
+    container.isolation || "",
+    container.trust || "",
+    container.syscallBridge || "",
+  ].filter(Boolean).join(" · ");
+}
+
+function containerHealthSummary(container = {}) {
+  return [
+    container.status || "unreported",
+    container.health || "",
+    container.lastHeartbeatAt ? `heartbeat=${shortTime(container.lastHeartbeatAt)}` : "",
+    container.lastError?.code ? `error=${container.lastError.code}` : "",
+  ].filter(Boolean).join(" · ");
 }
 
 function renderActivityServiceDetail(service, serviceLog = [], serviceManifest = null) {
@@ -3570,6 +3620,7 @@ export async function settingsRuntimeSnapshot(os) {
   const syncMerge = safeRead(() => os.remoteSyncMergePolicy?.(), null);
   const syncConflicts = safeRead(() => os.listRemoteSyncConflicts?.(), []);
   const keychain = safeRead(() => os.keychain?.settingsStatus?.({ appId: "settings", principal: os.permissions?.principal?.(os.session) }), null);
+  const containerEvents = readPackageContainerSecurityEvents(os);
   return {
     user,
     home,
@@ -3587,6 +3638,7 @@ export async function settingsRuntimeSnapshot(os) {
     syncMerge,
     syncConflicts,
     keychain,
+    containerEvents,
   };
 }
 
@@ -3649,6 +3701,12 @@ export function settingsRuntimeMarkup(snapshot) {
       </section>
       <section class="settings-panel">
         <header>
+          <h3>Container Security</h3>
+        </header>
+        ${renderSettingsContainerSecurity(snapshot.containerEvents)}
+      </section>
+      <section class="settings-panel">
+        <header>
           <h3>Local Folders</h3>
           <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
         </header>
@@ -3656,6 +3714,34 @@ export function settingsRuntimeMarkup(snapshot) {
       </section>
     </section>
   `;
+}
+
+function renderSettingsContainerSecurity(events = []) {
+  if (!events.length) return `<p class="settings-muted">No package container security events recorded.</p>`;
+  return `
+    <div class="settings-mount-list">
+      ${events.slice(-8).reverse().map((event) => `
+        <article class="settings-mount-card" data-container-event="${escapeAttr(event.type || "event")}" data-container-status="${escapeAttr(event.status || "")}">
+          <div>
+            <strong>${escapeHtml(event.type || "container")}${event.syscall ? ` · ${escapeHtml(event.syscall)}` : ""}</strong>
+            <span>pid=${Number(event.pid || 0)} · app=${escapeHtml(event.appId || "-")} · package=${escapeHtml(event.packageId || "-")} · ${escapeHtml(event.status || "unknown")}</span>
+            <small>${escapeHtml(shortTime(event.at))}${event.code ? ` · ${escapeHtml(event.code)}` : ""}${event.message ? ` · ${escapeHtml(event.message)}` : ""}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function readPackageContainerSecurityEvents(os) {
+  const path = "/var/log/dindbos/package-container.log";
+  if (!safeRead(() => os.fs?.exists?.(path), false)) return [];
+  return safeRead(() => os.fs.readFile(path), "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => safeRead(() => JSON.parse(line), null))
+    .filter(Boolean);
 }
 
 function renderSettingsKeychain(keychain) {
