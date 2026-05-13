@@ -217,6 +217,16 @@ const os = {
     },
   },
   fs: {
+    exists(path) {
+      return path === "/var/log/dindbos/package-container.log";
+    },
+    readFile(path) {
+      if (path !== "/var/log/dindbos/package-container.log") throw new Error(`unexpected read ${path}`);
+      return [
+        JSON.stringify({ at: "2026-05-05T00:06:00.000Z", pid: 42, appId: "iframe-heartbeat", packageId: "iframe-heartbeat", type: "heartbeat", status: "ok" }),
+        JSON.stringify({ at: "2026-05-05T00:07:00.000Z", pid: 43, appId: "iframe-crash", packageId: "iframe-crash", type: "crash", status: "error", code: "ECONTAINER", message: "iframe deliberate crash" }),
+      ].join("\n");
+    },
     join(base, name) {
       return `${base}/${name}`;
     },
@@ -258,6 +268,7 @@ assert(snapshot.sync.lastSuccessfulSnapshot.settingsRecords === 2, "settings sna
 assert(snapshot.syncMerge.planner === "offline-first", "settings snapshot sync merge policy mismatch");
 assert(snapshot.syncConflicts.length === 1, "settings snapshot sync conflict count mismatch");
 assert(snapshot.keychain.activeGrants.length === 1, "settings snapshot keychain grant count mismatch");
+assert(snapshot.containerEvents.length === 2, "settings snapshot container security event count mismatch");
 
 const markup = settingsRuntimeMarkup(snapshot);
 
@@ -286,6 +297,10 @@ assert(markup.includes("<dt>Last Retry</dt><dd>") && markup.includes("· applied
 assert(markup.includes("<dt>Last Repair</dt><dd>") && markup.includes("· remaining=0</dd>"), "settings markup did not render remote sync repair status");
 assert(markup.includes("<dt>Merge Rules</dt><dd>6</dd>"), "settings markup did not render remote sync merge rules");
 assert(markup.includes("<h3>Keychain</h3>"), "settings markup did not render keychain panel");
+assert(markup.includes("<h3>Container Security</h3>"), "settings markup did not render container security panel");
+assert(markup.includes('data-container-event="heartbeat"'), "settings markup did not render container heartbeat event");
+assert(markup.includes('data-container-event="crash"'), "settings markup did not render container crash event");
+assert(markup.includes("ECONTAINER"), "settings markup did not render container crash code");
 assert(markup.includes("<dt>Active Grants</dt><dd>1</dd>"), "settings markup did not render keychain active grant count");
 assert(markup.includes("<dt>Denied Requests</dt><dd>1</dd>"), "settings markup did not render keychain denied request count");
 assert(markup.includes("<dt>Stale Credentials</dt><dd>1</dd>"), "settings markup did not render keychain stale credential count");

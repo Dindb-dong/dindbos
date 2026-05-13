@@ -1254,7 +1254,7 @@ button {
 /* Activity row */
 .activity-row {
   display: grid;
-  grid-template-columns: 58px minmax(120px, 1fr) 86px 88px 78px 82px 82px;
+  grid-template-columns: 58px minmax(120px, 1fr) 80px 88px 82px 78px 82px 82px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -1292,6 +1292,48 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Container isolation badge */
+.container-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 20px;
+  padding: 0 8px;
+  border: 1px solid rgba(43, 51, 48, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 250, 242, 0.72);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* Trusted container badge */
+.container-badge.is-trusted {
+  background: rgba(247, 241, 232, 0.9);
+  color: #35413b;
+}
+
+/* Shared-realm container badge */
+.container-badge.is-shared {
+  background: rgba(250, 204, 21, 0.18);
+  color: #6b4f00;
+}
+
+/* Isolated container badge */
+.container-badge.is-isolated {
+  background: rgba(59, 130, 246, 0.18);
+  color: #1d4ed8;
+}
+
+/* Failed container badge */
+.container-badge.is-failed {
+  background: rgba(239, 68, 68, 0.16);
+  color: #b91c1c;
 }
 
 /* Activity empty state */
@@ -2393,7 +2435,8 @@ button {
   .activity-row span:nth-child(4),
   .activity-row span:nth-child(5),
   .activity-row span:nth-child(6),
-  .activity-row span:nth-child(7) {
+  .activity-row span:nth-child(7),
+  .activity-row span:nth-child(8) {
     display: none;
   }
 

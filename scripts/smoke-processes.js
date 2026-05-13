@@ -169,8 +169,22 @@ const activitySorted = filterAndSortActivityProcesses([
 ], { sort: "activity", direction: "desc" });
 assert(activitySorted.map((item) => item.pid).join(",") === "2,1", "activity score sort mismatch");
 
+const containerFiltered = filterAndSortActivityProcesses([
+  { pid: 1, appId: "trusted", state: "running", container: { mode: "same-realm", trust: "trusted-system" } },
+  { pid: 2, appId: "isolated", state: "running", container: { mode: "sandboxed-iframe", isolation: "sandboxed-iframe-opaque-origin", health: "healthy" } },
+], { query: "iframe", state: "running", sort: "pid", direction: "asc" });
+assert(containerFiltered.length === 1 && containerFiltered[0].pid === 2, "activity filter did not match container isolation");
+
 const serviceDetail = renderActivityDetail(
-  { pid: 450, appId: "service:search-indexer", name: "Search Indexer", state: "running", user: "guest", startedAt: new Date().toISOString() },
+  {
+    pid: 450,
+    appId: "service:search-indexer",
+    name: "Search Indexer",
+    state: "running",
+    user: "guest",
+    startedAt: new Date().toISOString(),
+    container: { mode: "sandboxed-iframe", isolation: "sandboxed-iframe-opaque-origin", trust: "package-sandbox", status: "mounted", health: "healthy", lastHeartbeatAt: "2026-05-05T00:00:00.000Z" },
+  },
   "process ready",
   { id: "search-indexer", name: "Search Indexer", state: "running", runCount: 2, lastRunAt: new Date().toISOString() },
   [{ at: "2026-05-05T00:00:00.000Z", level: "info", message: "indexed" }],
@@ -191,6 +205,8 @@ assert(serviceDetail.includes("storage.read"), "activity service detail did not 
 assert(serviceDetail.includes("/var/lib/dindbos/search"), "activity service detail did not render service write scope");
 assert(serviceDetail.includes("scheduled-when-visible"), "activity service detail did not render service lifecycle policy");
 assert(serviceDetail.includes("every 60000ms"), "activity service detail did not render service schedule");
+assert(serviceDetail.includes('data-container-mode="sandboxed-iframe"'), "activity detail did not render container isolation badge");
+assert(serviceDetail.includes("mounted · healthy"), "activity detail did not render container health");
 assert(serviceDetail.includes("indexed"), "activity service detail did not render service log");
 
 const workerStartedAt = Date.now();
