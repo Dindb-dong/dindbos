@@ -1862,6 +1862,7 @@ async function mountPackageIframeEntrypoint(content, runtime, record, windowApi,
       token,
       source,
       record: activeRecord,
+      process: runtime.process,
     });
     content.innerHTML = "";
     content.appendChild(frame);
@@ -2161,7 +2162,7 @@ function declaredImportUrls(record) {
   );
 }
 
-function packageIframeDocument({ token, source, record }) {
+function packageIframeDocument({ token, source, record, process }) {
   const dependencies = Object.fromEntries(
     Object.entries(record.dependencies?.npm || {})
       .map(([name, dependency]) => [name, safeRead(() => normalizePackageUrl(dependency.url), "")])
@@ -2183,6 +2184,7 @@ function packageIframeDocument({ token, source, record }) {
     const TOKEN = ${safeScriptJson(token)};
     const SOURCE = ${safeScriptJson(source)};
     const PKG = ${safeScriptJson(packagePublicRecord(record))};
+    const PROCESS = ${safeScriptJson({ pid: process?.pid || 0, appId: process?.appId || "" })};
     const DEPENDENCIES = ${safeScriptJson(dependencies)};
     const pending = new Map();
     let seq = 0;
@@ -2215,30 +2217,103 @@ function packageIframeDocument({ token, source, record }) {
       throw new Error(error.message || "syscall failed: " + syscallName);
     }
 
+    async function call(name, args = {}) {
+      return unwrap(await syscall(name, args), name);
+    }
+
     const os = {
       syscall,
       syscallAsync: syscall,
       fs: {
-        readFile: async (path) => unwrap(await syscall("fs.readText", { path }), "fs.readText"),
-        writeFile: async (path, content) => unwrap(await syscall("fs.writeText", { path, content }), "fs.writeText"),
-        writeOrCreateFile: async (path, content) => unwrap(await syscall("fs.writeText", { path, content }), "fs.writeText"),
+        exists: (path) => call("fs.exists", { path }),
+        stat: (path) => call("fs.stat", { path }),
+        readFile: (path) => call("fs.readText", { path }),
+        writeFile: (path, content) => call("fs.writeText", { path, content }),
+        writeOrCreateFile: (path, content) => call("fs.writeText", { path, content }),
       },
       processes: {
-        log: async (message, level = "info") => unwrap(await syscall("process.log", { message, level }), "process.log"),
+        list: () => call("process.list"),
+        get: (pid) => call("process.get", { pid }),
+        current: () => call("process.get", { pid: PROCESS.pid }),
+        log: (message, level = "info") => call("process.log", { message, level }),
       },
     };
 
     const sdk = {
-      syscall,
+      syscall: {
+        raw: syscall,
+        call,
+        rawAsync: syscall,
+        callAsync: call,
+      },
+      clock: {
+        now: () => call("clock.now"),
+      },
+      entropy: {
+        randomBytes: async (length) => new Uint8Array(await call("entropy.randomBytes", { length })),
+      },
       fs: {
+        exists: (path, args = {}) => call("fs.exists", { ...args, path }),
+        stat: (path, args = {}) => call("fs.stat", { ...args, path }),
         readText: (path) => os.fs.readFile(path),
         writeText: (path, content) => os.fs.writeFile(path, content),
       },
+      fd: {
+        list: () => call("fd.list"),
+        open: (path, args = {}) => call("fd.open", { ...args, path }),
+        read: (fd, args = {}) => call("fd.read", { ...args, fd }),
+        write: (fd, data, args = {}) => call("fd.write", { ...args, fd, data }),
+        seek: (fd, offset, args = {}) => call("fd.seek", { ...args, fd, offset }),
+        stat: (fd) => call("fd.stat", { fd }),
+        sync: (fd) => call("fd.sync", { fd }),
+        ioctl: (fd, request, args = {}) => call("fd.ioctl", { ...args, fd, request }),
+        close: (fd) => call("fd.close", { fd }),
+      },
+      env: {
+        get: (key) => call("env.get", { key }),
+        list: () => call("env.list"),
+      },
+      apps: {
+        list: () => call("app.list"),
+        manifest: (appId) => call("app.manifest", { appId }),
+        launch: (appId, context = {}) => call("app.launch", { appId, context }),
+      },
       processes: {
+        current: () => os.processes.current(),
+        list: () => os.processes.list(),
+        get: (pid) => os.processes.get(pid),
         log: (message, level = "info") => os.processes.log(message, level),
       },
       packages: {
-        info: async (packageId = PKG.id) => unwrap(await syscall("package.info", { packageId }), "package.info"),
+        list: () => call("package.list"),
+        info: (packageId = PKG.id) => call("package.info", { packageId }),
+      },
+      storage: {
+        status: () => call("storage.status"),
+        transactions: () => call("storage.transactions"),
+        sync: () => call("storage.sync"),
+      },
+      localMounts: {
+        status: () => call("localMount.status"),
+      },
+      mounts: {
+        list: () => call("mount.list"),
+      },
+      net: {
+        status: () => call("net.status"),
+        policy: (url, args = {}) => call("net.policy", { ...args, url }),
+        dns: (host) => call("net.dns", { host }),
+      },
+      timers: {
+        status: (args = {}) => call("timer.status", args),
+        create: (args = {}) => call("timer.create", args),
+        cancel: (id) => call("timer.cancel", { id }),
+        sleep: (ms) => call("timer.sleep", { ms }),
+      },
+      trustedPrompts: {
+        status: (args = {}) => call("trustedPrompt.status", args),
+        create: (args = {}) => call("trustedPrompt.create", args),
+        decide: (id, decision) => call("trustedPrompt.decide", { id, decision }),
       },
     };
 

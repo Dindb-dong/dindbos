@@ -39,6 +39,10 @@ try {
   assert(result.crashCode === "ECONTAINER", `crash code mismatch: ${JSON.stringify(result)}`);
   assert(result.auditHasHeartbeat, "audit log missing heartbeat event");
   assert(result.auditHasSyscall, "audit log missing iframe syscall trace");
+  assert(result.auditHasSdkClock, "audit log missing SDK clock syscall trace");
+  assert(result.auditHasSdkPackageInfo, "audit log missing SDK package info syscall trace");
+  assert(result.auditHasSdkProcessCurrent, "audit log missing SDK process current syscall trace");
+  assert(result.auditHasSdkStorageStatus, "audit log missing SDK storage status syscall trace");
   assert(result.auditHasCrash, "audit log missing crash event");
   assert(result.crashPanel, "container crash panel did not render");
   assert(result.sandbox === "allow-scripts", `iframe sandbox policy mismatch: ${result.sandbox}`);
@@ -73,7 +77,7 @@ async function runIframeContainerSmoke(page, baseUrl) {
       description: "Focused iframe container smoke package.",
       app: { id, name: id, title: `${id}.app`, icon: "app", width: 520, height: 320, entry: "app.js", runtime: "javascript" },
       sandbox: { containerMode: "iframe" },
-      permissions: { capabilities: [], fileSystem: { read: [`/opt/${id}`], write: [] } },
+      permissions: { capabilities: ["package.read", "storage.read"], fileSystem: { read: [`/opt/${id}`], write: [] } },
       files: [{ path: "app.js", mime: "text/javascript", content: source }, ...extraFiles],
     });
     const waitFor = async (predicate, label, timeout = 12000) => {
@@ -87,9 +91,17 @@ async function runIframeContainerSmoke(page, baseUrl) {
     };
 
     installIframePackage("iframe-heartbeat", [
-      "export async function mount({ content, os }) {",
-      "  const result = await os.syscall('fs.readText', { path: '/opt/iframe-heartbeat/data.txt' });",
-      "  content.innerHTML = `<main data-iframe-heartbeat>${result.value}</main>`;",
+      "export async function mount({ content, os, sdk }) {",
+      "  const raw = await os.syscall('fs.readText', { path: '/opt/iframe-heartbeat/data.txt' });",
+      "  const text = await sdk.fs.readText('/opt/iframe-heartbeat/data.txt');",
+      "  const exists = await sdk.fs.exists('/opt/iframe-heartbeat/data.txt');",
+      "  const stat = await sdk.fs.stat('/opt/iframe-heartbeat/data.txt');",
+      "  const now = await sdk.clock.now();",
+      "  const envUser = await sdk.env.get('USER');",
+      "  const pkg = await sdk.packages.info('iframe-heartbeat');",
+      "  const current = await sdk.processes.current();",
+      "  const storage = await sdk.storage.status();",
+      "  content.innerHTML = `<main data-iframe-heartbeat>${raw.value}:${text}:${exists}:${stat.mime}:${Boolean(now.iso)}:${envUser}:${pkg.id}:${current.appId}:${storage.backend || 'memory'}</main>`;",
       "}",
     ].join("\n"), [{ path: "data.txt", mime: "text/plain", content: "heartbeat-ok" }]);
     os.launch("iframe-heartbeat");
@@ -129,6 +141,10 @@ async function runIframeContainerSmoke(page, baseUrl) {
       crashCode: crashedContainer.lastError?.code || "",
       auditHasHeartbeat: audit.includes("\"type\":\"heartbeat\""),
       auditHasSyscall: audit.includes("\"syscall\":\"fs.readText\""),
+      auditHasSdkClock: audit.includes("\"syscall\":\"clock.now\""),
+      auditHasSdkPackageInfo: audit.includes("\"syscall\":\"package.info\""),
+      auditHasSdkProcessCurrent: audit.includes("\"syscall\":\"process.get\""),
+      auditHasSdkStorageStatus: audit.includes("\"syscall\":\"storage.status\""),
       auditHasCrash: audit.includes("\"type\":\"crash\""),
       crashPanel: Boolean(document.querySelector("[data-package-container-crash]")),
       sandbox,
