@@ -2067,6 +2067,96 @@ button {
   gap: 6px;
 }
 
+/* Trusted UI top layer */
+.trusted-ui-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(17, 20, 18, 0.28);
+  pointer-events: auto;
+}
+
+/* Trusted UI dialog */
+.trusted-ui-dialog {
+  display: grid;
+  width: min(420px, calc(100vw - 48px));
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(247, 241, 232, 0.22);
+  border-radius: var(--radius);
+  background: rgba(20, 24, 20, 0.96);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+  color: #f7f1e8;
+}
+
+/* Trusted UI header */
+.trusted-ui-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Trusted UI heading */
+.trusted-ui-dialog strong {
+  font-weight: 700;
+}
+
+/* Trusted UI ownership badge */
+.trusted-ui-dialog header span {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(247, 241, 232, 0.18);
+  border-radius: 999px;
+  color: rgba(247, 241, 232, 0.74);
+  font-size: 11px;
+}
+
+/* Trusted UI body */
+.trusted-ui-body {
+  display: grid;
+  gap: 6px;
+}
+
+/* Trusted UI body copy */
+.trusted-ui-body p {
+  margin: 0;
+}
+
+/* Trusted UI target */
+.trusted-ui-body small {
+  color: rgba(247, 241, 232, 0.68);
+  overflow-wrap: anywhere;
+}
+
+/* Trusted UI actions */
+.trusted-ui-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Trusted UI buttons */
+.trusted-ui-dialog button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(247, 241, 232, 0.2);
+  border-radius: 999px;
+  background: rgba(247, 241, 232, 0.08);
+  color: #f7f1e8;
+  cursor: pointer;
+}
+
+/* Trusted UI primary button */
+.trusted-ui-dialog button[data-primary="true"] {
+  border-color: rgba(59, 130, 246, 0.58);
+  background: #3b82f6;
+  color: #fff;
+}
+
 /* Boot screen overlay */
 .dos-boot-screen {
   position: fixed;

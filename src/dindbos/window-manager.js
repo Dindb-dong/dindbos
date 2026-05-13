@@ -3,6 +3,7 @@ import { canUseCapability } from "./app-manifest.js?v=20260422-browserd";
 const MIN_WIDTH = 340;
 const MIN_HEIGHT = 240;
 const MINIMIZE_ANIMATION_MS = 160;
+const TRUSTED_UI_Z_BASE = 100_000;
 const WINDOW_PLACEMENTS_DIR = "/var/lib/dindbos/window-placements";
 
 export class WindowManager {
@@ -11,6 +12,8 @@ export class WindowManager {
     this.layer = null;
     this.taskStrip = null;
     this.windows = new Map();
+    this.trustedSurfaces = new Map();
+    this.nextTrustedSurfaceId = 1;
     this.z = 20;
     this.cascade = 0;
     this.activeWindowId = "";
@@ -73,6 +76,7 @@ export class WindowManager {
     globalThis.window?.addEventListener?.("compositionend", this.boundHandleCompositionEnd);
     globalThis.window?.addEventListener?.("dragstart", this.boundHandleDragStart);
     globalThis.window?.addEventListener?.("drop", this.boundHandleDrop);
+    this.ensureTrustedSurfacesOnTop();
     this.writeCompositorProcfs("mount");
   }
 
@@ -288,6 +292,108 @@ export class WindowManager {
     });
   }
 
+  openTrustedPrompt(prompt = {}, options = {}) {
+    const promptId = String(prompt.id || "");
+    const existing = promptId ? [...this.trustedSurfaces.values()].find((surface) => surface.promptId === promptId) : null;
+    const id = existing?.id || String(prompt.compositorSurfaceId || `trusted-ui-${this.nextTrustedSurfaceId++}`);
+    const surface = existing || {
+      id,
+      promptId,
+      ownerPid: Number(prompt.ownerPid || 0),
+      appId: String(prompt.appId || ""),
+      packageId: String(prompt.packageId || ""),
+      capability: String(prompt.capability || ""),
+      target: String(prompt.target || ""),
+      message: String(prompt.message || ""),
+      status: "pending",
+      visible: true,
+      captureProtected: true,
+      compositorOwned: true,
+      createdAt: new Date().toISOString(),
+      closedAt: "",
+      closeReason: "",
+      frame: null,
+      onDecision: null,
+    };
+    Object.assign(surface, {
+      ownerPid: Number(prompt.ownerPid || surface.ownerPid || 0),
+      appId: String(prompt.appId || surface.appId || ""),
+      packageId: String(prompt.packageId || surface.packageId || ""),
+      capability: String(prompt.capability || surface.capability || ""),
+      target: String(prompt.target || surface.target || ""),
+      message: String(prompt.message || surface.message || ""),
+      status: String(prompt.status || surface.status || "pending"),
+      visible: String(prompt.status || surface.status || "pending") === "pending",
+    });
+    surface.onDecision = options.onDecision || surface.onDecision;
+    if (!surface.frame && globalThis.document?.createElement) {
+      surface.frame = createTrustedPromptFrame(surface, {
+        onDecision: (decision) => surface.onDecision?.(decision, surface),
+      });
+    } else if (surface.frame) {
+      renderTrustedPromptFrame(surface.frame, surface, {
+        onDecision: (decision) => surface.onDecision?.(decision, surface),
+      });
+    }
+    this.trustedSurfaces.set(surface.id, surface);
+    this.ensureTrustedSurfacesOnTop();
+    this.writeCompositorProcfs("trusted-ui-open");
+    return publicTrustedSurface(surface);
+  }
+
+  updateTrustedPrompt(prompt = {}) {
+    const promptId = String(prompt.id || "");
+    const surface = [...this.trustedSurfaces.values()].find((entry) => entry.promptId === promptId || entry.id === prompt.compositorSurfaceId);
+    if (!surface) return null;
+    Object.assign(surface, {
+      status: String(prompt.status || surface.status),
+      message: String(prompt.message || surface.message || ""),
+      visible: String(prompt.status || surface.status) === "pending",
+    });
+    if (surface.frame) {
+      renderTrustedPromptFrame(surface.frame, surface, {
+        onDecision: (decision) => surface.onDecision?.(decision, surface),
+      });
+    }
+    this.ensureTrustedSurfacesOnTop();
+    this.writeCompositorProcfs("trusted-ui-update");
+    return publicTrustedSurface(surface);
+  }
+
+  closeTrustedPrompt(idOrPromptId, reason = "closed") {
+    const key = String(idOrPromptId || "");
+    const surface = this.trustedSurfaces.get(key) || [...this.trustedSurfaces.values()].find((entry) => entry.promptId === key);
+    if (!surface) return null;
+    surface.visible = false;
+    surface.status = surface.status === "pending" ? "closed" : surface.status;
+    surface.closedAt = new Date().toISOString();
+    surface.closeReason = String(reason || "closed");
+    surface.frame?.remove?.();
+    this.trustedSurfaces.delete(surface.id);
+    this.writeCompositorProcfs("trusted-ui-close");
+    return publicTrustedSurface(surface);
+  }
+
+  trustedSurfaceStatus() {
+    return [...this.trustedSurfaces.values()].map(publicTrustedSurface);
+  }
+
+  hasVisibleTrustedSurface() {
+    return [...this.trustedSurfaces.values()].some((surface) => surface.visible && surface.captureProtected);
+  }
+
+  ensureTrustedSurfacesOnTop() {
+    [...this.trustedSurfaces.values()].forEach((surface, index) => {
+      if (!surface.frame) return;
+      surface.frame.style.zIndex = `${TRUSTED_UI_Z_BASE + index}`;
+      surface.frame.dataset.trustedUiSurface = surface.id;
+      surface.frame.dataset.captureProtected = "true";
+      if (this.layer && surface.frame.parentNode !== this.layer) {
+        this.layer.appendChild(surface.frame);
+      }
+    });
+  }
+
   keepWindowsInViewport() {
     const viewport = {
       width: globalThis.window?.innerWidth || 1024,
@@ -482,6 +588,7 @@ export class WindowManager {
     };
     if (!requester && !system) route.deniedReason = "requester-window-not-found";
     else if (scope === "window" && !target) route.deniedReason = "target-window-not-found";
+    else if (!ownWindow && !system && this.hasVisibleTrustedSurface()) route.deniedReason = "trusted-ui-protected";
     else if (!ownWindow && !hasCapability) route.deniedReason = "capability-denied";
     else if (!ownWindow && !userApproved) route.deniedReason = "user-permission-required";
     else if (!handleCheck.ok) route.deniedReason = handleCheck.deniedReason;
@@ -822,6 +929,8 @@ export class WindowManager {
         cleaned: this.surfaceCleanup.cleaned,
         lastCleanup: this.surfaceCleanup.lastCleanup ? { ...this.surfaceCleanup.lastCleanup } : null,
       },
+      trustedSurfaceCount: this.trustedSurfaces.size,
+      trustedSurfaces: this.trustedSurfaceStatus(),
       surfaces,
       updatedAt: new Date().toISOString(),
     };
@@ -1161,6 +1270,84 @@ function captureSurfaceForTask(task, activeWindowId = "") {
     rect,
     text: extractElementText(task.content),
     accessibility: task.accessibilityTree ? summarizeAccessibilityTree(task.accessibilityTree) : null,
+  };
+}
+
+function createTrustedPromptFrame(surface, options = {}) {
+  const frame = document.createElement("aside");
+  frame.className = "trusted-ui-surface";
+  frame.dataset.trustedUiSurface = surface.id;
+  frame.dataset.captureProtected = "true";
+  frame.setAttribute?.("role", "dialog");
+  frame.setAttribute?.("aria-modal", "true");
+  renderTrustedPromptFrame(frame, surface, options);
+  return frame;
+}
+
+function renderTrustedPromptFrame(frame, surface, options = {}) {
+  if (!frame) return null;
+  frame.textContent = "";
+  const dialog = document.createElement("section");
+  dialog.className = "trusted-ui-dialog";
+  const header = document.createElement("header");
+  const title = document.createElement("strong");
+  title.textContent = "DindbOS Trusted UI";
+  const badge = document.createElement("span");
+  badge.textContent = "Compositor owned";
+  header.append(title, badge);
+  const body = document.createElement("div");
+  body.className = "trusted-ui-body";
+  const capability = document.createElement("p");
+  capability.textContent = surface.capability || "permission request";
+  const target = document.createElement("small");
+  target.textContent = surface.target || surface.appId || "system resource";
+  const message = document.createElement("p");
+  message.textContent = surface.message || "A privileged operation needs confirmation.";
+  body.append(capability, target, message);
+  const actions = document.createElement("footer");
+  const deny = document.createElement("button");
+  deny.type = "button";
+  deny.textContent = "Deny";
+  deny.addEventListener?.("click", () => options.onDecision?.("denied"));
+  const allow = document.createElement("button");
+  allow.type = "button";
+  allow.textContent = "Allow";
+  allow.dataset.primary = "true";
+  allow.addEventListener?.("click", () => options.onDecision?.("granted"));
+  actions.append(deny, allow);
+  dialog.append(header, body, actions);
+  frame.append(dialog);
+  return frame;
+}
+
+function publicTrustedSurface(surface) {
+  return {
+    id: surface.id,
+    promptId: surface.promptId,
+    ownerPid: surface.ownerPid,
+    appId: surface.appId,
+    packageId: surface.packageId,
+    capability: surface.capability,
+    target: surface.target,
+    status: surface.status,
+    visible: Boolean(surface.visible),
+    captureProtected: Boolean(surface.captureProtected),
+    compositorOwned: Boolean(surface.compositorOwned),
+    rect: trustedSurfaceRect(surface),
+    zIndex: Number(surface.frame?.style?.zIndex || TRUSTED_UI_Z_BASE),
+    createdAt: surface.createdAt,
+    closedAt: surface.closedAt,
+    closeReason: surface.closeReason,
+  };
+}
+
+function trustedSurfaceRect(surface) {
+  const rect = typeof surface.frame?.getBoundingClientRect === "function" ? surface.frame.getBoundingClientRect() : {};
+  return {
+    left: Math.round(rect.left || 0),
+    top: Math.round(rect.top || 0),
+    width: Math.round(rect.width || 0),
+    height: Math.round(rect.height || 0),
   };
 }
 

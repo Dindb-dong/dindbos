@@ -414,8 +414,28 @@ async function runLiveWindowStateSmoke() {
     assert(!deniedCrossCapture.handled && deniedCrossCapture.deniedReason === "capability-denied", "cross-app surface capture without capability was not denied");
     const desktopCapture = recorderApi.captureDesktop({ userApproved: true });
     assert(desktopCapture.handled && desktopCapture.scope === "desktop" && desktopCapture.surfaces.length >= 3, "capability-approved desktop capture did not include visible surfaces");
+    const trustedSurface = liveManager.openTrustedPrompt({
+      id: "trusted-prompt-smoke",
+      ownerPid: 42,
+      appId: "browser",
+      packageId: "system.browser",
+      capability: "screen.capture",
+      target: "desktop",
+      message: "Capture the desktop",
+      status: "pending",
+    });
+    assert(trustedSurface.compositorOwned && trustedSurface.captureProtected, "trusted prompt surface was not compositor-owned and capture-protected");
+    const trustedStatus = JSON.parse(liveOs.fs.readFile("/proc/compositor")).trustedSurfaces.find((surface) => surface.id === trustedSurface.id);
+    assert(trustedStatus?.promptId === "trusted-prompt-smoke" && trustedStatus.zIndex >= 100000, "/proc/compositor did not expose protected trusted UI surface");
+    const protectedDesktopCapture = recorderApi.captureDesktop({ userApproved: true });
+    assert(!protectedDesktopCapture.handled && protectedDesktopCapture.deniedReason === "trusted-ui-protected", "desktop capture was not denied while trusted UI was visible");
+    const protectedWindowCapture = recorderApi.captureSurface({ targetWindowId: "settings", userApproved: true });
+    assert(!protectedWindowCapture.handled && protectedWindowCapture.deniedReason === "trusted-ui-protected", "cross-window capture was not denied while trusted UI was visible");
+    liveManager.closeTrustedPrompt(trustedSurface.id, "smoke-cleanup");
+    const resumedDesktopCapture = recorderApi.captureDesktop({ userApproved: true });
+    assert(resumedDesktopCapture.handled && resumedDesktopCapture.surfaces.length >= 3, "desktop capture did not resume after trusted UI closed");
     const captureStatus = JSON.parse(liveOs.fs.readFile("/proc/compositor")).surfaceCapture;
-    assert(captureStatus.captured === 2 && captureStatus.denied >= 2, "/proc/compositor did not expose surface capture policy state");
+    assert(captureStatus.captured === 3 && captureStatus.denied >= 4, "/proc/compositor did not expose surface capture policy state");
     const recorderTask = liveManager.windows.get("recorder");
     liveOs.objects.revokeHandle(recorderTask.handleId, "window-handle-smoke");
     const staleDesktopCapture = recorderApi.captureDesktop({ userApproved: true });
