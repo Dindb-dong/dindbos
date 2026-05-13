@@ -42,8 +42,9 @@ Already present:
 - Process container diagnostics in `/proc/<pid>/container.json`, `/proc/<pid>/status`, `/proc/processes.json`, and process object metadata.
 - Opt-in `sandbox.containerMode: "iframe"` package apps mounted in `sandbox="allow-scripts"` iframes without `allow-same-origin`, using a postMessage syscall bridge for async runtime calls.
 - Iframe package bridge messages are schema-validated, size/rate-limited, traceable, audited under `/var/log/dindbos/package-container.log`, and connected to process container health.
+- `npm run smoke:iframe-containers` verifies iframe heartbeat, crash, procfs health, audit traces, and sandbox policy in a real headless browser runtime.
 - Low-load visual QA path using Playwright Chrome for Testing by default instead of the user's installed Chrome app.
-- Repository hygiene pass kept only `main`, `codex/harden-runtime-boundaries`, and the active follow-up worktree branch `codex/runtime-boundary-next`.
+- Repository hygiene pass merged the completed runtime-boundary PRs and returned local/remote branches to `main` before opening the next worktree.
 
 ## Verification Baseline
 
@@ -61,6 +62,7 @@ Focused checks:
 - `npm run smoke:runtime-boundary`: raw runtime global, default manifest scopes, declared package imports.
 - `npm run smoke:processes`: process lifecycle, `/proc`, worker container diagnostics.
 - `npm run smoke:packages`: install/update/remove rollback, package namespaces, package app runtime, iframe container diagnostics.
+- `npm run smoke:iframe-containers`: real browser iframe heartbeat, crash, audit, and sandbox policy.
 - `npm run smoke:permissions`: capability and filesystem denials.
 - `npm run smoke:browserd` / `npm run smoke:browser-client`: real browser companion boundary.
 - `npm run smoke:window-manager`: compositor/window handles, shortcuts, surface capture policy.
@@ -81,11 +83,11 @@ Done:
 - Opt-in sandboxed iframe package mode exists and uses postMessage syscalls.
 - Iframe bridge syscall messages have schema validation, request size limits, rate limits, trace ids, and audit logs.
 - Iframe containers report heartbeat, mount timeout, cleanup, and crash state into `/proc/<pid>/container.json`.
+- Focused real-browser smoke coverage locks iframe heartbeat and crash paths.
 
 Next:
 
 - Expand iframe bridge API coverage from basic async syscalls to the documented SDK surface.
-- Add focused browser smoke coverage for iframe heartbeat and crash paths.
 - Add Activity Monitor isolation badges and Settings security history from `/proc/<pid>/container.json`.
 - Move trusted prompts into compositor-owned surfaces that ordinary apps cannot cover, embed, or spoof.
 - Add capture-denial tests around trusted surfaces.
