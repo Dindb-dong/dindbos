@@ -28,7 +28,6 @@ async function boot() {
   await os.runBootPhase("package-registry-load", () => os.packages.bootstrap());
   await os.runBootPhase("app-registry-load", () => installBuiltinApps(os, { portfolioData }));
   os.boot();
-  window.dindbos = os;
 
   await bootScreen.complete();
 

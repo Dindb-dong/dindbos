@@ -1829,8 +1829,20 @@ function createImportFacade(record) {
       if (!dependency) throw new Error(`npm dependency not declared: ${name}`);
       return import(dependency.url);
     },
-    url: async (url) => import(normalizePackageUrl(url)),
+    url: async (url) => {
+      const normalized = normalizePackageUrl(url);
+      if (!declaredImportUrls(record).has(normalized)) throw new Error(`package import URL not declared: ${normalized}`);
+      return import(normalized);
+    },
   };
+}
+
+function declaredImportUrls(record) {
+  return new Set(
+    Object.values(record.dependencies?.npm || {})
+      .map((dependency) => safeRead(() => normalizePackageUrl(dependency.url), ""))
+      .filter(Boolean),
+  );
 }
 
 function resolvePackageCliEntry(os, record, requestedEntry = "") {

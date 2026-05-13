@@ -1,4 +1,4 @@
-const DEFAULT_FS_READ = ["/"];
+const DEFAULT_FS_READ = [];
 const DEFAULT_FS_WRITE = [];
 
 export function normalizeAppManifest(app) {
