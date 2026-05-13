@@ -86,10 +86,10 @@ Done:
 - Focused real-browser smoke coverage locks iframe heartbeat and crash paths.
 - Activity Monitor shows container isolation badges and per-process container health.
 - Settings surfaces package-container security history from `/var/log/dindbos/package-container.log`.
+- Iframe package SDK covers clock, entropy, fs, fd, env, apps, packages, storage, mounts, net, timers, trusted prompts, and processes through the postMessage syscall bridge.
 
 Next:
 
-- Expand iframe bridge API coverage from basic async syscalls to the documented SDK surface.
 - Move trusted prompts into compositor-owned surfaces that ordinary apps cannot cover, embed, or spoof.
 - Add capture-denial tests around trusted surfaces.
 
