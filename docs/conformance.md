@@ -5,6 +5,7 @@ DindbOS compatibility claims are generated from runtime conformance output. The 
 Run:
 
 ```text
+npm run release:conformance
 conformance
 conformance matrix
 conformance evidence
@@ -51,4 +52,15 @@ Each matrix row also reports QA evidence count, latest evidence status, latest r
 
 Runtime callers can append records with `os.addConformanceEvidence(record)`. DindbOS mirrors them to `/var/run/dindbos/conformance-evidence.json`, `/proc/conformance-evidence`, and `/proc/conformance-evidence.json`.
 
+`npm run release:conformance` boots a headless DindbOS runtime and writes immutable release evidence to `dist/release-conformance`:
+
+- `dindbos-conformance.json`
+- `dindbos-conformance-evidence.json`
+- `dindbos-secure-boot.json`
+- `dindbos-release-manifest.json`
+- `SHA256SUMS`
+
+The release manifest records the package version, git commit, dirty-worktree flag, source tree aggregate digest, conformance summary, secure boot summary, and SHA-256 digest for every emitted artifact.
+
 `npm run smoke:conformance` verifies report generation, shell formatting, matrix output, QA evidence output, and `doctor conformance`.
+`npm run smoke:release-conformance` verifies release artifact generation, secure boot status, manifest records, and SHA-256 digest lines.
