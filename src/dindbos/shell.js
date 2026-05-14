@@ -13,6 +13,7 @@ const BUILTIN_MANUALS = {
   chown: "chown <owner[:group]> <path> - change file owner/group metadata as an administrator",
   clear: "clear - clear terminal output",
   companion: "companion list|grant|revoke - inspect or administer companion permissions",
+  bootctl: "bootctl status|measurements|verify - inspect secure boot measurements",
   conformance: "conformance [matrix|json] - print DindbOS compatibility certification output",
   cp: "cp [-r] <source> <destination> - copy files or directories",
   curl: "curl <url> - fetch a URL through the DindbOS network broker",
@@ -46,7 +47,7 @@ const BUILTIN_MANUALS = {
   open: "open [path] - open a path with its associated app",
   ping: "ping <host> - probe network policy; raw ICMP is unsupported in browser-only mode",
   pkg: "pkg list|info|install|run|strict|audit|cache|prefs|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
-  policyctl: "policyctl list|show|audit [package] - inspect compiled package policies",
+  policyctl: "policyctl list|show|audit|prove [package] - inspect compiled package policies",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   recovery: "recovery status|profiles|queue|panic - inspect boot recovery and offline maintenance diagnostics",
@@ -87,6 +88,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "netstat",
   "npm",
   "ping",
+  "bootctl",
   "companion",
   "conformance",
   "pkg",
@@ -321,6 +323,7 @@ export class ShellSession {
     if (command === "umount") return this.umount(args);
     if (command === "pkg") return this.pkg(args);
     if (command === "policyctl") return this.policyctl(args);
+    if (command === "bootctl") return this.bootctl(args);
     if (command === "conformance") return this.conformance(args);
     if (command === "companion") return this.companion(args);
     if (command === "ps") return this.os.processes.table();
@@ -851,7 +854,23 @@ export class ShellSession {
     if (action === "audit") {
       return formatPackageAudit(this.os.packages.audit(packageId || ""));
     }
-    return "policyctl: usage: policyctl list [package] | show <package> | audit [package]";
+    if (action === "prove" || action === "proofs") {
+      return formatPolicyProofs(this.os.packages.policyProofs(packageId || ""));
+    }
+    return "policyctl: usage: policyctl list [package] | show <package> | audit [package] | prove [package]";
+  }
+
+  bootctl(args) {
+    const [action = "status"] = args;
+    const report = this.os.secureBootReport?.("shell") || {};
+    if (action === "status" || action === "measurements") return formatSecureBootReport(report);
+    if (action === "verify") {
+      return [
+        `secure-boot ok=${Boolean(report.ok)} measurements=${report.summary?.measurementCount || 0}`,
+        formatPolicyProofs(report.policyProofs || {}),
+      ].filter(Boolean).join("\n");
+    }
+    return "bootctl: usage: bootctl status|measurements|verify";
   }
 
   pkgRegistry(action, args) {
@@ -2552,6 +2571,36 @@ function formatPackageAudit(report) {
     ...entry.checks.map((check) => `  ${check.status} ${check.id} ${check.detail}`),
   ]);
   return [header, ...rows].join("\n");
+}
+
+function formatPolicyProofs(report = {}) {
+  const header = `proofs ok=${Boolean(report.ok)} packages=${report.packageCount || 0} failed=${report.failed || 0}`;
+  const rows = (report.packages || []).flatMap((entry) => [
+    `${entry.packageId} ok=${Boolean(entry.ok)} policy=${entry.policyId || "-"}`,
+    ...(entry.proofs || []).map((proof) => `  ${proof.status} ${proof.id} expected=${proof.expected} actual=${proof.actual} target=${proof.target || "-"} ${proof.detail || ""}`),
+  ]);
+  return [header, ...rows].join("\n");
+}
+
+function formatSecureBootReport(report = {}) {
+  const summary = report.summary || {};
+  const header = [
+    `secure-boot ok=${Boolean(report.ok)}`,
+    `profile=${report.profile || "-"}`,
+    `measurements=${summary.measurementCount || 0}`,
+    `packages=${summary.packageCount || 0}`,
+    `apps=${summary.appCount || 0}`,
+    `publishers=${summary.publisherCount || 0}`,
+  ].join(" ");
+  const rows = (report.measurements || []).map((entry) => [
+    entry.id,
+    entry.status,
+    entry.kind,
+    entry.target,
+    entry.digest,
+  ].join(" "));
+  const proof = report.policyProofs ? `policyProofs ok=${Boolean(report.policyProofs.ok)} failed=${report.policyProofs.failed || 0}` : "";
+  return [header, ...rows, proof].filter(Boolean).join("\n");
 }
 
 function formatPolicyStatus(status) {
