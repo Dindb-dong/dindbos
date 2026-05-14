@@ -3589,6 +3589,9 @@ async function renderSettingsContent(os, content) {
       button.disabled = true;
       try {
         if (button.dataset.settingsAction === "flush-storage") await os.storage.flush();
+        if (button.dataset.settingsAction === "storage-fsck-dry-run") await os.runStorageFsck?.({ repair: true, dryRun: true });
+        if (button.dataset.settingsAction === "storage-fsck-repair") await os.runStorageFsck?.({ repair: true, dryRun: false });
+        if (button.dataset.settingsAction === "storage-fsck-salvage") await os.runStorageFsck?.({ repair: true, dryRun: true, salvage: true });
         if (button.dataset.settingsAction === "restore-mounts") await os.localMounts.restorePersistedMounts({ request: true });
         if (button.dataset.settingsAction === "remount") await os.localMounts.requestAccess(button.dataset.mountPath);
         if (button.dataset.settingsAction === "forget") await os.localMounts.forgetMount(button.dataset.mountPath);
@@ -3610,6 +3613,7 @@ export async function settingsRuntimeSnapshot(os) {
   const processes = safeRead(() => os.processes.list(), []);
   const storageStatus = safeRead(() => os.storage.status(), { enabled: false, persisted: false, bytes: 0 });
   const storage = await safeReadAsync(() => os.storage.estimate(), storageStatus);
+  const storageKernel = safeRead(() => os.storageKernelStatus?.("settings"), null);
   const packages = safeRead(() => os.packages.list(), []);
   const services = safeRead(() => os.services?.list?.(), []);
   const mounts = await safeReadAsync(() => os.localMounts.status(), []);
@@ -3630,6 +3634,7 @@ export async function settingsRuntimeSnapshot(os) {
     processes,
     services,
     storage: { ...storageStatus, ...storage },
+    storageKernel,
     desktop: safeRead(() => os.fs.join(home, "Desktop"), `${home}/Desktop`),
     mounts,
     lifecycle,
@@ -3670,6 +3675,15 @@ export function settingsRuntimeMarkup(snapshot) {
           <button type="button" data-settings-action="flush-storage">Flush now</button>
         </header>
         <p>${escapeHtml(formatStorageState(snapshot.storage))}</p>
+      </section>
+      <section class="settings-panel">
+        <header>
+          <h3>Storage Recovery</h3>
+          <button type="button" data-settings-action="storage-fsck-dry-run">Dry run</button>
+          <button type="button" data-settings-action="storage-fsck-repair">Repair</button>
+          <button type="button" data-settings-action="storage-fsck-salvage">Salvage</button>
+        </header>
+        ${renderSettingsStorageKernel(snapshot.storageKernel)}
       </section>
       <section class="settings-panel">
         <header>
@@ -3983,6 +3997,44 @@ function formatStorageState(storage) {
     storage.persistLastFlushedAt ? `lastFlush=${shortTime(storage.persistLastFlushedAt)} (${storage.persistLastFlushDurationMs || 0}ms)` : "",
     storage.lastWriteError || storage.persistLastFlushError ? `error=${storage.lastWriteError || storage.persistLastFlushError}` : "",
   ].filter(Boolean).join(" · ");
+}
+
+function renderSettingsStorageKernel(kernel) {
+  if (!kernel) return `<p class="settings-muted">Storage kernel diagnostics are unavailable.</p>`;
+  const cache = kernel.pageCache || {};
+  const writeback = kernel.writeback || {};
+  const repair = kernel.recovery?.lastRepair || null;
+  const localConflicts = kernel.conflicts?.localMounts || [];
+  const remoteConflicts = kernel.conflicts?.remoteSync || [];
+  return `
+    <dl>
+      <div><dt>State</dt><dd>${escapeHtml(kernel.state || "unknown")}</dd></div>
+      <div><dt>Page Cache</dt><dd>${Number(cache.dirtyInodes || 0)} dirty inodes · ${Number(cache.dirtyFiles || 0)} dirty files · ${formatBytes(cache.contentBytes || cache.bytes || 0)}</dd></div>
+      <div><dt>Writeback</dt><dd>${writeback.pending ? "pending" : "idle"} · flushes=${Number(writeback.flushes || 0)} · coalesced=${Number(writeback.coalesced || 0)}</dd></div>
+      <div><dt>Transactions</dt><dd>${Number(kernel.transactions?.length || 0)} records · ${Number(kernel.transactionGroups?.length || 0)} groups</dd></div>
+      <div><dt>Conflicts</dt><dd>local=${localConflicts.length} · remote=${remoteConflicts.length}</dd></div>
+      <div><dt>Last Repair</dt><dd>${repair ? `${escapeHtml(shortTime(repair.checkedAt))} · ok=${Boolean(repair.ok)} · problems=${Number(repair.problems || 0)} · repairs=${Number(repair.repairs || 0)}` : "none"}</dd></div>
+      <div><dt>Last Error</dt><dd>${escapeHtml(writeback.lastError || "-")}</dd></div>
+    </dl>
+    ${renderSettingsStorageTransactions(kernel.transactionGroups || [])}
+  `;
+}
+
+function renderSettingsStorageTransactions(groups = []) {
+  if (!groups.length) return `<p class="settings-muted">No storage transaction groups recorded.</p>`;
+  return `
+    <div class="settings-mount-list">
+      ${groups.slice(-6).reverse().map((group) => `
+        <article class="settings-mount-card" data-storage-group="${escapeAttr(group.id)}">
+          <div>
+            <strong>${escapeHtml(group.kind || group.id)}</strong>
+            <span>${escapeHtml(group.status || "unknown")} · transactions=${Number(group.transactionIds?.length || 0)}</span>
+            <small>${escapeHtml(shortTime(group.startedAt))}${group.reason ? ` · ${escapeHtml(group.reason)}` : ""}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderSettingsServices(services) {

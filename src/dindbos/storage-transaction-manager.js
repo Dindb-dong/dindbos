@@ -2,7 +2,9 @@ export class StorageTransactionManager {
   constructor(os) {
     this.os = os;
     this.nextId = 1;
+    this.nextGroupId = 1;
     this.transactions = new Map();
+    this.groups = new Map();
   }
 
   begin(kind = "storage-flush", details = {}) {
@@ -19,10 +21,12 @@ export class StorageTransactionManager {
       reason: "",
       objectId: "",
       handleId: "",
+      groupId: String(details.groupId || ""),
       metadata: cloneJson(details.metadata || {}),
     };
     this.registerTransactionObject(record);
     this.transactions.set(record.id, record);
+    this.attachTransactionToGroup(record);
     this.writeProcfs();
     return publicTransaction(record);
   }
@@ -52,6 +56,73 @@ export class StorageTransactionManager {
     this.revokeTransactionObject(record, details.reason || "storage-transaction-failed");
     this.writeProcfs();
     return publicTransaction(record);
+  }
+
+  beginGroup(kind = "storage-group", details = {}) {
+    const now = new Date().toISOString();
+    const record = {
+      id: `storage-runtime-group-${this.nextGroupId++}`,
+      kind: String(kind || "storage-group"),
+      ownerPid: Number(details.ownerPid || 0),
+      user: String(details.user || "root"),
+      status: "pending",
+      startedAt: now,
+      completedAt: "",
+      failedAt: "",
+      reason: "",
+      transactionIds: [],
+      metadata: cloneJson(details.metadata || {}),
+    };
+    this.groups.set(record.id, record);
+    this.writeProcfs();
+    return publicGroup(record);
+  }
+
+  commitGroup(id, details = {}) {
+    const record = this.requireGroup(id);
+    if (record.status !== "pending") return publicGroup(record);
+    record.status = "committed";
+    record.completedAt = new Date().toISOString();
+    record.metadata = { ...record.metadata, ...cloneJson(details.metadata || {}) };
+    this.writeProcfs();
+    return publicGroup(record);
+  }
+
+  failGroup(id, error, details = {}) {
+    const record = this.requireGroup(id);
+    if (record.status !== "pending") return publicGroup(record);
+    record.status = "failed";
+    record.failedAt = new Date().toISOString();
+    record.reason = error?.message || String(error || details.reason || "storage-transaction-group-failed");
+    record.metadata = { ...record.metadata, ...cloneJson(details.metadata || {}) };
+    this.writeProcfs();
+    return publicGroup(record);
+  }
+
+  groupStatus(filters = {}) {
+    return [...this.groups.values()]
+      .filter((record) => filters.status === undefined || record.status === String(filters.status || ""))
+      .filter((record) => filters.ownerPid === undefined || record.ownerPid === Number(filters.ownerPid || 0))
+      .map(publicGroup);
+  }
+
+  getGroup(id) {
+    const record = this.groups.get(String(id || ""));
+    return record ? publicGroup(record) : null;
+  }
+
+  requireGroup(id) {
+    const record = this.groups.get(String(id || ""));
+    if (!record) throw transactionError("ENOENT", `storage transaction group: ${id}: no such group`);
+    return record;
+  }
+
+  attachTransactionToGroup(record) {
+    if (!record.groupId) return null;
+    const group = this.groups.get(record.groupId);
+    if (!group) return null;
+    if (!group.transactionIds.includes(record.id)) group.transactionIds.push(record.id);
+    return group;
   }
 
   status(filters = {}) {
@@ -131,6 +202,7 @@ export class StorageTransactionManager {
     if (!this.os.fs?.exists?.("/proc")) return;
     const system = this.os.permissions.systemPrincipal();
     const transactions = this.status();
+    const groups = this.groupStatus();
     this.os.fs.writeOrCreateFile("/proc/storage-transactions.json", `${JSON.stringify(transactions, null, 2)}\n`, "/", {
       mime: "application/json",
       owner: "root",
@@ -138,6 +210,18 @@ export class StorageTransactionManager {
       permissions: "-rw-r--r--",
     }, system);
     this.os.fs.writeOrCreateFile("/proc/storage-transactions", `${formatTransactions(transactions)}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile("/proc/storage-transaction-groups.json", `${JSON.stringify(groups, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile("/proc/storage-transaction-groups", `${formatGroups(groups)}\n`, "/", {
       mime: "text/plain",
       owner: "root",
       group: "root",
@@ -159,6 +243,23 @@ function publicTransaction(record) {
     reason: record.reason,
     objectId: record.objectId,
     handleId: record.handleId,
+    groupId: record.groupId,
+    metadata: cloneJson(record.metadata || {}),
+  };
+}
+
+function publicGroup(record) {
+  return {
+    id: record.id,
+    kind: record.kind,
+    ownerPid: record.ownerPid,
+    user: record.user,
+    status: record.status,
+    startedAt: record.startedAt,
+    completedAt: record.completedAt,
+    failedAt: record.failedAt,
+    reason: record.reason,
+    transactionIds: [...(record.transactionIds || [])],
     metadata: cloneJson(record.metadata || {}),
   };
 }
@@ -168,6 +269,7 @@ function transactionMetadata(record) {
     transactionId: record.id,
     kind: record.kind,
     status: record.status,
+    groupId: record.groupId || "",
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     failedAt: record.failedAt,
@@ -181,19 +283,34 @@ function transactionHandleMetadata(record) {
     transactionId: record.id,
     kind: record.kind,
     status: record.status,
+    groupId: record.groupId || "",
   };
 }
 
 function formatTransactions(transactions = []) {
-  if (!transactions.length) return "id kind status object handle";
+  if (!transactions.length) return "id kind status group object handle";
   return [
-    "id kind status object handle",
+    "id kind status group object handle",
     ...transactions.map((entry) => [
       entry.id,
       entry.kind,
       entry.status,
+      entry.groupId || "-",
       entry.objectId || "-",
       entry.handleId || "-",
+    ].join(" ")),
+  ].join("\n");
+}
+
+function formatGroups(groups = []) {
+  if (!groups.length) return "id kind status transactions";
+  return [
+    "id kind status transactions",
+    ...groups.map((entry) => [
+      entry.id,
+      entry.kind,
+      entry.status,
+      entry.transactionIds.join(",") || "-",
     ].join(" ")),
   ].join("\n");
 }

@@ -573,6 +573,27 @@ export class DescriptorManager {
     const content = safeRead(() => this.os.fs.readFile(descriptor.path, "/", descriptor.principal), "");
     const offset = descriptor.append ? content.length : Number(descriptor.offset || 0);
     const next = `${content.slice(0, offset)}${data}${content.slice(offset + data.length)}`;
+    const group = this.os.storageTransactions?.beginGroup?.("mapped-file-write", {
+      ownerPid: context.process?.pid || context.pid || 0,
+      user: context.principal?.user || context.process?.user || "",
+      metadata: {
+        path: descriptor.path,
+        fd: descriptor.fd,
+        bytes: byteLength(data),
+        operation: descriptor.append ? "append" : "write",
+      },
+    });
+    const transaction = this.os.storageTransactions?.begin?.("fd-write", {
+      groupId: group?.id || "",
+      ownerPid: context.process?.pid || context.pid || 0,
+      user: context.principal?.user || context.process?.user || "",
+      metadata: {
+        path: descriptor.path,
+        fd: descriptor.fd,
+        offset,
+        bytes: byteLength(data),
+      },
+    });
     reserveStorageBytes(this.os, byteLength(data), {
       scope: "fd-write",
       appId: context.process?.appId || context.appId || "",
@@ -581,9 +602,19 @@ export class DescriptorManager {
       fd: descriptor.fd,
       operation: descriptor.append ? "append" : "write",
     });
-    this.os.fs.writeOrCreateFile(descriptor.path, next, "/", {}, descriptor.principal);
-    descriptor.offset = offset + data.length;
-    return byteLength(data);
+    try {
+      this.os.fs.writeOrCreateFile(descriptor.path, next, "/", {}, descriptor.principal);
+      descriptor.offset = offset + data.length;
+      if (transaction?.id) this.os.storageTransactions?.commit?.(transaction.id, { metadata: { committedBytes: byteLength(data) } });
+      if (group?.id) this.os.storageTransactions?.commitGroup?.(group.id, { metadata: { committedBytes: byteLength(data) } });
+      this.os.writeStorageKernelProcfs?.("fd-write");
+      return byteLength(data);
+    } catch (error) {
+      if (transaction?.id) this.os.storageTransactions?.fail?.(transaction.id, error);
+      if (group?.id) this.os.storageTransactions?.failGroup?.(group.id, error);
+      this.os.writeStorageKernelProcfs?.("fd-write-error");
+      throw error;
+    }
   }
 
   readDeviceDescriptor(process, descriptor, length) {
