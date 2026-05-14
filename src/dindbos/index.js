@@ -220,6 +220,7 @@ export class DindbOS {
     this.virtualMounts = new Map();
     this.overlayMounts = new Map();
     this.privacyLedger = [];
+    this.browserGrantRevocations = new Map();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1", user: this.session.user });
@@ -2692,11 +2693,14 @@ export class DindbOS {
   }
 
   browserCapabilityStatus() {
+    const ledger = this.privacyLedgerStatus({ limit: 200 });
     const capabilities = BROWSER_CAPABILITY_PROBES.map((probe) => ({
       ...probe,
       available: browserApiAvailable(probe.api),
       permissioned: true,
       policy: "broker-required",
+      accessCount: ledger.filter((entry) => entry.capability === probe.id).length,
+      revoked: [...this.browserGrantRevocations.values()].filter((entry) => entry.capability === probe.id),
     }));
     return {
       service: "dindbos-browser-capabilities",
@@ -2706,6 +2710,55 @@ export class DindbOS {
       total: capabilities.length,
       capabilities,
       updatedAt: new Date().toISOString(),
+    };
+  }
+
+  browserBrokerStatus() {
+    const capabilityStatus = this.browserCapabilityStatus();
+    return {
+      service: "dindbos-browser-brokers",
+      brokerRequired: true,
+      revokedGrants: [...this.browserGrantRevocations.values()].map((entry) => ({ ...entry })),
+      ledgerEntries: this.privacyLedgerStatus({ limit: 50 }),
+      capabilities: capabilityStatus.capabilities.map((capability) => ({
+        id: capability.id,
+        api: capability.api,
+        broker: capability.broker,
+        device: capability.device,
+        available: capability.available,
+        policy: capability.policy,
+        accessCount: capability.accessCount,
+        revoked: capability.revoked.length,
+      })),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  requestBrowserAccess(process = null, capability = "", options = {}) {
+    const probe = this.browserCapabilityProbe(capability);
+    this.assertBrowserCapability(process, probe.id);
+    const operation = String(options.operation || "request");
+    const result = probe.available ? "brokered" : "unavailable";
+    const entry = this.recordPrivacyAccess({
+      process,
+      capability: probe.id,
+      broker: probe.broker,
+      device: probe.device,
+      operation,
+      source: options.source || "browser-broker",
+      target: options.target || probe.device,
+      bytes: Number(options.bytes || 0),
+      result,
+      expiresAt: options.expiresAt || "",
+    });
+    return {
+      capability: probe.id,
+      broker: probe.broker,
+      device: probe.device,
+      available: probe.available,
+      status: result,
+      userVisiblePermission: true,
+      ledgerId: entry.id,
     };
   }
 
@@ -2745,12 +2798,62 @@ export class DindbOS {
   assertBrowserCapability(process = null, capability = "") {
     const requested = String(capability || "").trim();
     if (!requested) throw codedError("EINVAL", "browser capability is required");
+    const revoked = this.browserGrantRevocationFor(process, requested);
+    if (revoked) throw codedError("EACCES", `browser broker: ${requested}: grant revoked`);
     const capabilities = [
       ...(process?.manifest?.capabilities || []),
       ...(process?.manifest?.permissions?.capabilities || []),
     ].map(String);
     if (capabilities.includes(requested)) return true;
     throw codedError("EACCES", `browser broker: ${requested}: capability denied`);
+  }
+
+  browserCapabilityProbe(capability = "") {
+    const requested = String(capability || "").trim();
+    const probe = BROWSER_CAPABILITY_PROBES.find((entry) => entry.id === requested);
+    if (!probe) throw codedError("ENODEV", `browser broker: ${requested}: unknown capability`);
+    return { ...probe, available: browserApiAvailable(probe.api) };
+  }
+
+  revokeBrowserGrant(capability = "", options = {}) {
+    const probe = this.browserCapabilityProbe(capability);
+    const process = options.process || null;
+    const pid = Number(options.pid || process?.pid || 0);
+    const appId = String(options.appId || process?.appId || "");
+    const key = browserGrantRevocationKey({ pid, appId, capability: probe.id });
+    const record = {
+      key,
+      capability: probe.id,
+      broker: probe.broker,
+      device: probe.device,
+      pid,
+      appId,
+      revokedBy: String(options.revokedBy || options.principal?.user || "system"),
+      reason: String(options.reason || "revoked"),
+      revokedAt: new Date().toISOString(),
+    };
+    this.browserGrantRevocations.set(key, record);
+    this.recordPrivacyAccess({
+      process: process || { pid, appId, user: options.principal?.user || this.session?.user || "guest" },
+      capability: probe.id,
+      broker: probe.broker,
+      device: probe.device,
+      operation: "revoke",
+      source: "browser-broker",
+      target: probe.device,
+      result: "revoked",
+    });
+    this.writeBrowserDeviceProcfs("browser-grant-revoke");
+    return { ...record };
+  }
+
+  browserGrantRevocationFor(process = null, capability = "") {
+    const pid = Number(process?.pid || 0);
+    const appId = String(process?.appId || "");
+    return this.browserGrantRevocations.get(browserGrantRevocationKey({ pid, appId, capability }))
+      || this.browserGrantRevocations.get(browserGrantRevocationKey({ pid: 0, appId, capability }))
+      || this.browserGrantRevocations.get(browserGrantRevocationKey({ pid, appId: "", capability }))
+      || null;
   }
 
   recordPrivacyAccess(event = {}) {
@@ -2765,6 +2868,7 @@ export class DindbOS {
       source: String(event.source || ""),
       target: String(event.target || ""),
       bytes: Number(event.bytes || 0),
+      result: String(event.result || "ok"),
       pid: Number(process.pid || 0),
       appId: String(process.appId || ""),
       packageId: String(process.manifest?.namespace?.packageId || ""),
@@ -2774,6 +2878,7 @@ export class DindbOS {
     };
     this.privacyLedger.push(entry);
     this.writePrivacyLedgerProcfs();
+    this.writeBrowserBrokerProcfs();
     return { ...entry };
   }
 
@@ -2871,7 +2976,19 @@ export class DindbOS {
       permissions: "-r--r--r--",
       mime: "application/json",
     }, system);
+    this.writeBrowserBrokerProcfs(system);
     return { capabilities: capabilityStatus, deviceTree };
+  }
+
+  writeBrowserBrokerProcfs(system = this.permissions.systemPrincipal()) {
+    this.ensureSystemDirectory("/proc", "root", system);
+    this.fs.writeOrCreateFile("/proc/browser-brokers.json", `${JSON.stringify(this.browserBrokerStatus(), null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    return this.browserBrokerStatus();
   }
 
   compatibilitySnapshot() {
@@ -3721,6 +3838,10 @@ function formatDeviceTree(devices = []) {
       device.capabilities.join(",") || "-",
     ].join(" ")),
   ].join("\n");
+}
+
+function browserGrantRevocationKey({ pid = 0, appId = "", capability = "" } = {}) {
+  return `${Number(pid || 0)}:${String(appId || "")}:${String(capability || "")}`;
 }
 
 function sanitizeIdentifier(value, fallback) {

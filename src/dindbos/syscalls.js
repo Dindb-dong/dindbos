@@ -58,6 +58,9 @@ export class SyscallDispatcher {
     if (name === "clipboard.read") return this.clipboardRead(context);
     if (name === "clipboard.write") return this.clipboardWrite(args, context);
     if (name === "privacy.ledger") return this.privacyLedger(args);
+    if (name === "browser.status") return this.browserStatus();
+    if (name === "browser.request") return this.browserRequest(args, context);
+    if (name === "browser.revoke") return this.browserRevoke(args, context);
     if (name === "fs.exists") return this.fsExists(args, context);
     if (name === "fs.stat") return this.fsStat(args, context);
     if (name === "fs.readText") return this.fsReadText(args, context);
@@ -135,6 +138,32 @@ export class SyscallDispatcher {
       pid: args.pid,
       limit: args.limit,
     }) || [];
+  }
+
+  browserStatus() {
+    return this.os.browserBrokerStatus?.() || { capabilities: [] };
+  }
+
+  browserRequest(args, context) {
+    const process = this.requireProcess(context);
+    return this.os.requestBrowserAccess(process, String(args.capability || ""), {
+      operation: args.operation,
+      source: "syscall",
+      target: args.target,
+      bytes: args.bytes,
+      expiresAt: args.expiresAt,
+    });
+  }
+
+  browserRevoke(args, context) {
+    const process = context.process || null;
+    return this.os.revokeBrowserGrant(String(args.capability || ""), {
+      process,
+      pid: args.pid,
+      appId: args.appId,
+      principal: context.principal,
+      reason: args.reason || "syscall",
+    });
   }
 
   fsExists(args, context) {

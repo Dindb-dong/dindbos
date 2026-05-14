@@ -172,7 +172,7 @@ export function installBuiltinApps(os, { portfolioData }) {
     width: 520,
     height: 380,
     manifest: {
-      capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read"],
+      capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read", "browser.read"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
     },
     render: ({ content, os: runtime }) => renderSettings(runtime, content),
@@ -3620,6 +3620,7 @@ export async function settingsRuntimeSnapshot(os) {
   const syncMerge = safeRead(() => os.remoteSyncMergePolicy?.(), null);
   const syncConflicts = safeRead(() => os.listRemoteSyncConflicts?.(), []);
   const keychain = safeRead(() => os.keychain?.settingsStatus?.({ appId: "settings", principal: os.permissions?.principal?.(os.session) }), null);
+  const browser = safeRead(() => os.browserBrokerStatus?.(), null);
   const containerEvents = readPackageContainerSecurityEvents(os);
   return {
     user,
@@ -3638,6 +3639,7 @@ export async function settingsRuntimeSnapshot(os) {
     syncMerge,
     syncConflicts,
     keychain,
+    browser,
     containerEvents,
   };
 }
@@ -3701,6 +3703,12 @@ export function settingsRuntimeMarkup(snapshot) {
       </section>
       <section class="settings-panel">
         <header>
+          <h3>Browser Permissions</h3>
+        </header>
+        ${renderSettingsBrowserPermissions(snapshot.browser)}
+      </section>
+      <section class="settings-panel">
+        <header>
           <h3>Container Security</h3>
         </header>
         ${renderSettingsContainerSecurity(snapshot.containerEvents)}
@@ -3713,6 +3721,49 @@ export function settingsRuntimeMarkup(snapshot) {
         ${renderSettingsMounts(snapshot.mounts)}
       </section>
     </section>
+  `;
+}
+
+function renderSettingsBrowserPermissions(browser) {
+  if (!browser) return `<p class="settings-muted">Browser broker diagnostics are unavailable.</p>`;
+  const capabilities = browser.capabilities || [];
+  const ledger = browser.ledgerEntries || [];
+  const available = capabilities.filter((entry) => entry.available).length;
+  return `
+    <dl>
+      <div><dt>Capabilities</dt><dd>${available}/${capabilities.length} available</dd></div>
+      <div><dt>Ledger</dt><dd>${ledger.length}</dd></div>
+      <div><dt>Revoked</dt><dd>${(browser.revokedGrants || []).length}</dd></div>
+    </dl>
+    <div class="settings-mount-list">
+      ${capabilities.map((entry) => `
+        <article class="settings-mount-card" data-browser-capability="${escapeAttr(entry.id)}">
+          <div>
+            <strong>${escapeHtml(entry.id)}</strong>
+            <span>${escapeHtml(entry.broker)} · ${escapeHtml(entry.device)}</span>
+            <small>${entry.available ? "available" : "unavailable"} · access=${Number(entry.accessCount || 0)} · revoked=${Number(entry.revoked || 0)}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+    ${renderSettingsPrivacyLedger(ledger)}
+  `;
+}
+
+function renderSettingsPrivacyLedger(entries = []) {
+  if (!entries.length) return `<p class="settings-muted">No browser privacy ledger entries recorded.</p>`;
+  return `
+    <div class="settings-mount-list">
+      ${entries.slice(0, 8).map((entry) => `
+        <article class="settings-mount-card" data-privacy-ledger="${escapeAttr(entry.capability)}">
+          <div>
+            <strong>${escapeHtml(entry.capability)}</strong>
+            <span>${escapeHtml(entry.operation)} · ${escapeHtml(entry.result || "ok")} · pid=${Number(entry.pid || 0)}</span>
+            <small>${escapeHtml(entry.broker)} · ${escapeHtml(entry.device)} · ${escapeHtml(entry.at || "")}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 
