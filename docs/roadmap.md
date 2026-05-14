@@ -97,7 +97,7 @@ Each implementation cycle uses a fresh `codex/*` worktree and branch, may contai
 2. Cycle 2: Process Images, Job Control, And PTY
    Add process image records, spawn/exec/wait/signal syscalls, job control, process groups, `/dev/pts`, and PTY signal/resize semantics.
 3. Cycle 3: Storage Kernel And Recovery
-   Extend transaction groups, page-cache/writeback diagnostics, salvage/repair Settings views, local mount conflict handling, and remote sync apply recovery.
+   Done: transaction groups cover writeback/service lifecycle/mapped writes; page-cache/writeback diagnostics and Storage Recovery controls are exposed. Remaining conflict work continues in the storage backlog.
 4. Cycle 4: Virtual Networking And Service Mesh
    Add loopback services, service discovery, brokered fetch/WebSocket/WebRTC policy, `/proc/net`, `/proc/sockets`, and firewall diagnostics.
 5. Cycle 5: Secure Boot, Policy Compiler, And Package Trust
@@ -170,13 +170,11 @@ Goal: make disk semantics durable, repairable, and explainable.
 Done:
 
 - Atomic write primitives, package staging, archive import staging, OPFS replay records, fsync-style barriers, storage status, and `fsck` first pass.
+- Cycle 3: storage transaction groups now cover writeback flushes, service lifecycle suspend/resume, and descriptor mapped-file writes; `/proc/storage-kernel.json`, `/proc/writeback`, `storage.kernel`, `storage fsck`, and Settings Storage Recovery expose page-cache/writeback/repair diagnostics.
 
 Next:
 
-- Extend transaction groups into service lifecycle and mapped-file writes.
-- Add page-cache/writeback diagnostics.
-- Add salvage/repair views in Settings.
-- Add stronger conflict handling for concurrent local mount writes and remote sync apply.
+- Extend storage-kernel conflict repair into concurrent local mount write arbitration and remote sync apply checkpoints.
 
 ### 5. Virtual Networking And Service Mesh
 

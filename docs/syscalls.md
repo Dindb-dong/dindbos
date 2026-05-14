@@ -73,6 +73,8 @@ app.manifest
 package.list
 package.info
 storage.status
+storage.kernel
+storage.fsck
 storage.sync
 localMount.status
 mount.list
@@ -91,7 +93,9 @@ app.launch
 
 Filesystem and descriptor syscalls run through the caller's VFS principal and, for sandboxed apps, the app manifest filesystem scopes. Process, package, storage, local mount, mount, and app launch syscalls run through the same capability checks used by the existing high-level app facade.
 
-`storage.sync` is the first durability-barrier syscall. It requires `storage.read`, waits for the runtime persistence flush path, and returns storage plus persistence status. It is intentionally not the same as the administrative `storage flush` settings operation: ordinary programs may request a best-effort durability barrier for their own completed writes, while destructive storage management still requires `storage.manage` and administrator approval.
+`storage.kernel` returns the storage-kernel diagnostic view mirrored under `/proc/storage-kernel.json`: page-cache counters, writeback status, transaction groups, recent journal entries, repair status, and local/remote conflict counts. `storage.fsck` is async; dry runs require `storage.read`, while repair and salvage requests require `storage.manage`.
+
+`storage.sync` is the durability-barrier syscall. It requires `storage.read`, waits for the runtime persistence flush path, records the writeback transaction group, and returns storage plus persistence status. It is intentionally not the same as the administrative `storage flush` settings operation: ordinary programs may request a best-effort durability barrier for their own completed writes, while destructive storage management still requires `storage.manage` and administrator approval.
 
 `mount.list` returns the shared DindbOS mount table. `mount.mount` and `mount.unmount` currently manage runtime `memfs` mounts, readonly `overlayfs` snapshot mounts, and readonly `zipfs` mounts for stored-method ZIP archives. Overlay mounts require `lower` and `upper` paths and use upper-over-lower precedence; ZIP mounts require an `archive` path. Unsupported drivers or ZIP compression methods fail with `ENOTSUP` instead of pretending the browser can mount arbitrary host filesystems. Sandboxed apps need `mount.read` or `mount.manage` capabilities for these calls.
 
@@ -122,6 +126,7 @@ syscall fs.writeText '{"path":"note.txt","content":"hello"}'
 syscall fs.readText '{"path":"note.txt"}'
 syscall package.info '{"packageId":"hello-notes"}'
 syscall storage.status
+syscall storage.kernel
 syscall storage.sync
 syscall process.list
 ```
