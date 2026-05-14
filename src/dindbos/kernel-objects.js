@@ -14,6 +14,7 @@ export const KERNEL_OBJECT_TYPES = [
   "keychain-grant",
   "package-namespace",
   "companion-session",
+  "memory-region",
 ];
 
 export class KernelObjectRegistry {

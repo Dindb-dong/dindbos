@@ -65,6 +65,8 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.exists("/proc/browser-capabilities.json"), "/proc/browser-capabilities.json was not written");
   assert(os.fs.exists("/proc/device-tree"), "/proc/device-tree was not written");
   assert(os.fs.exists("/proc/device-tree.json"), "/proc/device-tree.json was not written");
+  assert(os.fs.exists("/proc/isolation"), "/proc/isolation was not written");
+  assert(os.fs.exists("/proc/isolation.json"), "/proc/isolation.json was not written");
   assert(os.fs.exists("/dev/browser"), "/dev/browser device root was not created");
   assert(os.mountTable().some((entry) => entry.root === "/home" && entry.driver === "browserfs"), "mount table missing /home browserfs entry");
   assert(os.mountTable().some((entry) => entry.root === "/opt/hello-notes" && entry.driver === "pkgfs" && entry.readonly), "mount table missing readonly package image entry");
@@ -83,6 +85,14 @@ async function verifySuccessfulBootPhases() {
   assert(deviceTree.devices.some((device) => device.path === "/dev/browser/clipboard" && device.capabilities.includes("clipboard.write")), "device tree missing clipboard device capabilities");
   assert(deviceTree.devices.some((device) => device.path === "/dev/browser/hid" && device.status === "available"), "device tree missing available WebHID device");
   assert(os.fs.readFile("/proc/device-tree").includes("/dev/browser/gpu available webgpu-broker"), "/proc/device-tree text missing WebGPU broker");
+  const isolation = JSON.parse(os.fs.readFile("/proc/isolation.json"));
+  assert(isolation.sharedMemory.status === "degraded", `isolation shared memory status mismatch: ${JSON.stringify(isolation)}`);
+  assert(isolation.deployment.requiredHeaders["Cross-Origin-Opener-Policy"] === "same-origin", "isolation profile missing COOP header");
+  const memoryRegion = os.createWorkerMemoryRegion({ size: 64, name: "boot-smoke-region" });
+  assert(memoryRegion.bytes === 64 && memoryRegion.handleId, `worker memory region handle mismatch: ${JSON.stringify(memoryRegion)}`);
+  assert(memoryRegion.buffer instanceof ArrayBuffer, "degraded worker memory region did not return ArrayBuffer fallback");
+  const updatedIsolation = JSON.parse(os.fs.readFile("/proc/isolation.json"));
+  assert(updatedIsolation.memoryRegions.some((entry) => entry.id === memoryRegion.id && entry.transfer === "copy-fallback"), "isolation procfs missing worker memory region");
   const readonlyMount = os.syscall("mount.mount", { path: "/mnt/readonly-smoke", driver: "memfs", readonly: true });
   assert(readonlyMount.ok && readonlyMount.value.root === "/mnt/readonly-smoke", `readonly memfs mount failed: ${JSON.stringify(readonlyMount)}`);
   const readonlyWrite = os.syscall("fs.writeText", { path: "/mnt/readonly-smoke/blocked.txt", content: "blocked" });

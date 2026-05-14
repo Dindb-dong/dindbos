@@ -116,11 +116,14 @@ The first-pass WASM runtime provides argv/env helpers, stdout/stderr helpers, sy
 ```text
 doctor
 doctor compat
+doctor isolation
 ```
 
 It reports the active session, current working directory, storage backend and dirty-write state, local mount availability/counts, file helper rename support, installed package count, running process count, and the follow-up commands that expose deeper runtime details. `mount-local --helper` prints the native file helper protocol status for local mount operations that cannot be implemented honestly inside the browser sandbox.
 
 `doctor compat` prints the DindbOS compatibility tiers, browser capability probes, storage backend, browser provider companion endpoint, and hard unsupported native boundaries. Use it before installing a package that declares a required compatibility tier.
+
+`doctor isolation` prints the active cross-origin isolation profile, required COOP/COEP/CORP headers, SharedArrayBuffer/Atomics availability, degraded-mode reasons, and worker memory-region transfer mode. See `docs/isolation.md`.
 
 `syscall <name> [json]` calls the DindbOS syscall ABI and prints the structured JSON result. See `docs/syscalls.md` for the supported syscall names, errno-style failures, and trace files under `/var/log/dindbos/syscall.log` and `/proc/<pid>/syscalls`.
 

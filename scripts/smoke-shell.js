@@ -190,8 +190,16 @@ assert(result.output.includes("DindbOS compatibility"), `doctor compat heading m
 assert(result.output.includes("tier A supported dindbos-js"), `doctor compat tier A missing: ${result.output}`);
 assert(result.output.includes("tier C planned wasi-wasm"), `doctor compat tier C missing: ${result.output}`);
 assert(result.output.includes("serviceWorker=false periodicSync=false"), `doctor compat background browser probes missing: ${result.output}`);
+assert(result.output.includes("isolation current=degraded-shared-memory crossOriginIsolated=false sharedMemory=degraded"), `doctor compat isolation output missing: ${result.output}`);
 assert(result.output.includes("background serviceWorker=false periodicSync=false registered=false closedPagePersistent=false decision=unsupported-in-this-runtime"), `doctor compat background boundary missing: ${result.output}`);
 assert(result.output.includes("unsupported native=kernel-mode execution"), `doctor compat unsupported native boundary missing: ${result.output}`);
+
+result = await shell.executeAsync("doctor isolation");
+assert(result.status === 0, `doctor isolation status mismatch: ${result.status}`);
+assert(result.output.includes("DindbOS isolation"), `doctor isolation heading missing: ${result.output}`);
+assert(result.output.includes("headers COOP=same-origin COEP=require-corp"), `doctor isolation headers missing: ${result.output}`);
+assert(result.output.includes("workerMemory status=copy-fallback transfer=ArrayBuffer copy fallback"), `doctor isolation worker memory missing: ${result.output}`);
+assert(result.output.includes("profile origin-isolated status=requires-headers"), `doctor isolation profile missing: ${result.output}`);
 
 result = await shell.executeAsync("doctor browser");
 assert(result.status === 0, `doctor browser status mismatch: ${result.status}`);
@@ -631,6 +639,34 @@ function bootOs() {
         { id: "C", key: "wasi-wasm", name: "WASI-style WASM CLI programs", status: "planned" },
       ],
       browser: { workers: false, webAssembly: true, opfs: false, indexedDB: false, cacheApi: false, fileSystemAccess: false, serviceWorker: false, periodicSync: false },
+      isolation: {
+        current: "degraded-shared-memory",
+        crossOriginIsolated: false,
+        sharedMemory: {
+          sharedArrayBuffer: true,
+          atomics: true,
+          available: false,
+          status: "degraded",
+          decision: "requires-coop-coep-and-browser-support",
+        },
+        deployment: {
+          requiredHeaders: {
+            "Cross-Origin-Opener-Policy": "same-origin",
+            "Cross-Origin-Embedder-Policy": "require-corp",
+            "Cross-Origin-Resource-Policy": "same-origin or explicit cross-origin for allowed assets",
+          },
+        },
+        profiles: [
+          { id: "origin-isolated", status: "requires-headers", coop: "same-origin", coep: "require-corp", sharedMemory: "blocked" },
+        ],
+        workerMemory: {
+          status: "copy-fallback",
+          transfer: "ArrayBuffer copy fallback",
+          maxRegionBytes: 16777216,
+        },
+        degradedModes: ["crossOriginIsolated=false"],
+        memoryRegions: [],
+      },
       backgroundMaintenance: {
         serviceWorkerSupported: false,
         periodicSyncSupported: false,

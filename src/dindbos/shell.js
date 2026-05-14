@@ -15,7 +15,7 @@ const BUILTIN_MANUALS = {
   companion: "companion list|grant|revoke - inspect or administer companion permissions",
   cp: "cp [-r] <source> <destination> - copy files or directories",
   curl: "curl <url> - fetch a URL through the DindbOS network broker",
-  doctor: "doctor [compat] - print runtime diagnostics or compatibility tiers for troubleshooting",
+  doctor: "doctor [compat|browser|isolation] - print runtime diagnostics, compatibility tiers, browser brokers, or isolation status",
   dig: "dig <host> - probe DNS policy through the DindbOS network broker",
   df: "df - show mounted filesystem storage status",
   echo: "echo <text> [> file|>> file] - print or redirect text",
@@ -1276,6 +1276,7 @@ export class ShellSession {
   async doctor(args = []) {
     if (args[0] === "compat") return this.doctorCompat();
     if (args[0] === "browser") return this.doctorBrowser();
+    if (args[0] === "isolation") return this.doctorIsolation();
     const sessionStatus = safeRead(() => this.os.sessionStatus?.(), null);
     const storage = await safeAsync(() => this.os.storage?.estimate?.(), safeRead(() => this.os.storage?.status?.(), {}));
     const mounts = await safeAsync(() => this.os.localMounts?.status?.(), []);
@@ -1335,15 +1336,38 @@ export class ShellSession {
     const storage = snapshot.storage || {};
     const companions = snapshot.companions || {};
     const background = snapshot.backgroundMaintenance || {};
+    const isolation = snapshot.isolation || {};
+    const shared = isolation.sharedMemory || {};
     return [
       "DindbOS compatibility",
       `runtime=${snapshot.runtime || "DindbOS.js"} version=${snapshot.version || "0.2.0"} mode=${snapshot.mode || "browser-native"}`,
       ...tierLines,
       `browser workers=${Boolean(browser.workers)} wasm=${Boolean(browser.webAssembly)} opfs=${Boolean(browser.opfs)} indexedDB=${Boolean(browser.indexedDB)} cacheApi=${Boolean(browser.cacheApi)} fileSystemAccess=${Boolean(browser.fileSystemAccess)} serviceWorker=${Boolean(browser.serviceWorker)} periodicSync=${Boolean(browser.periodicSync)}`,
+      `isolation current=${isolation.current || "unknown"} crossOriginIsolated=${Boolean(isolation.crossOriginIsolated)} sharedMemory=${shared.status || "unknown"} decision=${shared.decision || "unknown"}`,
       `background serviceWorker=${Boolean(background.serviceWorkerSupported)} periodicSync=${Boolean(background.periodicSyncSupported)} registered=${Boolean(background.registered)} closedPagePersistent=${Boolean(background.closedPagePersistence)} decision=${background.decision || "unknown"}`,
       `storage backend=${storage.backend || "memory"} structured=${storage.structuredBackend || "memory"} persisted=${Boolean(storage.persisted)} buckets=${storage.buckets || "unknown"}`,
       `companions browserProvider=${companions.browserProviderUrl || "ws://127.0.0.1:8787/browser"} localMounts=${companions.localMounts || 0}`,
       `unsupported native=${(snapshot.unsupportedNative || []).join("; ")}`,
+    ].join("\n");
+  }
+
+  doctorIsolation() {
+    const snapshot = safeRead(() => this.os.isolationStatus?.(), null)
+      || safeRead(() => this.os.compatibilitySnapshot?.().isolation, compatibilitySnapshot(this.os).isolation);
+    const shared = snapshot.sharedMemory || {};
+    const worker = snapshot.workerMemory || {};
+    const headers = snapshot.deployment?.requiredHeaders || {};
+    const profiles = (snapshot.profiles || []).map((profile) => (
+      `profile ${profile.id} status=${profile.status} coop=${profile.coop || "-"} coep=${profile.coep || "-"} sharedMemory=${profile.sharedMemory || profile.fallback || "-"}`
+    ));
+    return [
+      "DindbOS isolation",
+      `current=${snapshot.current || "unknown"} crossOriginIsolated=${Boolean(snapshot.crossOriginIsolated)}`,
+      `sharedMemory available=${Boolean(shared.available)} status=${shared.status || "unknown"} sab=${Boolean(shared.sharedArrayBuffer)} atomics=${Boolean(shared.atomics)} decision=${shared.decision || "-"}`,
+      `headers COOP=${headers["Cross-Origin-Opener-Policy"] || "-"} COEP=${headers["Cross-Origin-Embedder-Policy"] || "-"} CORP=${headers["Cross-Origin-Resource-Policy"] || "-"}`,
+      `workerMemory status=${worker.status || "unknown"} transfer=${worker.transfer || "-"} maxRegionBytes=${Number(worker.maxRegionBytes || 0)} regions=${snapshot.memoryRegions?.length || 0}`,
+      `degraded=${snapshot.degradedModes?.join("; ") || "-"}`,
+      ...profiles,
     ].join("\n");
   }
 
