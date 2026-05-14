@@ -126,6 +126,23 @@ Remote file entries can include `integrity` as `sha256-<base64 digest>`. npm dep
 
 WASM package apps can declare `"runtime": "wasm"` or use a `.wasm` entry. DindbOS runs the entry through the browser-native WASM runner, renders stdout/stderr/status into the package window, and applies the package's declared filesystem and capability scopes to the child WASM process. This is the DindbOS ABI runner, not full WASI tier C compatibility yet.
 
+Package sandbox declarations can require an origin-isolated deployment when the app depends on SharedArrayBuffer-backed paths:
+
+```json
+{
+  "sandbox": {
+    "containerMode": "iframe",
+    "isolation": {
+      "profile": "origin-isolated",
+      "sharedMemory": true,
+      "allowDegraded": false
+    }
+  }
+}
+```
+
+At launch, DindbOS copies the current `/proc/isolation` status into the process container record. If `allowDegraded` is false and the browser is not origin-isolated, the package entrypoint is not executed and `/proc/<pid>/container.json` records `launchDecision: "blocked-origin-isolation-required"` with `EISOLATION`.
+
 ## Manifest Examples
 
 ### Simple App

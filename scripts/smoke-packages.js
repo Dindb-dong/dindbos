@@ -609,8 +609,37 @@ assert(iframeBridgeContainer.mode === "sandboxed-iframe", `iframe package contai
 assert(iframeBridgeContainer.isolation === "sandboxed-iframe-opaque-origin", `iframe package container isolation mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
 assert(iframeBridgeContainer.syscallBridge === "postmessage-syscall", `iframe package syscall bridge mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
 assert(iframeBridgeContainer.rawRuntimeGlobal === false, "iframe package container reported raw runtime global exposure");
+assert(iframeBridgeContainer.launchDecision === "allowed", `iframe package launch decision mismatch: ${JSON.stringify(iframeBridgeContainer)}`);
 assert(os.fs.readFile(`/proc/${iframeBridgeWindow.pid}/status`).includes("ContainerMode:\tsandboxed-iframe"), "iframe package /proc status missing container mode");
 packages.remove("iframe-bridge");
+
+packages.install(packageManifest("isolation-required", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export async function mount({ content }) {",
+      "  content.innerHTML = '<main data-isolation-unexpected>unexpected</main>';",
+      "}",
+    ].join("\n"),
+  },
+], {
+  sandbox: {
+    containerMode: "iframe",
+    isolation: { profile: "origin-isolated", required: true, sharedMemory: true, allowDegraded: false },
+  },
+  permissions: { fileSystem: { read: ["/opt/isolation-required"], write: [] } },
+}));
+const isolationRequiredWindow = os.apps.launch("isolation-required");
+await isolationRequiredWindow.rendered;
+assert(isolationRequiredWindow.content.innerHTML.includes("data-package-container-blocked=\"origin-isolation\""), `origin isolation requirement did not block launch: ${isolationRequiredWindow.content.innerHTML}`);
+assert(!isolationRequiredWindow.content.innerHTML.includes("data-isolation-unexpected"), "origin isolation blocked package entrypoint still ran");
+const isolationRequiredContainer = JSON.parse(os.fs.readFile(`/proc/${isolationRequiredWindow.pid}/container.json`));
+assert(isolationRequiredContainer.launchBlocked === true, `origin isolation container was not blocked: ${JSON.stringify(isolationRequiredContainer)}`);
+assert(isolationRequiredContainer.launchDecision === "blocked-origin-isolation-required", `origin isolation launch decision mismatch: ${JSON.stringify(isolationRequiredContainer)}`);
+assert(isolationRequiredContainer.lastError?.code === "EISOLATION", `origin isolation error missing: ${JSON.stringify(isolationRequiredContainer)}`);
+assert(isolationRequiredContainer.deploymentIsolation?.current === "degraded-shared-memory", `origin isolation deployment status missing: ${JSON.stringify(isolationRequiredContainer)}`);
+packages.remove("isolation-required");
 
 const wasmTool = packages.install({
   id: "wasm-tool",

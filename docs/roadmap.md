@@ -216,10 +216,10 @@ Done:
 - COOP/COEP/CORP deployment profiles are documented in `docs/isolation.md`.
 - `doctor isolation` and `/proc/isolation` expose current cross-origin isolation, SharedArrayBuffer/Atomics availability, degraded reasons, and worker memory-region status.
 - Worker memory-region handles are kernel-tracked and fall back to ArrayBuffer copy transfer when cross-origin isolation is absent.
+- Package container launches now record deployment isolation, honor origin-isolated SharedArrayBuffer requirements, and block required entries with `EISOLATION` instead of silently degrading.
 
 Next:
 
-- Wire isolated deployment status into package container launch decisions.
 - Add browser QA coverage for an actually origin-isolated served build.
 
 ### 8. Service Worker Boot And Offline Recovery

@@ -59,7 +59,8 @@ export class AppRegistry {
     if (!app) throw new Error(`Unknown app: ${appId}`);
     const windowId = app.singleton ? app.id : `${app.id}-${Date.now()}-${++this.launchSeq}`;
     if (app.singleton && this.os.windows.has(windowId)) return this.os.windows.activate(windowId);
-    const process = this.os.processes.spawn(app, context);
+    const launchContext = resolveLaunchContext(app, context, this.os);
+    const process = this.os.processes.spawn(app, launchContext);
     const sandbox = this.os.createSandbox(process);
     this.os.processes.attachWindow(process.pid, windowId);
     return this.os.windows.open({
@@ -75,7 +76,7 @@ export class AppRegistry {
       shortcuts: app.manifest?.shortcuts || [],
       render: (content, windowApi) => {
         try {
-          return app.render({ os: sandbox, content, window: windowApi, context });
+          return app.render({ os: sandbox, content, window: windowApi, context: launchContext });
         } catch (error) {
           this.os.processes.crash(process.pid, error);
           content.innerHTML = `
@@ -162,6 +163,13 @@ export class AppRegistry {
     const appName = sanitizeLauncherName(typeof app?.name === "string" && app.name ? app.name : manifest.name);
     return `/usr/share/applications/${appName}.app`;
   }
+}
+
+function resolveLaunchContext(app, context = {}, os = null) {
+  if (typeof app.resolveLaunchContext !== "function") return context;
+  const resolved = app.resolveLaunchContext(context, os);
+  if (!resolved || typeof resolved !== "object") return context;
+  return { ...context, ...resolved };
 }
 
 function matchesMime(value = "", matcher = "") {
