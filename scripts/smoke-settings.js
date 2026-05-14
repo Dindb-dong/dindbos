@@ -13,6 +13,7 @@ const calls = {
   lifecycle: 0,
   coordination: 0,
   keychain: 0,
+  browser: 0,
   sync: 0,
   syncMerge: 0,
   syncConflicts: 0,
@@ -216,6 +217,21 @@ const os = {
       };
     },
   },
+  browserBrokerStatus() {
+    calls.browser += 1;
+    return {
+      capabilities: [
+        { id: "clipboard.read", broker: "clipboard", device: "/dev/browser/clipboard", available: true, accessCount: 2, revoked: 0 },
+        { id: "screen.capture", broker: "screen-capture", device: "/dev/browser/screen", available: true, accessCount: 1, revoked: 1 },
+      ],
+      ledgerEntries: [
+        { capability: "clipboard.read", operation: "read", result: "ok", pid: 42, broker: "clipboard", device: "/dev/browser/clipboard", at: "2026-05-05T00:08:00.000Z" },
+      ],
+      revokedGrants: [
+        { capability: "screen.capture", pid: 42, appId: "recorder", revokedAt: "2026-05-05T00:09:00.000Z" },
+      ],
+    };
+  },
   fs: {
     exists(path) {
       return path === "/var/log/dindbos/package-container.log";
@@ -249,6 +265,7 @@ assert(calls.sync === 1, "settings snapshot did not read remote sync status");
 assert(calls.syncMerge === 1, "settings snapshot did not read remote sync merge policy");
 assert(calls.syncConflicts === 1, "settings snapshot did not read remote sync conflicts");
 assert(calls.keychain === 1, "settings snapshot did not read keychain status");
+assert(calls.browser === 1, "settings snapshot did not read browser broker status");
 
 assert(snapshot.user === "guest", "settings snapshot user mismatch");
 assert(snapshot.home === "/home/guest", "settings snapshot home mismatch");
@@ -268,6 +285,7 @@ assert(snapshot.sync.lastSuccessfulSnapshot.settingsRecords === 2, "settings sna
 assert(snapshot.syncMerge.planner === "offline-first", "settings snapshot sync merge policy mismatch");
 assert(snapshot.syncConflicts.length === 1, "settings snapshot sync conflict count mismatch");
 assert(snapshot.keychain.activeGrants.length === 1, "settings snapshot keychain grant count mismatch");
+assert(snapshot.browser.capabilities.length === 2, "settings snapshot browser broker count mismatch");
 assert(snapshot.containerEvents.length === 2, "settings snapshot container security event count mismatch");
 
 const markup = settingsRuntimeMarkup(snapshot);
@@ -297,6 +315,10 @@ assert(markup.includes("<dt>Last Retry</dt><dd>") && markup.includes("· applied
 assert(markup.includes("<dt>Last Repair</dt><dd>") && markup.includes("· remaining=0</dd>"), "settings markup did not render remote sync repair status");
 assert(markup.includes("<dt>Merge Rules</dt><dd>6</dd>"), "settings markup did not render remote sync merge rules");
 assert(markup.includes("<h3>Keychain</h3>"), "settings markup did not render keychain panel");
+assert(markup.includes("<h3>Browser Permissions</h3>"), "settings markup did not render browser permission panel");
+assert(markup.includes('data-browser-capability="screen.capture"'), "settings markup did not render browser capability entry");
+assert(markup.includes('data-privacy-ledger="clipboard.read"'), "settings markup did not render browser privacy ledger entry");
+assert(markup.includes("<dt>Revoked</dt><dd>1</dd>"), "settings markup did not render browser revoked count");
 assert(markup.includes("<h3>Container Security</h3>"), "settings markup did not render container security panel");
 assert(markup.includes('data-container-event="heartbeat"'), "settings markup did not render container heartbeat event");
 assert(markup.includes('data-container-event="crash"'), "settings markup did not render container crash event");

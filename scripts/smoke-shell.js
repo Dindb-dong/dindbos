@@ -193,6 +193,12 @@ assert(result.output.includes("serviceWorker=false periodicSync=false"), `doctor
 assert(result.output.includes("background serviceWorker=false periodicSync=false registered=false closedPagePersistent=false decision=unsupported-in-this-runtime"), `doctor compat background boundary missing: ${result.output}`);
 assert(result.output.includes("unsupported native=kernel-mode execution"), `doctor compat unsupported native boundary missing: ${result.output}`);
 
+result = await shell.executeAsync("doctor browser");
+assert(result.status === 0, `doctor browser status mismatch: ${result.status}`);
+assert(result.output.includes("DindbOS browser brokers"), `doctor browser heading missing: ${result.output}`);
+assert(result.output.includes("summary available=2/2 ledger=1 revoked=1"), `doctor browser summary missing: ${result.output}`);
+assert(result.output.includes("screen.capture available broker=screen-capture device=/dev/browser/screen access=1 revoked=1"), `doctor browser broker line missing: ${result.output}`);
+
 result = await shell.executeAsync("mount");
 assert(result.status === 0, `mount status mismatch: ${result.status}`);
 assert(result.output.includes("rootfs / rootfs rw"), `mount output missing rootfs entry: ${result.output}`);
@@ -635,6 +641,18 @@ function bootOs() {
       storage: { backend: "memory", structuredBackend: "memory", persisted: false, buckets: "fallback" },
       companions: { browserProviderUrl: "ws://127.0.0.1:8787/browser", localMounts: 0 },
       unsupportedNative: ["kernel-mode execution"],
+    }),
+    browserBrokerStatus: () => ({
+      capabilities: [
+        { id: "notifications.show", available: true, broker: "notifications", device: "/dev/browser/notifications", accessCount: 0, revoked: 0 },
+        { id: "screen.capture", available: true, broker: "screen-capture", device: "/dev/browser/screen", accessCount: 1, revoked: 1 },
+      ],
+      ledgerEntries: [
+        { capability: "screen.capture", operation: "request", result: "brokered", pid: 100 },
+      ],
+      revokedGrants: [
+        { capability: "screen.capture", pid: 100, appId: "recorder" },
+      ],
     }),
     apps: {
       list: () => [{ id: "calculator", name: "Calculator" }],

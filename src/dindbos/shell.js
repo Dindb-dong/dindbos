@@ -1228,6 +1228,7 @@ export class ShellSession {
 
   async doctor(args = []) {
     if (args[0] === "compat") return this.doctorCompat();
+    if (args[0] === "browser") return this.doctorBrowser();
     const sessionStatus = safeRead(() => this.os.sessionStatus?.(), null);
     const storage = await safeAsync(() => this.os.storage?.estimate?.(), safeRead(() => this.os.storage?.status?.(), {}));
     const mounts = await safeAsync(() => this.os.localMounts?.status?.(), []);
@@ -1261,6 +1262,20 @@ export class ShellSession {
       `sync backend=${sync?.backend || "unavailable"} encrypted=${Boolean(sync?.encrypted)} lastSnapshot=${sync?.lastSuccessfulSnapshot?.createdAt || "-"} files=${Number(sync?.lastSuccessfulSnapshot?.fileCount || 0)} cache=${Number(sync?.lastSuccessfulSnapshot?.cacheRecords || 0)} settings=${Number(sync?.lastSuccessfulSnapshot?.settingsRecords || 0)} lastApplied=${sync?.lastAppliedSnapshot?.appliedAt || "-"} conflicts=${Number(sync?.lastAppliedSnapshot?.conflicts || 0)} refused=${Number(sync?.lastAppliedSnapshot?.refused || 0)} lastRetry=${sync?.lastRetry?.retriedAt || "-"} retryApplied=${Number(sync?.lastRetry?.applied || 0)} retryRefused=${Number(sync?.lastRetry?.refused || 0)}`,
       `syncMerge planner=${syncMerge?.planner || "unavailable"} rules=${Array.isArray(syncMerge?.rules) ? syncMerge.rules.length : 0}`,
       "troubleshooting docs=docs/support.md command=storage|mount-local --list|ps|pkg list",
+    ].join("\n");
+  }
+
+  doctorBrowser() {
+    const status = safeRead(() => this.os.browserBrokerStatus?.(), { capabilities: [], ledgerEntries: [], revokedGrants: [] });
+    const available = status.capabilities.filter((entry) => entry.available).length;
+    const total = status.capabilities.length;
+    const brokerLines = status.capabilities.map((entry) => (
+      `${entry.id} ${entry.available ? "available" : "unavailable"} broker=${entry.broker} device=${entry.device} access=${Number(entry.accessCount || 0)} revoked=${Number(entry.revoked || 0)}`
+    ));
+    return [
+      "DindbOS browser brokers",
+      `summary available=${available}/${total} ledger=${status.ledgerEntries.length} revoked=${status.revokedGrants.length}`,
+      ...brokerLines,
     ].join("\n");
   }
 

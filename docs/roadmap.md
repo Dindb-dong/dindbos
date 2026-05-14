@@ -72,6 +72,43 @@ Focused checks:
 
 The next work should harden the kernel boundary before adding broad UX polish.
 
+## 100% Completion Plan
+
+100% means DindbOS can make every OS-like claim through a real runtime primitive, a permission boundary, a diagnostic surface, and a regression test. Browser limitations stay explicit as degraded, unsupported, or companion-required instead of being hidden behind UI.
+
+### Completion Axes
+
+1. App Containers And Trusted UI: less-trusted GUI apps run behind container boundaries, and privileged prompts are compositor-owned surfaces that normal apps cannot spoof, cover, or capture.
+2. Browser API Brokers And Device Tree: browser-native power is visible in `/proc`, mapped to `/dev/browser/*`, permissioned through declared grants, revocable, and privacy-ledgered.
+3. Process Images, Job Control, And PTY: Terminal is a real process session endpoint with process images, wait/signal, process groups, jobs, foreground/background control, and PTY devices.
+4. Storage Kernel And Recovery: disk semantics are durable, repairable, explainable, and safe across service lifecycle, mapped-file writes, local mounts, and remote sync conflicts.
+5. Virtual Networking And Service Mesh: network power is policy-routed through virtual services, fetch/WebSocket/WebRTC brokers, companion boundaries, `/proc/net`, sockets, and firewall diagnostics.
+6. Secure Boot, Policy Compiler, And Package Trust: package manifests compile into auditable syscall/path/device/network policy bundles, with boot measurements and policy proof commands.
+7. Cross-Origin Isolation And Shared Memory: deployment profiles honestly report COOP/COEP/CORP, SharedArrayBuffer, Atomics, WASM memory handles, and degraded runtime modes.
+8. Service Worker Boot And Offline Recovery: installed/offline deployments boot through safe profiles, recovery shell assets, offline maintenance queues, and panic diagnostics.
+9. Conformance Lab: compatibility claims are generated from certification output across browsers, PWA modes, isolation modes, companions, and runtime subsystems.
+
+### Implementation Cycles
+
+Each implementation cycle uses a fresh `codex/*` worktree and branch, may contain multiple commits, and ends only after focused tests, `npm run check`, `npm run build`, PR creation, squash merge, main fast-forward, remote/local branch cleanup, and worktree removal.
+
+1. Cycle 1: Browser API Brokers And Device Tree
+   Finish notification, local file, screen capture, media, Web Share, WebRTC, WebGPU, WebUSB, WebSerial, and WebHID broker records; extend privacy ledger; add Settings permission views and `doctor browser`.
+2. Cycle 2: Process Images, Job Control, And PTY
+   Add process image records, spawn/exec/wait/signal syscalls, job control, process groups, `/dev/pts`, and PTY signal/resize semantics.
+3. Cycle 3: Storage Kernel And Recovery
+   Extend transaction groups, page-cache/writeback diagnostics, salvage/repair Settings views, local mount conflict handling, and remote sync apply recovery.
+4. Cycle 4: Virtual Networking And Service Mesh
+   Add loopback services, service discovery, brokered fetch/WebSocket/WebRTC policy, `/proc/net`, `/proc/sockets`, and firewall diagnostics.
+5. Cycle 5: Secure Boot, Policy Compiler, And Package Trust
+   Compile policies, expose `/proc/policy`, add boot measurements, `pkg audit`, `policyctl`, and denial proofs.
+6. Cycle 6: Cross-Origin Isolation And Shared Memory
+   Add deployment profiles, `doctor isolation`, degraded-mode reporting, and worker memory-region handle prototypes.
+7. Cycle 7: Service Worker Boot And Offline Recovery
+   Add Service Worker boot manifest, safe boot profiles, offline maintenance queue, recovery shell assets, and panic diagnostics.
+8. Cycle 8: Conformance Lab
+   Add certification levels, browser profile matrix, generated compatibility docs, and conformance smoke output for all implemented guarantees.
+
 ### 1. App Containers And Trusted UI
 
 Goal: run less-trusted GUI apps without direct access to desktop internals.
@@ -102,12 +139,13 @@ Done:
 
 - `/proc/browser-capabilities` and `/proc/device-tree` expose browser API probes, broker ownership, and `/dev/browser/*` device mappings.
 - Clipboard read/write now routes through declared `clipboard.read`/`clipboard.write` grants and records privacy ledger entries in `/proc/privacy-ledger.json`.
+- Browser broker status, request, and revocation paths cover notifications, local files, screen capture, media devices, Web Share, WebRTC, WebGPU, WebUSB, WebSerial, and WebHID capability records through `/proc/browser-brokers.json`.
+- Settings surfaces browser permission diagnostics and recent privacy ledger entries.
+- `doctor browser` reports broker availability, access counts, and revoked grants.
 
 Next:
 
-- Broker notifications, local files, screen capture, media devices, Web Share, WebRTC, WebGPU, WebUSB, WebSerial, WebHID, and related APIs through declared grants.
-- Add a privacy ledger for sensitive access by package id, process id, user, window, capability, and expiry.
-- Add Settings permission panels and `doctor browser`.
+- Connect each broker to its browser user-gesture implementation or companion fallback as product surfaces need it.
 
 ### 3. Process Images, Job Control, And PTY
 

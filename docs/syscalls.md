@@ -50,6 +50,9 @@ entropy.randomBytes
 clipboard.read
 clipboard.write
 privacy.ledger
+browser.status
+browser.request
+browser.revoke
 fs.exists
 fs.stat
 fs.readText
@@ -96,6 +99,8 @@ Descriptor syscalls require a process context. New processes receive standard de
 Entropy and zero devices report `fd.read.bytes` as the actual device byte count returned by the pseudo-device, not the UTF-8 byte length of the JSON string representation.
 
 `/dev/clipboard`, `clipboard.read`, and `clipboard.write` map to the DindbOS clipboard broker. Callers need declared `clipboard.read` or `clipboard.write` capabilities, and successful access writes privacy ledger records under `/proc/privacy-ledger.json`. This is a browser-native OS clipboard primitive inside the DindbOS session, not a promise that every descriptor write can synchronously mutate the host browser clipboard; host clipboard bridging remains subject to browser permission and user-gesture policy.
+
+`browser.status`, `browser.request`, and `browser.revoke` expose the general browser broker boundary. Each request names a browser capability such as `notifications.show`, `screen.capture`, `media.audioVideo`, `webgpu.adapter`, `webusb.device`, `webserial.port`, or `webhid.device`; the caller must declare the matching capability, and the broker records access or revocation in the privacy ledger. The broker status is mirrored under `/proc/browser-brokers.json`.
 
 Terminal.app creates a DindbOS pseudo-terminal session. Processes launched with that PTY session receive TTY metadata on standard streams and `/dev/tty`; reads can consume the PTY input buffer, writes append to the PTY output buffer, and `tty.getWindowSize`/`tty.setWindowSize` operate on the shared session size.
 
