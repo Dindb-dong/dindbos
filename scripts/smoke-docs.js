@@ -49,6 +49,8 @@ const serviceWorkerRecovery = readFileSync("docs/service-worker-recovery.md", "u
 
 [
   "## Certification Areas",
+  "conformance evidence",
+  "/proc/conformance-evidence",
   "durable-disk",
   "cross-origin-isolation",
   "npm run smoke:conformance",
