@@ -14,7 +14,7 @@ const BUILTIN_MANUALS = {
   clear: "clear - clear terminal output",
   companion: "companion list|grant|revoke - inspect or administer companion permissions",
   bootctl: "bootctl status|measurements|verify - inspect secure boot measurements",
-  conformance: "conformance [matrix|json] - print DindbOS compatibility certification output",
+  conformance: "conformance [matrix|evidence|json] - print DindbOS compatibility certification output",
   cp: "cp [-r] <source> <destination> - copy files or directories",
   curl: "curl <url> - fetch a URL through the DindbOS network broker",
   doctor: "doctor [compat|browser|isolation] - print runtime diagnostics, compatibility tiers, browser brokers, or isolation status",
@@ -1425,6 +1425,10 @@ export class ShellSession {
     const report = safeRead(() => this.os.conformanceReport?.(), null) || conformanceReport(this.os);
     if (args[0] === "json") return JSON.stringify(report, null, 2);
     if (args[0] === "matrix") return formatConformanceMatrix(report.browserMatrix || []);
+    if (args[0] === "evidence") {
+      if (args[1] === "json") return JSON.stringify(this.os.conformanceEvidenceRecords?.() || report.evidenceRecords || [], null, 2);
+      return formatConformanceEvidence(this.os.conformanceEvidenceRecords?.() || report.evidenceRecords || []);
+    }
     return formatConformance(report);
   }
 
@@ -2305,13 +2309,19 @@ function formatConformance(report = {}) {
   return [
     `conformance version=${report.version || 1} runtime=${report.runtime?.name || "DindbOS.js"} mode=${report.runtime?.mode || "browser-native"}`,
     `summary total=${Number(summary.total || 0)} supported=${Number(summary.supported || 0)} partial=${Number(summary.partial || 0)} degraded=${Number(summary.degraded || 0)} companionRequired=${Number(summary["companion-required"] || 0)} planned=${Number(summary.planned || 0)} unsupported=${Number(summary.unsupported || 0)}`,
+    `evidence total=${Number(report.evidenceSummary?.total || 0)} profiles=${Number(report.evidenceSummary?.profileCount || 0)} pass=${Number(report.evidenceSummary?.pass || 0)} fail=${Number(report.evidenceSummary?.fail || 0)} degraded=${Number(report.evidenceSummary?.degraded || 0)}`,
     ...(report.categories || []).map((category) => `${category.id} level=${category.level} evidence=${category.evidence?.join("|") || "-"} note=${category.note || "-"}`),
   ].join("\n");
 }
 
 function formatConformanceMatrix(matrix = []) {
   if (!matrix.length) return "conformance: no browser matrix";
-  return matrix.map((entry) => `${entry.profile} level=${entry.level} notes=${entry.notes || "-"}`).join("\n");
+  return matrix.map((entry) => `${entry.profile} level=${entry.level} evidence=${entry.evidenceCount || 0} status=${entry.evidenceStatus || "unverified"} runner=${entry.lastRunner || "-"} notes=${entry.notes || "-"}`).join("\n");
+}
+
+function formatConformanceEvidence(records = []) {
+  if (!records.length) return "conformance: no evidence records";
+  return records.map((record) => `${record.profile} status=${record.status} runner=${record.runner} categories=${record.categories?.join(",") || "-"} at=${record.recordedAt} artifacts=${record.artifacts?.join(",") || "-"}`).join("\n");
 }
 
 function formatStorageKernel(status = {}) {
