@@ -197,11 +197,12 @@ Done:
 - Signed remote package manifests and trusted publisher records.
 - Package manifests compile into auditable policy bundles covering filesystem scopes, dependency views, network hosts, device grants, IPC endpoints, process groups, services, trust state, and denial proofs.
 - `/proc/policy`, app manifest policy exposure, `pkg audit`, and `policyctl` expose the compiled policy state.
+- Secure boot measurements cover base files, package records, app registry manifests, trusted publishers, and executable policy proof reports through `/proc/secure-boot`, `/proc/secure-boot.json`, and `bootctl`.
+- `policyctl prove` turns package policy proof descriptors into executable negative tests for raw runtime globals, undeclared dependency paths, and undeclared device grants.
 
 Next:
 
-- Add boot measurements for base files, package records, app registry, and trusted publishers.
-- Turn policy proof descriptors into executable negative tests for raw browser APIs and undeclared device broker calls.
+- Expand boot measurements into signed release manifests once the release artifact pipeline owns immutable build inputs.
 
 ### 7. Cross-Origin Isolation And Shared Memory
 

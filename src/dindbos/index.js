@@ -62,6 +62,7 @@ const SERVICE_WORKER_BOOT_PATH = "/var/run/dindbos/service-worker-boot.json";
 const OFFLINE_MAINTENANCE_QUEUE_PATH = "/var/run/dindbos/offline-maintenance-queue.json";
 const PANIC_DIAGNOSTICS_PATH = "/var/run/dindbos/panic.json";
 const RECOVERY_SHELL_DIR = "/var/recovery/shell";
+const SECURE_BOOT_PATH = "/var/run/dindbos/secure-boot.json";
 const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
 const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
 const REMOTE_SYNC_SNAPSHOT_KEY = "dindbos:remote-sync:last-snapshot";
@@ -813,6 +814,7 @@ export class DindbOS {
     this.writeConformanceProcfs("disk-policy-roots");
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
+    this.writeSecureBootProcfs("disk-policy-roots");
     this.writeSessionStatus();
     await this.coordinateSessionLock();
     this.writeSessionStatus();
@@ -835,6 +837,7 @@ export class DindbOS {
     this.installServiceLifecycleHooks();
     this.installPersistenceLifecycleHooks();
     this.transitionLifecycle("active", "boot-complete");
+    this.writeSecureBootProcfs("boot-complete");
     this.writeBootDiagnostics();
     this.bus.emit("boot", { session: this.session, phases: this.bootStatus() });
   }
@@ -2033,6 +2036,99 @@ export class DindbOS {
     return record;
   }
 
+  secureBootReport(reason = "status") {
+    const measurements = this.secureBootMeasurements(reason);
+    const policyProofs = safeRead(() => this.packages?.policyProofs?.(), {
+      service: "dindbos-policy-proof",
+      ok: true,
+      packageCount: 0,
+      failed: 0,
+      packages: [],
+    });
+    const summary = {
+      measurementCount: measurements.length,
+      missingCount: measurements.filter((entry) => entry.status === "missing").length,
+      packageCount: this.packages?.list?.().length || 0,
+      appCount: this.apps?.list?.().length || 0,
+      publisherCount: this.packages?.trustedPublishers?.().length || 0,
+      policyProofFailures: policyProofs.failed || 0,
+    };
+    return {
+      service: "dindbos-secure-boot",
+      version: 1,
+      profile: "browser-measured-boot",
+      reason: String(reason || "status"),
+      generatedAt: new Date().toISOString(),
+      ok: summary.missingCount === 0 && Boolean(policyProofs.ok),
+      algorithm: "dindbos-stable-fnv1a64",
+      summary,
+      measurements,
+      policyProofs,
+    };
+  }
+
+  secureBootMeasurements(reason = "status") {
+    const entries = [];
+    const add = (kind, target, payload = null) => {
+      const value = payload ?? safeRead(() => this.fs.readFile(target), null);
+      entries.push({
+        id: `${kind}:${target}`,
+        kind,
+        target,
+        status: value === null || value === undefined ? "missing" : "measured",
+        digest: value === null || value === undefined ? "" : stableDigest(value),
+        bytes: value === null || value === undefined ? 0 : byteLength(typeof value === "string" ? value : stableStringify(value)),
+        reason: String(reason || "status"),
+      });
+    };
+    [
+      "/etc/dindbos/users.json",
+      "/etc/dindbos/groups.json",
+      "/proc/mounts.json",
+      "/proc/device-tree.json",
+      "/proc/conformance.json",
+    ].forEach((path) => add("base-file", path));
+    (this.packages?.list?.() || [])
+      .map((record) => this.packages.packageRecordPath?.(record.id) || `/var/lib/dindbos/packages/${record.id}.json`)
+      .sort()
+      .forEach((path) => add("package-record", path));
+    (this.apps?.manifests?.() || [])
+      .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+      .forEach((manifest) => add("app-registry", manifest.id || "unknown", manifest));
+    (this.packages?.trustedPublishers?.() || [])
+      .sort((left, right) => String(left.id).localeCompare(String(right.id)))
+      .forEach((publisher) => add("trusted-publisher", publisher.id || "unknown", publisher));
+    return entries;
+  }
+
+  writeSecureBootProcfs(reason = "secure-boot") {
+    if (!this.fs.exists("/proc")) return null;
+    const system = this.permissions.systemPrincipal();
+    const report = this.secureBootReport(reason);
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/run", "root", system);
+    this.ensureSystemDirectory("/var/run/dindbos", "root", system);
+    this.fs.writeOrCreateFile(SECURE_BOOT_PATH, `${JSON.stringify(report, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/secure-boot.json", `${JSON.stringify(report, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/secure-boot", `${formatSecureBootReport(report)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "text/plain",
+    }, system);
+    return report;
+  }
+
   writeBootDiagnostics() {
     const system = this.permissions.systemPrincipal();
     this.ensureSystemDirectory("/var", "root", system);
@@ -2050,6 +2146,7 @@ export class DindbOS {
       phases,
       persistence: this.persistenceStatus(),
       storageBuckets: this.storageBucketPolicy(),
+      secureBoot: this.secureBootReport("boot-diagnostics"),
       serviceWorkerBoot: this.lastServiceWorkerBoot || this.serviceWorkerBootStatus("boot-diagnostics"),
       safeBootProfiles: this.safeBootProfiles(),
       offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
@@ -4472,6 +4569,15 @@ function formatConformanceReport(report = {}) {
   ].join("\n");
 }
 
+function formatSecureBootReport(report = {}) {
+  const summary = report.summary || {};
+  return [
+    `service=${report.service || "dindbos-secure-boot"} ok=${Boolean(report.ok)} profile=${report.profile || "-"} algorithm=${report.algorithm || "-"}`,
+    `measurements=${summary.measurementCount || 0} missing=${summary.missingCount || 0} packages=${summary.packageCount || 0} apps=${summary.appCount || 0} publishers=${summary.publisherCount || 0} policyProofFailures=${summary.policyProofFailures || 0}`,
+    ...(report.measurements || []).map((entry) => `${entry.id} ${entry.status} ${entry.digest || "-"} bytes=${entry.bytes || 0}`),
+  ].join("\n");
+}
+
 function formatDeviceTree(devices = []) {
   return [
     "path status driver capabilities",
@@ -4978,6 +5084,23 @@ function ipcHandleMetadata(record) {
 function cloneJson(value) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+}
+
+function stableDigest(value) {
+  const text = typeof value === "string" ? value : stableStringify(value);
+  let hash = 0xcbf29ce484222325n;
+  const prime = 0x100000001b3n;
+  for (const byte of new TextEncoder().encode(text)) {
+    hash ^= BigInt(byte);
+    hash = BigInt.asUintN(64, hash * prime);
+  }
+  return hash.toString(16).padStart(16, "0");
 }
 
 function codedError(code, message) {

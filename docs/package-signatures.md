@@ -166,11 +166,16 @@ Installed package trust is also copied into the compiled package policy bundle. 
 pkg audit [package]
 policyctl list [package]
 policyctl show <package>
+policyctl prove [package]
+bootctl verify
 cat /proc/policy/packages
+cat /proc/policy/proofs
 cat /proc/policy/<package>.json
 ```
 
-`npm run smoke:packages` verifies signed trusted installs, unsigned rejection, invalid signature rejection, untrusted-key rejection, no filesystem mutation before verification succeeds, compiled policy output, and package audit proof rows. `npm run smoke:shell` verifies the `pkg trust` command surface.
+`policyctl prove` executes the compiled denial proof descriptors. The first proof set checks that package code cannot see a raw runtime global, undeclared npm packages stay outside the dependency allowlist, dependency view paths are denied, and undeclared browser/device grants remain blocked. `bootctl verify` combines secure boot measurements with the current policy proof report.
+
+`npm run smoke:packages` verifies signed trusted installs, unsigned rejection, invalid signature rejection, untrusted-key rejection, no filesystem mutation before verification succeeds, compiled policy output, executable proof rows, and package audit proof rows. `npm run smoke:shell` verifies the `pkg trust` command surface.
 
 ## Verification Failure UX
 

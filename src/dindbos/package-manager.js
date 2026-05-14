@@ -632,6 +632,31 @@ export class PackageManager {
     };
   }
 
+  policyProofs(packageId = "") {
+    const records = packageId ? [this.info(packageId)].filter(Boolean) : this.list();
+    if (packageId && !records.length) throw new Error(`pkg: ${packageId}: package not installed`);
+    const packages = records.map((record) => {
+      const policy = compilePackagePolicy(record);
+      const proofs = Object.entries(policy.proofs || {}).map(([id, proof]) => executePackagePolicyProof(this, record, policy, id, proof));
+      return {
+        packageId: record.id,
+        appId: record.app?.id || "",
+        version: record.version,
+        ok: proofs.every((proof) => proof.status === "pass" || proof.status === "skip"),
+        proofs,
+        policyId: policy.id,
+      };
+    });
+    return {
+      service: "dindbos-policy-proof",
+      ok: packages.every((entry) => entry.ok),
+      packageCount: packages.length,
+      failed: packages.filter((entry) => !entry.ok).length,
+      generatedAt: new Date().toISOString(),
+      packages,
+    };
+  }
+
   dependencyView(packageId) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
@@ -1760,7 +1785,7 @@ export class PackageManager {
     const policies = records.map((record) => compilePackagePolicy(record));
     const livePolicyFiles = new Set(policies.map((policy) => `${policy.packageId}.json`));
     this.os.fs.list(POLICY_PROC_ROOT, "/", this.system)
-      .filter((node) => node.type === "file" && node.name.endsWith(".json") && node.name !== "packages.json" && !livePolicyFiles.has(node.name))
+      .filter((node) => node.type === "file" && node.name.endsWith(".json") && !["packages.json", "proofs.json"].includes(node.name) && !livePolicyFiles.has(node.name))
       .forEach((node) => this.os.fs.remove(`${POLICY_PROC_ROOT}/${node.name}`, "/", {}, this.system));
     const payload = {
       service: "dindbos-policy",
@@ -1777,6 +1802,7 @@ export class PackageManager {
         path: `${POLICY_PROC_ROOT}/${policy.packageId}.json`,
       })),
     };
+    const proofReport = this.policyProofs();
     this.os.fs.writeOrCreateFile(`${POLICY_PROC_ROOT}/packages.json`, `${JSON.stringify(payload, null, 2)}\n`, "/", {
       mime: "application/json",
       owner: "root",
@@ -1784,6 +1810,18 @@ export class PackageManager {
       permissions: "-r--r--r--",
     }, this.system);
     this.os.fs.writeOrCreateFile(`${POLICY_PROC_ROOT}/packages`, `${formatPolicyProcSummary(payload)}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+    }, this.system);
+    this.os.fs.writeOrCreateFile(`${POLICY_PROC_ROOT}/proofs.json`, `${JSON.stringify(proofReport, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+    }, this.system);
+    this.os.fs.writeOrCreateFile(`${POLICY_PROC_ROOT}/proofs`, `${formatPolicyProofReport(proofReport)}\n`, "/", {
       mime: "text/plain",
       owner: "root",
       group: "root",
@@ -2869,6 +2907,66 @@ function packagePolicyProofs(record, context = {}) {
       reason: "device brokers require explicit manifest grants",
     },
   };
+}
+
+function executePackagePolicyProof(manager, record, policy, id, proof = {}) {
+  if (proof.status !== "denied") {
+    return {
+      id,
+      expected: proof.status || "unknown",
+      status: "skip",
+      actual: proof.status || "unknown",
+      target: proof.target || "",
+      detail: "positive grants are described by policy and do not run as negative denial proofs",
+    };
+  }
+  try {
+    if (id === "rawRuntime") {
+      const exposed = Boolean(globalThis.dindbos);
+      return policyProofResult(id, proof, exposed ? "fail" : "pass", exposed ? "raw runtime global exposed" : "raw runtime global absent");
+    }
+    if (id === "undeclaredImport") {
+      const target = proof.target || "dindbos-policy-proof-missing";
+      const declared = (policy.dependencies?.npm || []).includes(target) || (policy.dependencies?.allowlist || []).includes(target);
+      return policyProofResult(id, proof, declared ? "fail" : "pass", declared ? "missing package unexpectedly declared" : "missing package absent from dependency allowlist");
+    }
+    if (id === "dependencyViewRead") {
+      try {
+        manager.assertDependencyPathAllowed(record.namespace || {}, proof.target || "", "read");
+        return policyProofResult(id, proof, "fail", "dependency path read was allowed");
+      } catch (error) {
+        return policyProofResult(id, proof, "pass", error.message || "dependency path denied");
+      }
+    }
+    if (id === "deviceAccess") {
+      const target = proof.target || "browser.raw-device";
+      const granted = (policy.devices || []).includes(target);
+      return policyProofResult(id, proof, granted ? "fail" : "pass", granted ? "device unexpectedly granted" : "device absent from manifest grants");
+    }
+    return policyProofResult(id, proof, "skip", "no executable runner for proof descriptor");
+  } catch (error) {
+    return policyProofResult(id, proof, "fail", error.message || String(error));
+  }
+}
+
+function policyProofResult(id, proof = {}, status, detail) {
+  return {
+    id,
+    expected: proof.status || "unknown",
+    status,
+    actual: status === "pass" ? "denied" : status,
+    target: proof.target || "",
+    detail,
+  };
+}
+
+function formatPolicyProofReport(report = {}) {
+  const header = `proofs ok=${Boolean(report.ok)} packages=${report.packageCount || 0} failed=${report.failed || 0} generatedAt=${report.generatedAt || "-"}`;
+  const rows = (report.packages || []).flatMap((entry) => [
+    `${entry.packageId} ok=${Boolean(entry.ok)} policy=${entry.policyId || "-"}`,
+    ...(entry.proofs || []).map((proof) => `  ${proof.id} expected=${proof.expected} status=${proof.status} actual=${proof.actual} target=${proof.target || "-"} detail=${proof.detail || "-"}`),
+  ]);
+  return [header, ...rows].join("\n");
 }
 
 function formatPolicyProcSummary(payload = {}) {

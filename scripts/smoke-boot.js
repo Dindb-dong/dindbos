@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { DindbOS, BOOT_PHASES } from "../src/dindbos/index.js";
+import { ShellSession } from "../src/dindbos/shell.js";
 import { installBuiltinApps } from "../src/dindbos/apps/builtins.js";
 import { demoFileSystem, portfolioData } from "../src/demo/portfolio-demo.js";
 
@@ -71,6 +72,9 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.exists("/proc/service-worker-boot.json"), "/proc/service-worker-boot.json was not written");
   assert(os.fs.exists("/proc/conformance"), "/proc/conformance was not written");
   assert(os.fs.exists("/proc/conformance.json"), "/proc/conformance.json was not written");
+  assert(os.fs.exists("/proc/secure-boot"), "/proc/secure-boot was not written");
+  assert(os.fs.exists("/proc/secure-boot.json"), "/proc/secure-boot.json was not written");
+  assert(os.fs.exists("/var/run/dindbos/secure-boot.json"), "secure boot runtime record was not written");
   assert(os.fs.exists("/var/recovery/shell/recovery.dindbsh"), "recovery shell asset was not written");
   assert(os.fs.exists("/var/run/dindbos/panic.json"), "panic diagnostics were not written");
   assert(os.fs.exists("/dev/browser"), "/dev/browser device root was not created");
@@ -105,6 +109,14 @@ async function verifySuccessfulBootPhases() {
   const conformance = JSON.parse(os.fs.readFile("/proc/conformance.json"));
   assert(conformance.categories.some((entry) => entry.id === "package-platform" && entry.level === "supported"), "conformance procfs missing package platform support");
   assert(os.fs.readFile("/proc/conformance").includes("policy-trust level=supported"), "conformance procfs text missing policy trust support");
+  const secureBoot = JSON.parse(os.fs.readFile("/proc/secure-boot.json"));
+  assert(secureBoot.ok && secureBoot.summary.packageCount >= 1, `secure boot measurement mismatch: ${JSON.stringify(secureBoot.summary)}`);
+  assert(secureBoot.measurements.some((entry) => entry.kind === "package-record" && entry.target.includes("hello-notes")), "secure boot missing package record measurement");
+  assert(secureBoot.measurements.some((entry) => entry.kind === "app-registry" && entry.target === "files"), "secure boot missing app registry measurement");
+  assert(secureBoot.policyProofs.ok, "secure boot missing passing policy proofs");
+  const shell = new ShellSession(os);
+  const bootctlVerify = await shell.executeAsync("bootctl verify");
+  assert(bootctlVerify.output.includes("secure-boot ok=true") && bootctlVerify.output.includes("proofs ok=true"), `bootctl verify output mismatch: ${bootctlVerify.output}`);
   const queued = os.queueOfflineMaintenanceTask({ type: "storage.flush", permissioned: true, requestedBy: "smoke" });
   assert(queued.type === "storage.flush", "offline maintenance task queue returned wrong type");
   const queue = JSON.parse(os.fs.readFile("/var/run/dindbos/offline-maintenance-queue.json"));
@@ -167,6 +179,7 @@ async function verifySuccessfulBootPhases() {
   assert(bootDiagnostics.phases.length === BOOT_PHASES.length, "boot diagnostics did not include all phases");
   assert(bootDiagnostics.phases.every((phase) => phase.status === "complete"), "boot diagnostics included incomplete phases");
   assert(bootDiagnostics.storageBuckets.decision === "fallback-to-current-storage-stack", "boot diagnostics missing storage bucket policy");
+  assert(bootDiagnostics.secureBoot.ok && bootDiagnostics.secureBoot.summary.measurementCount >= secureBoot.summary.measurementCount, "boot diagnostics missing secure boot measurements");
   assert(bootDiagnostics.serviceWorkerBoot.manifest.protocol === "dindbos-sw-boot.v1", "boot diagnostics missing service worker boot manifest");
   assert(bootDiagnostics.safeBootProfiles.some((profile) => profile.id === "safe-mode"), "boot diagnostics missing safe boot profiles");
   assert(os.fs.readFile("/var/log/dindbos/boot.log").includes("[complete] desktop-render"), "boot log missing desktop-render completion");
