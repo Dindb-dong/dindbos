@@ -173,9 +173,11 @@ cat /proc/policy/proofs
 cat /proc/policy/<package>.json
 ```
 
-`policyctl prove` executes the compiled denial proof descriptors. The first proof set checks that package code cannot see a raw runtime global, undeclared npm packages stay outside the dependency allowlist, dependency view paths are denied, and undeclared browser/device grants remain blocked. `bootctl verify` combines secure boot measurements with the current policy proof report.
+`policyctl prove` executes the compiled denial proof descriptors. The proof set checks that package code cannot see a raw runtime global, undeclared npm packages stay outside the dependency allowlist, dependency view paths are denied, undeclared browser/device grants remain blocked, direct browser globals are shadowed, browserd transports are not opened directly, Service Worker registration is outside package scope, and remote provider imports must go through declared import facades. `bootctl verify` combines secure boot measurements with the current policy proof report.
 
-`npm run smoke:packages` verifies signed trusted installs, unsigned rejection, invalid signature rejection, untrusted-key rejection, no filesystem mutation before verification succeeds, compiled policy output, executable proof rows, and package audit proof rows. `npm run smoke:shell` verifies the `pkg trust` command surface.
+Package entrypoints are prepended with a runtime guard that shadows browser globals such as `window`, `document`, `navigator`, `fetch`, `WebSocket`, and Service Worker/cache surfaces. Direct static or dynamic `import` statements are rejected before the entrypoint runs; package code must use `imports.npm()` or `imports.url()` so dependency allowlists remain auditable.
+
+`npm run smoke:packages` verifies signed trusted installs, unsigned rejection, invalid signature rejection, untrusted-key rejection, no filesystem mutation before verification succeeds, compiled policy output, executable proof rows, direct remote import rejection, and package audit proof rows. `npm run smoke:shell` verifies the `pkg trust` command surface.
 
 ## Verification Failure UX
 

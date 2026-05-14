@@ -27,6 +27,30 @@ const CONTAINER_SYSCALL_PATTERN = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*){0,4}$/i;
 const CONTAINER_MOUNT_TIMEOUT_MS = 8000;
 const CONTAINER_HEARTBEAT_INTERVAL_MS = 5000;
 const CONTAINER_HEARTBEAT_TIMEOUT_MS = 15000;
+const PACKAGE_GLOBAL_GUARD = [
+  "const globalThis = undefined;",
+  "const window = undefined;",
+  "const document = undefined;",
+  "const navigator = undefined;",
+  "const self = undefined;",
+  "const parent = undefined;",
+  "const top = undefined;",
+  "const frames = undefined;",
+  "const opener = undefined;",
+  "const localStorage = undefined;",
+  "const sessionStorage = undefined;",
+  "const indexedDB = undefined;",
+  "const caches = undefined;",
+  "const fetch = undefined;",
+  "const WebSocket = undefined;",
+  "const EventSource = undefined;",
+  "const RTCPeerConnection = undefined;",
+  "const Worker = undefined;",
+  "const SharedWorker = undefined;",
+  "const Notification = undefined;",
+  "const Function = undefined;",
+].join("\n");
+const PACKAGE_DIRECT_IMPORT_PATTERN = /\bimport\s*(?:\(|(?:[^;]{0,240}\sfrom\s*)?["'])/;
 
 const SAMPLE_PACKAGE = {
   id: "hello-notes",
@@ -2030,7 +2054,7 @@ async function mountPackageEntrypoint(content, runtime, record, windowApi, manag
   `;
   try {
     const source = runtime.fs.readFile(activeRecord.app.entryPath);
-    const moduleHandle = createModuleUrl(source);
+    const moduleHandle = createModuleUrl(packageExecutionSource(source, activeRecord));
     const module = await import(moduleHandle.url);
     moduleHandle.revoke();
     const mount = module.mount || module.default;
@@ -2385,6 +2409,7 @@ function declaredImportUrls(record) {
 }
 
 function packageIframeDocument({ token, source, record, process }) {
+  const guardedSource = packageExecutionSource(source, record);
   const dependencies = Object.fromEntries(
     Object.entries(record.dependencies?.npm || {})
       .map(([name, dependency]) => [name, safeRead(() => normalizePackageUrl(dependency.url), "")])
@@ -2404,7 +2429,7 @@ function packageIframeDocument({ token, source, record, process }) {
   <main id="app" data-dindbos-container="sandboxed-iframe"></main>
   <script type="module">
     const TOKEN = ${safeScriptJson(token)};
-    const SOURCE = ${safeScriptJson(source)};
+    const SOURCE = ${safeScriptJson(guardedSource)};
     const PKG = ${safeScriptJson(packagePublicRecord(record))};
     const PROCESS = ${safeScriptJson({ pid: process?.pid || 0, appId: process?.appId || "" })};
     const DEPENDENCIES = ${safeScriptJson(dependencies)};
@@ -3007,6 +3032,26 @@ function packagePolicyProofs(record, context = {}) {
       target: missingDevice,
       reason: "device brokers require explicit manifest grants",
     },
+    directBrowserApi: {
+      status: "denied",
+      target: "navigator.mediaDevices.getDisplayMedia",
+      reason: "package entrypoints shadow browser globals and must use declared browser brokers",
+    },
+    browserdCompanion: {
+      status: "denied",
+      target: "ws://127.0.0.1:8787/browser",
+      reason: "package entrypoints cannot open browserd directly; Browser.app owns the companion client",
+    },
+    serviceWorkerRegistration: {
+      status: "denied",
+      target: "navigator.serviceWorker.register",
+      reason: "package entrypoints cannot register Service Workers outside the boot controller",
+    },
+    remoteProviderImport: {
+      status: "denied",
+      target: "https://browser.example.test/provider.js",
+      reason: "package entrypoints cannot use undeclared direct imports to remote providers",
+    },
   };
 }
 
@@ -3044,10 +3089,52 @@ function executePackagePolicyProof(manager, record, policy, id, proof = {}) {
       const granted = (policy.devices || []).includes(target);
       return policyProofResult(id, proof, granted ? "fail" : "pass", granted ? "device unexpectedly granted" : "device absent from manifest grants");
     }
+    if (id === "directBrowserApi") {
+      return policyProofResult(id, proof, packageGlobalGuardDenies(["navigator", "window", "document", "Notification"]) ? "pass" : "fail", "browser globals are shadowed in package entrypoint scope");
+    }
+    if (id === "browserdCompanion") {
+      return policyProofResult(id, proof, packageGlobalGuardDenies(["WebSocket", "fetch"]) ? "pass" : "fail", "browserd transport constructors are shadowed in package entrypoint scope");
+    }
+    if (id === "serviceWorkerRegistration") {
+      return policyProofResult(id, proof, packageGlobalGuardDenies(["navigator", "caches"]) ? "pass" : "fail", "service worker globals are shadowed in package entrypoint scope");
+    }
+    if (id === "remoteProviderImport") {
+      try {
+        packageExecutionSource("export async function mount() { await import('https://browser.example.test/provider.js'); }\n", record);
+        return policyProofResult(id, proof, "fail", "direct remote provider import was accepted");
+      } catch (error) {
+        return policyProofResult(id, proof, "pass", error.message || "direct remote provider import denied");
+      }
+    }
     return policyProofResult(id, proof, "skip", "no executable runner for proof descriptor");
   } catch (error) {
     return policyProofResult(id, proof, "fail", error.message || String(error));
   }
+}
+
+function packageExecutionSource(source, record = {}) {
+  const text = String(source || "");
+  assertPackageSourcePolicy(text, record);
+  return `${PACKAGE_GLOBAL_GUARD}\n${text}`;
+}
+
+function assertPackageSourcePolicy(source, record = {}) {
+  if (PACKAGE_DIRECT_IMPORT_PATTERN.test(stripPackageSourceComments(source))) {
+    throw new Error(`pkg: ${record.id || "package"} entrypoint must use declared imports facade instead of direct import`);
+  }
+  return true;
+}
+
+function stripPackageSourceComments(source = "") {
+  return String(source)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+function packageGlobalGuardDenies(names = []) {
+  const checks = names.map((name) => `"${name}": typeof ${name} === "undefined"`).join(",");
+  const result = Function(`${PACKAGE_GLOBAL_GUARD}\nreturn {${checks}};`)();
+  return names.every((name) => result[name] === true);
 }
 
 function policyProofResult(id, proof = {}, status, detail) {
