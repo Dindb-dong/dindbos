@@ -224,6 +224,8 @@ export class DindbOS {
     this.lastStorageRepair = null;
     this.offlineMaintenanceQueue = [];
     this.lastServiceWorkerBoot = null;
+    this.activeSafeBootProfileId = normalizeSafeBootProfileId(options.safeBootProfile || options.bootProfile || "normal");
+    this.safeBootDecisions = [];
     this.recoveryPanic = null;
     this.ipcEndpoints = new Map();
     this.workerMemoryRegions = new Map();
@@ -1003,6 +1005,7 @@ export class DindbOS {
       ],
       serviceWorkerBoot: this.lastServiceWorkerBoot || this.serviceWorkerBootStatus(),
       safeBootProfiles: this.safeBootProfiles(),
+      safeBootEnforcement: this.safeBootEnforcementStatus(),
       offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
       panic: this.recoveryPanic,
     };
@@ -1699,7 +1702,61 @@ export class DindbOS {
       { id: "companion-disabled", status: "available", disables: ["companions"], reason: "avoid native-adjacent helpers until trust is re-established" },
       { id: "offline", status: serviceWorkerSupported ? "available" : "degraded", disables: ["remote-network"], reason: serviceWorkerSupported ? "service worker can serve recovery shell assets" : "no Service Worker support; local VFS recovery only" },
       { id: "storage-repair", status: storage.backend ? "available" : "degraded", disables: ["app-autostart"], reason: "run fsck/storage repair before normal app launch" },
-    ];
+    ].map((profile) => ({ ...profile, active: profile.id === this.activeSafeBootProfileId }));
+  }
+
+  activeSafeBootProfile() {
+    return this.safeBootProfiles().find((profile) => profile.id === this.activeSafeBootProfileId) || this.safeBootProfiles()[0];
+  }
+
+  safeBootEnforcementStatus() {
+    const profile = this.activeSafeBootProfile();
+    return {
+      version: 1,
+      activeProfile: profile.id,
+      status: profile.status,
+      disables: [...(profile.disables || [])],
+      reason: profile.reason,
+      decisions: this.safeBootDecisions.slice(-50).map((entry) => ({ ...entry })),
+      profiles: this.safeBootProfiles(),
+    };
+  }
+
+  setSafeBootProfile(profileId = "normal", reason = "manual") {
+    const id = normalizeSafeBootProfileId(profileId);
+    if (!this.safeBootProfiles().some((profile) => profile.id === id)) throw new Error(`safe-boot: unknown profile: ${profileId}`);
+    this.activeSafeBootProfileId = id;
+    this.recordSafeBootDecision("profile", id, id === "normal" ? "allowed" : "active", reason);
+    this.writeServiceWorkerBootProcfs("safe-boot-profile-change");
+    return this.safeBootEnforcementStatus();
+  }
+
+  isSafeBootDisabled(capability) {
+    return (this.activeSafeBootProfile().disables || []).includes(capability);
+  }
+
+  assertSafeBootAllows(capability, action = capability, target = "") {
+    if (!this.isSafeBootDisabled(capability)) {
+      this.recordSafeBootDecision(action, target || capability, "allowed", `${this.activeSafeBootProfileId} permits ${capability}`);
+      return true;
+    }
+    const message = `safe-boot: profile ${this.activeSafeBootProfileId} disables ${capability}`;
+    this.recordSafeBootDecision(action, target || capability, "blocked", message);
+    throw codedError("EBOOTPROFILE", message);
+  }
+
+  recordSafeBootDecision(action, target, status, detail = "") {
+    const record = {
+      action: String(action || ""),
+      target: String(target || ""),
+      status: String(status || ""),
+      profile: this.activeSafeBootProfileId,
+      detail: String(detail || ""),
+      at: new Date().toISOString(),
+    };
+    this.safeBootDecisions.push(record);
+    this.safeBootDecisions = this.safeBootDecisions.slice(-100);
+    return record;
   }
 
   serviceWorkerBootStatus(reason = "status") {
@@ -1846,6 +1903,7 @@ export class DindbOS {
     const status = {
       ...this.serviceWorkerBootStatus(reason),
       safeBootProfiles: this.safeBootProfiles(),
+      safeBootEnforcement: this.safeBootEnforcementStatus(),
       offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
       panic: this.recoveryPanic,
     };
@@ -2010,6 +2068,7 @@ export class DindbOS {
       },
       serviceWorkerBoot: this.lastServiceWorkerBoot || this.serviceWorkerBootStatus("recovery-record"),
       safeBootProfiles: this.safeBootProfiles(),
+      safeBootEnforcement: this.safeBootEnforcementStatus(),
       offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
       panic: this.recoveryPanic,
       suspendedServices: services
@@ -2149,6 +2208,7 @@ export class DindbOS {
       secureBoot: this.secureBootReport("boot-diagnostics"),
       serviceWorkerBoot: this.lastServiceWorkerBoot || this.serviceWorkerBootStatus("boot-diagnostics"),
       safeBootProfiles: this.safeBootProfiles(),
+      safeBootEnforcement: this.safeBootEnforcementStatus(),
       offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
       panic: this.recoveryPanic,
     };
@@ -2461,7 +2521,18 @@ export class DindbOS {
     if (record && this.ensureCompanionSessionObject(record)) {
       record = this.writeCompanionPermissions(permissions).companions[id] || record;
     }
-    return record ? { ...record, capabilities: [...record.capabilities] } : null;
+    if (!record) return null;
+    if (this.isSafeBootDisabled("companions")) {
+      this.recordSafeBootDecision("companion-status", id, "blocked", "safe boot companion-disabled masks companion approval");
+      return {
+        ...record,
+        approved: false,
+        capabilities: [...record.capabilities],
+        safeBootBlocked: true,
+        safeBootProfile: this.activeSafeBootProfileId,
+      };
+    }
+    return { ...record, capabilities: [...record.capabilities] };
   }
 
   grantCompanionPermission(identity, protocolVersion, capabilities = [], context = {}) {
@@ -2469,6 +2540,7 @@ export class DindbOS {
     if (!id) throw new Error("companion: identity is required");
     const protocol = String(protocolVersion || "").trim();
     if (!protocol) throw new Error("companion: protocol version is required");
+    this.assertSafeBootAllows("companions", "companion-grant", id);
     this.assertAdminOperation("companion-permission:grant", { principal: context.principal, target: id });
     const permissions = this.companionPermissions();
     this.revokeCompanionSessionObject(permissions.companions[id], "companion-permission-regrant");
@@ -3794,6 +3866,9 @@ export class DindbOS {
 
   launch(appId, context = {}) {
     this.assertSessionUnlocked("launch");
+    const manifest = this.apps.getManifest(appId);
+    if (manifest?.namespace?.packageId) this.assertSafeBootAllows("packages", "app-launch", appId);
+    if (this.isSafeBootDisabled("app-autostart") && context.autostart) this.assertSafeBootAllows("app-autostart", "app-autostart", appId);
     return this.apps.launch(appId, context);
   }
 
@@ -4555,6 +4630,7 @@ function formatServiceWorkerBootStatus(status = {}) {
     `service=${status.service || "dindbos-service-worker-boot"} supported=${Boolean(status.supported)} registered=${Boolean(status.registered)} controlled=${Boolean(status.controlled)} decision=${status.decision || "-"}`,
     `script=${status.scriptURL || "-"} scope=${status.scope || "-"} handshake=${status.handshake?.status || "-"}`,
     `profiles=${(status.safeBootProfiles || []).map((profile) => `${profile.id}:${profile.status}`).join(",") || "-"}`,
+    `activeProfile=${status.safeBootEnforcement?.activeProfile || "-"} disables=${status.safeBootEnforcement?.disables?.join(",") || "-"}`,
     `offlineQueue queued=${Number(status.offlineMaintenanceQueue?.queued || 0)}`,
     `recoveryShell=${status.manifest?.recoveryShell || "-"}`,
     `closedPageExecution=${Boolean(status.closedPageExecution)}`,
@@ -4597,6 +4673,18 @@ function browserGrantRevocationKey({ pid = 0, appId = "", capability = "" } = {}
 function sanitizeIdentifier(value, fallback) {
   const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
   return normalized || fallback;
+}
+
+function normalizeSafeBootProfileId(value) {
+  const profile = sanitizeIdentifier(value || "normal", "normal");
+  const aliases = {
+    safe: "safe-mode",
+    packages: "package-disabled",
+    services: "service-disabled",
+    companions: "companion-disabled",
+    repair: "storage-repair",
+  };
+  return aliases[profile] || profile;
 }
 
 function normalizeHomePath(home, user) {
