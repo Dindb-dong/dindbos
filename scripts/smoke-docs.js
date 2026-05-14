@@ -88,6 +88,8 @@ const syscalls = readFileSync("docs/syscalls.md", "utf8");
   "pending-user-gesture",
   "userGesture: true",
   "/proc/browser-brokers.json",
+  "/proc/<pid>/signals.json",
+  "/proc/<pid>/pty.json",
 ].forEach((term) => {
   assert(syscalls.includes(term), `syscalls doc missing ${term}`);
 });
