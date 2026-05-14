@@ -101,7 +101,7 @@ Each implementation cycle uses a fresh `codex/*` worktree and branch, may contai
 4. Cycle 4: Virtual Networking And Service Mesh
    Done: loopback services, service discovery, firewall events, `net.services`, `net.firewall`, `/proc/net/services.json`, `/proc/net/firewall.json`, and `/proc/sockets` are implemented on top of the brokered fetch/WebSocket/WebRTC/raw companion boundary.
 5. Cycle 5: Secure Boot, Policy Compiler, And Package Trust
-   Compile policies, expose `/proc/policy`, add boot measurements, `pkg audit`, `policyctl`, and denial proofs.
+   In progress: package manifests now compile into auditable path/device/network/dependency policy bundles exposed through `/proc/policy`, app manifests, `pkg audit`, and `policyctl`. Boot measurements remain in this cycle backlog.
 6. Cycle 6: Cross-Origin Isolation And Shared Memory
    Add deployment profiles, `doctor isolation`, degraded-mode reporting, and worker memory-region handle prototypes.
 7. Cycle 7: Service Worker Boot And Offline Recovery
@@ -195,13 +195,13 @@ Goal: make activation decisions measurable and auditable.
 Done:
 
 - Signed remote package manifests and trusted publisher records.
+- Package manifests compile into auditable policy bundles covering filesystem scopes, dependency views, network hosts, device grants, IPC endpoints, process groups, services, trust state, and denial proofs.
+- `/proc/policy`, app manifest policy exposure, `pkg audit`, and `policyctl` expose the compiled policy state.
 
 Next:
 
-- Compile package manifests into syscall/path/device/network policy bundles.
 - Add boot measurements for base files, package records, app registry, and trusted publishers.
-- Add `pkg audit`, `policyctl`, and `/proc/policy`.
-- Add policy proofs for denied raw runtime, denied undeclared imports, denied dependency view reads, and denied device access.
+- Turn policy proof descriptors into executable negative tests for raw browser APIs and undeclared device broker calls.
 
 ### 7. Cross-Origin Isolation And Shared Memory
 
