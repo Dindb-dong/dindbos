@@ -5,6 +5,8 @@ export class ProcessManager {
     this.processes = new Map();
     this.logs = new Map();
     this.history = [];
+    this.nextJobId = 1;
+    this.jobs = new Map();
     this.bootedAt = new Date().toISOString();
   }
 
@@ -50,6 +52,10 @@ export class ProcessManager {
       credentials: cloneJson(credentials),
       cwd: context.cwd || this.os.session.home || "/",
       manifest,
+      image: normalizeProcessImage(context.image || app.image || {}, app, context),
+      jobId: 0,
+      processGroupId: Number(context.processGroupId || parent?.processGroupId || 0),
+      foreground: context.foreground !== false,
       container,
       context,
       runtime: context.runtime || app.manifest?.runtime || "javascript",
@@ -74,6 +80,9 @@ export class ProcessManager {
       lifecycleLastError: "",
       objectId: "",
     };
+    process.processGroupId = process.processGroupId || process.pid;
+    const job = this.registerJob(process, context.job || {});
+    process.jobId = job.id;
     this.inheritNamespaceHandle(process);
     this.processes.set(process.pid, process);
     const object = this.registerProcessObject(process);
@@ -88,6 +97,99 @@ export class ProcessManager {
     this.os.bus.emit("process:spawn", process);
     this.emitAppLifecycle("launch", process);
     return process;
+  }
+
+  registerJob(process, options = {}) {
+    const existing = options.jobId ? this.jobs.get(Number(options.jobId)) : null;
+    const job = existing || {
+      id: this.nextJobId++,
+      processGroupId: Number(options.processGroupId || process.processGroupId || process.pid),
+      command: String(options.command || process.image?.command || process.appId || ""),
+      state: "running",
+      foreground: options.foreground !== false,
+      pids: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: "",
+    };
+    if (!job.pids.includes(process.pid)) job.pids.push(process.pid);
+    job.updatedAt = new Date().toISOString();
+    this.jobs.set(job.id, job);
+    return job;
+  }
+
+  listJobs() {
+    return [...this.jobs.values()].map((job) => ({
+      ...job,
+      pids: [...job.pids],
+      processes: job.pids.map((pid) => this.get(pid)).filter(Boolean),
+    }));
+  }
+
+  updateJobForProcess(process, state = process.state) {
+    const job = this.jobs.get(Number(process.jobId || 0));
+    if (!job) return null;
+    job.state = state;
+    job.foreground = Boolean(process.foreground);
+    job.updatedAt = new Date().toISOString();
+    this.jobs.set(job.id, job);
+    return { ...job, pids: [...job.pids] };
+  }
+
+  wait(pid) {
+    const active = this.get(pid);
+    if (active) return { pid: active.pid, appId: active.appId, state: active.state, running: true, status: null };
+    const exited = [...this.history].reverse().find((entry) => Number(entry.pid) === Number(pid));
+    if (!exited) throw new Error(`wait: ${pid}: no such process`);
+    return {
+      pid: exited.pid,
+      appId: exited.appId,
+      state: exited.state,
+      running: false,
+      status: exitStatusForState(exited.state),
+      endedAt: exited.endedAt || "",
+    };
+  }
+
+  signal(pid, signal = "SIGTERM") {
+    const process = this.processes.get(Number(pid));
+    if (!process) throw new Error(`signal: ${pid}: no such process`);
+    const normalized = normalizeSignal(signal);
+    if (normalized === "SIGTERM" || normalized === "SIGKILL" || normalized === "SIGINT") {
+      return { signal: normalized, process: this.kill(process.pid, `signal-${normalized.toLowerCase()}`) };
+    }
+    if (normalized === "SIGSTOP" || normalized === "SIGTSTP") {
+      process.state = "stopped";
+      process.foreground = false;
+    } else if (normalized === "SIGCONT") {
+      process.state = "running";
+    }
+    process.lastActiveAt = new Date().toISOString();
+    this.log(process.pid, `signal ${normalized}`);
+    this.updateJobForProcess(process, process.state);
+    this.syncProcessObject(process);
+    this.syncProcfs();
+    this.os.bus.emit("process:signal", { process, signal: normalized });
+    return { signal: normalized, process: { ...this.withRuntimeMetrics(process) } };
+  }
+
+  foreground(pid) {
+    const process = this.processes.get(Number(pid));
+    if (!process) throw new Error(`fg: ${pid}: no such process`);
+    process.foreground = true;
+    if (process.state === "stopped") process.state = "running";
+    this.updateJobForProcess(process, process.state);
+    this.syncProcfs();
+    return { ...this.withRuntimeMetrics(process) };
+  }
+
+  background(pid) {
+    const process = this.processes.get(Number(pid));
+    if (!process) throw new Error(`bg: ${pid}: no such process`);
+    process.foreground = false;
+    if (process.state === "stopped") process.state = "running";
+    this.updateJobForProcess(process, process.state);
+    this.syncProcfs();
+    return { ...this.withRuntimeMetrics(process) };
   }
 
   attachWindow(pid, windowId) {
@@ -238,6 +340,7 @@ export class ProcessManager {
     const process = this.processes.get(Number(pid));
     if (!process) throw new Error(`kill: ${pid}: no such process`);
     process.state = reason;
+    process.foreground = false;
     process.endedAt = new Date().toISOString();
     process.lastActiveAt = process.endedAt;
     this.log(process.pid, `exit ${reason}`);
@@ -249,6 +352,7 @@ export class ProcessManager {
     this.os.unregisterIpcEndpointsForPid?.(process.pid, reason);
     this.revokeProcessObjects(process, reason);
     this.history.push({ ...this.withRuntimeMetrics(process) });
+    this.updateJobForProcess(process, reason);
     this.syncProcfs();
     if (process.windowId && this.os.windows.has(process.windowId)) {
       this.os.windows.close(process.windowId, { skipOnClose: true });
@@ -415,6 +519,10 @@ export class ProcessManager {
       appId: process.appId,
       runtime: process.runtime || "",
       state: process.state,
+      image: cloneJson(process.image || {}),
+      jobId: process.jobId || 0,
+      processGroupId: process.processGroupId || 0,
+      foreground: Boolean(process.foreground),
       windowId: process.windowId || "",
       windowState: process.windowState || "",
       executionBackend: process.executionBackend || "",
@@ -439,6 +547,10 @@ export class ProcessManager {
       objectId: process.objectId || "",
       appId: process.appId,
       state: process.state,
+      image: process.image || null,
+      jobId: process.jobId || 0,
+      processGroupId: process.processGroupId || 0,
+      foreground: Boolean(process.foreground),
       runtime: process.runtime || "",
       namespace: process.manifest?.namespace || null,
       container: process.container || null,
@@ -493,6 +605,24 @@ export class ProcessManager {
     }, this.os.permissions.systemPrincipal());
     this.pruneProcessDirectories(new Set(processes.map((process) => String(process.pid))));
     processes.forEach((process) => this.writeProcessDirectory(process));
+    this.writeJobsProcfs();
+  }
+
+  writeJobsProcfs() {
+    const system = this.os.permissions.systemPrincipal();
+    const jobs = this.listJobs();
+    this.os.fs.writeOrCreateFile("/proc/jobs.json", `${JSON.stringify({ service: "dindbos-jobs", jobs, updatedAt: new Date().toISOString() }, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile("/proc/jobs", `${formatJobs(jobs)}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
   }
 
   ensureProcfs() {
@@ -670,6 +800,11 @@ function formatProcessStatus(process) {
     `State:\t${process.state}`,
     `App:\t${process.appId}`,
     `Runtime:\t${process.runtime || "-"}`,
+    `ImageKind:\t${process.image?.kind || "-"}`,
+    `ImageCommand:\t${process.image?.command || "-"}`,
+    `JobId:\t${process.jobId || 0}`,
+    `ProcessGroup:\t${process.processGroupId || 0}`,
+    `Foreground:\t${process.foreground ? "true" : "false"}`,
     `ContainerMode:\t${process.container?.mode || "-"}`,
     `ContainerIsolation:\t${process.container?.isolation || "-"}`,
     `ContainerRawRuntimeGlobal:\t${process.container?.rawRuntimeGlobal ? "true" : "false"}`,
@@ -696,6 +831,46 @@ function formatProcessStatus(process) {
     `LifecycleLastAt:\t${process.lifecycleLastAt || "-"}`,
     `LifecycleLastResult:\t${process.lifecycleLastResult || "-"}`,
     `LifecycleLastError:\t${process.lifecycleLastError || "-"}`,
+  ].join("\n");
+}
+
+function normalizeProcessImage(image = {}, app = {}, context = {}) {
+  return {
+    kind: String(image.kind || context.imageKind || context.runtime || app.manifest?.runtime || "gui-app"),
+    command: String(image.command || context.command || app.manifest?.entry || app.id || ""),
+    argv: Array.isArray(image.argv) ? image.argv.map(String) : Array.isArray(context.argv) ? context.argv.map(String) : [],
+    entry: String(image.entry || app.manifest?.entry || ""),
+    packageId: String(image.packageId || app.manifest?.namespace?.packageId || ""),
+    backend: String(image.backend || context.executionBackend || "main-thread"),
+  };
+}
+
+function normalizeSignal(signal = "SIGTERM") {
+  const value = String(signal || "SIGTERM").trim().toUpperCase();
+  if (["TERM", "KILL", "INT", "STOP", "TSTP", "CONT"].includes(value)) return `SIG${value}`;
+  if (["SIGTERM", "SIGKILL", "SIGINT", "SIGSTOP", "SIGTSTP", "SIGCONT"].includes(value)) return value;
+  return "SIGTERM";
+}
+
+function exitStatusForState(state = "") {
+  const value = String(state || "");
+  if (value === "exited" || value === "signal-sigterm" || value === "pipeline-exit") return 0;
+  if (value.startsWith("signal-sig")) return 128;
+  return value === "crashed" ? 1 : 0;
+}
+
+function formatJobs(jobs = []) {
+  if (!jobs.length) return "JOB PGID STATE FOREGROUND PIDS COMMAND";
+  return [
+    "JOB PGID STATE FOREGROUND PIDS COMMAND",
+    ...jobs.map((job) => [
+      String(job.id),
+      String(job.processGroupId),
+      job.state,
+      job.foreground ? "fg" : "bg",
+      job.pids.join(",") || "-",
+      job.command || "-",
+    ].join(" ")),
   ].join("\n");
 }
 

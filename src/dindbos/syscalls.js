@@ -100,6 +100,11 @@ export class SyscallDispatcher {
     if (name === "process.list") return this.processList(context);
     if (name === "process.get") return this.processGet(args, context);
     if (name === "process.log") return this.processLog(args, context);
+    if (name === "process.spawn") return this.processSpawn(args, context);
+    if (name === "process.exec") return this.processExec(args, context);
+    if (name === "process.wait") return this.processWait(args, context);
+    if (name === "process.signal") return this.processSignal(args, context);
+    if (name === "process.jobs") return this.processJobs(context);
     if (name === "app.launch") return this.appLaunch(args, context);
     throw syscallError("ENOSYS", `syscall: ${name}: not implemented`);
   }
@@ -435,6 +440,56 @@ export class SyscallDispatcher {
     if (!process || Number(process.pid) !== pid) this.assertCapability("process.manage", context);
     this.os.processes.log(pid, String(args.message || ""), args.level || "info");
     return { pid, logged: true };
+  }
+
+  processSpawn(args, context) {
+    this.assertCapability("process.execute", context);
+    const appId = String(args.appId || args.command || "process").trim();
+    const app = {
+      id: appId,
+      name: String(args.name || appId),
+      manifest: {
+        runtime: args.runtime || "process",
+        capabilities: Array.isArray(args.capabilities) ? args.capabilities.map(String) : [],
+        fileSystem: { read: [], write: [] },
+      },
+    };
+    return this.os.processes.spawn(app, {
+      cwd: args.cwd || context.process?.cwd || this.os.session?.home || "/",
+      parentPid: context.process?.pid || 0,
+      runtime: args.runtime || "process",
+      executionBackend: args.executionBackend || "worker",
+      command: args.command || appId,
+      argv: Array.isArray(args.argv) ? args.argv : [],
+      foreground: args.foreground !== false,
+      image: {
+        kind: args.imageKind || args.runtime || "process",
+        command: args.command || appId,
+        argv: Array.isArray(args.argv) ? args.argv : [],
+      },
+      job: {
+        command: args.command || appId,
+        foreground: args.foreground !== false,
+      },
+    });
+  }
+
+  processExec(args, context) {
+    const process = this.processSpawn({ ...args, foreground: args.foreground !== false }, context);
+    const exit = this.os.processes.kill(process.pid, "exited");
+    return { process, exit, status: 0 };
+  }
+
+  processWait(args) {
+    return this.os.processes.wait(numberArg(args.pid, "pid"));
+  }
+
+  processSignal(args) {
+    return this.os.processes.signal(numberArg(args.pid, "pid"), args.signal || "SIGTERM");
+  }
+
+  processJobs() {
+    return this.os.processes.listJobs?.() || [];
   }
 
   appLaunch(args, context) {

@@ -22,10 +22,13 @@ const BUILTIN_MANUALS = {
   env: "env - list shell environment",
   export: "export KEY=value - set shell environment variable",
   find: "find [path] [name] - search files by name",
+  bg: "bg <pid> - continue a stopped process in the background",
+  fg: "fg <pid> - continue a stopped process in the foreground",
   fsck: "fsck [--dry-run|--repair|--salvage] - check VFS integrity, repair safe metadata, or export readable recovery data",
   grep: "grep <text> <file> - search lines in a text file",
   handlectl: "handlectl list [pid] [--all]|stat <handle>|revoke <handle> [reason] - inspect or revoke kernel handles",
   kill: "kill <pid> - terminate a process",
+  jobs: "jobs - list process jobs and process groups",
   keychain: "keychain list|get|set|delete|lock|unlock|grant|revoke|audit|export|passkey|signing - manage DindbOS secrets",
   loginctl: "loginctl status|users|login|logout|switch|lock|unlock|policy|reset-guest - inspect or change DindbOS session state",
   ls: "ls [-la] [path] - list directory contents",
@@ -58,6 +61,7 @@ const BUILTIN_MANUALS = {
   tree: "tree [path] - render a directory tree",
   umount: "umount [--forget] <path> - unmount a local folder",
   wasm: "wasm <file> [args...] - run a WebAssembly module as a DindbOS process",
+  wait: "wait <pid> - wait for a process exit record",
   which: "which <command> - locate a command through PATH",
 };
 
@@ -66,6 +70,9 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "find",
   "curl",
   "dig",
+  "bg",
+  "fg",
+  "jobs",
   "keychain",
   "loginctl",
   "kill",
@@ -90,6 +97,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "tree",
   "umount",
   "wasm",
+  "wait",
   "which",
 ]);
 
@@ -308,6 +316,10 @@ export class ShellSession {
     if (command === "pkg") return this.pkg(args);
     if (command === "companion") return this.companion(args);
     if (command === "ps") return this.os.processes.table();
+    if (command === "jobs") return this.jobs();
+    if (command === "fg") return this.fg(args);
+    if (command === "bg") return this.bg(args);
+    if (command === "wait") return this.wait(args);
     if (command === "lsof") return this.lsof(args);
     if (command === "kill") return this.kill(args);
     if (command === "keychain") return this.keychain(args);
@@ -1439,8 +1451,46 @@ export class ShellSession {
   kill(args) {
     const pid = Number(args[0]);
     if (!Number.isFinite(pid)) return "kill: usage: kill <pid>";
-    const killed = this.os.processes.kill(pid);
-    return `killed ${killed.pid} ${killed.appId}`;
+    const signal = args[1] || "SIGTERM";
+    const result = this.os.processes.signal?.(pid, signal) || { process: this.os.processes.kill(pid) };
+    return `killed ${result.process.pid} ${result.process.appId} signal=${result.signal || "SIGTERM"}`;
+  }
+
+  jobs() {
+    const jobs = this.os.processes?.listJobs?.() || [];
+    if (!jobs.length) return "JOB PGID STATE FOREGROUND PIDS COMMAND";
+    return [
+      "JOB PGID STATE FOREGROUND PIDS COMMAND",
+      ...jobs.map((job) => [
+        String(job.id),
+        String(job.processGroupId),
+        job.state,
+        job.foreground ? "fg" : "bg",
+        job.pids.join(",") || "-",
+        job.command || "-",
+      ].join(" ")),
+    ].join("\n");
+  }
+
+  fg(args) {
+    const pid = Number(args[0]);
+    if (!Number.isFinite(pid)) return "fg: usage: fg <pid>";
+    const process = this.os.processes.foreground(pid);
+    return `foreground ${process.pid} ${process.appId}`;
+  }
+
+  bg(args) {
+    const pid = Number(args[0]);
+    if (!Number.isFinite(pid)) return "bg: usage: bg <pid>";
+    const process = this.os.processes.background(pid);
+    return `background ${process.pid} ${process.appId}`;
+  }
+
+  wait(args) {
+    const pid = Number(args[0]);
+    if (!Number.isFinite(pid)) return "wait: usage: wait <pid>";
+    const result = this.os.processes.wait(pid);
+    return `wait ${result.pid} ${result.appId} running=${result.running} status=${result.status ?? "-"}`;
   }
 
   handlectl(args = []) {

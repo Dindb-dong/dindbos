@@ -541,9 +541,14 @@ export class DescriptorManager {
   }
 
   openDevice(path, flags, process = {}) {
-    if (!["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/dev/clipboard"].includes(path)) {
+    const ptsMatch = /^\/dev\/pts\/([^/]+)$/.exec(path);
+    if (!["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/dev/clipboard"].includes(path) && !ptsMatch) {
       throw descriptorError("ENODEV", `fd.open: ${path}: no such device`);
     }
+    const tty = ptsMatch
+      ? this.os.pty?.getSession?.(ptsMatch[1]) || null
+      : path === "/dev/tty" ? this.os.pty?.getSession?.(process.context?.ptySessionId) || null : null;
+    if (ptsMatch && !tty) throw descriptorError("ENODEV", `fd.open: ${path}: no such PTY`);
     return {
       kind: "device",
       path,
@@ -551,7 +556,7 @@ export class DescriptorManager {
       writable: path === "/dev/clipboard" ? flags.writable : true,
       offset: 0,
       flags: flags.raw,
-      tty: path === "/dev/tty" ? this.os.pty?.getSession?.(process.context?.ptySessionId) || null : null,
+      tty,
     };
   }
 
@@ -590,9 +595,10 @@ export class DescriptorManager {
       descriptor.readBytes = byteLength(data);
       return data;
     }
-    if (descriptor.path === "/dev/tty") {
+    if (descriptor.path === "/dev/tty" || descriptor.tty?.id) {
       const stdin = this.descriptorFor(process.pid, STDIN_FD);
-      const data = readBufferedDescriptor(stdin, length);
+      const data = descriptor.path === "/dev/tty" ? readBufferedDescriptor(stdin, length) : String(descriptor.tty?.input || "").slice(Number(descriptor.offset || 0), Number(descriptor.offset || 0) + length);
+      if (descriptor.path !== "/dev/tty") descriptor.offset = Number(descriptor.offset || 0) + data.length;
       descriptor.readBytes = byteLength(data);
       return data;
     }
@@ -619,7 +625,7 @@ export class DescriptorManager {
       descriptor.offset = 0;
       return Number(result.bytes || byteLength(data));
     }
-    if (descriptor.path === "/dev/tty") {
+    if (descriptor.path === "/dev/tty" || descriptor.tty?.id) {
       const stdout = this.descriptorFor(process.pid, STDOUT_FD);
       stdout.buffer = `${stdout.buffer || ""}${data}`;
       stdout.offset = byteLength(stdout.buffer);
