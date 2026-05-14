@@ -36,6 +36,9 @@ assert(JSON.parse(os.fs.readFile("/proc/jobs.json")).jobs.some((job) => job.pids
 
 result = os.syscall("process.signal", { pid: worker.pid, signal: "SIGSTOP" }, context);
 assert(result.ok && result.value.process.state === "stopped", `SIGSTOP mismatch: ${JSON.stringify(result)}`);
+assert(result.value.delivery.targets.includes("executor") && result.value.delivery.signal === "SIGSTOP", `worker signal delivery mismatch: ${JSON.stringify(result.value.delivery)}`);
+const workerSignals = JSON.parse(os.fs.readFile(`/proc/${worker.pid}/signals.json`));
+assert(workerSignals.signalDeliveries.some((entry) => entry.signal === "SIGSTOP" && entry.targets.includes("executor")), "worker signal procfs missing executor delivery");
 result = os.syscall("process.jobs", {}, context);
 assert(result.ok && result.value.some((job) => job.state === "stopped" && job.pids.includes(worker.pid)), `process.jobs mismatch: ${JSON.stringify(result)}`);
 assert(os.processes.foreground(worker.pid).foreground === true, "foreground did not mark process foreground");
@@ -59,8 +62,16 @@ result = os.syscall("fd.read", { fd: ptsFd, length: 8 }, ptyContext);
 assert(result.ok && result.value.data === "pty-data", `fd.read /dev/pts mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.write", { fd: ptsFd, data: " pts-out" }, ptyContext);
 assert(result.ok && os.pty.getSession(pty.id).output === " pts-out", `fd.write /dev/pts mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.ioctl", { fd: ptsFd, request: "tty.setWindowSize", columns: 120, rows: 32 }, ptyContext);
+assert(result.ok && os.pty.getSession(pty.id).columns === 120 && os.pty.getSession(pty.id).rows === 32, `tty resize mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("process.signal", { pid: ptyProcess.pid, signal: "SIGTSTP" }, ptyContext);
+assert(result.ok && result.value.delivery.targets.includes("pty"), `PTY signal delivery mismatch: ${JSON.stringify(result)}`);
+os.processes.syncProcfs();
+const ptyProc = JSON.parse(os.fs.readFile(`/proc/${ptyProcess.pid}/pty.json`));
+assert(ptyProc.session.events.some((entry) => entry.type === "resize" && entry.columns === 120), "PTY procfs missing resize event");
+assert(ptyProc.events.some((entry) => entry.type === "signal" && entry.signal === "SIGTSTP"), "PTY procfs missing signal event");
 
-console.log("process job control smoke ok images jobs wait signal pts");
+console.log("process job control smoke ok images jobs wait signal pts delivery");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
