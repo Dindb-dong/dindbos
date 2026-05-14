@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 const guide = readFileSync("docs/developer-guide.md", "utf8");
 const services = readFileSync("docs/services.md", "utf8");
 const conformance = readFileSync("docs/conformance.md", "utf8");
+const packageSignatures = readFileSync("docs/package-signatures.md", "utf8");
+const shell = readFileSync("docs/shell.md", "utf8");
 
 [
   "## Runtime Contract",
@@ -51,6 +53,22 @@ const conformance = readFileSync("docs/conformance.md", "utf8");
   "npm run smoke:conformance",
 ].forEach((term) => {
   assert(conformance.includes(term), `conformance doc missing ${term}`);
+});
+
+[
+  "policyctl prove [package]",
+  "bootctl verify",
+  "/proc/policy/proofs",
+].forEach((term) => {
+  assert(packageSignatures.includes(term), `package signatures doc missing ${term}`);
+});
+
+[
+  "bootctl status",
+  "policyctl prove [package]",
+  "/proc/policy/proofs",
+].forEach((term) => {
+  assert(shell.includes(term), `shell doc missing ${term}`);
 });
 
 console.log("docs smoke ok developer guide service coverage");

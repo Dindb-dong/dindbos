@@ -49,11 +49,18 @@ const rollbackPolicy = JSON.parse(os.fs.readFile("/proc/policy/rollback-demo.jso
 assert(rollbackPolicy.process.handleId === rollbackNamespace.handleId, "policy procfs package file missing namespace handle");
 const packageAudit = packages.audit("rollback-demo");
 assert(packageAudit.ok && packageAudit.packages[0].checks.some((check) => check.id === "deny-device-access" && check.status === "pass"), "package audit did not prove device denial");
+const packageProofs = packages.policyProofs("rollback-demo");
+assert(packageProofs.ok && packageProofs.packages[0].proofs.some((proof) => proof.id === "dependencyViewRead" && proof.status === "pass"), "package policy proofs did not execute dependency denial");
+const policyProofIndex = JSON.parse(os.fs.readFile("/proc/policy/proofs.json"));
+assert(policyProofIndex.packages.some((entry) => entry.packageId === "rollback-demo" && entry.ok), "policy proof procfs index missing rollback-demo");
+assert(os.fs.readFile("/proc/policy/proofs").includes("rawRuntime expected=denied status=pass"), "policy proof procfs text missing raw runtime proof");
 const policyShell = new ShellSession(os);
 let policyShellResult = await policyShell.executeAsync("pkg audit rollback-demo");
 assert(policyShellResult.output.includes("audit ok=true"), `pkg audit output mismatch: ${policyShellResult.output}`);
 policyShellResult = await policyShell.executeAsync("policyctl show rollback-demo");
 assert(policyShellResult.output.includes("package=rollback-demo") && policyShellResult.output.includes("enforcement="), `policyctl show output mismatch: ${policyShellResult.output}`);
+policyShellResult = await policyShell.executeAsync("policyctl prove rollback-demo");
+assert(policyShellResult.output.includes("proofs ok=true") && policyShellResult.output.includes("dependencyViewRead"), `policyctl prove output mismatch: ${policyShellResult.output}`);
 const sandboxPolicy = {
   rootPolicy: "readonly-strict",
   statePolicy: "private-encrypted",
