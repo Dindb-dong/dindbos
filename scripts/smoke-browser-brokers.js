@@ -21,17 +21,19 @@ try {
   assert(result.value.capabilities.some((entry) => entry.id === "screen.capture" && entry.device === "/dev/browser/screen"), "browser status missing screen capture broker");
 
   result = os.syscall("browser.request", { capability: "notifications.show", operation: "show" }, context);
-  assert(result.ok && result.value.status === "brokered", `notification broker request mismatch: ${JSON.stringify(result)}`);
-  result = os.syscall("browser.request", { capability: "screen.capture", operation: "request-display" }, context);
-  assert(result.ok && result.value.ledgerId, `screen capture broker request mismatch: ${JSON.stringify(result)}`);
+  assert(result.ok && result.value.status === "pending-user-gesture" && result.value.activation.required, `notification broker user gesture mismatch: ${JSON.stringify(result)}`);
+  result = os.syscall("browser.request", { capability: "screen.capture", operation: "request-display", userGesture: true }, context);
+  assert(result.ok && result.value.status === "brokered" && result.value.invocation.status === "invoked" && result.value.activation.present, `screen capture broker request mismatch: ${JSON.stringify(result)}`);
   result = os.syscall("browser.request", { capability: "webgpu.adapter", operation: "request-adapter" }, context);
   assert(result.ok && result.value.device === "/dev/browser/gpu", `WebGPU broker request mismatch: ${JSON.stringify(result)}`);
 
   const ledger = os.privacyLedgerStatus({ limit: 20 });
-  assert(ledger.some((entry) => entry.capability === "notifications.show" && entry.operation === "show"), "privacy ledger missing notification access");
-  assert(ledger.some((entry) => entry.capability === "screen.capture" && entry.broker === "screen-capture"), "privacy ledger missing screen capture access");
+  assert(ledger.some((entry) => entry.capability === "notifications.show" && entry.operation === "show" && entry.result === "pending-user-gesture"), "privacy ledger missing notification user gesture access");
+  assert(ledger.some((entry) => entry.capability === "screen.capture" && entry.broker === "screen-capture" && entry.userGesture), "privacy ledger missing screen capture user gesture access");
   assert(JSON.parse(os.fs.readFile("/proc/privacy-ledger.json")).entries.some((entry) => entry.capability === "webgpu.adapter"), "/proc/privacy-ledger.json missing WebGPU access");
-  assert(JSON.parse(os.fs.readFile("/proc/browser-brokers.json")).capabilities.some((entry) => entry.id === "screen.capture" && entry.accessCount >= 1), "/proc/browser-brokers.json missing access count");
+  const brokerProcfs = JSON.parse(os.fs.readFile("/proc/browser-brokers.json"));
+  assert(brokerProcfs.capabilities.some((entry) => entry.id === "screen.capture" && entry.accessCount >= 1 && entry.userGestureRequired), "/proc/browser-brokers.json missing access count");
+  assert(brokerProcfs.requests.some((entry) => entry.capability === "screen.capture" && entry.activation.present && entry.invocation.status === "invoked"), "/proc/browser-brokers.json missing user gesture request record");
 
   const deniedProcess = os.processes.spawn({
     id: "browser-broker-denied",

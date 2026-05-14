@@ -7,6 +7,7 @@ const conformance = readFileSync("docs/conformance.md", "utf8");
 const packageSignatures = readFileSync("docs/package-signatures.md", "utf8");
 const shell = readFileSync("docs/shell.md", "utf8");
 const serviceWorkerRecovery = readFileSync("docs/service-worker-recovery.md", "utf8");
+const syscalls = readFileSync("docs/syscalls.md", "utf8");
 
 [
   "## Runtime Contract",
@@ -81,6 +82,14 @@ const serviceWorkerRecovery = readFileSync("docs/service-worker-recovery.md", "u
   "`packages` disables package bootstrap",
 ].forEach((term) => {
   assert(serviceWorkerRecovery.includes(term), `service worker recovery doc missing ${term}`);
+});
+
+[
+  "pending-user-gesture",
+  "userGesture: true",
+  "/proc/browser-brokers.json",
+].forEach((term) => {
+  assert(syscalls.includes(term), `syscalls doc missing ${term}`);
 });
 
 console.log("docs smoke ok developer guide service coverage");
