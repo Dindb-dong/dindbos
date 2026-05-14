@@ -63,6 +63,7 @@ const OFFLINE_MAINTENANCE_QUEUE_PATH = "/var/run/dindbos/offline-maintenance-que
 const PANIC_DIAGNOSTICS_PATH = "/var/run/dindbos/panic.json";
 const RECOVERY_SHELL_DIR = "/var/recovery/shell";
 const SECURE_BOOT_PATH = "/var/run/dindbos/secure-boot.json";
+const CONFORMANCE_EVIDENCE_PATH = "/var/run/dindbos/conformance-evidence.json";
 const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
 const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
 const REMOTE_SYNC_SNAPSHOT_KEY = "dindbos:remote-sync:last-snapshot";
@@ -223,6 +224,7 @@ export class DindbOS {
     };
     this.lastStorageRepair = null;
     this.offlineMaintenanceQueue = [];
+    this.conformanceEvidence = [];
     this.lastServiceWorkerBoot = null;
     this.activeSafeBootProfileId = normalizeSafeBootProfileId(options.safeBootProfile || options.bootProfile || "normal");
     this.safeBootDecisions = [];
@@ -3444,6 +3446,57 @@ export class DindbOS {
     return conformanceReport(this);
   }
 
+  conformanceEvidenceRecords() {
+    return this.conformanceEvidence.map((record) => ({ ...record, categories: [...record.categories], artifacts: [...record.artifacts] }));
+  }
+
+  addConformanceEvidence(record = {}) {
+    const normalized = normalizeConformanceEvidenceRecord(record);
+    this.conformanceEvidence = [
+      normalized,
+      ...this.conformanceEvidence.filter((entry) => entry.id !== normalized.id),
+    ].slice(0, 200);
+    this.writeConformanceEvidenceProcfs("evidence-added");
+    this.writeConformanceProcfs("evidence-added");
+    return { ...normalized, categories: [...normalized.categories], artifacts: [...normalized.artifacts] };
+  }
+
+  writeConformanceEvidenceProcfs(reason = "conformance-evidence") {
+    if (!this.fs?.exists?.("/proc")) return null;
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/var", "root", system);
+    this.ensureSystemDirectory("/var/run", "root", system);
+    this.ensureSystemDirectory("/var/run/dindbos", "root", system);
+    this.ensureSystemDirectory("/proc", "root", system);
+    const payload = {
+      service: "dindbos-conformance-evidence",
+      version: 1,
+      reason: String(reason || "conformance-evidence"),
+      updatedAt: new Date().toISOString(),
+      count: this.conformanceEvidence.length,
+      records: this.conformanceEvidenceRecords(),
+    };
+    this.fs.writeOrCreateFile(CONFORMANCE_EVIDENCE_PATH, `${JSON.stringify(payload, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/conformance-evidence.json", `${JSON.stringify(payload, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/conformance-evidence", `${formatConformanceEvidence(payload)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "text/plain",
+    }, system);
+    return payload;
+  }
+
   writeConformanceProcfs(reason = "conformance") {
     if (!this.fs?.exists?.("/proc")) return null;
     const system = this.permissions.systemPrincipal();
@@ -3464,6 +3517,7 @@ export class DindbOS {
       permissions: "-r--r--r--",
       mime: "text/plain",
     }, system);
+    this.writeConformanceEvidenceProcfs(reason);
     return report;
   }
 
@@ -4641,7 +4695,15 @@ function formatConformanceReport(report = {}) {
   return [
     `version=${report.version || 1} runtime=${report.runtime?.name || "DindbOS.js"} mode=${report.runtime?.mode || "browser-native"}`,
     `summary total=${Number(report.summary?.total || 0)} supported=${Number(report.summary?.supported || 0)} partial=${Number(report.summary?.partial || 0)} degraded=${Number(report.summary?.degraded || 0)} companionRequired=${Number(report.summary?.["companion-required"] || 0)} planned=${Number(report.summary?.planned || 0)} unsupported=${Number(report.summary?.unsupported || 0)}`,
+    `evidence total=${Number(report.evidenceSummary?.total || 0)} profiles=${Number(report.evidenceSummary?.profileCount || 0)} pass=${Number(report.evidenceSummary?.pass || 0)} fail=${Number(report.evidenceSummary?.fail || 0)} degraded=${Number(report.evidenceSummary?.degraded || 0)}`,
     ...(report.categories || []).map((category) => `${category.id} level=${category.level} evidence=${category.evidence?.join("|") || "-"} claim=${category.claim}`),
+  ].join("\n");
+}
+
+function formatConformanceEvidence(payload = {}) {
+  return [
+    `service=${payload.service || "dindbos-conformance-evidence"} count=${payload.count || 0} updatedAt=${payload.updatedAt || "-"}`,
+    ...(payload.records || []).map((record) => `${record.profile} status=${record.status} runner=${record.runner} categories=${record.categories?.join(",") || "-"} at=${record.recordedAt} artifacts=${record.artifacts?.join(",") || "-"}`),
   ].join("\n");
 }
 
@@ -4685,6 +4747,22 @@ function normalizeSafeBootProfileId(value) {
     repair: "storage-repair",
   };
   return aliases[profile] || profile;
+}
+
+function normalizeConformanceEvidenceRecord(record = {}) {
+  const profile = sanitizeIdentifier(record.profile || record.browser || "chromium-tab", "chromium-tab");
+  const status = ["pass", "fail", "degraded", "blocked"].includes(record.status) ? record.status : "blocked";
+  const recordedAt = String(record.recordedAt || new Date().toISOString());
+  return {
+    id: sanitizeIdentifier(record.id || `${profile}-${recordedAt}`, `${profile}-${Date.now().toString(36)}`),
+    profile,
+    status,
+    runner: String(record.runner || "manual"),
+    recordedAt,
+    categories: [...(record.categories || [])].map(String).filter(Boolean).sort(),
+    artifacts: [...(record.artifacts || [])].map(String).filter(Boolean),
+    notes: String(record.notes || ""),
+  };
 }
 
 function normalizeHomePath(home, user) {

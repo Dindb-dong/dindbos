@@ -73,6 +73,8 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.exists("/proc/service-worker-boot.json"), "/proc/service-worker-boot.json was not written");
   assert(os.fs.exists("/proc/conformance"), "/proc/conformance was not written");
   assert(os.fs.exists("/proc/conformance.json"), "/proc/conformance.json was not written");
+  assert(os.fs.exists("/proc/conformance-evidence"), "/proc/conformance-evidence was not written");
+  assert(os.fs.exists("/proc/conformance-evidence.json"), "/proc/conformance-evidence.json was not written");
   assert(os.fs.exists("/proc/secure-boot"), "/proc/secure-boot was not written");
   assert(os.fs.exists("/proc/secure-boot.json"), "/proc/secure-boot.json was not written");
   assert(os.fs.exists("/var/run/dindbos/secure-boot.json"), "secure boot runtime record was not written");
@@ -110,6 +112,18 @@ async function verifySuccessfulBootPhases() {
   const conformance = JSON.parse(os.fs.readFile("/proc/conformance.json"));
   assert(conformance.categories.some((entry) => entry.id === "package-platform" && entry.level === "supported"), "conformance procfs missing package platform support");
   assert(os.fs.readFile("/proc/conformance").includes("policy-trust level=supported"), "conformance procfs text missing policy trust support");
+  const evidenceRecord = os.addConformanceEvidence({
+    profile: "chromium-tab",
+    status: "pass",
+    runner: "boot-smoke",
+    categories: ["package-platform", "policy-trust"],
+    artifacts: ["/var/log/dindbos/boot.json"],
+  });
+  assert(evidenceRecord.profile === "chromium-tab", "conformance evidence record returned wrong profile");
+  const conformanceWithEvidence = JSON.parse(os.fs.readFile("/proc/conformance.json"));
+  assert(conformanceWithEvidence.evidenceSummary.total === 1, "conformance procfs did not include evidence summary");
+  assert(conformanceWithEvidence.browserMatrix.some((entry) => entry.profile === "chromium-tab" && entry.evidenceStatus === "pass"), "conformance browser matrix did not include evidence status");
+  assert(os.fs.readFile("/proc/conformance-evidence").includes("chromium-tab status=pass runner=boot-smoke"), "conformance evidence text missing boot smoke record");
   const secureBoot = JSON.parse(os.fs.readFile("/proc/secure-boot.json"));
   assert(secureBoot.ok && secureBoot.summary.packageCount >= 1, `secure boot measurement mismatch: ${JSON.stringify(secureBoot.summary)}`);
   assert(secureBoot.measurements.some((entry) => entry.kind === "package-record" && entry.target.includes("hello-notes")), "secure boot missing package record measurement");

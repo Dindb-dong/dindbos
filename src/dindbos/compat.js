@@ -87,6 +87,7 @@ export function compatibilitySnapshot(runtime = {}) {
 
 export function conformanceReport(runtime = {}) {
   const snapshot = compatibilitySnapshot(runtime);
+  const evidenceRecords = normalizeConformanceEvidence(safeRead(() => runtime.conformanceEvidenceRecords?.(), []));
   const browserBroker = safeRead(() => runtime.browserBrokerStatus?.(), { capabilities: [] });
   const network = safeRead(() => runtime.network?.status?.(), null);
   const storage = snapshot.storage || {};
@@ -118,7 +119,9 @@ export function conformanceReport(runtime = {}) {
     },
     levels: conformanceLevels(),
     summary: conformanceSummary(categories),
-    browserMatrix: conformanceBrowserMatrix(snapshot),
+    evidenceSummary: conformanceEvidenceSummary(evidenceRecords),
+    browserMatrix: conformanceBrowserMatrix(snapshot, evidenceRecords),
+    evidenceRecords,
     categories,
   };
 }
@@ -152,7 +155,7 @@ function conformanceSummary(categories = []) {
   }, { total: 0 });
 }
 
-function conformanceBrowserMatrix(snapshot = {}) {
+function conformanceBrowserMatrix(snapshot = {}, evidenceRecords = []) {
   const isolation = snapshot.isolation || {};
   const background = snapshot.backgroundMaintenance || {};
   return [
@@ -164,7 +167,47 @@ function conformanceBrowserMatrix(snapshot = {}) {
     { profile: "cross-origin-isolated", level: isolation.sharedMemory?.available ? "supported" : "degraded", notes: "SharedArrayBuffer requires COOP/COEP/CORP deployment." },
     { profile: "local-companion", level: "companion-required", notes: "Explicit local helper identity and protocol checks required." },
     { profile: "remote-provider", level: "companion-required", notes: "Provider health/protocol identity must match DindbOS expectations." },
-  ];
+  ].map((entry) => {
+    const evidence = evidenceRecords.filter((record) => record.profile === entry.profile);
+    const latest = evidence[0] || null;
+    return {
+      ...entry,
+      evidenceCount: evidence.length,
+      evidenceStatus: latest?.status || "unverified",
+      lastEvidenceAt: latest?.recordedAt || "",
+      lastRunner: latest?.runner || "",
+    };
+  });
+}
+
+function normalizeConformanceEvidence(records = []) {
+  if (!Array.isArray(records)) return [];
+  return records
+    .map((record) => ({
+      id: String(record.id || `${record.profile || "profile"}:${record.recordedAt || Date.now()}`),
+      profile: String(record.profile || "unknown"),
+      status: ["pass", "fail", "degraded", "blocked"].includes(record.status) ? record.status : "blocked",
+      runner: String(record.runner || "manual"),
+      recordedAt: String(record.recordedAt || new Date().toISOString()),
+      categories: [...(record.categories || [])].map(String).sort(),
+      artifacts: [...(record.artifacts || [])].map(String),
+      notes: String(record.notes || ""),
+    }))
+    .sort((left, right) => right.recordedAt.localeCompare(left.recordedAt) || left.profile.localeCompare(right.profile));
+}
+
+function conformanceEvidenceSummary(records = []) {
+  const summary = records.reduce((draft, record) => {
+    draft.total += 1;
+    draft[record.status] = Number(draft[record.status] || 0) + 1;
+    draft.profiles.add(record.profile);
+    return draft;
+  }, { total: 0, profiles: new Set() });
+  return {
+    ...summary,
+    profileCount: summary.profiles.size,
+    profiles: [...summary.profiles].sort(),
+  };
 }
 
 export function isolationSnapshot(browser = browserCapabilities()) {
