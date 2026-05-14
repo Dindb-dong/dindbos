@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const guide = readFileSync("docs/developer-guide.md", "utf8");
 const services = readFileSync("docs/services.md", "utf8");
+const conformance = readFileSync("docs/conformance.md", "utf8");
 
 [
   "## Runtime Contract",
@@ -41,6 +42,15 @@ const services = readFileSync("docs/services.md", "utf8");
   "service: manage denied",
 ].forEach((term) => {
   assert(services.includes(term), `services doc missing ${term}`);
+});
+
+[
+  "## Certification Areas",
+  "durable-disk",
+  "cross-origin-isolation",
+  "npm run smoke:conformance",
+].forEach((term) => {
+  assert(conformance.includes(term), `conformance doc missing ${term}`);
 });
 
 console.log("docs smoke ok developer guide service coverage");

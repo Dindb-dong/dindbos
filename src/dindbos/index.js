@@ -1,6 +1,6 @@
 import { AppRegistry } from "./app-registry.js?v=20260422-browserd";
 import { AppSandbox } from "./app-sandbox.js?v=20260422-browserd";
-import { compatibilitySnapshot, isolationSnapshot } from "./compat.js?v=20260422-browserd";
+import { compatibilitySnapshot, conformanceReport, isolationSnapshot } from "./compat.js?v=20260422-browserd";
 import { DescriptorManager } from "./descriptors.js?v=20260422-browserd";
 import { RuntimeCacheStore } from "./cache-store.js?v=20260422-browserd";
 import { DesktopShell } from "./desktop-shell.js?v=20260422-browserd";
@@ -810,6 +810,7 @@ export class DindbOS {
     this.writeIsolationProcfs("disk-policy-roots");
     this.writeRecoveryShellAssets();
     this.writeServiceWorkerBootProcfs("disk-policy-roots");
+    this.writeConformanceProcfs("disk-policy-roots");
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
     this.writeSessionStatus();
@@ -3270,6 +3271,33 @@ export class DindbOS {
     return compatibilitySnapshot(this);
   }
 
+  conformanceReport() {
+    return conformanceReport(this);
+  }
+
+  writeConformanceProcfs(reason = "conformance") {
+    if (!this.fs?.exists?.("/proc")) return null;
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/proc", "root", system);
+    const report = {
+      ...this.conformanceReport(),
+      reason: String(reason || "conformance"),
+    };
+    this.fs.writeOrCreateFile("/proc/conformance.json", `${JSON.stringify(report, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/conformance", `${formatConformanceReport(report)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "text/plain",
+    }, system);
+    return report;
+  }
+
   isolationStatus() {
     const status = isolationSnapshot(this.compatibilitySnapshot().browser || {});
     return {
@@ -4433,6 +4461,14 @@ function formatServiceWorkerBootStatus(status = {}) {
     `offlineQueue queued=${Number(status.offlineMaintenanceQueue?.queued || 0)}`,
     `recoveryShell=${status.manifest?.recoveryShell || "-"}`,
     `closedPageExecution=${Boolean(status.closedPageExecution)}`,
+  ].join("\n");
+}
+
+function formatConformanceReport(report = {}) {
+  return [
+    `version=${report.version || 1} runtime=${report.runtime?.name || "DindbOS.js"} mode=${report.runtime?.mode || "browser-native"}`,
+    `summary total=${Number(report.summary?.total || 0)} supported=${Number(report.summary?.supported || 0)} partial=${Number(report.summary?.partial || 0)} degraded=${Number(report.summary?.degraded || 0)} companionRequired=${Number(report.summary?.["companion-required"] || 0)} planned=${Number(report.summary?.planned || 0)} unsupported=${Number(report.summary?.unsupported || 0)}`,
+    ...(report.categories || []).map((category) => `${category.id} level=${category.level} evidence=${category.evidence?.join("|") || "-"} claim=${category.claim}`),
   ].join("\n");
 }
 

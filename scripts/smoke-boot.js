@@ -69,6 +69,8 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.exists("/proc/isolation.json"), "/proc/isolation.json was not written");
   assert(os.fs.exists("/proc/service-worker-boot"), "/proc/service-worker-boot was not written");
   assert(os.fs.exists("/proc/service-worker-boot.json"), "/proc/service-worker-boot.json was not written");
+  assert(os.fs.exists("/proc/conformance"), "/proc/conformance was not written");
+  assert(os.fs.exists("/proc/conformance.json"), "/proc/conformance.json was not written");
   assert(os.fs.exists("/var/recovery/shell/recovery.dindbsh"), "recovery shell asset was not written");
   assert(os.fs.exists("/var/run/dindbos/panic.json"), "panic diagnostics were not written");
   assert(os.fs.exists("/dev/browser"), "/dev/browser device root was not created");
@@ -100,6 +102,9 @@ async function verifySuccessfulBootPhases() {
   const serviceWorkerBoot = JSON.parse(os.fs.readFile("/proc/service-worker-boot.json"));
   assert(serviceWorkerBoot.manifest.protocol === "dindbos-sw-boot.v1", "service worker boot manifest protocol mismatch");
   assert(serviceWorkerBoot.safeBootProfiles.some((profile) => profile.id === "offline" && profile.status === "degraded"), "safe boot profiles missing degraded offline profile");
+  const conformance = JSON.parse(os.fs.readFile("/proc/conformance.json"));
+  assert(conformance.categories.some((entry) => entry.id === "package-platform" && entry.level === "supported"), "conformance procfs missing package platform support");
+  assert(os.fs.readFile("/proc/conformance").includes("policy-trust level=supported"), "conformance procfs text missing policy trust support");
   const queued = os.queueOfflineMaintenanceTask({ type: "storage.flush", permissioned: true, requestedBy: "smoke" });
   assert(queued.type === "storage.flush", "offline maintenance task queue returned wrong type");
   const queue = JSON.parse(os.fs.readFile("/var/run/dindbos/offline-maintenance-queue.json"));

@@ -1,4 +1,4 @@
-import { compatibilitySnapshot } from "./compat.js?v=20260422-browserd";
+import { compatibilitySnapshot, conformanceReport } from "./compat.js?v=20260422-browserd";
 
 const SHELL_HISTORY_DIR = "/var/lib/dindbos/shell-history";
 const MAX_SHELL_HISTORY = 200;
@@ -13,6 +13,7 @@ const BUILTIN_MANUALS = {
   chown: "chown <owner[:group]> <path> - change file owner/group metadata as an administrator",
   clear: "clear - clear terminal output",
   companion: "companion list|grant|revoke - inspect or administer companion permissions",
+  conformance: "conformance [matrix|json] - print DindbOS compatibility certification output",
   cp: "cp [-r] <source> <destination> - copy files or directories",
   curl: "curl <url> - fetch a URL through the DindbOS network broker",
   doctor: "doctor [compat|browser|isolation] - print runtime diagnostics, compatibility tiers, browser brokers, or isolation status",
@@ -87,6 +88,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "npm",
   "ping",
   "companion",
+  "conformance",
   "pkg",
   "policyctl",
   "recovery",
@@ -319,6 +321,7 @@ export class ShellSession {
     if (command === "umount") return this.umount(args);
     if (command === "pkg") return this.pkg(args);
     if (command === "policyctl") return this.policyctl(args);
+    if (command === "conformance") return this.conformance(args);
     if (command === "companion") return this.companion(args);
     if (command === "ps") return this.os.processes.table();
     if (command === "jobs") return this.jobs();
@@ -1300,6 +1303,7 @@ export class ShellSession {
     if (args[0] === "compat") return this.doctorCompat();
     if (args[0] === "browser") return this.doctorBrowser();
     if (args[0] === "isolation") return this.doctorIsolation();
+    if (args[0] === "conformance") return this.conformance([]);
     const sessionStatus = safeRead(() => this.os.sessionStatus?.(), null);
     const storage = await safeAsync(() => this.os.storage?.estimate?.(), safeRead(() => this.os.storage?.status?.(), {}));
     const mounts = await safeAsync(() => this.os.localMounts?.status?.(), []);
@@ -1392,6 +1396,13 @@ export class ShellSession {
       `degraded=${snapshot.degradedModes?.join("; ") || "-"}`,
       ...profiles,
     ].join("\n");
+  }
+
+  conformance(args = []) {
+    const report = safeRead(() => this.os.conformanceReport?.(), null) || conformanceReport(this.os);
+    if (args[0] === "json") return JSON.stringify(report, null, 2);
+    if (args[0] === "matrix") return formatConformanceMatrix(report.browserMatrix || []);
+    return formatConformance(report);
   }
 
   syscall(args) {
@@ -2256,6 +2267,20 @@ function formatPanic(panic = null) {
     `recoveryShell=${panic.recoveryShell || "-"}`,
     `profiles=${panic.safeBootProfiles?.join(",") || "-"}`,
   ].join("\n");
+}
+
+function formatConformance(report = {}) {
+  const summary = report.summary || {};
+  return [
+    `conformance version=${report.version || 1} runtime=${report.runtime?.name || "DindbOS.js"} mode=${report.runtime?.mode || "browser-native"}`,
+    `summary total=${Number(summary.total || 0)} supported=${Number(summary.supported || 0)} partial=${Number(summary.partial || 0)} degraded=${Number(summary.degraded || 0)} companionRequired=${Number(summary["companion-required"] || 0)} planned=${Number(summary.planned || 0)} unsupported=${Number(summary.unsupported || 0)}`,
+    ...(report.categories || []).map((category) => `${category.id} level=${category.level} evidence=${category.evidence?.join("|") || "-"} note=${category.note || "-"}`),
+  ].join("\n");
+}
+
+function formatConformanceMatrix(matrix = []) {
+  if (!matrix.length) return "conformance: no browser matrix";
+  return matrix.map((entry) => `${entry.profile} level=${entry.level} notes=${entry.notes || "-"}`).join("\n");
 }
 
 function formatStorageKernel(status = {}) {
