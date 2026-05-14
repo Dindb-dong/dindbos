@@ -31,6 +31,8 @@ Process lifecycle callbacks are recorded per process. `suspending` runs `prepare
 
 Settings and `doctor` expose lifecycle/recovery diagnostics, including the last shutdown/recovery record and a closed-page boundary list. DindbOS reports closed-page persistence as unsupported unless a future browser-supported background API explicitly owns that work.
 
+Service Worker boot diagnostics now live in `/proc/service-worker-boot.json` and `/var/run/dindbos/service-worker-boot.json`. The Service Worker caches boot/recovery assets and performs a `dindbos-sw-boot.v1` handshake, but it does not grant arbitrary closed-page OS execution. Safe boot profiles, the explicit offline maintenance queue, recovery shell assets, and panic diagnostics are documented in `docs/service-worker-recovery.md`.
+
 `doctor compat` also reports Service Worker and Periodic Background Sync probes. DindbOS does not auto-register closed-page maintenance; it reports `unsupported-in-this-runtime` or `available-but-not-registered` until an explicit, permissioned maintenance service owns a limited task.
 
 Each runtime has an `instanceId` and participates in a storage-backed session lock. The first active instance becomes `primary`; later instances report `secondary` with readonly fallback diagnostics. Expired locks can be recovered by a new primary, and `/proc/sessions`, Settings, and `doctor` show the current lock owner and role.
