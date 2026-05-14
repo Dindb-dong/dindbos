@@ -103,7 +103,7 @@ Each implementation cycle uses a fresh `codex/*` worktree and branch, may contai
 5. Cycle 5: Secure Boot, Policy Compiler, And Package Trust
    In progress: package manifests now compile into auditable path/device/network/dependency policy bundles exposed through `/proc/policy`, app manifests, `pkg audit`, and `policyctl`. Boot measurements remain in this cycle backlog.
 6. Cycle 6: Cross-Origin Isolation And Shared Memory
-   Add deployment profiles, `doctor isolation`, degraded-mode reporting, and worker memory-region handle prototypes.
+   In progress: deployment profiles, `doctor isolation`, `/proc/isolation`, degraded-mode reporting, and worker memory-region handle prototypes are implemented. Remaining work is deeper package/container enforcement on isolated deployments.
 7. Cycle 7: Service Worker Boot And Offline Recovery
    Add Service Worker boot manifest, safe boot profiles, offline maintenance queue, recovery shell assets, and panic diagnostics.
 8. Cycle 8: Conformance Lab
@@ -207,12 +207,16 @@ Next:
 
 Goal: unlock safer app containers, SharedArrayBuffer, Atomics, and high-performance WASM patterns.
 
+Done:
+
+- COOP/COEP/CORP deployment profiles are documented in `docs/isolation.md`.
+- `doctor isolation` and `/proc/isolation` expose current cross-origin isolation, SharedArrayBuffer/Atomics availability, degraded reasons, and worker memory-region status.
+- Worker memory-region handles are kernel-tracked and fall back to ArrayBuffer copy transfer when cross-origin isolation is absent.
+
 Next:
 
-- Document COOP/COEP/CORP deployment profiles.
-- Add `doctor isolation`.
-- Add degraded-mode reporting when isolation headers are absent.
-- Prototype worker memory-region handles after policy and container boundaries are stronger.
+- Wire isolated deployment status into package container launch decisions.
+- Add browser QA coverage for an actually origin-isolated served build.
 
 ### 8. Service Worker Boot And Offline Recovery
 
