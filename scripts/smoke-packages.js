@@ -39,6 +39,21 @@ assert(os.fs.exists(rollbackNamespace.stateRoot), "package namespace state root 
 assert(os.fs.exists(rollbackNamespace.cacheRoot), "package namespace cache root missing");
 assert(os.fs.exists(rollbackNamespace.tempRoot), "package namespace temp root missing");
 assert(os.apps.getManifest("rollback-demo").namespace.processGroup === "package:rollback-demo", "package namespace was not exposed through app manifest");
+assert(installed.policy.packageId === "rollback-demo", "package policy was not compiled");
+assert(installed.policy.filesystem.read.includes("/opt/rollback-demo"), "compiled policy missing package read scope");
+assert(installed.policy.proofs.undeclaredImport.status === "denied", "compiled policy missing undeclared import denial proof");
+assert(os.apps.getManifest("rollback-demo").policy.packageId === "rollback-demo", "package policy was not exposed through app manifest");
+const policyIndex = JSON.parse(os.fs.readFile("/proc/policy/packages.json"));
+assert(policyIndex.packages.some((entry) => entry.packageId === "rollback-demo"), "policy procfs index missing rollback-demo");
+const rollbackPolicy = JSON.parse(os.fs.readFile("/proc/policy/rollback-demo.json"));
+assert(rollbackPolicy.process.handleId === rollbackNamespace.handleId, "policy procfs package file missing namespace handle");
+const packageAudit = packages.audit("rollback-demo");
+assert(packageAudit.ok && packageAudit.packages[0].checks.some((check) => check.id === "deny-device-access" && check.status === "pass"), "package audit did not prove device denial");
+const policyShell = new ShellSession(os);
+let policyShellResult = await policyShell.executeAsync("pkg audit rollback-demo");
+assert(policyShellResult.output.includes("audit ok=true"), `pkg audit output mismatch: ${policyShellResult.output}`);
+policyShellResult = await policyShell.executeAsync("policyctl show rollback-demo");
+assert(policyShellResult.output.includes("package=rollback-demo") && policyShellResult.output.includes("enforcement="), `policyctl show output mismatch: ${policyShellResult.output}`);
 const sandboxPolicy = {
   rootPolicy: "readonly-strict",
   statePolicy: "private-encrypted",
@@ -54,12 +69,15 @@ const sandboxPackage = packages.install(packageManifest("sandbox-policy", "0.1.0
 ], { sandbox: sandboxPolicy }));
 assert(sandboxPackage.sandbox.rootPolicy === "readonly-strict", "package sandbox root policy was not normalized");
 assert(sandboxPackage.sandbox.deviceGrants.includes("clipboard.read"), "package sandbox device grants missing");
+assert(sandboxPackage.policy.devices.includes("clipboard.read"), "compiled policy missing sandbox device grant");
+assert(sandboxPackage.policy.network.hosts.includes("api.example.test"), "compiled policy missing sandbox network host");
 assert(sandboxPackage.namespace.rootPolicy === "readonly-strict", "package namespace root policy did not use sandbox policy");
 assert(sandboxPackage.namespace.childProcessLimit === 2, "package namespace child process limit mismatch");
 const sandboxManifest = os.apps.getManifest("sandbox-policy");
 assert(sandboxManifest.sandbox.networkHosts.includes("api.example.test"), "app manifest sandbox network hosts missing");
 assert(sandboxManifest.namespace.ipcEndpoints.includes("sandbox-policy.echo"), "app manifest namespace IPC endpoints missing");
 packages.remove("sandbox-policy");
+assert(!os.fs.exists("/proc/policy/sandbox-policy.json"), "package removal left stale policy procfs file");
 const rollbackRoot = os.fs.stat("/opt/rollback-demo");
 assert(rollbackRoot.type === "mount" && rollbackRoot.resolvedType === "directory", `package root was not mounted as a directory: ${JSON.stringify(rollbackRoot)}`);
 assert(rollbackRoot.permissions === "dr-xr-xr-x", `package image mount permissions mismatch: ${rollbackRoot.permissions}`);
@@ -68,7 +86,7 @@ assert(os.fs.exists("/var/lib/dindbos/packages/rollback-demo.json"), "valid pack
 assert(os.fs.exists("/usr/share/applications/Rollback Demo.app"), "valid package launcher missing");
 assert(os.apps.apps.has("rollback-demo"), "valid package app was not registered");
 assert(lifecycleEvents.includes("install:rollback-demo:rollback-demo"), "app:install lifecycle event missing");
-["package-root", "package-record", "launcher", "app-registry", "services"].forEach((phase) => {
+["package-root", "package-record", "launcher", "app-registry", "services", "policy"].forEach((phase) => {
   assert(activationEvents.includes(`phase-complete:rollback-demo:${phase}`), `package activation phase missing: ${phase}`);
 });
 assert(activationEvents.includes("complete:rollback-demo:complete"), "package activation completion event missing");

@@ -658,6 +658,7 @@ function packageSummary(record, detailed = false) {
       },
     } : null,
     trust: record.trust || {},
+    policy: record.policy || {},
     dependencies: record.dependencies || {},
   };
 }
