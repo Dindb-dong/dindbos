@@ -14,11 +14,62 @@ export class NetworkBroker {
     this.dataChannelHistory = [];
     this.rawSocketSessions = new Map();
     this.rawSocketHistory = [];
+    this.loopbackServices = new Map();
+    this.firewallEvents = [];
     this.history = [];
     this.deniedHosts = [];
     this.nextRequestId = 1;
     this.bytesReceived = 0;
     this.bytesSent = 0;
+  }
+
+  registerLoopbackService(service = {}, context = {}) {
+    const id = normalizeServiceId(service.id || service.name);
+    const host = normalizeHost(service.host || `${id}.loopback.dindbos`);
+    const now = new Date().toISOString();
+    const record = {
+      id,
+      host,
+      port: Number(service.port || 0),
+      protocol: String(service.protocol || "loopback-http"),
+      title: String(service.title || service.name || id),
+      packageId: String(service.packageId || context.process?.manifest?.namespace?.packageId || ""),
+      requester: requesterId(context),
+      registeredAt: now,
+      updatedAt: now,
+      requests: 0,
+      bytesReceived: 0,
+      status: "listening",
+      handler: typeof service.handler === "function" ? service.handler : null,
+    };
+    this.loopbackServices.set(id, record);
+    this.writeProcfs();
+    return publicLoopbackService(record);
+  }
+
+  unregisterLoopbackService(id, reason = "unregistered") {
+    const key = normalizeServiceId(id);
+    const record = this.loopbackServices.get(key);
+    if (!record) throw new Error(`net: service ${id}: no such loopback service`);
+    record.status = "closed";
+    record.updatedAt = new Date().toISOString();
+    record.closeReason = String(reason || "unregistered");
+    this.loopbackServices.delete(key);
+    this.writeProcfs();
+    return publicLoopbackService(record);
+  }
+
+  services() {
+    return [...this.loopbackServices.values()].map(publicLoopbackService);
+  }
+
+  serviceForTarget(target) {
+    const host = normalizeHost(target.hostname);
+    const protocol = String(target.protocol || "");
+    if (protocol === "loopback:" || protocol === "dindbos:") {
+      return this.loopbackServices.get(normalizeServiceId(host)) || null;
+    }
+    return [...this.loopbackServices.values()].find((service) => service.host === host) || null;
   }
 
   openRawSocket(protocol, host, port, options = {}, context = {}) {
@@ -383,6 +434,8 @@ export class NetworkBroker {
   async fetch(url, options = {}, context = {}) {
     const target = normalizeUrl(url);
     this.assertAllowed(target, "net.fetch", context);
+    const loopback = this.serviceForTarget(target);
+    if (loopback) return await this.fetchLoopback(loopback, target, options, context);
     const adapter = this.fetchAdapter || this.os.networkFetch || globalThis.fetch;
     if (typeof adapter !== "function") throw new Error("net: fetch unavailable in this browser");
     const id = this.nextId();
@@ -429,6 +482,68 @@ export class NetworkBroker {
       request.error = error.message || String(error);
       this.completeRequest(id, request);
       throw new Error(`net: ${target.hostname}: ${request.status === "cancelled" ? "request cancelled" : request.error}`);
+    }
+  }
+
+  async fetchLoopback(service, target, options = {}, context = {}) {
+    if (!service.handler) throw new Error(`net: ${service.host}: loopback service has no handler`);
+    const id = this.nextId();
+    const startedAt = new Date().toISOString();
+    const request = {
+      id,
+      url: redactedUrl(target),
+      host: service.host,
+      serviceId: service.id,
+      method: String(options.method || "GET").toUpperCase(),
+      requester: requesterId(context),
+      status: "active",
+      startedAt,
+      finishedAt: "",
+      durationMs: 0,
+      bytesReceived: 0,
+      loopback: true,
+    };
+    this.requests.set(id, request);
+    this.writeProcfs();
+    try {
+      const response = await service.handler({
+        id,
+        url: target.toString(),
+        path: target.pathname || "/",
+        method: request.method,
+        headers: options.headers || {},
+        body: options.body || "",
+        requester: request.requester,
+      });
+      const text = await responseText(response);
+      request.status = "completed";
+      request.finishedAt = new Date().toISOString();
+      request.durationMs = Date.parse(request.finishedAt) - Date.parse(startedAt);
+      request.statusCode = Number(response?.status ?? 200);
+      request.ok = response?.ok !== false && request.statusCode < 400;
+      request.bytesReceived = byteLength(text);
+      service.requests += 1;
+      service.bytesReceived += request.bytesReceived;
+      service.updatedAt = request.finishedAt;
+      this.bytesReceived += request.bytesReceived;
+      this.completeRequest(id, request);
+      return {
+        url: request.url,
+        status: request.statusCode,
+        ok: request.ok,
+        headers: headersObject(response?.headers),
+        text,
+        bytes: request.bytesReceived,
+        loopback: true,
+        serviceId: service.id,
+      };
+    } catch (error) {
+      request.status = "error";
+      request.finishedAt = new Date().toISOString();
+      request.durationMs = Date.parse(request.finishedAt) - Date.parse(startedAt);
+      request.error = error.message || String(error);
+      this.completeRequest(id, request);
+      throw new Error(`net: ${service.host}: ${request.error}`);
     }
   }
 
@@ -496,6 +611,12 @@ export class NetworkBroker {
         sessions: [...this.rawSocketSessions.values()].map((session) => cloneRecord(session.record)),
         history: this.rawSocketHistory.slice(-50).map(cloneRecord),
       },
+      services: this.services(),
+      firewall: {
+        events: this.firewallEvents.slice(-100).map(cloneRecord),
+        allowed: this.firewallEvents.filter((entry) => entry.action === "allow").length,
+        denied: this.firewallEvents.filter((entry) => entry.action === "deny").length,
+      },
       companion: {
         ...this.companionStatus(),
       },
@@ -510,7 +631,17 @@ export class NetworkBroker {
     if (isShellOrSystem(context)) return true;
     if (typeof context.assertCapability === "function") context.assertCapability(capability);
     const hosts = allowedHosts(context);
-    if (hosts.includes("*") || hosts.some((rule) => hostMatches(host, rule))) return true;
+    if (hosts.includes("*") || hosts.some((rule) => hostMatches(host, rule))) {
+      this.recordFirewall({
+        action: "allow",
+        host,
+        capability,
+        requester: requesterId(context),
+        reason: hosts.includes("*") ? "wildcard" : "host-allowlist",
+        url,
+      });
+      return true;
+    }
     const record = {
       at: new Date().toISOString(),
       url: String(url || host),
@@ -519,11 +650,25 @@ export class NetworkBroker {
       requester: requesterId(context),
       reason: hosts.length ? "host-not-allowed" : "no-network-hosts",
     };
+    this.recordFirewall({ action: "deny", ...record });
     this.deniedHosts.push(record);
     this.deniedHosts = this.deniedHosts.slice(-200);
     this.appendLog({ ...record, status: "denied" });
     this.writeProcfs();
     throw new Error(`net: ${host}: host denied by network policy`);
+  }
+
+  recordFirewall(event = {}) {
+    this.firewallEvents.push({
+      at: event.at || new Date().toISOString(),
+      action: String(event.action || "unknown"),
+      host: String(event.host || ""),
+      capability: String(event.capability || ""),
+      requester: String(event.requester || ""),
+      reason: String(event.reason || ""),
+      url: String(event.url || ""),
+    });
+    this.firewallEvents = this.firewallEvents.slice(-200);
   }
 
   registerSocketKernelObject(record, kind, context = {}) {
@@ -621,6 +766,30 @@ export class NetworkBroker {
       group: "root",
       permissions: "-rw-r--r--",
     }, system);
+    this.os.fs.writeOrCreateFile("/proc/net/services.json", `${JSON.stringify(this.services(), null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile("/proc/net/firewall.json", `${JSON.stringify(this.status().firewall, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile("/proc/sockets.json", `${JSON.stringify(socketTable(this.status()), null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile("/proc/sockets", `${formatSockets(socketTable(this.status()))}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
   }
 
   appendLog(record) {
@@ -663,7 +832,7 @@ function normalizeUrl(value) {
   } catch {
     throw new Error(`net: invalid URL: ${value || ""}`);
   }
-  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error(`net: unsupported URL scheme: ${parsed.protocol}`);
+  if (!["http:", "https:", "loopback:", "dindbos:"].includes(parsed.protocol)) throw new Error(`net: unsupported URL scheme: ${parsed.protocol}`);
   return parsed;
 }
 
@@ -694,6 +863,12 @@ function normalizeHost(value) {
   const host = String(value || "").trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9.-]{0,253}$/i.test(host)) throw new Error(`net: invalid host: ${value || ""}`);
   return host;
+}
+
+function normalizeServiceId(value) {
+  const id = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!id || id.length > 80) throw new Error(`net: invalid service id: ${value || ""}`);
+  return id;
 }
 
 function normalizePort(value) {
@@ -738,6 +913,23 @@ function requesterId(context = {}) {
 
 function cloneRecord(record) {
   return { ...record };
+}
+
+function publicLoopbackService(record) {
+  return {
+    id: record.id,
+    host: record.host,
+    port: Number(record.port || 0),
+    protocol: record.protocol,
+    title: record.title,
+    packageId: record.packageId,
+    requester: record.requester,
+    registeredAt: record.registeredAt,
+    updatedAt: record.updatedAt,
+    requests: Number(record.requests || 0),
+    bytesReceived: Number(record.bytesReceived || 0),
+    status: record.status,
+  };
 }
 
 function socketRights(record = {}, kind = "") {
@@ -806,5 +998,49 @@ function formatRequests(status) {
     ...status.rawSockets.history.slice(-20).map((entry) => `${entry.id} raw-${entry.protocol}-${entry.state} ${entry.host}:${entry.port} ${entry.requester} ${entry.bytesReceived || 0} companion=${entry.companion}`),
     ...status.history.slice(-20).map((entry) => `${entry.id} ${entry.status} ${entry.host} ${entry.requester} ${entry.bytesReceived || 0} ${entry.url}`),
     ...status.deniedHosts.slice(-20).map((entry) => `- denied ${entry.host} ${entry.requester} 0 ${entry.url}`),
+  ].join("\n");
+}
+
+function socketTable(status = {}) {
+  return [
+    ...(status.websocket?.sessions || []).map((entry) => socketTableEntry(entry, "websocket")),
+    ...(status.websocket?.history || []).map((entry) => socketTableEntry(entry, "websocket")),
+    ...(status.webrtc?.dataChannels || []).map((entry) => socketTableEntry(entry, "webrtc")),
+    ...(status.webrtc?.history || []).map((entry) => socketTableEntry(entry, "webrtc")),
+    ...(status.rawSockets?.sessions || []).map((entry) => socketTableEntry(entry, "raw")),
+    ...(status.rawSockets?.history || []).map((entry) => socketTableEntry(entry, "raw")),
+  ];
+}
+
+function socketTableEntry(entry = {}, type = "") {
+  return {
+    id: entry.id || "",
+    type,
+    protocol: entry.protocol || type,
+    state: entry.state || "",
+    host: entry.host || entry.peer || "",
+    port: Number(entry.port || 0),
+    requester: entry.requester || "",
+    objectId: entry.objectId || "",
+    handleId: entry.handleId || "",
+    bytesSent: Number(entry.bytesSent || 0),
+    bytesReceived: Number(entry.bytesReceived || 0),
+  };
+}
+
+function formatSockets(entries = []) {
+  if (!entries.length) return "id type state host port requester bytesSent bytesReceived";
+  return [
+    "id type state host port requester bytesSent bytesReceived",
+    ...entries.map((entry) => [
+      entry.id,
+      entry.type,
+      entry.state,
+      entry.host || "-",
+      entry.port || "-",
+      entry.requester || "-",
+      entry.bytesSent || 0,
+      entry.bytesReceived || 0,
+    ].join(" ")),
   ].join("\n");
 }

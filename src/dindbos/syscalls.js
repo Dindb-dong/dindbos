@@ -97,6 +97,8 @@ export class SyscallDispatcher {
     if (name === "mount.mount") return this.mount(args, context);
     if (name === "mount.unmount") return this.unmount(args, context);
     if (name === "net.status") return this.netStatus(context);
+    if (name === "net.services") return this.netServices(context);
+    if (name === "net.firewall") return this.netFirewall(context);
     if (name === "net.policy") return this.netPolicy(args, context);
     if (name === "net.dns") return this.netDns(args, context);
     if (name === "process.list") return this.processList(context);
@@ -423,6 +425,16 @@ export class SyscallDispatcher {
   netStatus(context) {
     this.assertCapability("net.fetch", context);
     return this.os.network.status();
+  }
+
+  netServices(context) {
+    this.assertCapability("net.fetch", context);
+    return this.os.network.services?.() || [];
+  }
+
+  netFirewall(context) {
+    this.assertCapability("net.fetch", context);
+    return this.os.network.status().firewall || {};
   }
 
   netPolicy(args, context) {
