@@ -244,12 +244,12 @@ Done:
 
 - Runtime conformance reports classify durable disk, descriptors, packages, WASM, NodeCompat, worker isolation, app containers, device brokers, networking, companions, service worker recovery, cross-origin isolation, and package policy trust.
 - `/proc/conformance`, `/proc/conformance.json`, `conformance`, `conformance matrix`, `conformance json`, and `doctor conformance` expose the certification output.
+- Real QA evidence records feed browser matrix rows and are mirrored through `/proc/conformance-evidence`, `/proc/conformance-evidence.json`, and `conformance evidence`.
 - `docs/conformance.md` documents levels, areas, browser matrix profiles, and smoke verification.
 - `npm run smoke:conformance` verifies report generation and shell output.
 
 Next:
 
-- Feed real browser QA runs into the matrix as separate evidence records.
 - Add release artifact generation for conformance JSON snapshots.
 
 ## Work Selection Rules

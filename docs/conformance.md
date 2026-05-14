@@ -7,10 +7,14 @@ Run:
 ```text
 conformance
 conformance matrix
+conformance evidence
+conformance evidence json
 conformance json
 doctor conformance
 cat /proc/conformance
 cat /proc/conformance.json
+cat /proc/conformance-evidence
+cat /proc/conformance-evidence.json
 ```
 
 ## Certification Areas
@@ -33,4 +37,18 @@ cat /proc/conformance.json
 
 The generated matrix includes Chromium tabs, Safari tabs, Firefox tabs, mobile browsers, installed PWA mode, cross-origin-isolated deployments, local companions, and remote providers. Each profile keeps limitations explicit instead of folding them into a generic "works everywhere" claim.
 
-`npm run smoke:conformance` verifies report generation, shell formatting, matrix output, and `doctor conformance`.
+Each matrix row also reports QA evidence count, latest evidence status, latest runner, and latest timestamp when records are present. Evidence records are normalized as:
+
+```json
+{
+  "profile": "chromium-tab",
+  "status": "pass",
+  "runner": "playwright-chromium",
+  "categories": ["package-platform", "policy-trust"],
+  "artifacts": ["/var/log/dindbos/qa/chromium-tab.json"]
+}
+```
+
+Runtime callers can append records with `os.addConformanceEvidence(record)`. DindbOS mirrors them to `/var/run/dindbos/conformance-evidence.json`, `/proc/conformance-evidence`, and `/proc/conformance-evidence.json`.
+
+`npm run smoke:conformance` verifies report generation, shell formatting, matrix output, QA evidence output, and `doctor conformance`.

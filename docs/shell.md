@@ -127,7 +127,7 @@ It reports the active session, current working directory, storage backend and di
 
 `recovery status`, `recovery profiles`, `recovery profile [profile]`, `recovery queue`, and `recovery panic` expose Service Worker boot state, active safe boot enforcement, the explicit offline maintenance queue, and recovery shell/panic diagnostics. See `docs/service-worker-recovery.md`.
 
-`conformance`, `conformance matrix`, `conformance json`, and `doctor conformance` print the generated compatibility certification report. See `docs/conformance.md`.
+`conformance`, `conformance matrix`, `conformance evidence`, `conformance json`, and `doctor conformance` print the generated compatibility certification report and QA evidence records. See `docs/conformance.md`.
 
 `bootctl status`, `bootctl measurements`, and `bootctl verify` print secure boot measurements for base files, package records, app registry manifests, trusted publishers, and executable package policy proofs.
 
