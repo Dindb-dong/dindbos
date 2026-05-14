@@ -184,6 +184,17 @@ assert(result.output.includes("sync backend=storage-value encrypted=true lastSna
 assert(result.output.includes("syncMerge planner=offline-first rules=6"), `doctor sync merge output missing: ${result.output}`);
 assert(result.output.includes("docs/support.md"), `doctor troubleshooting output missing: ${result.output}`);
 
+result = await shell.executeAsync("recovery status");
+assert(result.status === 0, `recovery status mismatch: ${result.status}`);
+assert(result.output.includes("serviceWorker=available-but-not-registered"), `recovery status service worker missing: ${result.output}`);
+assert(result.output.includes("safeBootProfiles=normal,safe-mode,offline"), `recovery status safe profiles missing: ${result.output}`);
+
+result = await shell.executeAsync("recovery profiles");
+assert(result.output.includes("safe-mode status=available disables=packages,services"), `recovery profiles output missing: ${result.output}`);
+
+result = await shell.executeAsync("recovery queue storage.flush");
+assert(result.output.includes("queued offline-smoke storage.flush"), `recovery queue output missing: ${result.output}`);
+
 result = await shell.executeAsync("doctor compat");
 assert(result.status === 0, `doctor compat status mismatch: ${result.status}`);
 assert(result.output.includes("DindbOS compatibility"), `doctor compat heading missing: ${result.output}`);
@@ -581,6 +592,24 @@ function bootOs() {
       lastShutdown: { recordedAt: "2026-05-04T23:59:59.000Z" },
       lastRecovery: null,
       closedPagePersistence: false,
+      serviceWorkerBoot: {
+        decision: "available-but-not-registered",
+        registered: false,
+        manifest: { recoveryShell: "/var/recovery/shell/recovery.dindbsh" },
+      },
+      safeBootProfiles: [
+        { id: "normal", status: "available", disables: [], reason: "standard boot path" },
+        { id: "safe-mode", status: "available", disables: ["packages", "services"], reason: "minimal recovery" },
+        { id: "offline", status: "degraded", disables: ["remote-network"], reason: "no Service Worker support" },
+      ],
+      offlineMaintenanceQueue: { queued: 0, tasks: [] },
+      panic: { reason: "none", recoveryShell: "/var/recovery/shell/recovery.dindbsh", safeBootProfiles: ["normal"] },
+    }),
+    queueOfflineMaintenanceTask: () => ({
+      id: "offline-smoke",
+      type: "storage.flush",
+      status: "queued",
+      requestedBy: "guest",
     }),
     remoteSyncStatus: () => ({
       backend: "storage-value",

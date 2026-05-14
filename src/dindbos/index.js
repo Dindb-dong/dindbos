@@ -58,6 +58,10 @@ export const OS_LIFECYCLE_STATES = [
 const RECOVERY_DIR = "/var/run/dindbos/recovery";
 const LAST_SHUTDOWN_RECOVERY_PATH = `${RECOVERY_DIR}/last-shutdown.json`;
 const LAST_RECOVERY_PATH = `${RECOVERY_DIR}/last-recovery.json`;
+const SERVICE_WORKER_BOOT_PATH = "/var/run/dindbos/service-worker-boot.json";
+const OFFLINE_MAINTENANCE_QUEUE_PATH = "/var/run/dindbos/offline-maintenance-queue.json";
+const PANIC_DIAGNOSTICS_PATH = "/var/run/dindbos/panic.json";
+const RECOVERY_SHELL_DIR = "/var/recovery/shell";
 const SESSION_LOCK_STORAGE_KEY = "dindbos:session-lock";
 const OPERATION_LOCK_PREFIX = "dindbos:operation-lock:";
 const REMOTE_SYNC_SNAPSHOT_KEY = "dindbos:remote-sync:last-snapshot";
@@ -217,6 +221,9 @@ export class DindbOS {
       lastError: "",
     };
     this.lastStorageRepair = null;
+    this.offlineMaintenanceQueue = [];
+    this.lastServiceWorkerBoot = null;
+    this.recoveryPanic = null;
     this.ipcEndpoints = new Map();
     this.workerMemoryRegions = new Map();
     this.virtualMounts = new Map();
@@ -801,6 +808,8 @@ export class DindbOS {
     this.writeBrowserDeviceProcfs("disk-policy-roots");
     this.writeStorageKernelProcfs("disk-policy-roots");
     this.writeIsolationProcfs("disk-policy-roots");
+    this.writeRecoveryShellAssets();
+    this.writeServiceWorkerBootProcfs("disk-policy-roots");
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
     this.writeSessionStatus();
@@ -988,6 +997,10 @@ export class DindbOS {
         "service suspend/degrade records",
         "recovery records for the next boot",
       ],
+      serviceWorkerBoot: this.lastServiceWorkerBoot || this.serviceWorkerBootStatus(),
+      safeBootProfiles: this.safeBootProfiles(),
+      offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
+      panic: this.recoveryPanic,
     };
   }
 
@@ -1648,7 +1661,8 @@ export class DindbOS {
   }
 
   backgroundMaintenanceStatus() {
-    const serviceWorkerSupported = Boolean(globalThis.navigator?.serviceWorker);
+    const serviceWorkerBoot = this.serviceWorkerBootStatus();
+    const serviceWorkerSupported = Boolean(serviceWorkerBoot.supported);
     const periodicSyncSupported = Boolean(
       globalThis.PeriodicSyncManager
       || globalThis.ServiceWorkerRegistration?.prototype?.periodicSync,
@@ -1656,16 +1670,260 @@ export class DindbOS {
     return {
       serviceWorkerSupported,
       periodicSyncSupported,
-      registered: false,
+      registered: Boolean(serviceWorkerBoot.registered),
       permissionRequired: serviceWorkerSupported,
       closedPagePersistence: false,
       decision: serviceWorkerSupported
-        ? "available-but-not-registered"
+        ? serviceWorkerBoot.decision
         : "unsupported-in-this-runtime",
       reason: serviceWorkerSupported
-        ? "DindbOS only enables background maintenance after explicit service registration and permissioned browser support are implemented."
+        ? serviceWorkerBoot.reason
         : "This runtime has no Service Worker controller, so DindbOS cannot claim closed-page service execution.",
+      serviceWorkerBoot,
+      offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
     };
+  }
+
+  safeBootProfiles() {
+    const storage = safeRead(() => this.storage.status(), {});
+    const serviceWorkerSupported = Boolean(globalThis.navigator?.serviceWorker);
+    return [
+      { id: "normal", status: "available", disables: [], reason: "standard boot path" },
+      { id: "safe-mode", status: "available", disables: ["packages", "services", "companions"], reason: "minimal desktop and shell for recovery" },
+      { id: "package-disabled", status: "available", disables: ["packages"], reason: "skip package activation when package records are suspect" },
+      { id: "service-disabled", status: "available", disables: ["services"], reason: "skip resumable services after crash or hidden-tab suspension" },
+      { id: "companion-disabled", status: "available", disables: ["companions"], reason: "avoid native-adjacent helpers until trust is re-established" },
+      { id: "offline", status: serviceWorkerSupported ? "available" : "degraded", disables: ["remote-network"], reason: serviceWorkerSupported ? "service worker can serve recovery shell assets" : "no Service Worker support; local VFS recovery only" },
+      { id: "storage-repair", status: storage.backend ? "available" : "degraded", disables: ["app-autostart"], reason: "run fsck/storage repair before normal app launch" },
+    ];
+  }
+
+  serviceWorkerBootStatus(reason = "status") {
+    const registration = this.lastServiceWorkerBoot?.registration || null;
+    const supported = Boolean(globalThis.navigator?.serviceWorker);
+    const controller = globalThis.navigator?.serviceWorker?.controller || null;
+    const registered = Boolean(registration || controller);
+    const controlled = Boolean(controller);
+    return {
+      service: "dindbos-service-worker-boot",
+      version: 1,
+      statusReason: String(reason || "status"),
+      updatedAt: new Date().toISOString(),
+      supported,
+      registered,
+      controlled,
+      scriptURL: registration?.scriptURL || controller?.scriptURL || "/dindbos-sw.js",
+      scope: registration?.scope || globalThis.location?.origin || "",
+      controllerState: controller?.state || registration?.active?.state || "",
+      manifest: {
+        runtime: "DindbOS.js",
+        protocol: "dindbos-sw-boot.v1",
+        assets: ["/", "/index.html", "/dindbos-sw.js"],
+        safeBootProfiles: ["normal", "safe-mode", "package-disabled", "service-disabled", "companion-disabled", "offline", "storage-repair"],
+        recoveryShell: `${RECOVERY_SHELL_DIR}/recovery.dindbsh`,
+      },
+      handshake: {
+        status: controlled ? "controlled" : registered ? "registered-waiting-for-controller" : "uncontrolled",
+        hello: "dindbos:boot:hello",
+        ready: "dindbos:boot:ready",
+        lastReadyAt: this.lastServiceWorkerBoot?.lastReadyAt || "",
+      },
+      closedPageExecution: false,
+      decision: supported
+        ? (registered ? "registered-browser-mediated-cache-only" : "available-but-not-registered")
+        : "unsupported-in-this-runtime",
+      reason: supported
+        ? "Service Worker can cache boot/recovery assets, but DindbOS still does not claim arbitrary closed-page execution."
+        : "Service Worker support is unavailable in this runtime.",
+    };
+  }
+
+  async registerServiceWorkerBoot(scriptURL = "/dindbos-sw.js") {
+    const serviceWorker = globalThis.navigator?.serviceWorker;
+    if (!serviceWorker?.register) {
+      const status = this.serviceWorkerBootStatus("register-unavailable");
+      this.lastServiceWorkerBoot = status;
+      this.writeServiceWorkerBootProcfs("register-unavailable");
+      return status;
+    }
+    try {
+      const registration = await serviceWorker.register(scriptURL, { scope: "/" });
+      this.lastServiceWorkerBoot = {
+        ...this.serviceWorkerBootStatus("registered"),
+        registration: {
+          scope: registration.scope || "",
+          scriptURL,
+          active: registration.active ? { state: registration.active.state || "" } : null,
+        },
+        lastReadyAt: new Date().toISOString(),
+      };
+      this.handshakeServiceWorkerBoot();
+      this.writeServiceWorkerBootProcfs("registered");
+      return this.lastServiceWorkerBoot;
+    } catch (error) {
+      this.lastServiceWorkerBoot = {
+        ...this.serviceWorkerBootStatus("register-error"),
+        error: error?.message || String(error),
+        decision: "registration-failed",
+      };
+      this.writeServiceWorkerBootProcfs("register-error");
+      return this.lastServiceWorkerBoot;
+    }
+  }
+
+  handshakeServiceWorkerBoot() {
+    const controller = globalThis.navigator?.serviceWorker?.controller;
+    if (!controller?.postMessage) return false;
+    controller.postMessage({
+      type: "dindbos:boot:hello",
+      protocol: "dindbos-sw-boot.v1",
+      instanceId: this.instanceId,
+      safeBootProfiles: this.safeBootProfiles().map((profile) => profile.id),
+    });
+    return true;
+  }
+
+  queueOfflineMaintenanceTask(task = {}, context = {}) {
+    const type = String(task.type || task.action || "").trim();
+    const allowedTypes = ["storage.flush", "sync.retry", "fsck.dry-run", "recovery.export"];
+    if (!allowedTypes.includes(type)) throw new Error(`offline-maintenance: unsupported task: ${type || "unknown"}`);
+    if (!task.permissioned && !task.allowOffline && context.principal?.system !== true) {
+      throw new Error("offline-maintenance: task requires explicit offline maintenance permission");
+    }
+    const record = {
+      id: String(task.id || `offline-task-${Date.now().toString(36)}-${this.offlineMaintenanceQueue.length + 1}`),
+      type,
+      status: "queued",
+      permissioned: true,
+      createdAt: new Date().toISOString(),
+      requestedBy: String(task.requestedBy || context.principal?.user || this.session.user),
+      payload: cloneJson(task.payload || {}),
+    };
+    this.offlineMaintenanceQueue.push(record);
+    this.writeOfflineMaintenanceQueue();
+    this.writeServiceWorkerBootProcfs("offline-task-queued");
+    return { ...record };
+  }
+
+  offlineMaintenanceQueueStatus() {
+    return {
+      version: 1,
+      queued: this.offlineMaintenanceQueue.length,
+      tasks: this.offlineMaintenanceQueue.map((task) => ({ ...task })),
+    };
+  }
+
+  writeOfflineMaintenanceQueue() {
+    const system = this.permissions.systemPrincipal();
+    this.ensureDirectoryPath("/var/run/dindbos", {
+      leafOwner: "root",
+      leafGroup: "root",
+      leafPermissions: "drwxr-xr-x",
+      principal: system,
+    });
+    this.fs.writeOrCreateFile(OFFLINE_MAINTENANCE_QUEUE_PATH, `${JSON.stringify(this.offlineMaintenanceQueueStatus(), null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+  }
+
+  writeServiceWorkerBootProcfs(reason = "service-worker-boot") {
+    if (!this.fs?.exists?.("/proc")) return null;
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/proc", "root", system);
+    this.ensureDirectoryPath("/var/run/dindbos", {
+      leafOwner: "root",
+      leafGroup: "root",
+      leafPermissions: "drwxr-xr-x",
+      principal: system,
+    });
+    const status = {
+      ...this.serviceWorkerBootStatus(reason),
+      safeBootProfiles: this.safeBootProfiles(),
+      offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
+      panic: this.recoveryPanic,
+    };
+    this.fs.writeOrCreateFile(SERVICE_WORKER_BOOT_PATH, `${JSON.stringify(status, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/service-worker-boot.json", `${JSON.stringify(status, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/service-worker-boot", `${formatServiceWorkerBootStatus(status)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "text/plain",
+    }, system);
+    this.writeOfflineMaintenanceQueue();
+    return status;
+  }
+
+  writeRecoveryShellAssets() {
+    const system = this.permissions.systemPrincipal();
+    this.ensureDirectoryPath(RECOVERY_SHELL_DIR, {
+      leafOwner: "root",
+      leafGroup: "root",
+      leafPermissions: "drwxr-xr-x",
+      principal: system,
+    });
+    this.fs.writeOrCreateFile(`${RECOVERY_SHELL_DIR}/README.md`, [
+      "# DindbOS Recovery Shell",
+      "",
+      "This directory contains browser-safe recovery assets for safe boot profiles.",
+      "It is usable while the page is open and can be cached by the Service Worker boot profile.",
+      "",
+    ].join("\n"), "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "text/markdown",
+    }, system);
+    this.fs.writeOrCreateFile(`${RECOVERY_SHELL_DIR}/recovery.dindbsh`, [
+      "#!/bin/dindbsh",
+      "doctor",
+      "storage fsck --dry-run",
+      "cat /proc/service-worker-boot",
+      "",
+    ].join("\n"), "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rwxr-xr-x",
+      mime: "text/x-shellscript",
+    }, system);
+    this.writePanicDiagnostics("none", { bootProfiles: this.safeBootProfiles().map((profile) => profile.id) });
+  }
+
+  writePanicDiagnostics(reason = "panic", details = {}) {
+    const system = this.permissions.systemPrincipal();
+    this.ensureDirectoryPath("/var/run/dindbos", {
+      leafOwner: "root",
+      leafGroup: "root",
+      leafPermissions: "drwxr-xr-x",
+      principal: system,
+    });
+    this.recoveryPanic = {
+      recordedAt: new Date().toISOString(),
+      reason: String(reason || "panic"),
+      details: cloneJson(details || {}),
+      recoveryShell: `${RECOVERY_SHELL_DIR}/recovery.dindbsh`,
+      safeBootProfiles: this.safeBootProfiles().map((profile) => profile.id),
+    };
+    this.fs.writeOrCreateFile(PANIC_DIAGNOSTICS_PATH, `${JSON.stringify(this.recoveryPanic, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+      mime: "application/json",
+    }, system);
+    return this.recoveryPanic;
   }
 
   recoverPreviousShutdown() {
@@ -1746,6 +2004,10 @@ export class DindbOS {
       operationLocks: {
         packageDb: this.readRuntimeOperationLock("package-db"),
       },
+      serviceWorkerBoot: this.lastServiceWorkerBoot || this.serviceWorkerBootStatus("recovery-record"),
+      safeBootProfiles: this.safeBootProfiles(),
+      offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
+      panic: this.recoveryPanic,
       suspendedServices: services
         .filter((service) => service.state === "suspended")
         .map((service) => ({ id: service.id, state: service.state, pid: service.pid })),
@@ -1787,6 +2049,10 @@ export class DindbOS {
       phases,
       persistence: this.persistenceStatus(),
       storageBuckets: this.storageBucketPolicy(),
+      serviceWorkerBoot: this.lastServiceWorkerBoot || this.serviceWorkerBootStatus("boot-diagnostics"),
+      safeBootProfiles: this.safeBootProfiles(),
+      offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
+      panic: this.recoveryPanic,
     };
     this.fs.writeOrCreateFile("/var/log/dindbos/boot.json", `${JSON.stringify(payload, null, 2)}\n`, "/", {
       owner: "root",
@@ -4156,6 +4422,17 @@ function formatIsolationStatus(status = {}) {
     `headers coop=${status.deployment?.requiredHeaders?.["Cross-Origin-Opener-Policy"] || "-"} coep=${status.deployment?.requiredHeaders?.["Cross-Origin-Embedder-Policy"] || "-"} corp=${status.deployment?.requiredHeaders?.["Cross-Origin-Resource-Policy"] || "-"}`,
     `workerMemory status=${worker.status || "unknown"} transfer=${worker.transfer || "-"} maxRegionBytes=${Number(worker.maxRegionBytes || 0)} regions=${regions.length}`,
     `degraded=${status.degradedModes?.join("; ") || "-"}`,
+  ].join("\n");
+}
+
+function formatServiceWorkerBootStatus(status = {}) {
+  return [
+    `service=${status.service || "dindbos-service-worker-boot"} supported=${Boolean(status.supported)} registered=${Boolean(status.registered)} controlled=${Boolean(status.controlled)} decision=${status.decision || "-"}`,
+    `script=${status.scriptURL || "-"} scope=${status.scope || "-"} handshake=${status.handshake?.status || "-"}`,
+    `profiles=${(status.safeBootProfiles || []).map((profile) => `${profile.id}:${profile.status}`).join(",") || "-"}`,
+    `offlineQueue queued=${Number(status.offlineMaintenanceQueue?.queued || 0)}`,
+    `recoveryShell=${status.manifest?.recoveryShell || "-"}`,
+    `closedPageExecution=${Boolean(status.closedPageExecution)}`,
   ].join("\n");
 }
 
