@@ -48,6 +48,7 @@ const BUILTIN_MANUALS = {
   policyctl: "policyctl list|show|audit [package] - inspect compiled package policies",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
+  recovery: "recovery status|profiles|queue|panic - inspect boot recovery and offline maintenance diagnostics",
   resetfs: "resetfs - clear persisted filesystem and reload",
   rm: "rm [-r] <path> - remove files or directories",
   shell: "shell syntax - use command chaining with &&, ||, ; plus pipes and redirection",
@@ -88,6 +89,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "companion",
   "pkg",
   "policyctl",
+  "recovery",
   "stat",
   "su",
   "sudo",
@@ -332,6 +334,7 @@ export class ShellSession {
     if (command === "ping") return this.ping(args);
     if (command === "dig") return this.dig(args);
     if (command === "storage") return this.storage(args);
+    if (command === "recovery") return this.recovery(args);
     if (command === "sync") return this.sync(args);
     if (command === "syscall") return this.syscall(args);
     if (command === "timerctl") return this.timerctl(args);
@@ -1141,6 +1144,26 @@ export class ShellSession {
       return this.os.storage.persist().then((status) => formatStorage(this.withPersistenceStatus(status)));
     }
     return this.os.storage.estimate().then((status) => formatStorage(this.withPersistenceStatus(status)));
+  }
+
+  recovery(args) {
+    const [action = "status", taskType] = args;
+    const status = safeRead(() => this.os.recoveryStatus?.(), {});
+    if (action === "status") return formatRecoveryStatus(status);
+    if (action === "profiles") return formatSafeBootProfiles(status.safeBootProfiles || this.os.safeBootProfiles?.() || []);
+    if (action === "queue") {
+      if (taskType) {
+        const task = this.os.queueOfflineMaintenanceTask?.({
+          type: taskType,
+          permissioned: true,
+          requestedBy: this.env.USER,
+        }, { principal: this.principal });
+        return `queued ${task.id} ${task.type}`;
+      }
+      return formatOfflineMaintenanceQueue(status.offlineMaintenanceQueue || this.os.offlineMaintenanceQueueStatus?.() || {});
+    }
+    if (action === "panic") return formatPanic(status.panic || safeRead(() => JSON.parse(this.os.fs.readFile("/var/run/dindbos/panic.json")), null));
+    return "recovery: usage: recovery status | profiles | queue [storage.flush|sync.retry|fsck.dry-run|recovery.export] | panic";
   }
 
   async fsck(args = []) {
@@ -2191,6 +2214,47 @@ function formatStorage(status) {
     `lastStorageTransaction=${status.storageTransactions?.at?.(-1)?.id || "-"}`,
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
+  ].join("\n");
+}
+
+function formatRecoveryStatus(status = {}) {
+  const sw = status.serviceWorkerBoot || {};
+  const queue = status.offlineMaintenanceQueue || {};
+  return [
+    `lastShutdown=${status.lastShutdown?.recordedAt || "-"} lastRecovery=${status.lastRecovery?.recoveredAt || "-"}`,
+    `closedPagePersistent=${Boolean(status.closedPagePersistence)} serviceWorker=${sw.decision || "unknown"} registered=${Boolean(sw.registered)}`,
+    `safeBootProfiles=${(status.safeBootProfiles || []).map((profile) => profile.id).join(",") || "-"}`,
+    `offlineQueue=${Number(queue.queued || 0)} recoveryShell=${sw.manifest?.recoveryShell || "/var/recovery/shell/recovery.dindbsh"}`,
+    `panic=${status.panic?.reason || "-"}`,
+  ].join("\n");
+}
+
+function formatSafeBootProfiles(profiles = []) {
+  if (!profiles.length) return "recovery: no safe boot profiles";
+  return profiles.map((profile) => [
+    profile.id,
+    `status=${profile.status}`,
+    `disables=${profile.disables?.join(",") || "-"}`,
+    `reason=${profile.reason || "-"}`,
+  ].join(" ")).join("\n");
+}
+
+function formatOfflineMaintenanceQueue(queue = {}) {
+  const tasks = queue.tasks || [];
+  if (!tasks.length) return `offlineQueue queued=${Number(queue.queued || 0)}`;
+  return [
+    `offlineQueue queued=${Number(queue.queued || tasks.length)}`,
+    ...tasks.map((task) => `${task.id} ${task.type} status=${task.status} requestedBy=${task.requestedBy || "-"}`),
+  ].join("\n");
+}
+
+function formatPanic(panic = null) {
+  if (!panic) return "panic=none";
+  return [
+    `panic=${panic.reason || "-"}`,
+    `recordedAt=${panic.recordedAt || "-"}`,
+    `recoveryShell=${panic.recoveryShell || "-"}`,
+    `profiles=${panic.safeBootProfiles?.join(",") || "-"}`,
   ].join("\n");
 }
 

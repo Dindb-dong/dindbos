@@ -67,6 +67,10 @@ async function verifySuccessfulBootPhases() {
   assert(os.fs.exists("/proc/device-tree.json"), "/proc/device-tree.json was not written");
   assert(os.fs.exists("/proc/isolation"), "/proc/isolation was not written");
   assert(os.fs.exists("/proc/isolation.json"), "/proc/isolation.json was not written");
+  assert(os.fs.exists("/proc/service-worker-boot"), "/proc/service-worker-boot was not written");
+  assert(os.fs.exists("/proc/service-worker-boot.json"), "/proc/service-worker-boot.json was not written");
+  assert(os.fs.exists("/var/recovery/shell/recovery.dindbsh"), "recovery shell asset was not written");
+  assert(os.fs.exists("/var/run/dindbos/panic.json"), "panic diagnostics were not written");
   assert(os.fs.exists("/dev/browser"), "/dev/browser device root was not created");
   assert(os.mountTable().some((entry) => entry.root === "/home" && entry.driver === "browserfs"), "mount table missing /home browserfs entry");
   assert(os.mountTable().some((entry) => entry.root === "/opt/hello-notes" && entry.driver === "pkgfs" && entry.readonly), "mount table missing readonly package image entry");
@@ -93,6 +97,13 @@ async function verifySuccessfulBootPhases() {
   assert(memoryRegion.buffer instanceof ArrayBuffer, "degraded worker memory region did not return ArrayBuffer fallback");
   const updatedIsolation = JSON.parse(os.fs.readFile("/proc/isolation.json"));
   assert(updatedIsolation.memoryRegions.some((entry) => entry.id === memoryRegion.id && entry.transfer === "copy-fallback"), "isolation procfs missing worker memory region");
+  const serviceWorkerBoot = JSON.parse(os.fs.readFile("/proc/service-worker-boot.json"));
+  assert(serviceWorkerBoot.manifest.protocol === "dindbos-sw-boot.v1", "service worker boot manifest protocol mismatch");
+  assert(serviceWorkerBoot.safeBootProfiles.some((profile) => profile.id === "offline" && profile.status === "degraded"), "safe boot profiles missing degraded offline profile");
+  const queued = os.queueOfflineMaintenanceTask({ type: "storage.flush", permissioned: true, requestedBy: "smoke" });
+  assert(queued.type === "storage.flush", "offline maintenance task queue returned wrong type");
+  const queue = JSON.parse(os.fs.readFile("/var/run/dindbos/offline-maintenance-queue.json"));
+  assert(queue.queued === 1 && queue.tasks[0].type === "storage.flush", "offline maintenance queue was not persisted");
   const readonlyMount = os.syscall("mount.mount", { path: "/mnt/readonly-smoke", driver: "memfs", readonly: true });
   assert(readonlyMount.ok && readonlyMount.value.root === "/mnt/readonly-smoke", `readonly memfs mount failed: ${JSON.stringify(readonlyMount)}`);
   const readonlyWrite = os.syscall("fs.writeText", { path: "/mnt/readonly-smoke/blocked.txt", content: "blocked" });
@@ -151,6 +162,8 @@ async function verifySuccessfulBootPhases() {
   assert(bootDiagnostics.phases.length === BOOT_PHASES.length, "boot diagnostics did not include all phases");
   assert(bootDiagnostics.phases.every((phase) => phase.status === "complete"), "boot diagnostics included incomplete phases");
   assert(bootDiagnostics.storageBuckets.decision === "fallback-to-current-storage-stack", "boot diagnostics missing storage bucket policy");
+  assert(bootDiagnostics.serviceWorkerBoot.manifest.protocol === "dindbos-sw-boot.v1", "boot diagnostics missing service worker boot manifest");
+  assert(bootDiagnostics.safeBootProfiles.some((profile) => profile.id === "safe-mode"), "boot diagnostics missing safe boot profiles");
   assert(os.fs.readFile("/var/log/dindbos/boot.log").includes("[complete] desktop-render"), "boot log missing desktop-render completion");
   const lifecycleDiagnostics = JSON.parse(os.fs.readFile("/var/run/dindbos/lifecycle.json"));
   assert(lifecycleDiagnostics.state === "active", `boot lifecycle state mismatch: ${lifecycleDiagnostics.state}`);
@@ -185,6 +198,7 @@ async function verifyDirtyShutdownRecoveryRecord() {
   assert(recoveredOs.fs.exists("/var/run/dindbos/recovery/last-recovery.json"), "dirty shutdown recovery record was not written");
   const recovery = JSON.parse(recoveredOs.fs.readFile("/var/run/dindbos/recovery/last-recovery.json"));
   assert(recovery.previousShutdown.reason === "smoke-dirty", "recovery record did not include previous shutdown reason");
+  assert(recovery.previousShutdown.safeBootProfiles.some((profile) => profile.id === "storage-repair"), "shutdown recovery record missing safe boot profiles");
   const acknowledged = JSON.parse(recoveredOs.fs.readFile("/var/run/dindbos/recovery/last-shutdown.json"));
   assert(acknowledged.recoveredAt, "last shutdown record was not acknowledged");
   assert(!acknowledged.dirtyShutdown, "acknowledged shutdown record still marked dirty");
