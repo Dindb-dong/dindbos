@@ -1,5 +1,5 @@
 import { removeAppState } from "./app-sandbox.js?v=20260422-browserd";
-import { apiRequirementForManifest, compatibilityRequirementForManifest } from "./compat.js?v=20260422-browserd";
+import { apiRequirementForManifest, compatibilityRequirementForManifest, isolationSnapshot } from "./compat.js?v=20260422-browserd";
 import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
 import { createDindbOSSDK } from "./sdk.js?v=20260422-browserd";
 
@@ -1669,6 +1669,10 @@ export class PackageManager {
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
       },
+      resolveLaunchContext: (context = {}) => ({
+        ...context,
+        container: packageLaunchContainer(record, this.os),
+      }),
       render: ({ content, os: runtime, window }) => renderPackagedApp(content, runtime, record, window, this),
     });
   }
@@ -1909,6 +1913,8 @@ function localRegistryIndexPayload() {
 }
 
 function renderPackagedApp(content, runtime, record, windowApi, manager = null) {
+  const container = runtime.process?.container || packageLaunchContainer(record, manager?.os || runtime.os);
+  if (container.launchBlocked) return renderPackageIsolationBlocked(content, runtime, record, container, manager);
   if (record.app.entryPath && record.app.runtime === "wasm") {
     return mountPackageWasmEntrypoint(content, runtime, record, windowApi, manager);
   }
@@ -1932,6 +1938,34 @@ function renderPackagedApp(content, runtime, record, windowApi, manager = null) 
       </dl>
     </section>
   `;
+}
+
+function renderPackageIsolationBlocked(content, runtime, record, container, manager = null) {
+  const error = container.lastError || {
+    code: "EISOLATION",
+    message: "package requires an origin-isolated deployment",
+  };
+  updateContainerState(manager?.os || runtime.os, runtime.process, {
+    status: "blocked",
+    health: "failed",
+    launchDecision: container.launchDecision,
+    launchBlocked: true,
+    deploymentIsolation: container.deploymentIsolation,
+    isolationRequirement: container.isolationRequirement,
+    lastError: error,
+  }, "isolation-blocked");
+  content.innerHTML = `
+    <section class="package-app" data-package-container-blocked="origin-isolation">
+      <p class="dos-kicker">Package container blocked</p>
+      <h2>${escapeHtml(record.app.name)}</h2>
+      <p>${escapeHtml(error.message)}</p>
+      <dl>
+        <div><dt>Required</dt><dd>${escapeHtml(container.isolationRequirement?.profile || "origin-isolated")}</dd></div>
+        <div><dt>Current</dt><dd>${escapeHtml(container.deploymentIsolation?.current || "unknown")}</dd></div>
+      </dl>
+    </section>
+  `;
+  return null;
 }
 
 async function mountPackageWasmEntrypoint(content, runtime, record, windowApi, manager = null) {
@@ -2650,6 +2684,24 @@ function normalizePackageSandbox(sandbox = {}) {
     networkHosts: [...(sandbox.networkHosts || sandbox.network || [])].map(String),
     ipcEndpoints: [...(sandbox.ipcEndpoints || sandbox.ipc || [])].map(String),
     childProcessLimit: Math.max(0, Number(sandbox.childProcessLimit || 0)),
+    isolation: normalizePackageIsolationRequirement(sandbox.isolation || sandbox.deploymentIsolation || {
+      required: sandbox.requireOriginIsolation,
+      sharedMemory: sandbox.requireSharedMemory,
+    }),
+  };
+}
+
+function normalizePackageIsolationRequirement(value = {}) {
+  const input = value && typeof value === "object" ? value : {};
+  const profile = String(input.profile || input.mode || "").trim().toLowerCase();
+  const normalizedProfile = profile === "origin-isolated" || profile === "cross-origin-isolated" ? "origin-isolated" : "";
+  const sharedMemory = Boolean(input.sharedMemory || input.requireSharedMemory);
+  const required = Boolean(input.required || input.enforced || input.requireOriginIsolation || sharedMemory || normalizedProfile === "origin-isolated");
+  return {
+    profile: normalizedProfile,
+    required,
+    sharedMemory,
+    allowDegraded: input.allowDegraded === undefined ? !required : Boolean(input.allowDegraded),
   };
 }
 
@@ -2664,18 +2716,52 @@ function packageContainerMode(record) {
   return normalizeContainerMode(record.sandbox?.containerMode || record.sandbox?.container?.mode || record.sandbox?.container || "") || "same-realm";
 }
 
-function packageProcessContainer(record) {
-  if (packageContainerMode(record) !== "sandboxed-iframe") return null;
+function packageLaunchContainer(record, os = null) {
+  return packageProcessContainer(record, safeRead(() => os?.isolationStatus?.(), null) || isolationSnapshot());
+}
+
+function packageProcessContainer(record, isolationStatus = null) {
+  const mode = packageContainerMode(record);
+  const requirement = record.sandbox?.isolation || normalizePackageIsolationRequirement();
+  const deploymentIsolation = packageDeploymentIsolation(isolationStatus);
+  const requiresOriginIsolation = requirement.required
+    || requirement.profile === "origin-isolated"
+    || requirement.sharedMemory;
+  const sharedMemoryAvailable = Boolean(deploymentIsolation.sharedMemoryAvailable);
+  const launchBlocked = Boolean(requiresOriginIsolation && !sharedMemoryAvailable && !requirement.allowDegraded);
+  const notes = [];
+  if (!sharedMemoryAvailable) notes.push("deployment shared memory is degraded");
+  if (mode === "sandboxed-iframe") notes.push("iframe sandbox omits allow-same-origin");
+  if (requiresOriginIsolation) notes.push("package declares origin-isolated launch requirement");
   return {
-    mode: "sandboxed-iframe",
-    isolation: "sandboxed-iframe-opaque-origin",
+    mode,
+    isolation: mode === "sandboxed-iframe" ? "sandboxed-iframe-opaque-origin" : "shared-js-realm",
     trust: "package-sandbox",
-    hostDom: "iframe-surface",
+    hostDom: mode === "sandboxed-iframe" ? "iframe-surface" : "shared-desktop-dom",
     rawRuntimeGlobal: false,
-    syscallBridge: "postmessage-syscall",
+    syscallBridge: mode === "sandboxed-iframe" ? "postmessage-syscall" : "direct-sandbox-facade",
     filesystem: "manifest-scoped-vfs",
     nextIsolationTarget: "origin-isolated-iframe-postmessage",
-    notes: ["iframe sandbox omits allow-same-origin"],
+    launchDecision: launchBlocked ? "blocked-origin-isolation-required" : (requiresOriginIsolation && !sharedMemoryAvailable ? "degraded-origin-isolation-missing" : "allowed"),
+    launchBlocked,
+    deploymentIsolation,
+    isolationRequirement: requirement,
+    lastError: launchBlocked ? {
+      code: "EISOLATION",
+      message: "package requires an origin-isolated deployment with SharedArrayBuffer support",
+    } : null,
+    notes,
+  };
+}
+
+function packageDeploymentIsolation(status = null) {
+  const shared = status?.sharedMemory || {};
+  return {
+    current: String(status?.current || "unknown"),
+    crossOriginIsolated: Boolean(status?.crossOriginIsolated),
+    sharedMemoryStatus: String(shared.status || "unknown"),
+    sharedMemoryAvailable: Boolean(shared.available),
+    decision: String(shared.decision || ""),
   };
 }
 
@@ -2881,6 +2967,7 @@ function packagePolicyWarnings(record, context = {}) {
 }
 
 function packagePolicyEnforcement(record, context = {}) {
+  const sandboxedContainer = context.container?.mode === "sandboxed-iframe";
   return unique([
     "capability-gate",
     "vfs-scope",
@@ -2891,7 +2978,7 @@ function packagePolicyEnforcement(record, context = {}) {
     context.hosts.length ? "network-host-allowlist" : "network-deny-by-default",
     context.devices.length ? "device-grant-allowlist" : "device-deny-by-default",
     context.ipcEndpoints.length ? "ipc-endpoint-allowlist" : "",
-    context.container ? "sandboxed-container-bridge" : "same-realm-policy-facade",
+    sandboxedContainer ? "sandboxed-container-bridge" : "same-realm-policy-facade",
     (record.services || []).length ? "service-lifecycle-policy" : "",
   ]).sort();
 }
@@ -2899,10 +2986,11 @@ function packagePolicyEnforcement(record, context = {}) {
 function packagePolicyProofs(record, context = {}) {
   const missingDependency = "dindbos-policy-proof-missing";
   const missingDevice = "browser.raw-device";
+  const sandboxedContainer = context.container?.mode === "sandboxed-iframe";
   return {
     rawRuntime: {
       status: "denied",
-      reason: context.container ? "sandboxed iframe has no raw runtime global" : "same-realm package receives policy-scoped SDK facades",
+      reason: sandboxedContainer ? "sandboxed iframe has no raw runtime global" : "same-realm package receives policy-scoped SDK facades",
     },
     undeclaredImport: {
       status: context.declaredNpm.includes(missingDependency) ? "allowed" : "denied",

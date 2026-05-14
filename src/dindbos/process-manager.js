@@ -953,6 +953,11 @@ function normalizeProcessContainer(container = null, details = {}) {
     packageId: String(packageId),
     namespace: String(namespace.processGroup || ""),
     nextIsolationTarget: String(input.nextIsolationTarget || (mode === "same-realm" ? "origin-isolated-iframe-postmessage" : "")),
+    launchDecision: String(input.launchDecision || "allowed"),
+    launchBlocked: Boolean(input.launchBlocked),
+    deploymentIsolation: cloneJson(input.deploymentIsolation || null),
+    isolationRequirement: cloneJson(input.isolationRequirement || null),
+    lastError: cloneJson(input.lastError || null),
     notes: Array.isArray(input.notes) ? input.notes.map(String) : (input.notes ? [String(input.notes)] : []),
   };
 }

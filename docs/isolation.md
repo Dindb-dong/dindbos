@@ -41,3 +41,24 @@ The JSON report includes the active profile, missing isolation conditions, requi
 `createWorkerMemoryRegion({ size })` creates a kernel-tracked memory-region handle. When `crossOriginIsolated` and SharedArrayBuffer are available, the region uses shared memory. Otherwise it returns an ArrayBuffer copy-fallback and marks the region degraded in `/proc/isolation.json`.
 
 This keeps high-performance paths explicit: packages can detect the degraded mode and avoid pretending that browser tabs without COOP/COEP have native shared memory.
+
+## Package Launch Decisions
+
+Package apps inherit the current isolation report at launch. Their `/proc/<pid>/container.json` record includes `deploymentIsolation`, `isolationRequirement`, `launchDecision`, and `launchBlocked`.
+
+Packages that require origin isolation can declare:
+
+```json
+{
+  "sandbox": {
+    "containerMode": "iframe",
+    "isolation": {
+      "profile": "origin-isolated",
+      "sharedMemory": true,
+      "allowDegraded": false
+    }
+  }
+}
+```
+
+When the current browser profile cannot provide cross-origin isolation and SharedArrayBuffer, DindbOS blocks the package entrypoint before it runs, renders a package-container blocked state, and records `EISOLATION` in the process container diagnostics.
