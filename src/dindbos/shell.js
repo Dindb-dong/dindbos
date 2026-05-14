@@ -50,7 +50,7 @@ const BUILTIN_MANUALS = {
   policyctl: "policyctl list|show|audit|prove [package] - inspect compiled package policies",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
-  recovery: "recovery status|profiles|queue|panic - inspect boot recovery and offline maintenance diagnostics",
+  recovery: "recovery status|profiles|profile|queue|panic - inspect boot recovery and offline maintenance diagnostics",
   resetfs: "resetfs - clear persisted filesystem and reload",
   rm: "rm [-r] <path> - remove files or directories",
   shell: "shell syntax - use command chaining with &&, ||, ; plus pipes and redirection",
@@ -1173,6 +1173,10 @@ export class ShellSession {
     const status = safeRead(() => this.os.recoveryStatus?.(), {});
     if (action === "status") return formatRecoveryStatus(status);
     if (action === "profiles") return formatSafeBootProfiles(status.safeBootProfiles || this.os.safeBootProfiles?.() || []);
+    if (action === "profile") {
+      if (!taskType) return formatSafeBootEnforcement(status.safeBootEnforcement || this.os.safeBootEnforcementStatus?.() || {});
+      return formatSafeBootEnforcement(this.os.setSafeBootProfile(taskType, "shell"));
+    }
     if (action === "queue") {
       if (taskType) {
         const task = this.os.queueOfflineMaintenanceTask?.({
@@ -1185,7 +1189,7 @@ export class ShellSession {
       return formatOfflineMaintenanceQueue(status.offlineMaintenanceQueue || this.os.offlineMaintenanceQueueStatus?.() || {});
     }
     if (action === "panic") return formatPanic(status.panic || safeRead(() => JSON.parse(this.os.fs.readFile("/var/run/dindbos/panic.json")), null));
-    return "recovery: usage: recovery status | profiles | queue [storage.flush|sync.retry|fsck.dry-run|recovery.export] | panic";
+    return "recovery: usage: recovery status | profiles | profile [normal|safe-mode|package-disabled|service-disabled|companion-disabled|offline|storage-repair] | queue [storage.flush|sync.retry|fsck.dry-run|recovery.export] | panic";
   }
 
   async fsck(args = []) {
@@ -2253,16 +2257,24 @@ function formatRecoveryStatus(status = {}) {
   return [
     `lastShutdown=${status.lastShutdown?.recordedAt || "-"} lastRecovery=${status.lastRecovery?.recoveredAt || "-"}`,
     `closedPagePersistent=${Boolean(status.closedPagePersistence)} serviceWorker=${sw.decision || "unknown"} registered=${Boolean(sw.registered)}`,
-    `safeBootProfiles=${(status.safeBootProfiles || []).map((profile) => profile.id).join(",") || "-"}`,
+    `safeBootProfile=${status.safeBootEnforcement?.activeProfile || "-"} disables=${status.safeBootEnforcement?.disables?.join(",") || "-"}`,
+    `safeBootProfiles=${(status.safeBootProfiles || []).map((profile) => profile.active ? `${profile.id}*` : profile.id).join(",") || "-"}`,
     `offlineQueue=${Number(queue.queued || 0)} recoveryShell=${sw.manifest?.recoveryShell || "/var/recovery/shell/recovery.dindbsh"}`,
     `panic=${status.panic?.reason || "-"}`,
+  ].join("\n");
+}
+
+function formatSafeBootEnforcement(status = {}) {
+  return [
+    `safeBoot active=${status.activeProfile || "-"} status=${status.status || "-"} disables=${status.disables?.join(",") || "-"}`,
+    ...(status.decisions || []).slice(-8).map((entry) => `${entry.status} ${entry.action} ${entry.target || "-"} profile=${entry.profile} ${entry.detail || ""}`),
   ].join("\n");
 }
 
 function formatSafeBootProfiles(profiles = []) {
   if (!profiles.length) return "recovery: no safe boot profiles";
   return profiles.map((profile) => [
-    profile.id,
+    profile.active ? `${profile.id}*` : profile.id,
     `status=${profile.status}`,
     `disables=${profile.disables?.join(",") || "-"}`,
     `reason=${profile.reason || "-"}`,

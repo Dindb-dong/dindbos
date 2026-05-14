@@ -26,7 +26,14 @@ Implemented profiles:
 - `offline`: uses locally cached boot/recovery assets and disables remote network assumptions.
 - `storage-repair`: runs repair diagnostics before normal app launch.
 
-These profiles are diagnostics and planner inputs today; deeper launch enforcement is tracked in the roadmap.
+The active profile is enforced by the runtime:
+
+- `packages` disables package bootstrap, package install/update, package CLI runs, and package app launch.
+- `services` blocks service starts before a service process is spawned.
+- `companions` blocks new companion grants and masks existing companion approvals until the profile changes.
+- `app-autostart` blocks launch calls marked as autostart during storage repair.
+
+Profile decisions are recorded in the Service Worker boot status under `safeBootEnforcement`.
 
 ## Offline Maintenance Queue
 
@@ -50,6 +57,7 @@ Shell inspection:
 ```text
 recovery status
 recovery profiles
+recovery profile [normal|safe-mode|package-disabled|service-disabled|companion-disabled|offline|storage-repair]
 recovery queue
 recovery panic
 ```

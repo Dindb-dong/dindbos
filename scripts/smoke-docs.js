@@ -6,6 +6,7 @@ const services = readFileSync("docs/services.md", "utf8");
 const conformance = readFileSync("docs/conformance.md", "utf8");
 const packageSignatures = readFileSync("docs/package-signatures.md", "utf8");
 const shell = readFileSync("docs/shell.md", "utf8");
+const serviceWorkerRecovery = readFileSync("docs/service-worker-recovery.md", "utf8");
 
 [
   "## Runtime Contract",
@@ -66,9 +67,18 @@ const shell = readFileSync("docs/shell.md", "utf8");
 [
   "bootctl status",
   "policyctl prove [package]",
+  "recovery profile [profile]",
   "/proc/policy/proofs",
 ].forEach((term) => {
   assert(shell.includes(term), `shell doc missing ${term}`);
+});
+
+[
+  "safeBootEnforcement",
+  "recovery profile [normal|safe-mode|package-disabled|service-disabled|companion-disabled|offline|storage-repair]",
+  "`packages` disables package bootstrap",
+].forEach((term) => {
+  assert(serviceWorkerRecovery.includes(term), `service worker recovery doc missing ${term}`);
 });
 
 console.log("docs smoke ok developer guide service coverage");

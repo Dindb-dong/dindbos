@@ -7,6 +7,7 @@ import { demoFileSystem, portfolioData } from "../src/demo/portfolio-demo.js";
 const restoreGlobals = installDomShim();
 try {
   await verifySuccessfulBootPhases();
+  await verifySafeBootProfileEnforcement();
   await verifyDirtyShutdownRecoveryRecord();
   await verifyBootPhaseFailure();
 } finally {
@@ -187,6 +188,54 @@ async function verifySuccessfulBootPhases() {
   assert(lifecycleDiagnostics.state === "active", `boot lifecycle state mismatch: ${lifecycleDiagnostics.state}`);
   assert(lifecycleDiagnostics.transitions.some((entry) => entry.reason === "boot-complete"), "boot lifecycle transition missing boot-complete");
   assert(os.fs.readFile("/var/log/dindbos/lifecycle.log").includes("boot-complete"), "lifecycle log missing boot-complete");
+}
+
+async function verifySafeBootProfileEnforcement() {
+  const packageDisabled = new DindbOS({
+    root: createElement("safe-package-root"),
+    fileSystem: demoFileSystem,
+    storage: createStorage(),
+    persistDelayMs: 0,
+    safeBootProfile: "package-disabled",
+  });
+  await packageDisabled.loadPersistentFileSystem();
+  await packageDisabled.runBootPhase("package-registry-load", () => packageDisabled.packages.bootstrap());
+  assert(!packageDisabled.apps.has("hello-notes"), "package-disabled profile registered sample package app");
+  assert(packageDisabled.recoveryStatus().safeBootEnforcement.activeProfile === "package-disabled", "package-disabled profile was not active");
+  assert(JSON.parse(packageDisabled.fs.readFile("/proc/service-worker-boot.json")).safeBootEnforcement.activeProfile === "package-disabled", "service worker boot procfs missing active package-disabled profile");
+  await assertRejects(() => packageDisabled.packages.install({
+    id: "blocked-safe-package",
+    name: "Blocked Safe Package",
+    version: "0.1.0",
+    app: { entry: "app.js" },
+    files: [{ path: "app.js", content: "export function mount() {}\n" }],
+  }), "safe-boot: profile package-disabled disables packages");
+
+  const serviceDisabled = new DindbOS({
+    root: createElement("safe-service-root"),
+    fileSystem: demoFileSystem,
+    storage: createStorage(),
+    persistDelayMs: 0,
+    safeBootProfile: "service-disabled",
+  });
+  await serviceDisabled.loadPersistentFileSystem();
+  serviceDisabled.services.register({ id: "safe-boot-service", name: "Safe Boot Service", start: () => {} });
+  await assertRejects(() => serviceDisabled.services.start("safe-boot-service"), "safe-boot: profile service-disabled disables services");
+
+  const companionDisabled = new DindbOS({
+    root: createElement("safe-companion-root"),
+    fileSystem: demoFileSystem,
+    storage: createStorage(),
+    persistDelayMs: 0,
+    safeBootProfile: "companion-disabled",
+  });
+  await companionDisabled.loadPersistentFileSystem();
+  await assertRejects(() => companionDisabled.grantCompanionPermission("browserd", "dindbos-browserd-v1", ["browser"]), "safe-boot: profile companion-disabled disables companions");
+  const shell = new ShellSession(companionDisabled);
+  const switched = await shell.executeAsync("recovery profile normal");
+  assert(switched.output.includes("safeBoot active=normal"), `recovery profile command did not switch to normal: ${switched.output}`);
+  const granted = companionDisabled.grantCompanionPermission("browserd", "dindbos-browserd-v1", ["browser"], { principal: companionDisabled.permissions.systemPrincipal() });
+  assert(granted.approved, "normal profile did not allow companion grant after recovery profile switch");
 }
 
 async function verifyDirtyShutdownRecoveryRecord() {

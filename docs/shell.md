@@ -125,7 +125,7 @@ It reports the active session, current working directory, storage backend and di
 
 `doctor isolation` prints the active cross-origin isolation profile, required COOP/COEP/CORP headers, SharedArrayBuffer/Atomics availability, degraded-mode reasons, and worker memory-region transfer mode. See `docs/isolation.md`.
 
-`recovery status`, `recovery profiles`, `recovery queue`, and `recovery panic` expose Service Worker boot state, safe boot profiles, the explicit offline maintenance queue, and recovery shell/panic diagnostics. See `docs/service-worker-recovery.md`.
+`recovery status`, `recovery profiles`, `recovery profile [profile]`, `recovery queue`, and `recovery panic` expose Service Worker boot state, active safe boot enforcement, the explicit offline maintenance queue, and recovery shell/panic diagnostics. See `docs/service-worker-recovery.md`.
 
 `conformance`, `conformance matrix`, `conformance json`, and `doctor conformance` print the generated compatibility certification report. See `docs/conformance.md`.
 

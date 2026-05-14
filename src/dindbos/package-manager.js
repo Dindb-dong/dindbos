@@ -367,6 +367,11 @@ export class PackageManager {
   bootstrap() {
     this.ensurePackageRoots();
     this.ensureSamplePackageSource();
+    if (this.os.isSafeBootDisabled?.("packages")) {
+      this.os.recordSafeBootDecision?.("package-bootstrap", "packages", "blocked", "safe boot skipped package activation");
+      this.writePolicyProcfs();
+      return { skipped: true, reason: "safe-boot-package-disabled" };
+    }
     const packages = this.list();
     if (!packages.length || !this.info("hello-notes")?.app?.entryPath) {
       this.installFromManifestPath(`${PACKAGE_SOURCE_DIR}/hello-notes/dindbos.app.json`);
@@ -497,6 +502,7 @@ export class PackageManager {
   }
 
   async installFromUrl(url, options = {}) {
+    this.os.assertSafeBootAllows?.("packages", "package-install", url);
     const sourceUrl = normalizePackageUrl(url);
     const fetcher = options.fetch || globalThis.fetch;
     if (typeof fetcher !== "function") throw new Error("pkg: fetch is not available in this runtime");
@@ -523,6 +529,7 @@ export class PackageManager {
   }
 
   install(manifest, options = {}) {
+    this.os.assertSafeBootAllows?.("packages", "package-install", manifest?.id || manifest?.name || "manifest");
     const record = this.normalizePackage(manifest, options);
     const previous = this.info(record.id);
     record.lifecycle = packageLifecycle(record, previous);
@@ -743,6 +750,7 @@ export class PackageManager {
   }
 
   async runCli(packageId, argv = [], options = {}) {
+    this.os.assertSafeBootAllows?.("packages", "package-cli", packageId);
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
     const entry = resolvePackageCliEntry(this.os, record, options.entry);
@@ -956,6 +964,11 @@ export class PackageManager {
   }
 
   registerInstalledPackages() {
+    if (this.os.isSafeBootDisabled?.("packages")) {
+      this.os.recordSafeBootDecision?.("package-register", "installed-packages", "blocked", "safe boot skipped package app/service registration");
+      this.writePolicyProcfs();
+      return { skipped: true, reason: "safe-boot-package-disabled" };
+    }
     this.list().forEach((record) => {
       record.policy = compilePackagePolicy(record);
       this.registerPackageApp(record);

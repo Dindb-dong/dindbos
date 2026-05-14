@@ -128,6 +128,7 @@ export class ServiceManager {
 
   async start(serviceId, context = {}) {
     this.assertManage(context);
+    this.os.assertSafeBootAllows?.("services", "service-start", serviceId);
     const service = this.requireDefinition(serviceId);
     const record = this.requireRecord(serviceId);
     this.assertServiceHandle(record, ["start"]);
