@@ -42,6 +42,10 @@ assert(os.apps.getManifest("rollback-demo").namespace.processGroup === "package:
 assert(installed.policy.packageId === "rollback-demo", "package policy was not compiled");
 assert(installed.policy.filesystem.read.includes("/opt/rollback-demo"), "compiled policy missing package read scope");
 assert(installed.policy.proofs.undeclaredImport.status === "denied", "compiled policy missing undeclared import denial proof");
+assert(installed.policy.proofs.directBrowserApi.status === "denied", "compiled policy missing direct browser API denial proof");
+assert(installed.policy.proofs.browserdCompanion.status === "denied", "compiled policy missing browserd companion denial proof");
+assert(installed.policy.proofs.serviceWorkerRegistration.status === "denied", "compiled policy missing service worker denial proof");
+assert(installed.policy.proofs.remoteProviderImport.status === "denied", "compiled policy missing remote provider import denial proof");
 assert(os.apps.getManifest("rollback-demo").policy.packageId === "rollback-demo", "package policy was not exposed through app manifest");
 const policyIndex = JSON.parse(os.fs.readFile("/proc/policy/packages.json"));
 assert(policyIndex.packages.some((entry) => entry.packageId === "rollback-demo"), "policy procfs index missing rollback-demo");
@@ -51,6 +55,10 @@ const packageAudit = packages.audit("rollback-demo");
 assert(packageAudit.ok && packageAudit.packages[0].checks.some((check) => check.id === "deny-device-access" && check.status === "pass"), "package audit did not prove device denial");
 const packageProofs = packages.policyProofs("rollback-demo");
 assert(packageProofs.ok && packageProofs.packages[0].proofs.some((proof) => proof.id === "dependencyViewRead" && proof.status === "pass"), "package policy proofs did not execute dependency denial");
+assert(packageProofs.packages[0].proofs.some((proof) => proof.id === "directBrowserApi" && proof.status === "pass"), "package policy proofs did not execute direct browser API denial");
+assert(packageProofs.packages[0].proofs.some((proof) => proof.id === "browserdCompanion" && proof.status === "pass"), "package policy proofs did not execute browserd denial");
+assert(packageProofs.packages[0].proofs.some((proof) => proof.id === "serviceWorkerRegistration" && proof.status === "pass"), "package policy proofs did not execute service worker denial");
+assert(packageProofs.packages[0].proofs.some((proof) => proof.id === "remoteProviderImport" && proof.status === "pass"), "package policy proofs did not execute remote provider denial");
 const policyProofIndex = JSON.parse(os.fs.readFile("/proc/policy/proofs.json"));
 assert(policyProofIndex.packages.some((entry) => entry.packageId === "rollback-demo" && entry.ok), "policy proof procfs index missing rollback-demo");
 assert(os.fs.readFile("/proc/policy/proofs").includes("rawRuntime expected=denied status=pass"), "policy proof procfs text missing raw runtime proof");
@@ -60,7 +68,7 @@ assert(policyShellResult.output.includes("audit ok=true"), `pkg audit output mis
 policyShellResult = await policyShell.executeAsync("policyctl show rollback-demo");
 assert(policyShellResult.output.includes("package=rollback-demo") && policyShellResult.output.includes("enforcement="), `policyctl show output mismatch: ${policyShellResult.output}`);
 policyShellResult = await policyShell.executeAsync("policyctl prove rollback-demo");
-assert(policyShellResult.output.includes("proofs ok=true") && policyShellResult.output.includes("dependencyViewRead"), `policyctl prove output mismatch: ${policyShellResult.output}`);
+assert(policyShellResult.output.includes("proofs ok=true") && policyShellResult.output.includes("dependencyViewRead") && policyShellResult.output.includes("remoteProviderImport"), `policyctl prove output mismatch: ${policyShellResult.output}`);
 const sandboxPolicy = {
   rootPolicy: "readonly-strict",
   statePolicy: "private-encrypted",
@@ -584,6 +592,24 @@ await importGuardWindow.rendered;
 await waitFor(() => importGuardWindow.content.innerHTML.includes("data-import-guard"), "import guard package did not render");
 assert(importGuardWindow.content.innerHTML.includes(">denied<"), `undeclared import URL was not denied: ${importGuardWindow.content.innerHTML}`);
 packages.remove("import-guard");
+
+packages.install(packageManifest("direct-import-guard", "0.1.0", [
+  {
+    path: "app.js",
+    mime: "text/javascript",
+    content: [
+      "export async function mount({ content }) {",
+      "  await import('https://browser.example.test/provider.js');",
+      "  content.innerHTML = '<main data-direct-import-unexpected>unexpected</main>';",
+      "}",
+    ].join("\n"),
+  },
+]));
+const directImportWindow = os.apps.launch("direct-import-guard");
+await directImportWindow.rendered;
+assert(directImportWindow.content.innerHTML.includes("declared imports facade"), `direct import package did not fail closed: ${directImportWindow.content.innerHTML}`);
+assert(!directImportWindow.content.innerHTML.includes("data-direct-import-unexpected"), "direct import package entrypoint still ran");
+packages.remove("direct-import-guard");
 
 packages.install(packageManifest("iframe-bridge", "0.1.0", [
   {

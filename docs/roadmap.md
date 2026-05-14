@@ -185,10 +185,11 @@ Goal: provide a realistic networking abstraction without pretending arbitrary TC
 Done:
 
 - Cycle 4: virtual loopback services route through the network broker and declared host policy; service discovery and firewall diagnostics are exposed through syscalls, app/package facades, `netstat`, `/proc/net`, and `/proc/sockets`.
+- Package entrypoints now shadow direct browser globals and reject undeclared direct imports, while `policyctl prove` covers direct browser APIs, `browserd`, Service Worker registration, and remote provider import bypass attempts.
 
 Next:
 
-- Prove packages cannot bypass policy through direct browser APIs, `browserd`, service workers, or remote providers.
+- Add per-provider companion identities when non-browser host capabilities are introduced.
 
 ### 6. Secure Boot, Policy Compiler, And Package Trust
 
@@ -200,7 +201,7 @@ Done:
 - Package manifests compile into auditable policy bundles covering filesystem scopes, dependency views, network hosts, device grants, IPC endpoints, process groups, services, trust state, and denial proofs.
 - `/proc/policy`, app manifest policy exposure, `pkg audit`, and `policyctl` expose the compiled policy state.
 - Secure boot measurements cover base files, package records, app registry manifests, trusted publishers, and executable policy proof reports through `/proc/secure-boot`, `/proc/secure-boot.json`, and `bootctl`.
-- `policyctl prove` turns package policy proof descriptors into executable negative tests for raw runtime globals, undeclared dependency paths, and undeclared device grants.
+- `policyctl prove` turns package policy proof descriptors into executable negative tests for raw runtime globals, undeclared dependency paths, undeclared device grants, direct browser APIs, `browserd`, Service Worker registration, and remote provider imports.
 - Release conformance artifacts now boot a real headless runtime and emit conformance JSON, conformance evidence JSON, secure boot JSON, a source-digested release manifest, and `SHA256SUMS`.
 
 Next:
