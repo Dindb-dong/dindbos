@@ -140,6 +140,7 @@ Done:
 - `/proc/browser-capabilities` and `/proc/device-tree` expose browser API probes, broker ownership, and `/dev/browser/*` device mappings.
 - Clipboard read/write now routes through declared `clipboard.read`/`clipboard.write` grants and records privacy ledger entries in `/proc/privacy-ledger.json`.
 - Browser broker status, request, and revocation paths cover notifications, local files, screen capture, media devices, Web Share, WebRTC, WebGPU, WebUSB, WebSerial, and WebHID capability records through `/proc/browser-brokers.json`.
+- Gesture-gated broker requests record explicit user activation and invoke available browser APIs only when a trusted gesture is present.
 - Settings surfaces browser permission diagnostics and recent privacy ledger entries.
 - `doctor browser` reports broker availability, access counts, and revoked grants.
 
