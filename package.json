@@ -19,6 +19,7 @@
     "smoke:browser-brokers": "node scripts/smoke-browser-brokers.js",
     "smoke:browserd": "node scripts/smoke-browserd.js",
     "smoke:browserd-failures": "node scripts/smoke-browserd-failures.js",
+    "smoke:conformance": "node scripts/smoke-conformance.js",
     "smoke:pages-workflow": "node scripts/smoke-pages-workflow.js",
     "smoke:files": "node scripts/smoke-files-import-export.js",
     "smoke:settings": "node scripts/smoke-settings.js",

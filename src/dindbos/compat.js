@@ -85,6 +85,88 @@ export function compatibilitySnapshot(runtime = {}) {
   };
 }
 
+export function conformanceReport(runtime = {}) {
+  const snapshot = compatibilitySnapshot(runtime);
+  const browserBroker = safeRead(() => runtime.browserBrokerStatus?.(), { capabilities: [] });
+  const network = safeRead(() => runtime.network?.status?.(), null);
+  const storage = snapshot.storage || {};
+  const isolation = snapshot.isolation || {};
+  const background = snapshot.backgroundMaintenance || {};
+  const browserBrokerCount = Array.isArray(browserBroker.capabilities) ? browserBroker.capabilities.length : 0;
+  const categories = [
+    conformanceCategory("durable-disk", storage.backend === "memory" ? "degraded" : "supported", "Storage durability and writeback diagnostics", ["storage", "storage kernel", "fsck --dry-run"], storage.backend === "memory" ? "memory backend is volatile outside test/runtime persistence adapters" : "persistent storage backend is available"),
+    conformanceCategory("descriptor-io", "supported", "FD table, descriptor rights, pipes, procfs handle views", ["lsof", "handlectl list", "npm run smoke:descriptors"]),
+    conformanceCategory("package-platform", "supported", "Signed packages, namespace policy, app registry integration, package CLI", ["pkg list", "pkg audit", "policyctl list"]),
+    conformanceCategory("wasm", snapshot.browser?.webAssembly ? "partial" : "unsupported", "DindbOS ABI/WASI subset with memory and deadline guards", ["wasm <file>", "npm run smoke:wasm"], snapshot.browser?.webAssembly ? "WASI coverage is broad but not full tier C yet" : "WebAssembly is unavailable"),
+    conformanceCategory("nodecompat", "supported", "Browser-safe NodeCompat modules and npm package execution", ["npm install", "node", "npm run smoke:npm-node"]),
+    conformanceCategory("worker-isolation", snapshot.browser?.workers ? "partial" : "planned", "Worker-backed process executor and memory-region diagnostics", ["doctor isolation", "cat /proc/isolation"], snapshot.browser?.workers ? "syscall-heavy WASM workers remain limited" : "Worker is unavailable in this runtime"),
+    conformanceCategory("app-containers", "supported", "Same-realm hardening, sandboxed iframe bridge, process container diagnostics", ["manifest", "ps", "cat /proc/<pid>/container.json"]),
+    conformanceCategory("device-brokers", browserBrokerCount ? "partial" : "degraded", "Browser API brokers, /dev/browser tree, privacy ledger, revocation", ["doctor browser", "syscall browser.status", "cat /proc/device-tree"]),
+    conformanceCategory("virtual-networking", network ? "supported" : "partial", "Policy-routed fetch/DNS/WebSocket/WebRTC and loopback services", ["netstat", "dig <host>", "cat /proc/net/services.json"]),
+    conformanceCategory("companion-trust", "companion-required", "Explicit helper protocol boundaries for native-adjacent browser/provider work", ["companion list", "doctor browser"]),
+    conformanceCategory("service-worker-recovery", background.serviceWorkerSupported ? "partial" : "degraded", "SW boot manifest, safe boot profiles, offline queue, recovery shell", ["recovery status", "cat /proc/service-worker-boot"]),
+    conformanceCategory("cross-origin-isolation", isolation.sharedMemory?.available ? "supported" : "degraded", "COOP/COEP/CORP profile and SharedArrayBuffer/Atomics readiness", ["doctor isolation", "cat /proc/isolation"]),
+    conformanceCategory("policy-trust", "supported", "Package policy compiler, trust state, denial proof descriptors", ["pkg audit", "policyctl show <package>", "cat /proc/policy/packages"]),
+  ];
+  return {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    runtime: {
+      name: snapshot.runtime,
+      version: snapshot.version,
+      mode: snapshot.mode,
+    },
+    levels: conformanceLevels(),
+    summary: conformanceSummary(categories),
+    browserMatrix: conformanceBrowserMatrix(snapshot),
+    categories,
+  };
+}
+
+function conformanceLevels() {
+  return [
+    { id: "supported", meaning: "Implemented with runtime primitive, diagnostic surface, and smoke coverage." },
+    { id: "partial", meaning: "Implemented for a scoped subset with explicit limitations." },
+    { id: "degraded", meaning: "Runs with honest fallback because a browser/deployment primitive is absent." },
+    { id: "companion-required", meaning: "Requires an explicit trusted helper/provider boundary." },
+    { id: "planned", meaning: "Roadmapped and blocked on a stronger primitive or broader implementation." },
+    { id: "unsupported", meaning: "Not claimed by DindbOS." },
+  ];
+}
+
+function conformanceCategory(id, level, claim, evidence = [], note = "") {
+  return {
+    id,
+    level,
+    claim,
+    evidence,
+    note,
+  };
+}
+
+function conformanceSummary(categories = []) {
+  return categories.reduce((summary, category) => {
+    summary.total += 1;
+    summary[category.level] = Number(summary[category.level] || 0) + 1;
+    return summary;
+  }, { total: 0 });
+}
+
+function conformanceBrowserMatrix(snapshot = {}) {
+  const isolation = snapshot.isolation || {};
+  const background = snapshot.backgroundMaintenance || {};
+  return [
+    { profile: "chromium-tab", level: "supported", notes: "Primary smoke target for current browser-native runtime." },
+    { profile: "safari-tab", level: "partial", notes: "Requires feature probes for OPFS, File System Access, and service worker variants." },
+    { profile: "firefox-tab", level: "partial", notes: "Requires degraded local file and OPFS paths." },
+    { profile: "mobile-browser", level: "degraded", notes: "Pointer, file, and background APIs vary heavily by platform." },
+    { profile: "installed-pwa", level: background.serviceWorkerSupported ? "partial" : "degraded", notes: "Boot assets can be cached; closed-page OS execution is not claimed." },
+    { profile: "cross-origin-isolated", level: isolation.sharedMemory?.available ? "supported" : "degraded", notes: "SharedArrayBuffer requires COOP/COEP/CORP deployment." },
+    { profile: "local-companion", level: "companion-required", notes: "Explicit local helper identity and protocol checks required." },
+    { profile: "remote-provider", level: "companion-required", notes: "Provider health/protocol identity must match DindbOS expectations." },
+  ];
+}
+
 export function isolationSnapshot(browser = browserCapabilities()) {
   const crossOriginIsolated = Boolean(globalThis.crossOriginIsolated);
   const sharedArrayBuffer = typeof globalThis.SharedArrayBuffer === "function";

@@ -107,7 +107,7 @@ Each implementation cycle uses a fresh `codex/*` worktree and branch, may contai
 7. Cycle 7: Service Worker Boot And Offline Recovery
    In progress: Service Worker boot manifest/handshake, safe boot profiles, explicit offline maintenance queue, recovery shell assets, and panic diagnostics are implemented. Remaining work is enforcing profiles during actual launch.
 8. Cycle 8: Conformance Lab
-   Add certification levels, browser profile matrix, generated compatibility docs, and conformance smoke output for all implemented guarantees.
+   Done: certification levels, browser profile matrix, generated compatibility docs, `/proc/conformance`, shell conformance commands, and smoke output cover implemented guarantees.
 
 ### 1. App Containers And Trusted UI
 
@@ -239,11 +239,17 @@ Next:
 
 Goal: turn "native-like" claims into tested levels.
 
+Done:
+
+- Runtime conformance reports classify durable disk, descriptors, packages, WASM, NodeCompat, worker isolation, app containers, device brokers, networking, companions, service worker recovery, cross-origin isolation, and package policy trust.
+- `/proc/conformance`, `/proc/conformance.json`, `conformance`, `conformance matrix`, `conformance json`, and `doctor conformance` expose the certification output.
+- `docs/conformance.md` documents levels, areas, browser matrix profiles, and smoke verification.
+- `npm run smoke:conformance` verifies report generation and shell output.
+
 Next:
 
-- Define certification levels for durable disk, descriptor IO, package platform, WASM, NodeCompat, worker isolation, app containers, device brokers, virtual networking, and companion trust.
-- Generate compatibility docs from conformance output.
-- Add browser profile matrix for Chromium, Safari, Firefox, mobile, installed PWA, cross-origin isolated, local companion, and remote provider.
+- Feed real browser QA runs into the matrix as separate evidence records.
+- Add release artifact generation for conformance JSON snapshots.
 
 ## Work Selection Rules
 

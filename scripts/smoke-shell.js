@@ -195,6 +195,13 @@ assert(result.output.includes("safe-mode status=available disables=packages,serv
 result = await shell.executeAsync("recovery queue storage.flush");
 assert(result.output.includes("queued offline-smoke storage.flush"), `recovery queue output missing: ${result.output}`);
 
+result = await shell.executeAsync("conformance");
+assert(result.status === 0, `conformance status mismatch: ${result.status}`);
+assert(result.output.includes("package-platform level=supported"), `conformance package platform missing: ${result.output}`);
+
+result = await shell.executeAsync("conformance matrix");
+assert(result.output.includes("installed-pwa level=degraded"), `conformance matrix missing PWA profile: ${result.output}`);
+
 result = await shell.executeAsync("doctor compat");
 assert(result.status === 0, `doctor compat status mismatch: ${result.status}`);
 assert(result.output.includes("DindbOS compatibility"), `doctor compat heading missing: ${result.output}`);
