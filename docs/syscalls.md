@@ -80,6 +80,11 @@ localMount.status
 mount.list
 mount.mount
 mount.unmount
+net.status
+net.services
+net.firewall
+net.policy
+net.dns
 process.list
 process.get
 process.log
@@ -98,6 +103,8 @@ Filesystem and descriptor syscalls run through the caller's VFS principal and, f
 `storage.sync` is the durability-barrier syscall. It requires `storage.read`, waits for the runtime persistence flush path, records the writeback transaction group, and returns storage plus persistence status. It is intentionally not the same as the administrative `storage flush` settings operation: ordinary programs may request a best-effort durability barrier for their own completed writes, while destructive storage management still requires `storage.manage` and administrator approval.
 
 `mount.list` returns the shared DindbOS mount table. `mount.mount` and `mount.unmount` currently manage runtime `memfs` mounts, readonly `overlayfs` snapshot mounts, and readonly `zipfs` mounts for stored-method ZIP archives. Overlay mounts require `lower` and `upper` paths and use upper-over-lower precedence; ZIP mounts require an `archive` path. Unsupported drivers or ZIP compression methods fail with `ENOTSUP` instead of pretending the browser can mount arbitrary host filesystems. Sandboxed apps need `mount.read` or `mount.manage` capabilities for these calls.
+
+`net.status`, `net.services`, `net.firewall`, `net.policy`, and `net.dns` expose the virtual network broker. Loopback services are routed inside DindbOS through declared network host policy, while browser fetch/WebSocket/WebRTC and companion-gated raw sockets remain explicit broker paths. Network diagnostics are mirrored under `/proc/net/status.json`, `/proc/net/services.json`, `/proc/net/firewall.json`, `/proc/net/requests`, and `/proc/sockets.json`.
 
 Descriptor syscalls require a process context. New processes receive standard descriptors `0` stdin, `1` stdout, and `2` stderr. `fd.open` currently supports text VFS files plus `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty`, and `/dev/clipboard`; descriptor state is exposed under `/proc/<pid>/fd.json` and cleaned up when the process exits or crashes.
 

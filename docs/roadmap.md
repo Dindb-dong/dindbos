@@ -99,7 +99,7 @@ Each implementation cycle uses a fresh `codex/*` worktree and branch, may contai
 3. Cycle 3: Storage Kernel And Recovery
    Done: transaction groups cover writeback/service lifecycle/mapped writes; page-cache/writeback diagnostics and Storage Recovery controls are exposed. Remaining conflict work continues in the storage backlog.
 4. Cycle 4: Virtual Networking And Service Mesh
-   Add loopback services, service discovery, brokered fetch/WebSocket/WebRTC policy, `/proc/net`, `/proc/sockets`, and firewall diagnostics.
+   Done: loopback services, service discovery, firewall events, `net.services`, `net.firewall`, `/proc/net/services.json`, `/proc/net/firewall.json`, and `/proc/sockets` are implemented on top of the brokered fetch/WebSocket/WebRTC/raw companion boundary.
 5. Cycle 5: Secure Boot, Policy Compiler, And Package Trust
    Compile policies, expose `/proc/policy`, add boot measurements, `pkg audit`, `policyctl`, and denial proofs.
 6. Cycle 6: Cross-Origin Isolation And Shared Memory
@@ -180,11 +180,12 @@ Next:
 
 Goal: provide a realistic networking abstraction without pretending arbitrary TCP/UDP is available to ordinary browser pages.
 
+Done:
+
+- Cycle 4: virtual loopback services route through the network broker and declared host policy; service discovery and firewall diagnostics are exposed through syscalls, app/package facades, `netstat`, `/proc/net`, and `/proc/sockets`.
+
 Next:
 
-- Add virtual loopback services and service discovery records.
-- Add fetch/WebSocket/WebRTC broker policy by package, user, host, protocol, and companion requirement.
-- Expose `/proc/net`, `/proc/sockets`, and firewall diagnostics.
 - Prove packages cannot bypass policy through direct browser APIs, `browserd`, service workers, or remote providers.
 
 ### 6. Secure Boot, Policy Compiler, And Package Trust
