@@ -14,6 +14,8 @@ The runtime writes the current Service Worker boot state to:
 
 The manifest records the `dindbos-sw-boot.v1` protocol, cacheable boot assets, safe boot profiles, recovery shell path, controller state, and handshake status. The browser Service Worker file is served as `/dindbos-sw.js` and answers `dindbos:boot:hello` with `dindbos:boot:ready`.
 
+`npm run smoke:service-worker-recovery` starts a local Vite server in Chromium, registers `/dindbos-sw.js`, verifies the `dindbos-sw-boot.v1` handshake, confirms `/index.html` is cached, switches the browser context offline, and proves navigation can recover from the cached shell. It also verifies `closedPageExecution` remains false.
+
 ## Safe Boot Profiles
 
 Implemented profiles:

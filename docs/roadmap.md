@@ -235,10 +235,11 @@ Done:
 - Active safe boot profiles enforce package bootstrap/install/CLI/app launch, service starts, companion grants/approval masking, and app autostart restrictions.
 - The offline maintenance queue only accepts explicitly permissioned maintenance tasks.
 - `/var/recovery/shell` and `/var/run/dindbos/panic.json` provide recovery shell assets and panic diagnostics.
+- `npm run smoke:service-worker-recovery` verifies browser registration, boot handshake, cached `/index.html`, offline navigation fallback, and the closed-page execution boundary.
 
 Next:
 
-- Add browser QA for Service Worker registration and cached recovery navigation.
+- Add release-browser matrix retention for Service Worker evidence artifacts.
 
 ### 9. Conformance Lab
 
