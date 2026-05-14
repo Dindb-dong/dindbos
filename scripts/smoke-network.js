@@ -102,6 +102,17 @@ const os = createDindbOSTestRuntime(null, {
   networkPeerConnection: FakePeerConnection,
 });
 const shell = new ShellSession(os);
+const loopback = os.network.registerLoopbackService({
+  id: "echo",
+  title: "Echo Loopback",
+  handler: async (request) => ({
+    status: 200,
+    ok: true,
+    headers: { "x-dindbos-service": "echo" },
+    text: async () => `loopback:${request.path}:${request.requester}`,
+  }),
+}, { appId: "system", principal: os.permissions.systemPrincipal() });
+assert(loopback.host === "echo.loopback.dindbos", "loopback service host mismatch");
 
 let result = await shell.executeAsync("curl https://shell.example.test/hello?token=raw-secret");
 assert(result.status === 0 && result.output === "ok:shell.example.test:/hello", `shell curl mismatch: ${JSON.stringify(result)}`);
@@ -115,11 +126,16 @@ assert(result.status === 0 && result.output.includes("raw ICMP unsupported"), `p
 result = await shell.executeAsync("dig shell.example.test");
 assert(result.status === 0 && result.output.includes("browser-policy-only"), `dig policy probe mismatch: ${JSON.stringify(result)}`);
 
-const allowedProcess = processFor("network-app", ["net.fetch", "net.websocket", "net.webrtc", "net.dns", "net.rawTcp", "net.rawUdp"], { networkHosts: ["api.example.test"] });
+const allowedProcess = processFor("network-app", ["net.fetch", "net.websocket", "net.webrtc", "net.dns", "net.rawTcp", "net.rawUdp"], { networkHosts: ["api.example.test", "echo.loopback.dindbos"] });
 const allowedSandbox = new AppSandbox(os, allowedProcess);
 const response = await allowedSandbox.net.fetch("https://api.example.test/data?token=package-secret");
 assert(response.text === "ok:api.example.test:/data", "sandbox net.fetch did not return broker response");
 assert(!os.fs.readFile("/var/log/dindbos/network.log").includes("package-secret"), "network log exposed package query secret");
+const loopbackResponse = await allowedSandbox.net.fetch("https://echo.loopback.dindbos/health?token=loopback-secret");
+assert(loopbackResponse.loopback === true && loopbackResponse.serviceId === "echo", "loopback fetch did not route through virtual service");
+assert(loopbackResponse.text === "loopback:/health:network-app", `loopback response mismatch: ${loopbackResponse.text}`);
+assert(!os.fs.readFile("/var/log/dindbos/network.log").includes("loopback-secret"), "network log exposed loopback query secret");
+assert(allowedSandbox.net.services().some((entry) => entry.id === "echo" && entry.requests === 1), "sandbox service discovery missing loopback service");
 await assertRejects(() => allowedSandbox.net.fetch("https://blocked.example.test/data"), "host denied");
 const ws = allowedSandbox.net.openWebSocket("wss://api.example.test/socket");
 assert(ws.objectId && ws.handleId, "websocket did not expose socket object and handle ids");
@@ -192,6 +208,10 @@ await assertRejects(() => allowedSandbox.net.openRawSocket("tcp", "blocked.examp
 assert(rawCompanionCalls.some((entry) => entry.action === "open" && entry.protocol === "tcp") && rawCompanionCalls.some((entry) => entry.action === "close"), "raw companion adapter was not called");
 const netStatusSyscall = allowedSandbox.syscall("net.status");
 assert(netStatusSyscall.ok && netStatusSyscall.value.websocket.history.length > 0 && netStatusSyscall.value.webrtc.history.length > 0 && netStatusSyscall.value.rawSockets.history.length > 0, "net.status syscall did not expose broker status");
+const netServicesSyscall = allowedSandbox.syscall("net.services");
+assert(netServicesSyscall.ok && netServicesSyscall.value.some((entry) => entry.id === "echo"), "net.services syscall did not expose loopback service");
+const netFirewallSyscall = allowedSandbox.syscall("net.firewall");
+assert(netFirewallSyscall.ok && netFirewallSyscall.value.allowed > 0 && netFirewallSyscall.value.denied > 0, "net.firewall syscall did not expose allow/deny events");
 const netPolicySyscall = allowedSandbox.syscall("net.policy", { url: "https://api.example.test/data" });
 assert(netPolicySyscall.ok && netPolicySyscall.value.allowed === true, "net.policy syscall did not allow declared host");
 const netDnsSyscall = allowedSandbox.syscall("net.dns", { host: "api.example.test" });
@@ -248,6 +268,9 @@ if (slowReject) slowReject(new Error("cleanup"));
 
 const netStatus = JSON.parse(os.fs.readFile("/proc/net/status.json"));
 assert(netStatus.deniedHosts.some((entry) => entry.host === "blocked.example.test"), "/proc/net status missing denied host");
+assert(JSON.parse(os.fs.readFile("/proc/net/services.json")).some((entry) => entry.id === "echo" && entry.requests >= 1), "/proc/net services missing loopback service");
+assert(JSON.parse(os.fs.readFile("/proc/net/firewall.json")).events.some((entry) => entry.action === "deny" && entry.host === "blocked.example.test"), "/proc/net firewall missing denied host event");
+assert(JSON.parse(os.fs.readFile("/proc/sockets.json")).some((entry) => entry.host === "api.example.test"), "/proc/sockets missing broker socket table");
 assert(netStatus.websocket.history.some((entry) => entry.host === "api.example.test" && entry.state === "closed"), "/proc/net status missing WebSocket history");
 assert(netStatus.webrtc.history.some((entry) => entry.peer === "api.example.test" && entry.state === "closed"), "/proc/net status missing WebRTC data channel history");
 assert(netStatus.rawSockets.history.some((entry) => entry.host === "api.example.test" && entry.state === "closed"), "/proc/net status missing raw socket companion history");

@@ -2301,6 +2301,8 @@ function packageIframeDocument({ token, source, record, process }) {
       },
       net: {
         status: () => call("net.status"),
+        services: () => call("net.services"),
+        firewall: () => call("net.firewall"),
         policy: (url, args = {}) => call("net.policy", { ...args, url }),
         dns: (host) => call("net.dns", { host }),
       },
