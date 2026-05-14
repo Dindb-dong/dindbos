@@ -81,6 +81,11 @@ mount.unmount
 process.list
 process.get
 process.log
+process.spawn
+process.exec
+process.wait
+process.signal
+process.jobs
 app.launch
 ```
 
@@ -103,6 +108,8 @@ Entropy and zero devices report `fd.read.bytes` as the actual device byte count 
 `browser.status`, `browser.request`, and `browser.revoke` expose the general browser broker boundary. Each request names a browser capability such as `notifications.show`, `screen.capture`, `media.audioVideo`, `webgpu.adapter`, `webusb.device`, `webserial.port`, or `webhid.device`; the caller must declare the matching capability, and the broker records access or revocation in the privacy ledger. The broker status is mirrored under `/proc/browser-brokers.json`.
 
 Terminal.app creates a DindbOS pseudo-terminal session. Processes launched with that PTY session receive TTY metadata on standard streams and `/dev/tty`; reads can consume the PTY input buffer, writes append to the PTY output buffer, and `tty.getWindowSize`/`tty.setWindowSize` operate on the shared session size.
+
+Process control syscalls expose the first process-session boundary. `process.spawn` creates a process image and job record, `process.exec` runs a short command-style process and returns an exit status, `process.wait` reports active or historical exit state, `process.signal` handles `SIGTERM`, `SIGKILL`, `SIGINT`, `SIGSTOP`, `SIGTSTP`, and `SIGCONT`, and `process.jobs` mirrors `/proc/jobs`.
 
 Pipe descriptors are backed by runtime pipe objects that can be attached to more than one process descriptor table. This lets a writer process, intermediate process, and reader process exchange bytes through the same descriptor-backed pipe primitive instead of shell-only string plumbing.
 

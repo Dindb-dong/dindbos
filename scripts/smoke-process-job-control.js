@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+import { DindbOS } from "../src/dindbos/index.js";
+
+const os = new DindbOS({ root: {}, storage: memoryStorage() });
+const app = {
+  id: "jobctl-smoke",
+  name: "Job Control Smoke",
+  manifest: {
+    capabilities: ["process.execute", "process.read", "process.manage"],
+    fileSystem: { read: ["/home/guest"], write: ["/home/guest"] },
+  },
+};
+const controller = os.processes.spawn(app, { cwd: "/home/guest", image: { kind: "shell", command: "jobctl" } });
+const context = {
+  process: controller,
+  principal: os.permissions.principal(os.session),
+  assertCapability(capability) {
+    if (!controller.manifest.capabilities.includes(capability)) throw new Error(`capability denied: ${capability}`);
+  },
+};
+
+let result = os.syscall("process.spawn", {
+  appId: "worker:long-task",
+  command: "long-task --watch",
+  runtime: "worker-job",
+  argv: ["--watch"],
+  foreground: false,
+}, context);
+assert(result.ok, `process.spawn failed: ${JSON.stringify(result)}`);
+const worker = result.value;
+assert(worker.image.kind === "worker-job" && worker.image.command === "long-task --watch", "process image metadata missing");
+assert(worker.jobId && worker.processGroupId === controller.processGroupId && worker.foreground === false, "process job metadata mismatch");
+assert(os.fs.readFile(`/proc/${worker.pid}/status`).includes("ImageKind:\tworker-job"), "process status missing image kind");
+assert(JSON.parse(os.fs.readFile("/proc/processes.json")).some((entry) => entry.pid === worker.pid && entry.image.command === "long-task --watch"), "/proc/processes.json missing process image");
+assert(JSON.parse(os.fs.readFile("/proc/jobs.json")).jobs.some((job) => job.pids.includes(worker.pid) && job.foreground === false), "/proc/jobs.json missing background job");
+
+result = os.syscall("process.signal", { pid: worker.pid, signal: "SIGSTOP" }, context);
+assert(result.ok && result.value.process.state === "stopped", `SIGSTOP mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("process.jobs", {}, context);
+assert(result.ok && result.value.some((job) => job.state === "stopped" && job.pids.includes(worker.pid)), `process.jobs mismatch: ${JSON.stringify(result)}`);
+assert(os.processes.foreground(worker.pid).foreground === true, "foreground did not mark process foreground");
+assert(os.processes.background(worker.pid).foreground === false, "background did not mark process background");
+
+result = os.syscall("process.signal", { pid: worker.pid, signal: "SIGTERM" }, context);
+assert(result.ok && result.value.process.state === "signal-sigterm", `SIGTERM mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("process.wait", { pid: worker.pid }, context);
+assert(result.ok && result.value.running === false && result.value.status === 0, `process.wait mismatch: ${JSON.stringify(result)}`);
+
+result = os.syscall("process.exec", { appId: "cli:echo", command: "echo done", runtime: "shell-command" }, context);
+assert(result.ok && result.value.status === 0 && result.value.process.image.command === "echo done", `process.exec mismatch: ${JSON.stringify(result)}`);
+
+const pty = os.pty.createSession({ name: "jobctl pty", input: "pty-data", columns: 90, rows: 28 });
+const ptyProcess = os.processes.spawn(app, { cwd: "/home/guest", ptySessionId: pty.id });
+const ptyContext = { ...context, process: ptyProcess };
+result = os.syscall("fd.open", { path: `/dev/pts/${pty.id}`, flags: "r+" }, ptyContext);
+assert(result.ok, `fd.open /dev/pts mismatch: ${JSON.stringify(result)}`);
+const ptsFd = result.value.fd;
+result = os.syscall("fd.read", { fd: ptsFd, length: 8 }, ptyContext);
+assert(result.ok && result.value.data === "pty-data", `fd.read /dev/pts mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.write", { fd: ptsFd, data: " pts-out" }, ptyContext);
+assert(result.ok && os.pty.getSession(pty.id).output === " pts-out", `fd.write /dev/pts mismatch: ${JSON.stringify(result)}`);
+
+console.log("process job control smoke ok images jobs wait signal pts");
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function memoryStorage() {
+  let value = null;
+  return {
+    async loadFileSystem() { return value; },
+    saveFileSystem(next) { value = next; },
+    async flush() { return { flushed: true }; },
+    status() { return { enabled: true, writePending: false }; },
+    resetFileSystem() { value = null; },
+  };
+}

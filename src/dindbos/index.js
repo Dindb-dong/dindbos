@@ -1801,7 +1801,7 @@ export class DindbOS {
       .map((area) => area.root)
       .sort((left, right) => left.length - right.length)
       .forEach((root) => this.ensureSystemDirectory(root, "root", system));
-    ["/proc", "/dev"].forEach((root) => this.ensureSystemDirectory(root, "root", system));
+    ["/proc", "/dev", "/dev/pts"].forEach((root) => this.ensureSystemDirectory(root, "root", system));
   }
 
   ensureSessionHome() {

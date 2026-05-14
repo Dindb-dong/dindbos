@@ -151,12 +151,17 @@ Next:
 
 Goal: make Terminal a real process session endpoint.
 
+Done:
+
+- Process records expose image metadata, job ids, process groups, foreground/background state, and `/proc/jobs`.
+- `process.spawn`, `process.exec`, `process.wait`, `process.signal`, and `process.jobs` syscalls provide first-pass process session control.
+- Shell `jobs`, `fg`, `bg`, `wait`, and signal-aware `kill` route through ProcessManager.
+- `/dev/pts/<session>` PTY descriptors can bind directly to runtime PTY sessions.
+
 Next:
 
-- Define process image records for shell commands, package CLI, NodeCompat, WASM, worker jobs, services, and GUI apps.
-- Add `process.spawn`, `process.exec`, `process.wait`, and `process.signal` syscall families.
-- Add foreground/background process groups, `jobs`, `fg`, `bg`, `wait`, and pipeline cleanup.
-- Add PTY master/slave descriptors, `/dev/pts`, terminal modes, resize, and signal delivery.
+- Deepen signal delivery into running NodeCompat, WASM, worker jobs, and package CLIs instead of state-only process control.
+- Add terminal mode flags and richer PTY master/slave ownership checks.
 
 ### 4. Storage Kernel And Recovery
 
