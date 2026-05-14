@@ -105,7 +105,7 @@ Each implementation cycle uses a fresh `codex/*` worktree and branch, may contai
 6. Cycle 6: Cross-Origin Isolation And Shared Memory
    In progress: deployment profiles, `doctor isolation`, `/proc/isolation`, degraded-mode reporting, and worker memory-region handle prototypes are implemented. Remaining work is deeper package/container enforcement on isolated deployments.
 7. Cycle 7: Service Worker Boot And Offline Recovery
-   In progress: Service Worker boot manifest/handshake, safe boot profiles, explicit offline maintenance queue, recovery shell assets, and panic diagnostics are implemented. Remaining work is enforcing profiles during actual launch.
+   Done: Service Worker boot manifest/handshake, safe boot profiles, explicit offline maintenance queue, recovery shell assets, panic diagnostics, and package/service/companion profile enforcement are implemented.
 8. Cycle 8: Conformance Lab
    Done: certification levels, browser profile matrix, generated compatibility docs, `/proc/conformance`, shell conformance commands, and smoke output cover implemented guarantees.
 
@@ -228,12 +228,12 @@ Done:
 - `/dindbos-sw.js` provides a browser Service Worker boot/cache/handshake script for boot and recovery assets.
 - `/proc/service-worker-boot`, `/proc/service-worker-boot.json`, and `/var/run/dindbos/service-worker-boot.json` expose the boot manifest, controller state, handshake state, and closed-page execution boundary.
 - Safe boot profiles cover normal, safe-mode, package-disabled, service-disabled, companion-disabled, offline, and storage-repair modes.
+- Active safe boot profiles enforce package bootstrap/install/CLI/app launch, service starts, companion grants/approval masking, and app autostart restrictions.
 - The offline maintenance queue only accepts explicitly permissioned maintenance tasks.
 - `/var/recovery/shell` and `/var/run/dindbos/panic.json` provide recovery shell assets and panic diagnostics.
 
 Next:
 
-- Enforce selected safe boot profiles during real boot/package/service launch.
 - Add browser QA for Service Worker registration and cached recovery navigation.
 
 ### 9. Conformance Lab
