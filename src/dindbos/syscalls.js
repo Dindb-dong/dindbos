@@ -81,7 +81,9 @@ export class SyscallDispatcher {
     if (name === "package.list") return this.packageList(context);
     if (name === "package.info") return this.packageInfo(args, context);
     if (name === "storage.status") return this.storageStatus(context);
+    if (name === "storage.kernel") return this.storageKernel(context);
     if (name === "storage.transactions") return this.storageTransactions(context);
+    if (name === "storage.fsck") throw syscallError("EAGAIN", "syscall: storage.fsck requires async syscall dispatch");
     if (name === "storage.sync") throw syscallError("EAGAIN", "syscall: storage.sync requires async syscall dispatch");
     if (name === "timer.status") return this.timerStatus(args, context);
     if (name === "timer.create") return this.timerCreate(args, context);
@@ -111,6 +113,7 @@ export class SyscallDispatcher {
 
   async dispatchAsync(name, args, context) {
     if (name === "fd.sync") return this.fdSync(args, context);
+    if (name === "storage.fsck") return this.storageFsck(args, context);
     if (name === "storage.sync") return this.storageSync(context);
     if (name === "timer.sleep") return this.timerSleep(args, context);
     return this.dispatch(name, args, context);
@@ -314,6 +317,20 @@ export class SyscallDispatcher {
   storageTransactions(context) {
     this.assertCapability("storage.read", context);
     return this.os.storageTransactions?.status?.() || [];
+  }
+
+  storageKernel(context) {
+    this.assertCapability("storage.read", context);
+    return this.os.storageKernelStatus?.("syscall") || {};
+  }
+
+  async storageFsck(args, context) {
+    this.assertCapability(args.repair ? "storage.manage" : "storage.read", context);
+    return await this.os.runStorageFsck?.({
+      repair: Boolean(args.repair),
+      dryRun: args.dryRun !== undefined ? Boolean(args.dryRun) : !args.repair,
+      salvage: Boolean(args.salvage),
+    });
   }
 
   async storageSync(context) {

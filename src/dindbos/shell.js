@@ -1097,6 +1097,16 @@ export class ShellSession {
   }
 
   storage(args) {
+    if (args[0] === "kernel") {
+      this.os.writeStorageKernelProcfs?.("shell");
+      return formatStorageKernel(this.os.storageKernelStatus?.("shell") || {});
+    }
+    if (args[0] === "fsck") {
+      const repair = args.includes("--repair") || args.includes("--dry-run");
+      const dryRun = args.includes("--dry-run") || !args.includes("--repair");
+      const salvage = args.includes("--salvage");
+      return this.os.runStorageFsck({ repair, dryRun, salvage }).then((result) => formatFsck(result, { explain: args.includes("--explain") }));
+    }
     if (args[0] === "flush") {
       this.os.assertAdminOperation?.("system-settings:storage-flush", { principal: this.principal, target: "storage.flush" });
       return this.os.flushPersistentFileSystem().then(() => formatStorage(this.withPersistenceStatus(this.os.storage.status())));
@@ -2128,9 +2138,33 @@ function formatStorage(status) {
     `persistCoalesced=${status.persistCoalesced || 0}`,
     `persistFlushes=${status.persistFlushes || 0}`,
     `storageTransactions=${status.storageTransactions?.length || 0}`,
+    `storageTransactionGroups=${status.storageTransactionGroups?.length || 0}`,
     `lastStorageTransaction=${status.storageTransactions?.at?.(-1)?.id || "-"}`,
     `usage=${status.usage ?? status.bytes}`,
     `quota=${status.quota || 0}`,
+  ].join("\n");
+}
+
+function formatStorageKernel(status = {}) {
+  const cache = status.pageCache || {};
+  const writeback = status.writeback || {};
+  const recovery = status.recovery || {};
+  return [
+    `state=${status.state || "unknown"}`,
+    `backend=${writeback.backend || "memory"}`,
+    `format=${cache.format || "unknown"}`,
+    `dirtyInodes=${Number(cache.dirtyInodes || 0)}`,
+    `dirtyFiles=${Number(cache.dirtyFiles || 0)}`,
+    `contentBytes=${Number(cache.contentBytes || 0)}`,
+    `pending=${Boolean(writeback.pending)}`,
+    `flushes=${Number(writeback.flushes || 0)}`,
+    `coalesced=${Number(writeback.coalesced || 0)}`,
+    `transactions=${Number(status.transactions?.length || 0)}`,
+    `transactionGroups=${Number(status.transactionGroups?.length || 0)}`,
+    `localConflicts=${Number(status.conflicts?.localMounts?.length || 0)}`,
+    `remoteConflicts=${Number(status.conflicts?.remoteSync?.length || 0)}`,
+    `lastRepair=${recovery.lastRepair?.checkedAt || "-"}`,
+    `lastError=${writeback.lastError || "-"}`,
   ].join("\n");
 }
 

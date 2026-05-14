@@ -43,6 +43,9 @@ Current implementation:
 - Shell `fsck` writes summary records to `/var/log/dindbos/fsck.log` and structured repair/refusal audit records to `/var/log/dindbos/fsck-audit.log`.
 - Shell `fsck` merges PersistentStorage partial journal diagnostics, including active OPFS transaction markers whose replay manifests are missing or pending promotion.
 - Shell `fsck` merges local mount fsck diagnostics, including stale persisted local mount metadata whose invalid records can be removed without touching valid mounts.
+- `storage kernel`, `storage fsck`, `storage.kernel`, and `/proc/storage-kernel.json` expose the same page-cache, writeback, transaction-group, conflict, and last-repair diagnostics. `/proc/writeback` is the compact text view for shell-style inspection.
+- Runtime writeback flushes, service lifecycle suspend/resume, and descriptor file writes now create storage transaction groups, so operator tooling can explain which logical operation caused a durability barrier or mapped-file mutation.
+- Settings.app includes a Storage Recovery panel with dry-run, repair, and salvage actions backed by the runtime fsck path.
 - `fsck --salvage` exports readable VFS files into `/var/recovery/fsck/<timestamp>/salvage.dindbos-fsck-export.json` while skipping existing recovery output paths.
 - VFS fsck repair uses a protected-metadata guard so safe repairs cannot weaken ownership, group, permissions, security labels, quarantine state, or encrypted-volume lock flags.
 - VFS fsck detects interrupted atomic-write staging nodes and can remove only the orphaned staged temp file while preserving the committed target.

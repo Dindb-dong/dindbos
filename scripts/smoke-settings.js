@@ -17,6 +17,7 @@ const calls = {
   sync: 0,
   syncMerge: 0,
   syncConflicts: 0,
+  storageKernel: 0,
 };
 
 const os = {
@@ -185,6 +186,46 @@ const os = {
       bytes: 12,
     }];
   },
+  storageKernelStatus() {
+    calls.storageKernel += 1;
+    return {
+      state: "writeback-pending",
+      pageCache: {
+        format: "opfs-inode-records",
+        bytes: 4096,
+        contentBytes: 2048,
+        dirtyInodes: 2,
+        dirtyFiles: 1,
+      },
+      writeback: {
+        backend: "opfs",
+        pending: true,
+        flushes: 2,
+        coalesced: 1,
+        lastError: "",
+      },
+      recovery: {
+        lastRepair: {
+          checkedAt: "2026-05-05T00:10:00.000Z",
+          ok: false,
+          problems: 1,
+          repairs: 1,
+        },
+      },
+      conflicts: {
+        localMounts: [{ path: "/mnt/project/note.txt" }],
+        remoteSync: [{ path: "/home/guest/Documents/.sync-conflicts/note.txt.2026.remote" }],
+      },
+      transactions: [{ id: "storage-runtime-tx-1", status: "committed" }],
+      transactionGroups: [{
+        id: "storage-runtime-group-1",
+        kind: "mapped-file-write",
+        status: "committed",
+        startedAt: "2026-05-05T00:09:00.000Z",
+        transactionIds: ["storage-runtime-tx-1"],
+      }],
+    };
+  },
   keychain: {
     settingsStatus() {
       calls.keychain += 1;
@@ -264,6 +305,7 @@ assert(calls.coordination === 1, "settings snapshot did not read session coordin
 assert(calls.sync === 1, "settings snapshot did not read remote sync status");
 assert(calls.syncMerge === 1, "settings snapshot did not read remote sync merge policy");
 assert(calls.syncConflicts === 1, "settings snapshot did not read remote sync conflicts");
+assert(calls.storageKernel === 1, "settings snapshot did not read storage kernel status");
 assert(calls.keychain === 1, "settings snapshot did not read keychain status");
 assert(calls.browser === 1, "settings snapshot did not read browser broker status");
 
@@ -284,6 +326,7 @@ assert(snapshot.sync.lastSuccessfulSnapshot.cacheRecords === 1, "settings snapsh
 assert(snapshot.sync.lastSuccessfulSnapshot.settingsRecords === 2, "settings snapshot sync settings coverage mismatch");
 assert(snapshot.syncMerge.planner === "offline-first", "settings snapshot sync merge policy mismatch");
 assert(snapshot.syncConflicts.length === 1, "settings snapshot sync conflict count mismatch");
+assert(snapshot.storageKernel.state === "writeback-pending", "settings snapshot storage kernel state mismatch");
 assert(snapshot.keychain.activeGrants.length === 1, "settings snapshot keychain grant count mismatch");
 assert(snapshot.browser.capabilities.length === 2, "settings snapshot browser broker count mismatch");
 assert(snapshot.containerEvents.length === 2, "settings snapshot container security event count mismatch");
@@ -336,6 +379,13 @@ assert(markup.includes("recovered"), "settings markup did not render recovery su
 assert(markup.includes("unsupported-after-close=worker execution"), "settings markup did not render closed-page unsupported diagnostics");
 assert(markup.includes("opfs"), "settings markup did not render storage backend");
 assert(markup.includes("pending=true"), "settings markup did not render pending storage state");
+assert(markup.includes("<h3>Storage Recovery</h3>"), "settings markup did not render storage recovery panel");
+assert(markup.includes("<dt>Page Cache</dt><dd>2 dirty inodes · 1 dirty files"), "settings markup did not render storage page-cache diagnostics");
+assert(markup.includes("<dt>Writeback</dt><dd>pending · flushes=2 · coalesced=1</dd>"), "settings markup did not render storage writeback diagnostics");
+assert(markup.includes('data-storage-group="storage-runtime-group-1"'), "settings markup did not render storage transaction group");
+assert(markup.includes('data-settings-action="storage-fsck-dry-run"'), "settings markup did not expose storage fsck dry-run action");
+assert(markup.includes('data-settings-action="storage-fsck-repair"'), "settings markup did not expose storage fsck repair action");
+assert(markup.includes('data-settings-action="storage-fsck-salvage"'), "settings markup did not expose storage salvage action");
 assert(markup.includes("/home/guest/Desktop"), "settings markup did not render desktop path");
 assert(markup.includes("Project"), "settings markup did not render mount handle");
 assert(markup.includes("/mnt/project"), "settings markup did not render mount path");

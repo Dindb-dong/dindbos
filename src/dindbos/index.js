@@ -216,6 +216,7 @@ export class DindbOS {
       lastRetry: null,
       lastError: "",
     };
+    this.lastStorageRepair = null;
     this.ipcEndpoints = new Map();
     this.virtualMounts = new Map();
     this.overlayMounts = new Map();
@@ -300,7 +301,7 @@ export class DindbOS {
       home: this.session.home,
       policy: this.permissions,
       onChange: (event) => {
-        this.schedulePersistFileSystem(event);
+        if (this.shouldPersistFileChange(event.path)) this.schedulePersistFileSystem(event);
         const message = this.publishSessionEvent("file-change", event);
         this.recordSessionFileChange(this.instanceId, event, message?.at);
       },
@@ -767,6 +768,11 @@ export class DindbOS {
     return path.startsWith("/home") || path.startsWith("/opt") || path.startsWith("/var/lib") || path.startsWith("/mnt");
   }
 
+  shouldPersistFileChange(path) {
+    if (!path) return true;
+    return !String(path).startsWith("/proc");
+  }
+
   async loadPersistentFileSystem(options = {}) {
     const recover = options.recover !== false;
     try {
@@ -792,6 +798,7 @@ export class DindbOS {
     this.ensureDiskPolicyRoots();
     this.writeMountTableProcfs("disk-policy-roots");
     this.writeBrowserDeviceProcfs("disk-policy-roots");
+    this.writeStorageKernelProcfs("disk-policy-roots");
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
     this.writeSessionStatus();
@@ -3488,7 +3495,15 @@ export class DindbOS {
     }
     this.persisting = true;
     const startedAt = Date.now();
+    const group = this.storageTransactions?.beginGroup?.("writeback-flush", {
+      metadata: {
+        pending: Boolean(this.persistPending),
+        scheduled: this.persistenceStats.scheduled,
+        reason: this.persistenceStats.lastAction || "flush",
+      },
+    }) || null;
     const transaction = this.storageTransactions?.begin?.("persistence-flush", {
+      groupId: group?.id || "",
       metadata: {
         pending: Boolean(this.persistPending),
         scheduled: this.persistenceStats.scheduled,
@@ -3532,9 +3547,22 @@ export class DindbOS {
           durationMs: Date.now() - startedAt,
         },
       });
+      if (failure && group?.id) this.storageTransactions?.failGroup?.(group.id, failure, {
+        metadata: {
+          flushed: this.persistenceStats.flushed,
+          durationMs: Date.now() - startedAt,
+        },
+      });
+      if (!failure && group?.id) this.storageTransactions?.commitGroup?.(group.id, {
+        metadata: {
+          flushed: this.persistenceStats.flushed,
+          durationMs: Date.now() - startedAt,
+        },
+      });
       this.persisting = false;
       this.persistenceStats.lastFlushDurationMs = Date.now() - startedAt;
       this.publishSessionStorageFlush(failure ? "error" : "complete", { error: this.persistenceStats.lastFlushError });
+      this.writeStorageKernelProcfs(failure ? "flush-error" : "flush-complete");
     }
     return this.persistenceStatus();
   }
@@ -3564,7 +3592,115 @@ export class DindbOS {
       persistLastFlushDurationMs: this.persistenceStats.lastFlushDurationMs,
       persistLastFlushError: this.persistenceStats.lastFlushError,
       storageTransactions: this.storageTransactions?.status?.().slice(-20) || [],
+      storageTransactionGroups: this.storageTransactions?.groupStatus?.().slice(-20) || [],
     };
+  }
+
+  storageKernelStatus(reason = "status") {
+    const storage = safeRead(() => this.storage.status(), {});
+    const persistence = this.persistenceStatus();
+    const transactions = this.storageTransactions?.status?.().slice(-25) || [];
+    const transactionGroups = this.storageTransactions?.groupStatus?.().slice(-25) || [];
+    const localMountConflicts = safeRead(() => this.localMounts?.conflictStatus?.(), []);
+    const remoteConflicts = safeRead(() => this.listRemoteSyncConflicts?.(), []);
+    const recovery = safeRead(() => this.recoveryStatus?.(), null);
+    const journal = safeRead(() => this.storage.journal?.().slice(-20), []);
+    const pending = Boolean(
+      storage.writePending
+      || persistence.persistPending
+      || persistence.persistInFlight
+      || transactions.some((entry) => entry.status === "pending")
+      || transactionGroups.some((entry) => entry.status === "pending"),
+    );
+    return {
+      service: "dindbos-storage-kernel",
+      reason: String(reason || "status"),
+      updatedAt: new Date().toISOString(),
+      state: pending ? "writeback-pending" : "idle",
+      pageCache: {
+        format: storage.storageFormat || "unknown",
+        bytes: Number(storage.bytes || storage.usage || 0),
+        inodeRecords: Number(storage.inodeRecords || 0),
+        fileRecords: Number(storage.fileRecords || 0),
+        contentBytes: Number(storage.contentBytes || 0),
+        dirtyInodes: Number(storage.dirtyInodes || 0),
+        dirtyFiles: Number(storage.dirtyFiles || 0),
+        integrityMismatches: storage.storageIntegrityMismatches || [],
+      },
+      writeback: {
+        backend: storage.backend || "memory",
+        structuredBackend: storage.structuredBackend || "memory",
+        pending,
+        writePending: Boolean(storage.writePending),
+        persistPending: Boolean(persistence.persistPending),
+        persistInFlight: Boolean(persistence.persistInFlight),
+        scheduled: Number(persistence.persistScheduled || 0),
+        coalesced: Number(persistence.persistCoalesced || 0),
+        flushes: Number(persistence.persistFlushes || 0),
+        lastQueuedAt: storage.lastWriteQueuedAt || "",
+        lastCompletedAt: storage.lastWriteCompletedAt || "",
+        lastFlushStartedAt: persistence.persistLastFlushStartedAt || "",
+        lastFlushedAt: persistence.persistLastFlushedAt || "",
+        lastFlushDurationMs: Number(persistence.persistLastFlushDurationMs || 0),
+        lastError: storage.lastWriteError || persistence.persistLastFlushError || "",
+      },
+      recovery: {
+        lastDecision: storage.storageRecoveryDecision || null,
+        lastRepair: this.lastStorageRepair,
+        lastShutdown: recovery?.lastShutdown || null,
+        lastRecovery: recovery?.lastRecovery || null,
+      },
+      conflicts: {
+        localMounts: Array.isArray(localMountConflicts) ? localMountConflicts : [],
+        remoteSync: Array.isArray(remoteConflicts) ? remoteConflicts : [],
+      },
+      transactions,
+      transactionGroups,
+      journal,
+    };
+  }
+
+  writeStorageKernelProcfs(reason = "storage-kernel") {
+    if (!this.fs?.exists?.("/proc")) return null;
+    const system = this.permissions.systemPrincipal();
+    this.ensureSystemDirectory("/proc", "root", system);
+    const status = this.storageKernelStatus(reason);
+    this.fs.writeOrCreateFile("/proc/storage-kernel.json", `${JSON.stringify(status, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/writeback", `${formatStorageWriteback(status)}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    return status;
+  }
+
+  async runStorageFsck(options = {}) {
+    const repair = Boolean(options.repair);
+    const dryRun = options.dryRun !== undefined ? Boolean(options.dryRun) : !repair;
+    let result = this.fs.checkIntegrity({ repair, dryRun });
+    result = mergeFsckResults(result, safeRead(() => this.packages?.checkIntegrity?.({ repair, dryRun }), null));
+    result = mergeFsckResults(result, await safeAsync(() => this.storage?.checkIntegrity?.({ repair, dryRun }), null));
+    result = mergeFsckResults(result, await safeAsync(() => this.localMounts?.checkIntegrity?.({ repair, dryRun }), null));
+    if (options.salvage) result = { ...result, salvage: this.shell?.writeFsckSalvageExport?.() || null };
+    this.lastStorageRepair = {
+      checkedAt: new Date().toISOString(),
+      repair,
+      dryRun,
+      salvage: Boolean(options.salvage),
+      ok: Boolean(result.ok),
+      problems: Number(result.problemCount || 0),
+      repairs: Number(result.repairCount || 0),
+      result,
+    };
+    this.shell?.recordFsckLog?.(result);
+    this.writeStorageKernelProcfs("fsck");
+    return result;
   }
 
   hasPendingPersistenceWork() {
@@ -3605,15 +3741,52 @@ export class DindbOS {
     if (this.serviceLifecycleHooksInstalled || typeof globalThis.window === "undefined") return;
     this.serviceLifecycleHooksInstalled = true;
     const suspend = (reason) => {
+      const group = this.storageTransactions?.beginGroup?.("service-lifecycle-suspend", {
+        metadata: {
+          reason,
+          runningServices: safeRead(() => this.services?.list?.().filter((service) => service.state === "running").length, 0),
+          pendingPersistence: this.hasPendingPersistenceWork(),
+        },
+      });
       this.transitionLifecycle("suspending", reason);
-      this.services?.suspend?.(reason);
-      this.transitionLifecycle("suspended", reason);
-      if (reason === "pagehide") this.writeRecoveryRecord(reason);
+      try {
+        this.services?.suspend?.(reason);
+        this.transitionLifecycle("suspended", reason);
+        if (reason === "pagehide") this.writeRecoveryRecord(reason);
+        if (group?.id) this.storageTransactions?.commitGroup?.(group.id, {
+          metadata: {
+            suspendedServices: safeRead(() => this.services?.list?.().filter((service) => service.state === "suspended").length, 0),
+          },
+        });
+      } catch (error) {
+        if (group?.id) this.storageTransactions?.failGroup?.(group.id, error);
+        throw error;
+      } finally {
+        this.writeStorageKernelProcfs("service-lifecycle-suspend");
+      }
     };
     const resume = (reason) => {
+      const group = this.storageTransactions?.beginGroup?.("service-lifecycle-resume", {
+        metadata: {
+          reason,
+          suspendedServices: safeRead(() => this.services?.list?.().filter((service) => service.state === "suspended").length, 0),
+        },
+      });
       this.transitionLifecycle("resuming", reason);
-      this.services?.resume?.(reason);
-      this.transitionLifecycle("active", reason);
+      try {
+        this.services?.resume?.(reason);
+        this.transitionLifecycle("active", reason);
+        if (group?.id) this.storageTransactions?.commitGroup?.(group.id, {
+          metadata: {
+            runningServices: safeRead(() => this.services?.list?.().filter((service) => service.state === "running").length, 0),
+          },
+        });
+      } catch (error) {
+        if (group?.id) this.storageTransactions?.failGroup?.(group.id, error);
+        throw error;
+      } finally {
+        this.writeStorageKernelProcfs("service-lifecycle-resume");
+      }
     };
     globalThis.window.addEventListener("pagehide", () => suspend("pagehide"));
     globalThis.window.addEventListener("pageshow", () => resume("pageshow"));
@@ -3662,6 +3835,60 @@ export function normalizeSession(session = {}) {
     groups,
     home,
   };
+}
+
+function safeRead(fn, fallback = null) {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
+async function safeAsync(fn, fallback = null) {
+  try {
+    return await fn();
+  } catch {
+    return fallback;
+  }
+}
+
+function mergeFsckResults(base = {}, extra = null) {
+  if (!extra) return base || {};
+  const problems = [...(base.problems || []), ...(extra.problems || [])];
+  const repairs = [...(base.repairs || []), ...(extra.repairs || [])];
+  return {
+    ...base,
+    ok: Boolean(base.ok) && Boolean(extra.ok),
+    repaired: Boolean(base.repaired || extra.repaired),
+    checkedNodes: Number(base.checkedNodes || 0) + Number(extra.checkedNodes || 0),
+    checkedPackages: Number(base.checkedPackages || 0) + Number(extra.checkedPackages || 0),
+    checkedStorage: Number(base.checkedStorage || 0) + Number(extra.checkedStorage || 0),
+    checkedLocalMounts: Number(base.checkedLocalMounts || 0) + Number(extra.checkedLocalMounts || 0),
+    problemCount: problems.length,
+    repairCount: repairs.length,
+    problems,
+    repairs,
+  };
+}
+
+function formatStorageWriteback(status = {}) {
+  const writeback = status.writeback || {};
+  const cache = status.pageCache || {};
+  return [
+    `state=${status.state || "unknown"}`,
+    `backend=${writeback.backend || "memory"}`,
+    `format=${cache.format || "unknown"}`,
+    `pending=${Boolean(writeback.pending)}`,
+    `dirtyInodes=${Number(cache.dirtyInodes || 0)}`,
+    `dirtyFiles=${Number(cache.dirtyFiles || 0)}`,
+    `flushes=${Number(writeback.flushes || 0)}`,
+    `groups=${Number(status.transactionGroups?.length || 0)}`,
+    `transactions=${Number(status.transactions?.length || 0)}`,
+    `localConflicts=${Number(status.conflicts?.localMounts?.length || 0)}`,
+    `remoteConflicts=${Number(status.conflicts?.remoteSync?.length || 0)}`,
+    `lastError=${writeback.lastError || "-"}`,
+  ].join("\n");
 }
 
 function sanitizeGroups(groups) {
