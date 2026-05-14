@@ -234,6 +234,7 @@ export class DindbOS {
     this.virtualMounts = new Map();
     this.overlayMounts = new Map();
     this.privacyLedger = [];
+    this.browserBrokerRequests = [];
     this.browserGrantRevocations = new Map();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
     this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
@@ -3146,6 +3147,7 @@ export class DindbOS {
       available: browserApiAvailable(probe.api),
       permissioned: true,
       policy: "broker-required",
+      userGestureRequired: browserCapabilityNeedsGesture(probe.id),
       accessCount: ledger.filter((entry) => entry.capability === probe.id).length,
       revoked: [...this.browserGrantRevocations.values()].filter((entry) => entry.capability === probe.id),
     }));
@@ -3166,6 +3168,7 @@ export class DindbOS {
       service: "dindbos-browser-brokers",
       brokerRequired: true,
       revokedGrants: [...this.browserGrantRevocations.values()].map((entry) => ({ ...entry })),
+      requests: this.browserBrokerRequests.slice(-50).map((entry) => ({ ...entry })),
       ledgerEntries: this.privacyLedgerStatus({ limit: 50 }),
       capabilities: capabilityStatus.capabilities.map((capability) => ({
         id: capability.id,
@@ -3174,6 +3177,7 @@ export class DindbOS {
         device: capability.device,
         available: capability.available,
         policy: capability.policy,
+        userGestureRequired: capability.userGestureRequired,
         accessCount: capability.accessCount,
         revoked: capability.revoked.length,
       })),
@@ -3185,7 +3189,21 @@ export class DindbOS {
     const probe = this.browserCapabilityProbe(capability);
     this.assertBrowserCapability(process, probe.id);
     const operation = String(options.operation || "request");
-    const result = probe.available ? "brokered" : "unavailable";
+    const userGestureRequired = browserCapabilityNeedsGesture(probe.id);
+    const userGesture = Boolean(options.userGesture || options.userActivation || options.trustedEvent);
+    const activation = {
+      required: userGestureRequired,
+      present: userGesture,
+      source: options.activationSource || options.source || "browser-broker",
+    };
+    const invocation = userGestureRequired && !userGesture
+      ? { status: "pending-user-gesture", detail: "browser API requires an explicit user gesture before invocation" }
+      : invokeBrowserCapability(probe, operation, options);
+    const result = invocation.status === "invoked" || invocation.status === "promise-pending"
+      ? "brokered"
+      : invocation.status === "pending-user-gesture"
+        ? "pending-user-gesture"
+        : probe.available ? "brokered" : "unavailable";
     const entry = this.recordPrivacyAccess({
       process,
       capability: probe.id,
@@ -3197,7 +3215,25 @@ export class DindbOS {
       bytes: Number(options.bytes || 0),
       result,
       expiresAt: options.expiresAt || "",
+      userGestureRequired,
+      userGesture,
     });
+    const request = {
+      id: entry.id,
+      capability: probe.id,
+      broker: probe.broker,
+      device: probe.device,
+      operation,
+      result,
+      activation,
+      invocation,
+      pid: process?.pid || 0,
+      appId: process?.appId || "",
+      requestedAt: entry.at,
+    };
+    this.browserBrokerRequests.push(request);
+    this.browserBrokerRequests = this.browserBrokerRequests.slice(-100);
+    this.writeBrowserBrokerProcfs();
     return {
       capability: probe.id,
       broker: probe.broker,
@@ -3205,6 +3241,8 @@ export class DindbOS {
       available: probe.available,
       status: result,
       userVisiblePermission: true,
+      activation,
+      invocation,
       ledgerId: entry.id,
     };
   }
@@ -3322,6 +3360,8 @@ export class DindbOS {
       user: String(process.user || this.session?.user || "guest"),
       windowId: String(event.windowId || process.windowId || ""),
       expiresAt: String(event.expiresAt || ""),
+      userGestureRequired: Boolean(event.userGestureRequired),
+      userGesture: Boolean(event.userGesture),
     };
     this.privacyLedger.push(entry);
     this.writePrivacyLedgerProcfs();
@@ -4651,6 +4691,64 @@ function browserApiAvailable(path) {
     cursor = cursor[part];
   }
   return typeof cursor === "function" || Boolean(cursor);
+}
+
+function browserCapabilityNeedsGesture(capability = "") {
+  return [
+    "notifications.show",
+    "localFile.open",
+    "localFile.save",
+    "localDirectory.open",
+    "screen.capture",
+    "media.audioVideo",
+    "webShare.share",
+    "webusb.device",
+    "webserial.port",
+    "webhid.device",
+  ].includes(String(capability || ""));
+}
+
+function invokeBrowserCapability(probe = {}, operation = "request", options = {}) {
+  if (!probe.available) return { status: "unavailable", detail: `${probe.api} unavailable` };
+  try {
+    const payload = options.payload || {};
+    let value = null;
+    if (probe.id === "notifications.show") value = invokeNotificationBroker(operation, payload);
+    else if (probe.id === "localFile.open") value = globalThis.showOpenFilePicker?.(payload.options || {});
+    else if (probe.id === "localFile.save") value = globalThis.showSaveFilePicker?.(payload.options || {});
+    else if (probe.id === "localDirectory.open") value = globalThis.showDirectoryPicker?.(payload.options || {});
+    else if (probe.id === "screen.capture") value = globalThis.navigator?.mediaDevices?.getDisplayMedia?.(payload.constraints || { video: true });
+    else if (probe.id === "media.audioVideo") value = globalThis.navigator?.mediaDevices?.getUserMedia?.(payload.constraints || { audio: true, video: true });
+    else if (probe.id === "media.enumerate") value = globalThis.navigator?.mediaDevices?.enumerateDevices?.();
+    else if (probe.id === "webShare.share") value = globalThis.navigator?.share?.(payload.share || { title: "DindbOS", text: "DindbOS brokered share" });
+    else if (probe.id === "webrtc.peerConnection") value = typeof globalThis.RTCPeerConnection === "function" ? new globalThis.RTCPeerConnection(payload.configuration || {}) : null;
+    else if (probe.id === "webgpu.adapter") value = globalThis.navigator?.gpu?.requestAdapter?.(payload.options || {});
+    else if (probe.id === "webusb.device") value = globalThis.navigator?.usb?.requestDevice?.(payload.options || { filters: [] });
+    else if (probe.id === "webserial.port") value = globalThis.navigator?.serial?.requestPort?.(payload.options || {});
+    else if (probe.id === "webhid.device") value = globalThis.navigator?.hid?.requestDevice?.(payload.options || { filters: [] });
+    return {
+      status: value && typeof value.then === "function" ? "promise-pending" : "invoked",
+      operation,
+      returnType: value && typeof value.then === "function" ? "promise" : typeof value,
+      detail: "browser API invoked through broker",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      operation,
+      detail: error?.message || String(error),
+    };
+  }
+}
+
+function invokeNotificationBroker(operation, payload = {}) {
+  if (operation === "permission" || operation === "request-permission") {
+    return globalThis.Notification?.requestPermission?.();
+  }
+  if (typeof globalThis.Notification === "function") {
+    return new globalThis.Notification(payload.title || "DindbOS", payload.options || {});
+  }
+  return null;
 }
 
 function formatBrowserCapabilities(capabilities = []) {
