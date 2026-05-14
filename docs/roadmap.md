@@ -1,6 +1,6 @@
 # DindbOS.js Roadmap
 
-Last updated: 2026-05-14
+Last updated: 2026-05-15
 
 DindbOS.js is a browser-native OS runtime, not an OS-themed website. The UI exists to prove reusable runtime primitives: files, processes, packages, permissions, shell execution, browser/device brokers, app containers, and diagnostics that other apps can depend on.
 
@@ -67,6 +67,7 @@ Focused checks:
 - `npm run smoke:browserd` / `npm run smoke:browser-client`: real browser companion boundary.
 - `npm run smoke:window-manager`: compositor/window handles, shortcuts, surface capture policy.
 - `npm run smoke:trusted-ui`: trusted prompt handles and decision cleanup.
+- `npm run smoke:release-conformance`: release conformance artifacts, secure boot JSON, manifest records, and SHA-256 lines.
 
 ## Active Queue
 
@@ -107,7 +108,7 @@ Each implementation cycle uses a fresh `codex/*` worktree and branch, may contai
 7. Cycle 7: Service Worker Boot And Offline Recovery
    Done: Service Worker boot manifest/handshake, safe boot profiles, explicit offline maintenance queue, recovery shell assets, panic diagnostics, and package/service/companion profile enforcement are implemented.
 8. Cycle 8: Conformance Lab
-   Done: certification levels, browser profile matrix, generated compatibility docs, `/proc/conformance`, shell conformance commands, and smoke output cover implemented guarantees.
+   Done: certification levels, browser profile matrix, generated compatibility docs, `/proc/conformance`, shell conformance commands, release artifact generation, and smoke output cover implemented guarantees.
 
 ### 1. App Containers And Trusted UI
 
@@ -200,10 +201,11 @@ Done:
 - `/proc/policy`, app manifest policy exposure, `pkg audit`, and `policyctl` expose the compiled policy state.
 - Secure boot measurements cover base files, package records, app registry manifests, trusted publishers, and executable policy proof reports through `/proc/secure-boot`, `/proc/secure-boot.json`, and `bootctl`.
 - `policyctl prove` turns package policy proof descriptors into executable negative tests for raw runtime globals, undeclared dependency paths, and undeclared device grants.
+- Release conformance artifacts now boot a real headless runtime and emit conformance JSON, conformance evidence JSON, secure boot JSON, a source-digested release manifest, and `SHA256SUMS`.
 
 Next:
 
-- Expand boot measurements into signed release manifests once the release artifact pipeline owns immutable build inputs.
+- Add external signing for release manifests and publish signature verification steps.
 
 ### 7. Cross-Origin Isolation And Shared Memory
 
@@ -248,10 +250,12 @@ Done:
 - Real QA evidence records feed browser matrix rows and are mirrored through `/proc/conformance-evidence`, `/proc/conformance-evidence.json`, and `conformance evidence`.
 - `docs/conformance.md` documents levels, areas, browser matrix profiles, and smoke verification.
 - `npm run smoke:conformance` verifies report generation and shell output.
+- `npm run release:conformance` writes release JSON snapshots, a source-digested release manifest, and SHA-256 sums.
+- `npm run smoke:release-conformance` verifies the generated release evidence.
 
 Next:
 
-- Add release artifact generation for conformance JSON snapshots.
+- Add release-channel signature publishing and browser-profile artifact retention.
 
 ## Work Selection Rules
 
