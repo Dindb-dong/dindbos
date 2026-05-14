@@ -162,6 +162,11 @@ export class SyscallDispatcher {
       target: args.target,
       bytes: args.bytes,
       expiresAt: args.expiresAt,
+      userGesture: args.userGesture,
+      userActivation: args.userActivation,
+      trustedEvent: args.trustedEvent,
+      activationSource: args.activationSource,
+      payload: args.payload,
     });
   }
 
