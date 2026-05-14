@@ -160,7 +160,17 @@ pkg trust add <publisher-id> <ed25519-public-key> [name]
 pkg trust remove <publisher-id|ed25519-public-key>
 ```
 
-`npm run smoke:packages` verifies signed trusted installs, unsigned rejection, invalid signature rejection, untrusted-key rejection, and no filesystem mutation before verification succeeds. `npm run smoke:shell` verifies the `pkg trust` command surface.
+Installed package trust is also copied into the compiled package policy bundle. Inspect it with:
+
+```text
+pkg audit [package]
+policyctl list [package]
+policyctl show <package>
+cat /proc/policy/packages
+cat /proc/policy/<package>.json
+```
+
+`npm run smoke:packages` verifies signed trusted installs, unsigned rejection, invalid signature rejection, untrusted-key rejection, no filesystem mutation before verification succeeds, compiled policy output, and package audit proof rows. `npm run smoke:shell` verifies the `pkg trust` command surface.
 
 ## Verification Failure UX
 

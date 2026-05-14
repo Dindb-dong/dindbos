@@ -44,7 +44,8 @@ const BUILTIN_MANUALS = {
   npm: "npm install <package...> - install pure JavaScript npm packages into node_modules",
   open: "open [path] - open a path with its associated app",
   ping: "ping <host> - probe network policy; raw ICMP is unsupported in browser-only mode",
-  pkg: "pkg list|info|install|run|strict|cache|prefs|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
+  pkg: "pkg list|info|install|run|strict|audit|cache|prefs|remove|search|registry|trust|update|deps|npm - manage DindbOS packages",
+  policyctl: "policyctl list|show|audit [package] - inspect compiled package policies",
   ps: "ps - list running DindbOS processes",
   pwd: "pwd - print current directory",
   resetfs: "resetfs - clear persisted filesystem and reload",
@@ -86,6 +87,7 @@ const STATUS_PREFIX_COMMANDS = new Set([
   "ping",
   "companion",
   "pkg",
+  "policyctl",
   "stat",
   "su",
   "sudo",
@@ -314,6 +316,7 @@ export class ShellSession {
     if (command === "mount-local") return this.mountLocal(args);
     if (command === "umount") return this.umount(args);
     if (command === "pkg") return this.pkg(args);
+    if (command === "policyctl") return this.policyctl(args);
     if (command === "companion") return this.companion(args);
     if (command === "ps") return this.os.processes.table();
     if (command === "jobs") return this.jobs();
@@ -810,6 +813,9 @@ export class ShellSession {
       const output = formatStrictNamespaceReport(report);
       return report.strict ? output : `pkg: strict failed\n${output}`;
     }
+    if (action === "audit") {
+      return formatPackageAudit(this.os.packages.audit(operand || ""));
+    }
     if (action === "cache") {
       return this.pkgCache(operand, rest);
     }
@@ -824,7 +830,22 @@ export class ShellSession {
       const record = this.os.packages.remove(operand);
       return `removed ${record.id}`;
     }
-    return "pkg: usage: pkg list | info | install | run | strict | cache | prefs | search | registry | trust | update | deps | npm | remove";
+    return "pkg: usage: pkg list | info | install | run | strict | audit | cache | prefs | search | registry | trust | update | deps | npm | remove";
+  }
+
+  policyctl(args) {
+    const [action = "list", packageId] = args;
+    if (action === "list" || action === "status") {
+      return formatPolicyStatus(this.os.packages.policyStatus(packageId || ""));
+    }
+    if (action === "show" || action === "cat") {
+      if (!packageId) return `policyctl: usage: policyctl ${action} <package>`;
+      return formatPackagePolicy(this.os.packages.policy(packageId));
+    }
+    if (action === "audit") {
+      return formatPackageAudit(this.os.packages.audit(packageId || ""));
+    }
+    return "policyctl: usage: policyctl list [package] | show <package> | audit [package]";
   }
 
   pkgRegistry(action, args) {
@@ -2409,6 +2430,49 @@ function formatStrictNamespaceReport(report) {
   const header = `strict=${report.strict ? "ok" : "fail"} package=${report.packageId} source=${report.source}`;
   const lines = report.checks.map((check) => `${check.status} ${check.id} ${check.detail}`);
   return [header, ...lines].join("\n");
+}
+
+function formatPackageAudit(report) {
+  const header = `audit ok=${Boolean(report.ok)} packages=${report.packageCount || 0} failed=${report.failed || 0}`;
+  const rows = (report.packages || []).flatMap((entry) => [
+    `${entry.packageId} ok=${Boolean(entry.ok)} trusted=${Boolean(entry.trusted)} strict=${Boolean(entry.strict)} signature=${entry.signatureStatus || "-"} warnings=${entry.warningCount || 0}`,
+    ...entry.checks.map((check) => `  ${check.status} ${check.id} ${check.detail}`),
+  ]);
+  return [header, ...rows].join("\n");
+}
+
+function formatPolicyStatus(status) {
+  const header = `policy packages=${status.packageCount || 0} updatedAt=${status.updatedAt || "-"}`;
+  const rows = (status.packages || []).map((entry) => [
+    entry.packageId,
+    `app=${entry.appId || "-"}`,
+    `version=${entry.version || "-"}`,
+    `trusted=${Boolean(entry.trusted)}`,
+    `signature=${entry.signatureStatus || "-"}`,
+    `warnings=${entry.warningCount || 0}`,
+  ].join(" "));
+  return [header, ...rows].join("\n");
+}
+
+function formatPackagePolicy(policy = {}) {
+  return [
+    `package=${policy.packageId || "-"}`,
+    `app=${policy.appId || "-"}`,
+    `version=${policy.version || "-"}`,
+    `runtime=${policy.runtime?.appRuntime || "-"}`,
+    `container=${policy.runtime?.containerMode || "-"}`,
+    `trusted=${Boolean(policy.trust?.trusted)}`,
+    `signature=${policy.trust?.signatureStatus || "-"}`,
+    `capabilities=${policy.capabilities?.join(",") || "-"}`,
+    `fs.read=${policy.filesystem?.read?.join(",") || "-"}`,
+    `fs.write=${policy.filesystem?.write?.join(",") || "-"}`,
+    `devices=${policy.devices?.join(",") || "-"}`,
+    `network.hosts=${policy.network?.hosts?.join(",") || "-"}`,
+    `dependencies=${policy.dependencies?.allowlist?.join(",") || "-"}`,
+    `process.group=${policy.process?.processGroup || "-"}`,
+    `warnings=${policy.warnings?.join("; ") || "-"}`,
+    `enforcement=${policy.enforcement?.join(",") || "-"}`,
+  ].join("\n");
 }
 
 function formatDependencies(dependencies) {

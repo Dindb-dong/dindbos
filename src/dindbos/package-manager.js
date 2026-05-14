@@ -15,6 +15,7 @@ const PACKAGE_INSTALL_ROOT = "/opt";
 const REGISTRY_CONFIG_PATH = "/etc/dindbos/package-registries.json";
 const TRUSTED_PUBLISHERS_PATH = "/etc/dindbos/trusted-publishers.json";
 const LOCAL_REGISTRY_PATH = "/opt/dindbos/registry/index.json";
+const POLICY_PROC_ROOT = "/proc/policy";
 const NPM_ESM_BASE_URL = "https://esm.sh";
 const MAX_REMOTE_MANIFEST_BYTES = 512 * 1024;
 const MAX_REMOTE_FILE_BYTES = 1024 * 1024;
@@ -559,6 +560,78 @@ export class PackageManager {
     return cloneJson(record.dependencies || { packages: {}, npm: {} });
   }
 
+  policy(packageId) {
+    const record = this.info(packageId);
+    if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
+    return compilePackagePolicy(record);
+  }
+
+  policyStatus(packageId = "") {
+    const records = packageId ? [this.info(packageId)].filter(Boolean) : this.list();
+    if (packageId && !records.length) throw new Error(`pkg: ${packageId}: package not installed`);
+    const packages = records.map((record) => {
+      const policy = compilePackagePolicy(record);
+      return {
+        packageId: record.id,
+        appId: record.app?.id || "",
+        version: record.version,
+        trusted: Boolean(policy.trust.trusted),
+        signatureStatus: policy.trust.signatureStatus,
+        warningCount: policy.warnings.length,
+        enforcementCount: policy.enforcement.length,
+        compiledAt: policy.compiledAt,
+        policy,
+      };
+    });
+    return {
+      service: "dindbos-policy",
+      packageCount: packages.length,
+      updatedAt: new Date().toISOString(),
+      packages,
+    };
+  }
+
+  audit(packageId = "") {
+    const records = packageId ? [this.info(packageId)].filter(Boolean) : this.list();
+    if (packageId && !records.length) throw new Error(`pkg: ${packageId}: package not installed`);
+    const packages = records.map((record) => {
+      const policy = compilePackagePolicy(record);
+      const strict = strictNamespaceReport(this.os, record, { source: "installed" });
+      const trustOk = Boolean(record.trust?.trusted ?? true);
+      const checks = [
+        { id: "compiled-policy", status: policy.packageId === record.id ? "pass" : "fail", detail: policy.id },
+        { id: "strict-namespace", status: strict.strict ? "pass" : "fail", detail: strict.checks.filter((check) => check.status === "fail").map((check) => check.id).join(",") || "ok" },
+        { id: "trust-state", status: trustOk ? "pass" : "fail", detail: policy.trust.signatureStatus || policy.trust.source },
+        { id: "deny-raw-runtime", status: policy.proofs.rawRuntime.status === "denied" ? "pass" : "fail", detail: policy.proofs.rawRuntime.reason },
+        { id: "deny-undeclared-import", status: policy.proofs.undeclaredImport.status === "denied" ? "pass" : "fail", detail: policy.proofs.undeclaredImport.reason },
+        { id: "deny-dependency-view-read", status: policy.proofs.dependencyViewRead.status === "denied" ? "pass" : "fail", detail: policy.proofs.dependencyViewRead.reason },
+        { id: "deny-device-access", status: policy.proofs.deviceAccess.status === "denied" ? "pass" : "fail", detail: policy.proofs.deviceAccess.reason },
+      ];
+      const ok = checks.every((check) => check.status === "pass");
+      return {
+        packageId: record.id,
+        appId: record.app?.id || "",
+        version: record.version,
+        ok,
+        trusted: trustOk,
+        signatureStatus: policy.trust.signatureStatus,
+        strict: strict.strict,
+        warningCount: policy.warnings.length,
+        warnings: [...policy.warnings],
+        checks,
+        namespace: strict,
+        policy,
+      };
+    });
+    return {
+      ok: packages.every((entry) => entry.ok),
+      packageCount: packages.length,
+      failed: packages.filter((entry) => !entry.ok).length,
+      packages,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
   dependencyView(packageId) {
     const record = this.info(packageId);
     if (!record) throw new Error(`pkg: ${packageId}: package not installed`);
@@ -657,6 +730,7 @@ export class PackageManager {
         runtime: "nodecompat-cli",
         sandbox: cloneJson(record.sandbox || {}),
         namespace: cloneJson(record.namespace || {}),
+        policy: cloneJson(record.policy || compilePackagePolicy(record)),
         capabilities: unique([...(record.app.capabilities || []), "node.execute"]),
         fileSystem: cloneJson(record.app.fileSystem || { read: [record.installPath], write: [] }),
       },
@@ -726,9 +800,11 @@ export class PackageManager {
     record.dependencies.npm[dependency.name] = dependency;
     record.namespace = record.namespace || packageNamespace(record.id, record.app.id, record.installPath, {}, record.dependencies);
     record.namespace.dependencyAllowlist = Object.keys(record.dependencies.npm || {});
+    record.policy = compilePackagePolicy(record);
     this.writeNpmDependencyRecords(record);
     this.writePackageRecord(record);
     this.registerPackageApp(record);
+    this.writePolicyProcfs();
     return dependency;
   }
 
@@ -819,6 +895,7 @@ export class PackageManager {
         this.os.unregisterApp(record.app.id);
         this.emitPackageLifecycle("uninstall-cleanup", record, { cleanup });
         this.emitPackageLifecycle("uninstall", record, { cleanup });
+        this.writePolicyProcfs();
         this.emitSessionPackageOperation("remove", record, "complete");
         return record;
       } catch (error) {
@@ -855,9 +932,11 @@ export class PackageManager {
 
   registerInstalledPackages() {
     this.list().forEach((record) => {
+      record.policy = compilePackagePolicy(record);
       this.registerPackageApp(record);
       this.registerPackageServices(record);
     });
+    this.writePolicyProcfs();
   }
 
   runPackageTransaction(record, operation, install) {
@@ -1005,7 +1084,7 @@ export class PackageManager {
     const sandbox = normalizePackageSandbox(manifest.sandbox || manifest.namespace || {});
     const cli = normalizePackageCli(manifest.cli || app.cli || manifest.bin || app.bin || {});
     const services = normalizePackageServices(manifest.services || app.services || [], id, installPath, fileSystem);
-    return {
+    const record = {
       id,
       name,
       version: String(manifest.version || app.version || "0.1.0"),
@@ -1046,6 +1125,8 @@ export class PackageManager {
         },
       },
     };
+    record.policy = compilePackagePolicy(record);
+    return record;
   }
 
   ensurePackageRoots() {
@@ -1518,6 +1599,7 @@ export class PackageManager {
     const previousNamespaceObjectId = record.namespace?.objectId || "";
     const previousNamespaceHandleId = record.namespace?.handleId || "";
     this.registerPackageNamespaceObject(record);
+    record.policy = compilePackagePolicy(record);
     if (
       record.namespace
       && (record.namespace.objectId !== previousNamespaceObjectId || record.namespace.handleId !== previousNamespaceHandleId)
@@ -1545,6 +1627,7 @@ export class PackageManager {
         container: packageProcessContainer(record),
         namespace: cloneJson(record.namespace || {}),
         secrets: cloneJson(record.secrets || []),
+        policy: cloneJson(record.policy || {}),
         capabilities: record.app.capabilities,
         fileSystem: record.app.fileSystem,
       },
@@ -1587,6 +1670,11 @@ export class PackageManager {
       this.runPackageActivationPhase(activation, record, "launcher", () => this.installLauncher(record));
       this.runPackageActivationPhase(activation, record, "app-registry", () => this.registerPackageApp(record));
       this.runPackageActivationPhase(activation, record, "services", () => this.registerPackageServices(record, previous));
+      this.runPackageActivationPhase(activation, record, "policy", () => {
+        record.policy = compilePackagePolicy(record);
+        this.writePackageRecord(record);
+        this.writePolicyProcfs();
+      });
       activation.status = "complete";
       activation.completedAt = new Date().toISOString();
       this.emitPackageActivation("complete", record, activation);
@@ -1654,6 +1742,8 @@ export class PackageManager {
 
   writePackageRecord(record) {
     const { stagingPath, ...persistedRecord } = record;
+    persistedRecord.policy = compilePackagePolicy(record);
+    record.policy = persistedRecord.policy;
     this.os.fs.atomicWriteOrCreateFile(
       this.packageRecordPath(record.id),
       `${JSON.stringify(persistedRecord, null, 2)}\n`,
@@ -1661,6 +1751,52 @@ export class PackageManager {
       { mime: "application/json", owner: "root", group: "root", permissions: "-rw-r--r--" },
       this.system,
     );
+  }
+
+  writePolicyProcfs() {
+    if (!this.os.fs.exists("/proc")) return;
+    this.ensureDirectoryPath(POLICY_PROC_ROOT, { owner: "root", group: "root", permissions: "dr-xr-xr-x" });
+    const records = this.list();
+    const policies = records.map((record) => compilePackagePolicy(record));
+    const livePolicyFiles = new Set(policies.map((policy) => `${policy.packageId}.json`));
+    this.os.fs.list(POLICY_PROC_ROOT, "/", this.system)
+      .filter((node) => node.type === "file" && node.name.endsWith(".json") && node.name !== "packages.json" && !livePolicyFiles.has(node.name))
+      .forEach((node) => this.os.fs.remove(`${POLICY_PROC_ROOT}/${node.name}`, "/", {}, this.system));
+    const payload = {
+      service: "dindbos-policy",
+      packageCount: policies.length,
+      updatedAt: new Date().toISOString(),
+      packages: policies.map((policy) => ({
+        packageId: policy.packageId,
+        appId: policy.appId,
+        version: policy.version,
+        trusted: policy.trust.trusted,
+        signatureStatus: policy.trust.signatureStatus,
+        warningCount: policy.warnings.length,
+        enforcementCount: policy.enforcement.length,
+        path: `${POLICY_PROC_ROOT}/${policy.packageId}.json`,
+      })),
+    };
+    this.os.fs.writeOrCreateFile(`${POLICY_PROC_ROOT}/packages.json`, `${JSON.stringify(payload, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+    }, this.system);
+    this.os.fs.writeOrCreateFile(`${POLICY_PROC_ROOT}/packages`, `${formatPolicyProcSummary(payload)}\n`, "/", {
+      mime: "text/plain",
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+    }, this.system);
+    policies.forEach((policy) => {
+      this.os.fs.writeOrCreateFile(`${POLICY_PROC_ROOT}/${policy.packageId}.json`, `${JSON.stringify(policy, null, 2)}\n`, "/", {
+        mime: "application/json",
+        owner: "root",
+        group: "root",
+        permissions: "-r--r--r--",
+      }, this.system);
+    });
   }
 
   readPackageRecord(path) {
@@ -1769,6 +1905,7 @@ async function mountPackageWasmEntrypoint(content, runtime, record, windowApi, m
         version: activeRecord.version,
         entry: activeRecord.app.entryPath,
         namespace: cloneJson(activeRecord.namespace || {}),
+        policy: cloneJson(activeRecord.policy || compilePackagePolicy(activeRecord)),
         capabilities: activeRecord.app.capabilities,
         fileSystem: activeRecord.app.fileSystem,
       },
@@ -2442,6 +2579,7 @@ function packagePublicRecord(record) {
     files: [...(record.files || [])],
     lifecycle: cloneJson(record.lifecycle || {}),
     trust: cloneJson(record.trust || {}),
+    policy: cloneJson(record.policy || compilePackagePolicy(record)),
     sandbox: cloneJson(record.sandbox || {}),
     cli: cloneJson(record.cli || {}),
     services: cloneJson(record.services || []),
@@ -2591,6 +2729,159 @@ function packageRelativePathStaysInside(os, record, relativePath) {
 
 function sameList(left = [], right = []) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function compilePackagePolicy(record = {}) {
+  const namespace = record.namespace || {};
+  const app = record.app || {};
+  const trust = record.trust || {};
+  const dependencyView = packageDependencyView(record);
+  const readScopes = unique(app.fileSystem?.read || [record.installPath].filter(Boolean)).sort();
+  const writeScopes = unique(app.fileSystem?.write || []).sort();
+  const capabilities = unique(app.capabilities || []).sort();
+  const devices = unique(namespace.deviceGrants || []).sort();
+  const hosts = unique(namespace.networkHosts || []).sort();
+  const ipcEndpoints = unique(namespace.ipcEndpoints || []).sort();
+  const warnings = packagePolicyWarnings(record, { readScopes, writeScopes, hosts, trust });
+  const container = packageProcessContainer(record);
+  const declaredNpm = Object.keys(record.dependencies?.npm || {}).sort();
+  return {
+    id: `package:${record.id}:policy:v1`,
+    version: record.version || "",
+    packageId: record.id || "",
+    appId: app.id || "",
+    compiledAt: new Date().toISOString(),
+    sourcePath: record.sourcePath || "",
+    runtime: {
+      appRuntime: app.runtime || "javascript",
+      containerMode: packageContainerMode(record),
+      rawRuntimeGlobal: container ? Boolean(container.rawRuntimeGlobal) : true,
+      compatibilityTier: record.compatibility?.tier || "A",
+      compatibilityStatus: record.compatibility?.status || "supported",
+      apiVersion: record.api?.targetVersion || record.api?.negotiatedVersion || 1,
+      apiStatus: record.api?.status || "matched",
+    },
+    trust: {
+      source: trust.source || "local",
+      registry: trust.registry || "",
+      trusted: Boolean(trust.trusted ?? true),
+      signatureStatus: trust.signature?.status || (trust.source === "remote" ? "missing" : "local"),
+      publisherId: trust.signature?.publisherId || "",
+      keyId: trust.signature?.keyId || "",
+      warnings: [...(trust.warnings || [])],
+    },
+    capabilities,
+    filesystem: {
+      read: readScopes,
+      write: writeScopes,
+      packageRoot: namespace.packageRoot || record.installPath || "",
+      stateRoot: namespace.stateRoot || "",
+      cacheRoot: namespace.cacheRoot || "",
+      tempRoot: namespace.tempRoot || "",
+      dependencyRoot: namespace.dependencyRoot || "",
+      rootPolicy: namespace.rootPolicy || "readonly-package-image",
+      statePolicy: namespace.statePolicy || "private",
+      cachePolicy: namespace.cachePolicy || "private-evictable",
+      tempPolicy: namespace.tempPolicy || "private-runtime",
+    },
+    devices,
+    network: {
+      hosts,
+      default: hosts.length ? "deny-unlisted-hosts" : "deny-network-without-grant",
+    },
+    ipc: {
+      endpoints: ipcEndpoints,
+    },
+    dependencies: {
+      npm: declaredNpm,
+      allowlist: [...dependencyView.allowedPackages],
+      allowedPaths: [...dependencyView.allowedPaths],
+    },
+    process: {
+      processGroup: namespace.processGroup || `package:${record.id}`,
+      childProcessLimit: Number(namespace.childProcessLimit || 0),
+      objectId: namespace.objectId || "",
+      handleId: namespace.handleId || "",
+    },
+    secrets: [...(record.secrets || [])].map((secret) => ({
+      name: secret.name,
+      kind: secret.kind,
+      required: Boolean(secret.required),
+    })),
+    services: [...(record.services || [])].map((service) => ({
+      id: service.id,
+      lifecyclePolicy: service.lifecyclePolicy,
+      capabilities: unique(service.capabilities || []).sort(),
+    })),
+    enforcement: packagePolicyEnforcement(record, { capabilities, readScopes, writeScopes, hosts, devices, ipcEndpoints, declaredNpm, container }),
+    warnings,
+    proofs: packagePolicyProofs(record, { capabilities, devices, declaredNpm, container }),
+  };
+}
+
+function packagePolicyWarnings(record, context = {}) {
+  const warnings = [...(context.trust?.warnings || [])];
+  if (context.trust && context.trust.trusted === false) warnings.push("package source is not trusted");
+  if ((context.readScopes || []).some((path) => path === "/" || path === "/opt")) warnings.push("broad read scope requested");
+  if ((context.writeScopes || []).some((path) => path === "/" || path === "/opt" || path === record.installPath)) warnings.push("broad or immutable write scope requested");
+  if ((context.hosts || []).some((host) => host === "*" || host === "0.0.0.0/0")) warnings.push("wildcard network host grant requested");
+  if (!record.namespace?.handleId) warnings.push("package namespace handle is not active yet");
+  return unique(warnings).sort();
+}
+
+function packagePolicyEnforcement(record, context = {}) {
+  return unique([
+    "capability-gate",
+    "vfs-scope",
+    "namespace-handle",
+    "process-group",
+    "signature-trust",
+    "dependency-view",
+    context.hosts.length ? "network-host-allowlist" : "network-deny-by-default",
+    context.devices.length ? "device-grant-allowlist" : "device-deny-by-default",
+    context.ipcEndpoints.length ? "ipc-endpoint-allowlist" : "",
+    context.container ? "sandboxed-container-bridge" : "same-realm-policy-facade",
+    (record.services || []).length ? "service-lifecycle-policy" : "",
+  ]).sort();
+}
+
+function packagePolicyProofs(record, context = {}) {
+  const missingDependency = "dindbos-policy-proof-missing";
+  const missingDevice = "browser.raw-device";
+  return {
+    rawRuntime: {
+      status: "denied",
+      reason: context.container ? "sandboxed iframe has no raw runtime global" : "same-realm package receives policy-scoped SDK facades",
+    },
+    undeclaredImport: {
+      status: context.declaredNpm.includes(missingDependency) ? "allowed" : "denied",
+      target: missingDependency,
+      reason: "npm facade rejects packages absent from manifest dependency allowlist",
+    },
+    dependencyViewRead: {
+      status: "denied",
+      target: `${record.installPath || ""}/node_modules/${missingDependency}`,
+      reason: "dependency view exposes only declared package paths",
+    },
+    deviceAccess: {
+      status: context.devices.includes(missingDevice) ? "allowed" : "denied",
+      target: missingDevice,
+      reason: "device brokers require explicit manifest grants",
+    },
+  };
+}
+
+function formatPolicyProcSummary(payload = {}) {
+  const header = `service=${payload.service || "dindbos-policy"} packages=${payload.packageCount || 0} updatedAt=${payload.updatedAt || "-"}`;
+  const rows = (payload.packages || []).map((entry) => [
+    entry.packageId,
+    `app=${entry.appId || "-"}`,
+    `version=${entry.version || "-"}`,
+    `trusted=${Boolean(entry.trusted)}`,
+    `signature=${entry.signatureStatus || "-"}`,
+    `warnings=${entry.warningCount || 0}`,
+  ].join(" "));
+  return [header, ...rows].join("\n");
 }
 
 function packageNamespace(packageId, appId, installPath, sandbox = {}, dependencies = {}) {
