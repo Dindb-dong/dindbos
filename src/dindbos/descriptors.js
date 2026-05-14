@@ -880,7 +880,7 @@ function normalizeDescriptorRights(rights, descriptor) {
 }
 
 function isTtyDescriptor(descriptor) {
-  return descriptor.path === "/dev/tty" || ["stdin", "stdout", "stderr"].includes(descriptor.path);
+  return Boolean(descriptor.tty) || descriptor.path === "/dev/tty" || ["stdin", "stdout", "stderr"].includes(descriptor.path);
 }
 
 function ttySize(descriptor) {

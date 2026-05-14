@@ -56,6 +56,7 @@ export class ProcessManager {
       jobId: 0,
       processGroupId: Number(context.processGroupId || parent?.processGroupId || 0),
       foreground: context.foreground !== false,
+      ptySessionId: String(context.ptySessionId || parent?.ptySessionId || ""),
       container,
       context,
       runtime: context.runtime || app.manifest?.runtime || "javascript",
@@ -78,6 +79,8 @@ export class ProcessManager {
       lifecycleLastAt: "",
       lifecycleLastResult: "",
       lifecycleLastError: "",
+      signalDeliveries: [],
+      ptyEvents: [],
       objectId: "",
     };
     process.processGroupId = process.processGroupId || process.pid;
@@ -154,8 +157,9 @@ export class ProcessManager {
     const process = this.processes.get(Number(pid));
     if (!process) throw new Error(`signal: ${pid}: no such process`);
     const normalized = normalizeSignal(signal);
+    const delivery = this.deliverSignal(process, normalized);
     if (normalized === "SIGTERM" || normalized === "SIGKILL" || normalized === "SIGINT") {
-      return { signal: normalized, process: this.kill(process.pid, `signal-${normalized.toLowerCase()}`) };
+      return { signal: normalized, delivery, process: this.kill(process.pid, `signal-${normalized.toLowerCase()}`) };
     }
     if (normalized === "SIGSTOP" || normalized === "SIGTSTP") {
       process.state = "stopped";
@@ -169,7 +173,33 @@ export class ProcessManager {
     this.syncProcessObject(process);
     this.syncProcfs();
     this.os.bus.emit("process:signal", { process, signal: normalized });
-    return { signal: normalized, process: { ...this.withRuntimeMetrics(process) } };
+    return { signal: normalized, delivery, process: { ...this.withRuntimeMetrics(process) } };
+  }
+
+  deliverSignal(process, signal) {
+    const delivery = {
+      signal,
+      pid: process.pid,
+      appId: process.appId,
+      runtime: process.runtime || "",
+      executionBackend: process.executionBackend || "",
+      executorKind: process.executorKind || "",
+      ptySessionId: process.ptySessionId || "",
+      deliveredAt: new Date().toISOString(),
+      targets: [
+        process.executionBackend === "worker" || process.executorKind ? "executor" : "",
+        process.runtime === "nodecompat-cli" || process.image?.kind === "nodecompat-cli" ? "nodecompat" : "",
+        process.runtime === "wasm" || process.image?.kind === "wasm" ? "wasm" : "",
+        process.ptySessionId ? "pty" : "",
+        "job",
+      ].filter(Boolean),
+    };
+    process.signalDeliveries = [...(process.signalDeliveries || []), delivery].slice(-50);
+    if (process.ptySessionId) {
+      const ptyEvent = this.os.pty?.signalSession?.(process.ptySessionId, { signal, pid: process.pid, appId: process.appId });
+      if (ptyEvent) process.ptyEvents = [...(process.ptyEvents || []), ptyEvent].slice(-50);
+    }
+    return { ...delivery, targets: [...delivery.targets] };
   }
 
   foreground(pid) {
@@ -584,6 +614,9 @@ export class ProcessManager {
       lifecycleLastResult: process.lifecycleLastResult || "",
       lifecycleLastError: process.lifecycleLastError || "",
       lifecycleCallbackRuns: process.lifecycleCallbackRuns || [],
+      ptySessionId: process.ptySessionId || "",
+      signalDeliveries: process.signalDeliveries || [],
+      ptyEvents: process.ptyEvents || [],
     })), null, 2);
     this.os.fs.writeOrCreateFile("/proc/processes.json", `${payload}\n`, "/", {
       mime: "application/json",
@@ -680,6 +713,27 @@ export class ProcessManager {
       permissions: "-rw-r--r--",
     }, system);
     this.os.fs.writeOrCreateFile(`${path}/container.json`, `${JSON.stringify(process.container || {}, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile(`${path}/signals.json`, `${JSON.stringify({
+      pid: process.pid,
+      appId: process.appId,
+      signalDeliveries: process.signalDeliveries || [],
+    }, null, 2)}\n`, "/", {
+      mime: "application/json",
+      owner: "root",
+      group: "root",
+      permissions: "-rw-r--r--",
+    }, system);
+    this.os.fs.writeOrCreateFile(`${path}/pty.json`, `${JSON.stringify({
+      pid: process.pid,
+      ptySessionId: process.ptySessionId || "",
+      session: process.ptySessionId ? this.os.pty?.getSession?.(process.ptySessionId) || null : null,
+      events: process.ptyEvents || [],
+    }, null, 2)}\n`, "/", {
       mime: "application/json",
       owner: "root",
       group: "root",

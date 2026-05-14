@@ -4919,6 +4919,7 @@ function createRuntimePtyManager() {
         rows: boundedInteger(options.rows, 24, 1, 1000),
         input: String(options.input || ""),
         output: String(options.output || ""),
+        events: [],
         createdAt: now,
         updatedAt: now,
       };
@@ -4946,7 +4947,32 @@ function createRuntimePtyManager() {
       session.columns = boundedInteger(size.columns, session.columns, 1, 1000);
       session.rows = boundedInteger(size.rows, session.rows, 1, 1000);
       session.updatedAt = new Date().toISOString();
-      return { ...session };
+      session.events.push({ type: "resize", columns: session.columns, rows: session.rows, at: session.updatedAt });
+      session.events = session.events.slice(-50);
+      return { ...session, events: [...session.events] };
+    },
+    signalSession(id, event = {}) {
+      const session = sessions.get(String(id || ""));
+      if (!session) return null;
+      const record = {
+        type: "signal",
+        signal: String(event.signal || ""),
+        pid: Number(event.pid || 0),
+        appId: String(event.appId || ""),
+        at: new Date().toISOString(),
+      };
+      session.events.push(record);
+      session.events = session.events.slice(-50);
+      session.updatedAt = record.at;
+      return { ...record };
+    },
+    events(id) {
+      return [...(sessions.get(String(id || ""))?.events || [])];
+    },
+    resizeEvent(id, size = {}) {
+      const session = this.resizeSession(id, size);
+      if (!session) return null;
+      return session.events.at(-1) || null;
     },
     closeSession(id) {
       return sessions.delete(String(id || ""));
