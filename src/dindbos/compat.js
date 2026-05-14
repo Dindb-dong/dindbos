@@ -41,6 +41,7 @@ export const CURRENT_DINDBOS_API_VERSION = Math.max(...DINDBOS_API_VERSIONS);
 
 export function compatibilitySnapshot(runtime = {}) {
   const browser = browserCapabilities();
+  const isolation = isolationSnapshot(browser);
   const storageStatus = safeRead(() => runtime.storage?.status?.(), {});
   const storageBucketPolicy = safeRead(() => runtime.storageBucketPolicy?.(), null);
   const localMounts = safeRead(() => runtime.localMounts?.status?.(), []);
@@ -61,6 +62,7 @@ export function compatibilitySnapshot(runtime = {}) {
     },
     tiers,
     browser,
+    isolation,
     backgroundMaintenance,
     storage: {
       backend: storageStatus.backend || "memory",
@@ -80,6 +82,73 @@ export function compatibilitySnapshot(runtime = {}) {
       "native binary execution without an explicit helper",
       "unrestricted raw sockets",
     ],
+  };
+}
+
+export function isolationSnapshot(browser = browserCapabilities()) {
+  const crossOriginIsolated = Boolean(globalThis.crossOriginIsolated);
+  const sharedArrayBuffer = typeof globalThis.SharedArrayBuffer === "function";
+  const atomics = typeof globalThis.Atomics === "object";
+  const sharedMemoryAvailable = crossOriginIsolated && sharedArrayBuffer && atomics;
+  const missing = [
+    crossOriginIsolated ? "" : "crossOriginIsolated=false",
+    sharedArrayBuffer ? "" : "SharedArrayBuffer unavailable",
+    atomics ? "" : "Atomics unavailable",
+    browser.workers ? "" : "Worker unavailable",
+    browser.webAssembly ? "" : "WebAssembly unavailable",
+  ].filter(Boolean);
+  return {
+    current: sharedMemoryAvailable ? "origin-isolated" : "degraded-shared-memory",
+    crossOriginIsolated,
+    sharedMemory: {
+      sharedArrayBuffer,
+      atomics,
+      available: sharedMemoryAvailable,
+      status: sharedMemoryAvailable ? "available" : "degraded",
+      decision: sharedMemoryAvailable
+        ? "shared-memory-enabled"
+        : "requires-coop-coep-and-browser-support",
+    },
+    deployment: {
+      requiredHeaders: {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp",
+        "Cross-Origin-Resource-Policy": "same-origin or explicit cross-origin for allowed assets",
+      },
+      alternatives: ["Cross-Origin-Embedder-Policy: credentialless for compatible third-party assets"],
+    },
+    profiles: [
+      {
+        id: "same-origin-open",
+        status: crossOriginIsolated ? "inactive" : "current",
+        coop: "unsafe-none",
+        coep: "unsafe-none",
+        corp: "not-enforced",
+        sharedMemory: "unavailable",
+      },
+      {
+        id: "origin-isolated",
+        status: sharedMemoryAvailable ? "current" : "requires-headers",
+        coop: "same-origin",
+        coep: "require-corp",
+        corp: "same-origin or explicit cross-origin",
+        sharedMemory: sharedMemoryAvailable ? "available" : "blocked",
+      },
+      {
+        id: "degraded-shared-memory",
+        status: sharedMemoryAvailable ? "inactive" : "current",
+        reason: missing.join("; ") || "unknown",
+        fallback: "ArrayBuffer copy transfer and worker message ports",
+      },
+    ],
+    workerMemory: {
+      handlePrototype: true,
+      workerAvailable: Boolean(browser.workers),
+      status: sharedMemoryAvailable ? "shared" : "copy-fallback",
+      transfer: sharedMemoryAvailable ? "SharedArrayBuffer" : "ArrayBuffer copy fallback",
+      maxRegionBytes: 16 * 1024 * 1024,
+    },
+    degradedModes: missing,
   };
 }
 
@@ -156,7 +225,7 @@ function browserCapabilities() {
     opfs: Boolean(globalThis.navigator?.storage?.getDirectory),
     indexedDB: typeof globalThis.indexedDB !== "undefined",
     cacheApi: typeof globalThis.caches !== "undefined",
-      fileSystemAccess: typeof globalThis.showDirectoryPicker === "function",
+    fileSystemAccess: typeof globalThis.showDirectoryPicker === "function",
     serviceWorker: Boolean(globalThis.navigator?.serviceWorker),
     periodicSync: Boolean(globalThis.PeriodicSyncManager || globalThis.ServiceWorkerRegistration?.prototype?.periodicSync),
     webCrypto: Boolean(globalThis.crypto?.subtle),

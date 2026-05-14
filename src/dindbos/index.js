@@ -1,6 +1,6 @@
 import { AppRegistry } from "./app-registry.js?v=20260422-browserd";
 import { AppSandbox } from "./app-sandbox.js?v=20260422-browserd";
-import { compatibilitySnapshot } from "./compat.js?v=20260422-browserd";
+import { compatibilitySnapshot, isolationSnapshot } from "./compat.js?v=20260422-browserd";
 import { DescriptorManager } from "./descriptors.js?v=20260422-browserd";
 import { RuntimeCacheStore } from "./cache-store.js?v=20260422-browserd";
 import { DesktopShell } from "./desktop-shell.js?v=20260422-browserd";
@@ -218,6 +218,7 @@ export class DindbOS {
     };
     this.lastStorageRepair = null;
     this.ipcEndpoints = new Map();
+    this.workerMemoryRegions = new Map();
     this.virtualMounts = new Map();
     this.overlayMounts = new Map();
     this.privacyLedger = [];
@@ -799,6 +800,7 @@ export class DindbOS {
     this.writeMountTableProcfs("disk-policy-roots");
     this.writeBrowserDeviceProcfs("disk-policy-roots");
     this.writeStorageKernelProcfs("disk-policy-roots");
+    this.writeIsolationProcfs("disk-policy-roots");
     this.ensureUserGroupDatabase();
     this.ensureSessionHome();
     this.writeSessionStatus();
@@ -3002,6 +3004,95 @@ export class DindbOS {
     return compatibilitySnapshot(this);
   }
 
+  isolationStatus() {
+    const status = isolationSnapshot(this.compatibilitySnapshot().browser || {});
+    return {
+      ...status,
+      memoryRegions: this.workerMemoryRegionStatus(),
+    };
+  }
+
+  createWorkerMemoryRegion(options = {}) {
+    const size = Number(options.size || options.bytes || 0);
+    if (!Number.isInteger(size) || size <= 0) throw new Error("memory-region: size must be a positive integer");
+    const isolation = this.isolationStatus();
+    const maxRegionBytes = Number(isolation.workerMemory?.maxRegionBytes || 16 * 1024 * 1024);
+    if (size > maxRegionBytes) throw new Error(`memory-region: size ${size} exceeds limit ${maxRegionBytes}`);
+    const shared = Boolean(isolation.sharedMemory?.available);
+    if (!shared && options.allowFallback === false) throw new Error("memory-region: SharedArrayBuffer requires cross-origin isolation");
+    const buffer = shared ? new SharedArrayBuffer(size) : new ArrayBuffer(size);
+    const id = String(options.id || `wmr-${Date.now().toString(36)}-${this.workerMemoryRegions.size + 1}`);
+    const object = this.objects?.register?.("memory-region", {
+      ref: `memory-region:${id}`,
+      name: String(options.name || id),
+      ownerPid: Number(options.ownerPid || 0),
+      user: this.session.user,
+      rights: ["read", "write", "transfer"],
+      metadata: {
+        bytes: size,
+        shared,
+        backing: shared ? "SharedArrayBuffer" : "ArrayBuffer",
+        isolation: isolation.current,
+        degraded: !shared,
+      },
+    });
+    const handle = object?.id ? this.objects.createHandle(object.id, {
+      ownerPid: Number(options.ownerPid || 0),
+      user: this.session.user,
+      groups: this.session.groups,
+      rights: ["read", "write", "transfer"],
+      transferPolicy: "duplicate",
+      metadata: {
+        regionId: id,
+        bytes: size,
+        shared,
+      },
+    }) : null;
+    const record = {
+      id,
+      objectId: object?.id || "",
+      handleId: handle?.id || "",
+      bytes: size,
+      shared,
+      backing: shared ? "SharedArrayBuffer" : "ArrayBuffer",
+      transfer: shared ? "shared-memory" : "copy-fallback",
+      degraded: !shared,
+      isolation: isolation.current,
+      createdAt: new Date().toISOString(),
+      buffer,
+    };
+    this.workerMemoryRegions.set(id, record);
+    this.writeIsolationProcfs("memory-region-create");
+    return { ...record };
+  }
+
+  workerMemoryRegionStatus() {
+    return [...this.workerMemoryRegions.values()].map(({ buffer, ...record }) => ({ ...record }));
+  }
+
+  writeIsolationProcfs(reason = "isolation") {
+    if (!this.fs.exists("/proc")) return this.isolationStatus();
+    const system = this.permissions.systemPrincipal();
+    const status = {
+      ...this.isolationStatus(),
+      reason: String(reason || "isolation"),
+      updatedAt: new Date().toISOString(),
+    };
+    this.fs.writeOrCreateFile("/proc/isolation.json", `${JSON.stringify(status, null, 2)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "application/json",
+    }, system);
+    this.fs.writeOrCreateFile("/proc/isolation", `${formatIsolationStatus(status)}\n`, "/", {
+      owner: "root",
+      group: "root",
+      permissions: "-r--r--r--",
+      mime: "text/plain",
+    }, system);
+    return status;
+  }
+
   syscall(name, args = {}, context = {}) {
     const principal = context.principal || this.permissions.principal({ user: this.session.user, groups: this.session.groups });
     return this.syscalls.call(name, args, { ...context, principal });
@@ -4052,6 +4143,19 @@ function formatBrowserCapabilities(capabilities = []) {
       capability.device,
       capability.api,
     ].join(" ")),
+  ].join("\n");
+}
+
+function formatIsolationStatus(status = {}) {
+  const shared = status.sharedMemory || {};
+  const worker = status.workerMemory || {};
+  const regions = status.memoryRegions || [];
+  return [
+    `profile=${status.current || "unknown"} crossOriginIsolated=${Boolean(status.crossOriginIsolated)}`,
+    `sharedMemory status=${shared.status || "unknown"} available=${Boolean(shared.available)} sab=${Boolean(shared.sharedArrayBuffer)} atomics=${Boolean(shared.atomics)} decision=${shared.decision || "-"}`,
+    `headers coop=${status.deployment?.requiredHeaders?.["Cross-Origin-Opener-Policy"] || "-"} coep=${status.deployment?.requiredHeaders?.["Cross-Origin-Embedder-Policy"] || "-"} corp=${status.deployment?.requiredHeaders?.["Cross-Origin-Resource-Policy"] || "-"}`,
+    `workerMemory status=${worker.status || "unknown"} transfer=${worker.transfer || "-"} maxRegionBytes=${Number(worker.maxRegionBytes || 0)} regions=${regions.length}`,
+    `degraded=${status.degradedModes?.join("; ") || "-"}`,
   ].join("\n");
 }
 
