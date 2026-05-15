@@ -381,6 +381,15 @@ button {
   pointer-events: auto;
   transition: transform 160ms ease, opacity 160ms ease, border-color 160ms ease;
   transform-origin: bottom center;
+  -webkit-user-drag: none;
+}
+
+/* OS managed desktop drag surface */
+.dos-shell,
+.dos-desktop,
+.dos-dock,
+.dos-menubar {
+  -webkit-user-drag: none;
 }
 
 /* Minimizing window frame */

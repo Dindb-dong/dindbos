@@ -58,11 +58,14 @@ export class WindowManager {
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
     this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
     this.boundHandleGlobalPointerDown = (event) => this.routeInputEvent("pointerdown", event);
+    this.boundHandleContextMenu = (event) => this.handleBrowserDefaultEvent("contextmenu", event);
+    this.boundHandleSelectStart = (event) => this.handleBrowserDefaultEvent("selectstart", event);
     this.boundHandleCompositionStart = (event) => this.routeInputEvent("compositionstart", event);
     this.boundHandleCompositionUpdate = (event) => this.routeInputEvent("compositionupdate", event);
     this.boundHandleCompositionEnd = (event) => this.routeInputEvent("compositionend", event);
-    this.boundHandleDragStart = (event) => this.routeInputEvent("dragstart", event);
-    this.boundHandleDrop = (event) => this.routeInputEvent("drop", event);
+    this.boundHandleDragStart = (event) => this.handleBrowserDefaultEvent("dragstart", event);
+    this.boundHandleDragOver = (event) => this.handleBrowserDefaultEvent("dragover", event);
+    this.boundHandleDrop = (event) => this.handleBrowserDefaultEvent("drop", event);
   }
 
   mount(layer, taskStrip) {
@@ -71,11 +74,14 @@ export class WindowManager {
     globalThis.window?.addEventListener?.("resize", this.boundKeepWindowsInViewport);
     globalThis.window?.addEventListener?.("keydown", this.boundHandleGlobalKeyDown);
     globalThis.window?.addEventListener?.("pointerdown", this.boundHandleGlobalPointerDown);
+    globalThis.window?.addEventListener?.("contextmenu", this.boundHandleContextMenu, { capture: true });
+    globalThis.window?.addEventListener?.("selectstart", this.boundHandleSelectStart, { capture: true });
     globalThis.window?.addEventListener?.("compositionstart", this.boundHandleCompositionStart);
     globalThis.window?.addEventListener?.("compositionupdate", this.boundHandleCompositionUpdate);
     globalThis.window?.addEventListener?.("compositionend", this.boundHandleCompositionEnd);
-    globalThis.window?.addEventListener?.("dragstart", this.boundHandleDragStart);
-    globalThis.window?.addEventListener?.("drop", this.boundHandleDrop);
+    globalThis.window?.addEventListener?.("dragstart", this.boundHandleDragStart, { capture: true });
+    globalThis.window?.addEventListener?.("dragover", this.boundHandleDragOver, { capture: true });
+    globalThis.window?.addEventListener?.("drop", this.boundHandleDrop, { capture: true });
     this.ensureTrustedSurfacesOnTop();
     this.writeCompositorProcfs("mount");
   }
@@ -438,7 +444,7 @@ export class WindowManager {
   }
 
   routeInputEvent(type, event = {}, options = {}) {
-    const targetWindowId = String(options.targetWindowId || this.activeWindowId || "");
+    const targetWindowId = String(options.targetWindowId || windowIdFromEventTarget(event.target) || this.activeWindowId || "");
     const task = this.windows.get(targetWindowId);
     const route = {
       type: normalizeInputRouteType(type),
@@ -457,6 +463,15 @@ export class WindowManager {
     this.os.bus?.emit?.("compositor:input", { ...route, input: this.lastInputEvent ? { ...this.lastInputEvent } : null });
     this.writeCompositorProcfs("input-route");
     return { ...route };
+  }
+
+  handleBrowserDefaultEvent(type, event = {}) {
+    const route = this.routeInputEvent(type, event, { source: "os-input-priority" });
+    const browserDefaultPrevented = shouldPreventBrowserDefault(route.type, event, route);
+    if (browserDefaultPrevented) event.preventDefault?.();
+    this.inputRouter.lastRoute = { ...this.inputRouter.lastRoute, browserDefaultPrevented };
+    this.writeCompositorProcfs(browserDefaultPrevented ? "input-priority-claimed" : "input-priority-passthrough");
+    return { ...route, browserDefaultPrevented };
   }
 
   routeShortcutEvent(event = {}) {
@@ -1230,9 +1245,27 @@ function newestWindowId(windows) {
   return [...windows.keys()].at(-1) || "";
 }
 
+function windowIdFromEventTarget(target) {
+  return String(target?.closest?.("[data-window-id]")?.dataset?.windowId || target?.dataset?.windowId || "");
+}
+
+function shouldPreventBrowserDefault(type, event = {}, route = {}) {
+  const target = event.target || null;
+  const osSurface = Boolean(route.targetWindowId || target?.closest?.(".dos-shell, .dos-window, .dos-desktop, .dos-dock, .dos-menubar"));
+  if (!osSurface) return false;
+  if (type === "contextmenu" || type === "dragover" || type === "drop") return true;
+  if (type === "selectstart") return !isTextEntryEventTarget(target);
+  if (type === "dragstart") return !isOsManagedDragTarget(target);
+  return false;
+}
+
+function isOsManagedDragTarget(target) {
+  return Boolean(target?.closest?.("[data-path], [data-drop-path], [draggable='true'], .dos-window-titlebar, [data-resize]"));
+}
+
 function normalizeInputRouteType(type) {
   const value = String(type || "input").toLowerCase();
-  if (["pointerdown", "pointermove", "pointerup", "keydown", "keyup", "compositionstart", "compositionupdate", "compositionend", "dragstart", "dragover", "drop", "paste", "copy"].includes(value)) {
+  if (["pointerdown", "pointermove", "pointerup", "keydown", "keyup", "contextmenu", "selectstart", "compositionstart", "compositionupdate", "compositionend", "dragstart", "dragover", "drop", "paste", "copy"].includes(value)) {
     return value;
   }
   return "input";
