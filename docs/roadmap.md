@@ -75,17 +75,17 @@ The runtime completion baseline is closed. The next product step is packaging Di
 
 ## SDK Packaging Status
 
-Current cycle: PR 6, Framework Examples And Adapters.
+Current cycle: PR 7, Create-DindbOS CLI.
 
 Done in this cycle:
 
-- Added `dindbos/react` with `DindbOSProvider`, `useDindbOS`, and `DindbOSDesktop` lifecycle helpers.
-- Added vanilla Vite, React Vite, Next.js client-only, and Astro island examples under `examples/`.
-- Added `npm run smoke:sdk-frameworks` to pack the SDK tarball, install it into Vite examples, build them, and verify all framework examples import public package entrypoints.
+- Added `dindbos/create` and the `create-dindbos` package bin for generating a minimal host app.
+- Added a generated Vite template with seeded files, IndexedDB storage, a sample `Hello.app`, built-in apps, and origin-isolation header guidance.
+- Added `npm run smoke:create-dindbos` to pack the SDK, install the package into a temporary CLI host, run the generated CLI from `node_modules`, and build the generated app against the same tarball.
 
 Next cycle:
 
-- PR 7, Create-DindbOS CLI.
+- PR 8, Deployment Recipes And Isolation QA.
 
 ## 100% Completion Plan
 
