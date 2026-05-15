@@ -8,7 +8,7 @@ import {
   verify as verifyPayload,
 } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DindbOS, BOOT_PHASES } from "../src/dindbos/index.js";
@@ -20,6 +20,7 @@ const DEFAULT_OUTPUT_DIR = "dist/release-conformance";
 const BUILD_INPUT_ROOTS = ["package.json", "package-lock.json", "vite.config.js", "index.html", "public", "src"];
 const RELEASE_EVIDENCE_MATRIX_FILE = "dindbos-release-evidence-matrix.json";
 const DEPLOYMENT_RECIPES_FILE = "dindbos-deployment-recipes.json";
+const NPM_RELEASE_TRUST_FILE = "dindbos-npm-release-trust.json";
 const RELEASE_MANIFEST_FILE = "dindbos-release-manifest.json";
 const RELEASE_SIGNATURE_FILE = "dindbos-release-manifest.sig.json";
 const RELEASE_VERIFICATION_FILE = "dindbos-release-verification.json";
@@ -38,6 +39,7 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       "dindbos-conformance-evidence.json",
       "dindbos-secure-boot.json",
       DEPLOYMENT_RECIPES_FILE,
+      NPM_RELEASE_TRUST_FILE,
       RELEASE_EVIDENCE_MATRIX_FILE,
     ];
     os.addConformanceEvidence({
@@ -68,16 +70,18 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
     const secureBoot = os.writeSecureBootProcfs("release-artifact");
     const evidence = JSON.parse(os.fs.readFile("/proc/conformance-evidence.json"));
     const deploymentRecipes = createDeploymentRecipes({ generatedAt });
-    const releaseEvidenceMatrix = createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot, deploymentRecipes });
     const sourceDigest = await sourceTreeDigest(repoRoot);
     const packageJson = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8"));
-
     await mkdir(outDir, { recursive: true });
+    const npmReleaseTrust = await createNpmReleaseTrust({ repoRoot, outDir, generatedAt, packageJson });
+    const releaseEvidenceMatrix = createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot, deploymentRecipes, npmReleaseTrust });
+
     const baseArtifacts = [
       jsonArtifact("dindbos-conformance.json", conformance, "application/json"),
       jsonArtifact("dindbos-conformance-evidence.json", evidence, "application/json"),
       jsonArtifact("dindbos-secure-boot.json", secureBoot, "application/json"),
       jsonArtifact(DEPLOYMENT_RECIPES_FILE, deploymentRecipes, "application/vnd.dindbos.deployment-recipes+json"),
+      jsonArtifact(NPM_RELEASE_TRUST_FILE, npmReleaseTrust, "application/vnd.dindbos.npm-release-trust+json"),
       jsonArtifact(RELEASE_EVIDENCE_MATRIX_FILE, releaseEvidenceMatrix, "application/vnd.dindbos.release-evidence-matrix+json"),
     ];
     const manifest = {
@@ -120,6 +124,17 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
           crossOriginIsolated: recipe.expected.crossOriginIsolated,
         })),
       },
+      npm: {
+        package: npmReleaseTrust.packageMetadata.name,
+        version: npmReleaseTrust.packageMetadata.version,
+        tarball: {
+          filename: npmReleaseTrust.tarball.filename,
+          sha256: npmReleaseTrust.tarball.sha256,
+          bytes: npmReleaseTrust.tarball.bytes,
+        },
+        provenance: npmReleaseTrust.provenance,
+        contentAllowlist: npmReleaseTrust.contentAllowlist.status,
+      },
       artifacts: baseArtifacts.map((artifact) => artifact.record),
     };
     const releaseManifest = jsonArtifact(RELEASE_MANIFEST_FILE, manifest, "application/json");
@@ -154,6 +169,7 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       manifest,
       releaseEvidenceMatrix,
       deploymentRecipes,
+      npmReleaseTrust,
       signature: JSON.parse(signatureArtifact.content),
       verification,
       sha256Sums: sums,
@@ -228,7 +244,7 @@ function jsonArtifact(file, value, mediaType) {
   };
 }
 
-function createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot, deploymentRecipes }) {
+function createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot, deploymentRecipes, npmReleaseTrust }) {
   const evidenceRecords = Array.isArray(evidence.records) ? evidence.records : [];
   const originRow = (conformance.browserMatrix || []).find((entry) => entry.profile === "cross-origin-isolated") || {};
   const currentRow = (conformance.browserMatrix || []).find((entry) => entry.profile === "chromium-tab") || {};
@@ -308,8 +324,94 @@ function createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isola
       crossOriginIsolated: recipe.expected.crossOriginIsolated,
       config: recipe.config,
     })),
+    npmReleaseTrust: {
+      status: npmReleaseTrust.contentAllowlist.status === "pass" && npmReleaseTrust.requiredFiles.missing.length === 0 ? "pass" : "fail",
+      tarballSha256: npmReleaseTrust.tarball.sha256,
+      fileCount: npmReleaseTrust.tarball.fileCount,
+      packageSize: npmReleaseTrust.tarball.bytes,
+      provenance: npmReleaseTrust.provenance.status,
+      changelog: npmReleaseTrust.changelog.hasUnreleased ? "present" : "missing",
+    },
     evidenceRecords,
   };
+}
+
+async function createNpmReleaseTrust({ repoRoot, outDir, generatedAt, packageJson }) {
+  execFileSync("npm", ["run", "build:sdk"], { cwd: repoRoot, stdio: "inherit" });
+  const pack = JSON.parse(execFileSync("npm", ["pack", "--json", "--pack-destination", outDir], { cwd: repoRoot, encoding: "utf8" }))[0];
+  const tarballPath = join(outDir, pack.filename);
+  const tarball = await readFile(tarballPath);
+  await rm(tarballPath, { force: true });
+  const files = pack.files.map((entry) => ({
+    path: entry.path,
+    size: entry.size,
+    mode: entry.mode,
+  }));
+  const violations = files
+    .map((entry) => entry.path)
+    .filter((path) => !isAllowedNpmPackageFile(path));
+  const required = [
+    "package.json",
+    "README.md",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/styles.css",
+    "dist/create.js",
+    "dist/create-template/package.json",
+  ];
+  const fileSet = new Set(files.map((entry) => entry.path));
+  const changelog = await readFile(join(repoRoot, "docs/changelog.md"), "utf8").catch(() => "");
+  return {
+    service: "dindbos-npm-release-trust",
+    version: 1,
+    generatedAt,
+    packageMetadata: {
+      name: packageJson.name,
+      version: packageJson.version,
+      private: packageJson.private,
+      license: packageJson.license,
+      repository: packageJson.repository || null,
+      bugs: packageJson.bugs || null,
+      homepage: packageJson.homepage || "",
+      exports: Object.keys(packageJson.exports || {}),
+      bin: packageJson.bin || {},
+    },
+    tarball: {
+      filename: pack.filename,
+      sha256: sha256(tarball),
+      bytes: tarball.length,
+      unpackedSize: pack.unpackedSize,
+      fileCount: files.length,
+      files,
+    },
+    contentAllowlist: {
+      status: violations.length ? "fail" : "pass",
+      allowed: ["package.json", "README.md", "dist/**"],
+      violations,
+    },
+    requiredFiles: {
+      expected: required,
+      missing: required.filter((file) => !fileSet.has(file)),
+    },
+    provenance: {
+      status: "manual-required",
+      command: "npm publish --provenance",
+      checklist: [
+        "publish from trusted CI or a clean local release environment",
+        "confirm npm provenance support for the target registry",
+        "record the published package URL and registry integrity digest",
+      ],
+    },
+    changelog: {
+      file: "docs/changelog.md",
+      hasUnreleased: changelog.includes("## Unreleased"),
+      hasReleaseChecklist: changelog.includes("Release checklist before tagging"),
+    },
+  };
+}
+
+function isAllowedNpmPackageFile(path) {
+  return path === "package.json" || path === "README.md" || path.startsWith("dist/");
 }
 
 function createDeploymentRecipes({ generatedAt }) {
