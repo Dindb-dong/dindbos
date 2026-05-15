@@ -3190,19 +3190,35 @@ export class DindbOS {
     this.assertBrowserCapability(process, probe.id);
     const operation = String(options.operation || "request");
     const userGestureRequired = browserCapabilityNeedsGesture(probe.id);
-    const userGesture = Boolean(options.userGesture || options.userActivation || options.trustedEvent);
+    const promptAuthorization = this.browserTrustedPromptAuthorization(process, probe, options);
+    const wantsTrustedPrompt = Boolean(options.trustedPrompt || options.promptTrustedUi || options.prompt);
+    const userGesture = Boolean(options.userGesture || options.userActivation || options.trustedEvent || promptAuthorization.authorized);
     const activation = {
       required: userGestureRequired,
       present: userGesture,
-      source: options.activationSource || options.source || "browser-broker",
+      source: promptAuthorization.authorized ? "trusted-prompt" : options.activationSource || options.source || "browser-broker",
     };
+    let trustedPrompt = promptAuthorization.prompt;
+    if (userGestureRequired && !userGesture && wantsTrustedPrompt) {
+      trustedPrompt = this.trustedPrompts.create(process, {
+        capability: probe.id,
+        target: String(options.target || probe.device),
+        message: options.message || browserTrustedPromptMessage(probe, operation),
+        timeoutMs: options.timeoutMs,
+      });
+    }
     const invocation = userGestureRequired && !userGesture
-      ? { status: "pending-user-gesture", detail: "browser API requires an explicit user gesture before invocation" }
+      ? {
+        status: trustedPrompt ? "pending-trusted-prompt" : "pending-user-gesture",
+        detail: trustedPrompt
+          ? "browser API requires a compositor-owned trusted prompt before invocation"
+          : "browser API requires an explicit user gesture before invocation",
+      }
       : invokeBrowserCapability(probe, operation, options);
     const result = invocation.status === "invoked" || invocation.status === "promise-pending"
       ? "brokered"
-      : invocation.status === "pending-user-gesture"
-        ? "pending-user-gesture"
+      : invocation.status === "pending-trusted-prompt" || invocation.status === "pending-user-gesture"
+        ? invocation.status
         : probe.available ? "brokered" : "unavailable";
     const entry = this.recordPrivacyAccess({
       process,
@@ -3217,6 +3233,8 @@ export class DindbOS {
       expiresAt: options.expiresAt || "",
       userGestureRequired,
       userGesture,
+      trustedPromptId: trustedPrompt?.id || "",
+      trustedPromptStatus: trustedPrompt?.status || "",
     });
     const request = {
       id: entry.id,
@@ -3227,6 +3245,15 @@ export class DindbOS {
       result,
       activation,
       invocation,
+      trustedPrompt: trustedPrompt ? {
+        id: trustedPrompt.id,
+        status: trustedPrompt.status,
+        ownerPid: trustedPrompt.ownerPid,
+        capability: trustedPrompt.capability,
+        target: trustedPrompt.target,
+        compositorSurfaceId: trustedPrompt.compositorSurfaceId,
+        captureProtected: trustedPrompt.captureProtected,
+      } : null,
       pid: process?.pid || 0,
       appId: process?.appId || "",
       requestedAt: entry.at,
@@ -3244,7 +3271,29 @@ export class DindbOS {
       activation,
       invocation,
       ledgerId: entry.id,
+      trustedPrompt: request.trustedPrompt,
     };
+  }
+
+  browserTrustedPromptAuthorization(process = null, probe = {}, options = {}) {
+    const id = String(options.trustedPromptId || options.promptId || "").trim();
+    if (!id) return { authorized: false, prompt: null };
+    const prompt = this.trustedPrompts.get(id);
+    if (!prompt) throw codedError("ENOENT", `browser broker: trusted prompt ${id}: no such prompt`);
+    if (prompt.ownerPid !== Number(process?.pid || 0)) {
+      throw codedError("EACCES", `browser broker: trusted prompt ${id}: owner mismatch`);
+    }
+    if (prompt.capability !== probe.id) {
+      throw codedError("EACCES", `browser broker: trusted prompt ${id}: capability mismatch`);
+    }
+    const target = String(options.target || probe.device);
+    if (prompt.target && prompt.target !== target) {
+      throw codedError("EACCES", `browser broker: trusted prompt ${id}: target mismatch`);
+    }
+    if (prompt.status !== "granted") {
+      throw codedError("EACCES", `browser broker: trusted prompt ${id}: ${prompt.status || "not granted"}`);
+    }
+    return { authorized: true, prompt };
   }
 
   readClipboard(process = null, options = {}) {
@@ -3362,6 +3411,8 @@ export class DindbOS {
       expiresAt: String(event.expiresAt || ""),
       userGestureRequired: Boolean(event.userGestureRequired),
       userGesture: Boolean(event.userGesture),
+      trustedPromptId: String(event.trustedPromptId || ""),
+      trustedPromptStatus: String(event.trustedPromptStatus || ""),
     };
     this.privacyLedger.push(entry);
     this.writePrivacyLedgerProcfs();
@@ -4749,6 +4800,11 @@ function invokeNotificationBroker(operation, payload = {}) {
     return new globalThis.Notification(payload.title || "DindbOS", payload.options || {});
   }
   return null;
+}
+
+function browserTrustedPromptMessage(probe = {}, operation = "request") {
+  const target = probe.device || probe.id || "browser device";
+  return `Allow ${probe.broker || "browser"} to ${operation} ${target}?`;
 }
 
 function formatBrowserCapabilities(capabilities = []) {

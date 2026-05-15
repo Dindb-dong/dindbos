@@ -14,6 +14,7 @@ try {
   };
   const process = os.processes.spawn(app, { cwd: "/home/guest" });
   const context = { process, principal: os.permissions.principal(os.session) };
+  const system = os.permissions.systemPrincipal();
 
   let result = os.syscall("browser.status", {}, context);
   assert(result.ok, `browser.status failed: ${JSON.stringify(result)}`);
@@ -22,6 +23,31 @@ try {
 
   result = os.syscall("browser.request", { capability: "notifications.show", operation: "show" }, context);
   assert(result.ok && result.value.status === "pending-user-gesture" && result.value.activation.required, `notification broker user gesture mismatch: ${JSON.stringify(result)}`);
+  result = os.syscall("browser.request", {
+    capability: "notifications.show",
+    operation: "show",
+    trustedPrompt: true,
+    message: "Show notification for broker smoke",
+  }, context);
+  assert(result.ok && result.value.status === "pending-trusted-prompt", `trusted prompt broker request mismatch: ${JSON.stringify(result)}`);
+  const prompt = result.value.trustedPrompt;
+  assert(prompt?.id && prompt.status === "pending" && prompt.captureProtected, `broker trusted prompt missing protected surface: ${JSON.stringify(prompt)}`);
+  assert(os.fs.readFile("/proc/trusted-ui").includes(prompt.id), "trusted prompt broker request missing /proc/trusted-ui entry");
+  const promptDenied = os.syscall("browser.request", {
+    capability: "notifications.show",
+    trustedPromptId: prompt.id,
+  }, context);
+  assert(!promptDenied.ok && promptDenied.error.code === "EACCES", `ungranted trusted prompt was accepted: ${JSON.stringify(promptDenied)}`);
+  result = os.syscall("trustedPrompt.decide", { id: prompt.id, decision: "granted" }, { ...context, principal: system });
+  assert(result.ok && result.value.status === "granted", `trusted prompt decision mismatch: ${JSON.stringify(result)}`);
+  result = os.syscall("browser.request", {
+    capability: "notifications.show",
+    operation: "show",
+    trustedPromptId: prompt.id,
+    target: "/dev/browser/notifications",
+    payload: { title: "DindbOS broker smoke" },
+  }, context);
+  assert(result.ok && result.value.status === "brokered" && result.value.activation.source === "trusted-prompt", `trusted prompt broker invocation mismatch: ${JSON.stringify(result)}`);
   result = os.syscall("browser.request", { capability: "screen.capture", operation: "request-display", userGesture: true }, context);
   assert(result.ok && result.value.status === "brokered" && result.value.invocation.status === "invoked" && result.value.activation.present, `screen capture broker request mismatch: ${JSON.stringify(result)}`);
   result = os.syscall("browser.request", { capability: "webgpu.adapter", operation: "request-adapter" }, context);
@@ -29,11 +55,14 @@ try {
 
   const ledger = os.privacyLedgerStatus({ limit: 20 });
   assert(ledger.some((entry) => entry.capability === "notifications.show" && entry.operation === "show" && entry.result === "pending-user-gesture"), "privacy ledger missing notification user gesture access");
+  assert(ledger.some((entry) => entry.capability === "notifications.show" && entry.trustedPromptId === prompt.id && entry.result === "pending-trusted-prompt"), "privacy ledger missing trusted prompt broker request");
+  assert(ledger.some((entry) => entry.capability === "notifications.show" && entry.trustedPromptId === prompt.id && entry.result === "brokered"), "privacy ledger missing trusted prompt broker invocation");
   assert(ledger.some((entry) => entry.capability === "screen.capture" && entry.broker === "screen-capture" && entry.userGesture), "privacy ledger missing screen capture user gesture access");
   assert(JSON.parse(os.fs.readFile("/proc/privacy-ledger.json")).entries.some((entry) => entry.capability === "webgpu.adapter"), "/proc/privacy-ledger.json missing WebGPU access");
   const brokerProcfs = JSON.parse(os.fs.readFile("/proc/browser-brokers.json"));
   assert(brokerProcfs.capabilities.some((entry) => entry.id === "screen.capture" && entry.accessCount >= 1 && entry.userGestureRequired), "/proc/browser-brokers.json missing access count");
   assert(brokerProcfs.requests.some((entry) => entry.capability === "screen.capture" && entry.activation.present && entry.invocation.status === "invoked"), "/proc/browser-brokers.json missing user gesture request record");
+  assert(brokerProcfs.requests.some((entry) => entry.capability === "notifications.show" && entry.trustedPrompt?.id === prompt.id && entry.activation.source === "trusted-prompt"), "/proc/browser-brokers.json missing trusted prompt request record");
 
   const deniedProcess = os.processes.spawn({
     id: "browser-broker-denied",

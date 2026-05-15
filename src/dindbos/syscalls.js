@@ -166,6 +166,13 @@ export class SyscallDispatcher {
       userActivation: args.userActivation,
       trustedEvent: args.trustedEvent,
       activationSource: args.activationSource,
+      trustedPrompt: args.trustedPrompt,
+      promptTrustedUi: args.promptTrustedUi,
+      prompt: args.prompt,
+      trustedPromptId: args.trustedPromptId,
+      promptId: args.promptId,
+      message: args.message,
+      timeoutMs: args.timeoutMs,
       payload: args.payload,
     });
   }

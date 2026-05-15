@@ -142,6 +142,7 @@ Done:
 - Clipboard read/write now routes through declared `clipboard.read`/`clipboard.write` grants and records privacy ledger entries in `/proc/privacy-ledger.json`.
 - Browser broker status, request, and revocation paths cover notifications, local files, screen capture, media devices, Web Share, WebRTC, WebGPU, WebUSB, WebSerial, and WebHID capability records through `/proc/browser-brokers.json`.
 - Gesture-gated broker requests record explicit user activation and invoke available browser APIs only when a trusted gesture is present.
+- Gesture-gated broker requests can now raise compositor-owned trusted prompts, record prompt ids in the privacy ledger, and use granted prompt handles as the audited activation source for the final browser API invocation.
 - Settings surfaces browser permission diagnostics and recent privacy ledger entries.
 - `doctor browser` reports broker availability, access counts, and revoked grants.
 
