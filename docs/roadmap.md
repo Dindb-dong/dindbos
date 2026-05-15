@@ -75,17 +75,17 @@ The runtime completion baseline is closed. The next product step is packaging Di
 
 ## SDK Packaging Status
 
-Current cycle: PR 8, Deployment Recipes And Isolation QA.
+Current cycle: PR 9, npm Release Trust.
 
 Done in this cycle:
 
-- Added SDK deployment recipes for Netlify, explicit static-server headers, GitHub Pages degraded mode, and local dev degraded mode.
-- Added `dindbos-deployment-recipes.json` to release conformance artifacts and linked deployment recipe summaries into the release evidence matrix and manifest.
-- Added `npm run smoke:deployment-recipes` to verify copyable headers, degraded-mode docs, and release artifact deployment evidence.
+- Added public npm metadata (`repository`, `bugs`, `homepage`) and npm provenance release guidance.
+- Added `dindbos-npm-release-trust.json` to release conformance artifacts with tarball SHA-256, content allowlist, required package files, changelog status, and provenance checklist.
+- Added `npm run smoke:npm-release-trust` and extended release conformance smoke to verify npm trust evidence in the manifest and release evidence matrix.
 
 Next cycle:
 
-- PR 9, npm Release Trust.
+- PR 10, User Docs And Launch Polish.
 
 ## 100% Completion Plan
 
