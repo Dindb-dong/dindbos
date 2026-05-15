@@ -888,9 +888,10 @@ export class DindbOS {
   finishBootPhase(id, status, detail = "", startedAt = Date.now(), error = null) {
     const phase = this.bootPhases.get(id);
     if (!phase) throw new Error(`unknown boot phase: ${id}`);
+    const detailText = formatBootPhaseDetail(detail);
     Object.assign(phase, {
       status,
-      detail: detail || (status === "complete" ? `${phase.label} complete` : ""),
+      detail: detailText || (status === "complete" ? `${phase.label} complete` : ""),
       finishedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
       error: error ? error.message || String(error) : "",
@@ -2231,7 +2232,7 @@ export class DindbOS {
       offlineMaintenanceQueue: this.offlineMaintenanceQueueStatus(),
       panic: this.recoveryPanic,
     };
-    this.fs.writeOrCreateFile("/var/log/dindbos/boot.json", `${JSON.stringify(payload, null, 2)}\n`, "/", {
+    this.fs.writeOrCreateFile("/var/log/dindbos/boot.json", `${stringifyDiagnosticsJson(payload, 2)}\n`, "/", {
       owner: "root",
       group: "root",
       permissions: "-rw-r--r--",
@@ -5509,6 +5510,46 @@ function ipcHandleMetadata(record) {
 function cloneJson(value) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
+}
+
+function stringifyDiagnosticsJson(value, spacing = 0) {
+  const seen = new WeakSet();
+  return JSON.stringify(value, (_key, current) => {
+    if (typeof current === "bigint") return current.toString();
+    if (typeof current === "function") return `[Function ${current.name || "anonymous"}]`;
+    if (!current || typeof current !== "object") return current;
+
+    const ctorName = current.constructor?.name || "Object";
+    if (ctorName === "DindbOS") return "[DindbOS]";
+    if (typeof Node !== "undefined" && current instanceof Node) return `[DOMNode ${current.nodeName || "Node"}]`;
+    if (current instanceof Error) {
+      return {
+        name: current.name || "Error",
+        message: current.message || "",
+        stack: current.stack || "",
+      };
+    }
+    if (seen.has(current)) return `[Circular ${ctorName}]`;
+    seen.add(current);
+    return current;
+  }, spacing);
+}
+
+function formatBootPhaseDetail(detail) {
+  if (detail === null || detail === undefined || detail === "") return "";
+  if (typeof detail === "string") return detail;
+  if (typeof detail === "number" || typeof detail === "boolean" || typeof detail === "bigint") return String(detail);
+  if (detail instanceof Error) return detail.message || String(detail);
+  if (Array.isArray(detail)) return detail.map((entry) => formatBootPhaseDetail(entry)).filter(Boolean).join(", ");
+  if (typeof detail === "object") {
+    if (detail.constructor?.name === "DindbOS") return "DindbOS runtime ready";
+    if (detail.detail) return formatBootPhaseDetail(detail.detail);
+    if (detail.message) return formatBootPhaseDetail(detail.message);
+    if (detail.summary) return formatBootPhaseDetail(detail.summary);
+    if (detail.reason) return formatBootPhaseDetail(detail.reason);
+    return stringifyDiagnosticsJson(detail);
+  }
+  return String(detail);
 }
 
 function stableStringify(value) {
