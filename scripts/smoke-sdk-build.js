@@ -32,6 +32,9 @@ const styles = readFileSync("dist/styles.css", "utf8");
 assert(index.includes("createDindbOS"), "dist/index.js missing createDindbOS export");
 assert(declarations.includes("createDindbOS"), "dist/index.d.ts missing createDindbOS declaration");
 assert(styles.includes(".dos-shell"), "dist/styles.css missing desktop shell styles");
+assert(styles.includes(".glass-panel"), "dist/styles.css missing Liquid Glass panel utility");
+assert(styles.includes("-webkit-backdrop-filter"), "dist/styles.css missing Safari glass blur support");
+assert(styles.includes("prefers-color-scheme: dark"), "dist/styles.css missing Liquid Glass dark mode");
 assert(!index.includes("portfolio-demo"), "SDK root bundle should not import demo portfolio data");
 
 const pack = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json"], { encoding: "utf8" }))[0];
