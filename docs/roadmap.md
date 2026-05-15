@@ -75,17 +75,17 @@ The runtime completion baseline is closed. The next product step is packaging Di
 
 ## SDK Packaging Status
 
-Current cycle: PR 9, npm Release Trust.
+Current cycle: PR 10, User Docs And Launch Polish.
 
 Done in this cycle:
 
-- Added public npm metadata (`repository`, `bugs`, `homepage`) and npm provenance release guidance.
-- Added `dindbos-npm-release-trust.json` to release conformance artifacts with tarball SHA-256, content allowlist, required package files, changelog status, and provenance checklist.
-- Added `npm run smoke:npm-release-trust` and extended release conformance smoke to verify npm trust evidence in the manifest and release evidence matrix.
+- Reworked README around `npm install dindbos`, `npx create-dindbos`, framework examples, expected runtime result, and first-line troubleshooting.
+- Added SDK troubleshooting coverage for blank mount, missing CSS, storage denial, Service Worker scope, origin isolation, and npm tarball install issues.
+- Updated first-app and conformance docs so host app onboarding and release evidence references match the SDK packaging surface.
 
 Next cycle:
 
-- PR 10, User Docs And Launch Polish.
+- SDK packaging plan complete; next work should be driven by public beta feedback and package-size/runtime hardening.
 
 ## 100% Completion Plan
 

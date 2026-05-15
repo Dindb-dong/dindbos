@@ -8,6 +8,10 @@ const packageSignatures = readFileSync("docs/package-signatures.md", "utf8");
 const shell = readFileSync("docs/shell.md", "utf8");
 const serviceWorkerRecovery = readFileSync("docs/service-worker-recovery.md", "utf8");
 const syscalls = readFileSync("docs/syscalls.md", "utf8");
+const readme = readFileSync("README.md", "utf8");
+const firstApp = readFileSync("docs/first-app.md", "utf8");
+const deployment = readFileSync("docs/deployment.md", "utf8");
+const troubleshooting = readFileSync("docs/troubleshooting.md", "utf8");
 
 [
   "## Runtime Contract",
@@ -52,6 +56,8 @@ const syscalls = readFileSync("docs/syscalls.md", "utf8");
   "## Certification Areas",
   "conformance evidence",
   "/proc/conformance-evidence",
+  "dindbos-npm-release-trust.json",
+  "dindbos-deployment-recipes.json",
   "durable-disk",
   "cross-origin-isolation",
   "npm run smoke:conformance",
@@ -92,6 +98,43 @@ const syscalls = readFileSync("docs/syscalls.md", "utf8");
   "/proc/<pid>/pty.json",
 ].forEach((term) => {
   assert(syscalls.includes(term), `syscalls doc missing ${term}`);
+});
+
+[
+  "npm install dindbos",
+  "npx create-dindbos my-web-os",
+  "import \"dindbos/styles.css\"",
+  "docs/troubleshooting.md",
+].forEach((term) => {
+  assert(readme.includes(term), `README missing ${term}`);
+});
+
+[
+  "npx create-dindbos my-web-os",
+  "createAndBootDindbOS",
+  "dindbos.app.json",
+].forEach((term) => {
+  assert(firstApp.includes(term), `first app doc missing ${term}`);
+});
+
+[
+  "Netlify Static Site",
+  "GitHub Pages",
+  "crossOriginIsolated=true",
+  "dindbos-deployment-recipes.json",
+].forEach((term) => {
+  assert(deployment.includes(term), `deployment doc missing ${term}`);
+});
+
+[
+  "Blank Mount",
+  "Missing CSS",
+  "Storage Denied",
+  "Service Worker Scope",
+  "Origin Isolation",
+  "npm Tarball Install",
+].forEach((term) => {
+  assert(troubleshooting.includes(term), `troubleshooting doc missing ${term}`);
 });
 
 console.log("docs smoke ok developer guide service coverage");
