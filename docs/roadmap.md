@@ -75,18 +75,17 @@ The runtime completion baseline is closed. The next product step is packaging Di
 
 ## SDK Packaging Status
 
-Current cycle: PR 2, Host Configuration Contract.
+Current cycle: PR 3, Library Build And Exports.
 
 Done in this cycle:
 
-- Added `normalizeDindbOSHostConfig`, `publicHostConfig`, and `applyDindbOSHostConfig` for declarative host configuration.
-- Added SDK handling for host apps, package registries, trusted publishers, manifest seeds, service worker mode, broker provider metadata, isolation policy, diagnostics evidence, and theme hooks.
-- Added `prepareDindbOSHost` so host configuration can be applied before desktop boot and tested headlessly.
-- Extended SDK entrypoint smoke coverage for valid host config and invalid config rejection.
+- Added SDK package `exports`, `types`, `files`, and `sideEffects` metadata for public npm entrypoints.
+- Added `vite.sdk.config.js` for ES library builds covering `dindbos`, `dindbos/desktop`, `dindbos/builtins`, `dindbos/testing`, declarations, source maps, and `styles.css`.
+- Added `build:sdk`, `pack:dry`, and `smoke:sdk-build` validation for SDK dist files and npm pack contents.
 
 Next cycle:
 
-- PR 3, Library Build And Exports.
+- PR 4, Type Declarations And API Stability.
 
 ## 100% Completion Plan
 
