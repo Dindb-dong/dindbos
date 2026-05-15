@@ -75,17 +75,17 @@ The runtime completion baseline is closed. The next product step is packaging Di
 
 ## SDK Packaging Status
 
-Current cycle: PR 3, Library Build And Exports.
+Current cycle: PR 4, Type Declarations And API Stability.
 
 Done in this cycle:
 
-- Added SDK package `exports`, `types`, `files`, and `sideEffects` metadata for public npm entrypoints.
-- Added `vite.sdk.config.js` for ES library builds covering `dindbos`, `dindbos/desktop`, `dindbos/builtins`, `dindbos/testing`, declarations, source maps, and `styles.css`.
-- Added `build:sdk`, `pack:dry`, and `smoke:sdk-build` validation for SDK dist files and npm pack contents.
+- Added source-authored `.d.ts` files for `dindbos`, `dindbos/desktop`, `dindbos/builtins`, and `dindbos/testing`.
+- Updated SDK builds to copy committed declarations into `dist` instead of generating placeholder types.
+- Added API export snapshot coverage through `npm run smoke:sdk-api`.
 
 Next cycle:
 
-- PR 4, Type Declarations And API Stability.
+- PR 5, Tarball Host App Smoke.
 
 ## 100% Completion Plan
 
