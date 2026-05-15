@@ -333,6 +333,12 @@ assert(snapshot.containerEvents.length === 2, "settings snapshot container secur
 
 const markup = settingsRuntimeMarkup(snapshot);
 
+assert(markup.includes('class="settings-sidebar"'), "settings markup did not render sidebar shell");
+assert(markup.includes('data-settings-section-button="storage"'), "settings markup did not render storage navigation");
+assert(markup.includes('data-settings-section-button="security"'), "settings markup did not render security navigation");
+assert(markup.includes('data-settings-section="overview"'), "settings markup did not render overview section");
+assert(markup.includes('data-settings-section="storage"'), "settings markup did not render storage section");
+assert(markup.includes('hidden'), "settings markup did not hide inactive sections by default");
 assert(markup.includes("<dt>User</dt><dd>guest</dd>"), "settings markup did not render session user");
 assert(markup.includes("<dt>Apps</dt><dd>2</dd>"), "settings markup did not render app count");
 assert(markup.includes("<dt>Packages</dt><dd>1</dd>"), "settings markup did not render package count");
