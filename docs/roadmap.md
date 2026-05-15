@@ -206,11 +206,11 @@ Done:
 - `/proc/policy`, app manifest policy exposure, `pkg audit`, and `policyctl` expose the compiled policy state.
 - Secure boot measurements cover base files, package records, app registry manifests, trusted publishers, and executable policy proof reports through `/proc/secure-boot`, `/proc/secure-boot.json`, and `bootctl`.
 - `policyctl prove` turns package policy proof descriptors into executable negative tests for raw runtime globals, undeclared dependency paths, undeclared device grants, direct browser APIs, `browserd`, Service Worker registration, and remote provider imports.
-- Release conformance artifacts now boot a real headless runtime and emit conformance JSON, conformance evidence JSON, secure boot JSON, a source-digested release manifest, and `SHA256SUMS`.
+- Release conformance artifacts now boot a real headless runtime and emit conformance JSON, conformance evidence JSON, secure boot JSON, a source-digested release manifest, an Ed25519 detached manifest signature, a verification evidence JSON, and `SHA256SUMS`.
 
 Next:
 
-- Add external signing for release manifests and publish signature verification steps.
+- Publish release-channel key rotation policy and hosted signature verification instructions.
 
 ### 7. Cross-Origin Isolation And Shared Memory
 
@@ -256,12 +256,12 @@ Done:
 - Real QA evidence records feed browser matrix rows and are mirrored through `/proc/conformance-evidence`, `/proc/conformance-evidence.json`, and `conformance evidence`.
 - `docs/conformance.md` documents levels, areas, browser matrix profiles, and smoke verification.
 - `npm run smoke:conformance` verifies report generation and shell output.
-- `npm run release:conformance` writes release JSON snapshots, a source-digested release manifest, and SHA-256 sums.
-- `npm run smoke:release-conformance` verifies the generated release evidence.
+- `npm run release:conformance` writes release JSON snapshots, a source-digested release manifest, a detached Ed25519 manifest signature, verification evidence, and SHA-256 sums.
+- `npm run smoke:release-conformance` verifies the generated release evidence, signature, tamper rejection, and digest lines.
 
 Next:
 
-- Add release-channel signature publishing and browser-profile artifact retention.
+- Add release-channel key rotation policy and browser-profile artifact retention.
 
 ## Work Selection Rules
 
