@@ -206,7 +206,7 @@ Done:
 - `/proc/policy`, app manifest policy exposure, `pkg audit`, and `policyctl` expose the compiled policy state.
 - Secure boot measurements cover base files, package records, app registry manifests, trusted publishers, and executable policy proof reports through `/proc/secure-boot`, `/proc/secure-boot.json`, and `bootctl`.
 - `policyctl prove` turns package policy proof descriptors into executable negative tests for raw runtime globals, undeclared dependency paths, undeclared device grants, direct browser APIs, `browserd`, Service Worker registration, and remote provider imports.
-- Release conformance artifacts now boot a real headless runtime and emit conformance JSON, conformance evidence JSON, secure boot JSON, a source-digested release manifest, an Ed25519 detached manifest signature, a verification evidence JSON, and `SHA256SUMS`.
+- Release conformance artifacts now boot a real headless runtime and emit conformance JSON, conformance evidence JSON, secure boot JSON, release browser/origin-isolation evidence matrix JSON, a source-digested release manifest, an Ed25519 detached manifest signature, a verification evidence JSON, and `SHA256SUMS`.
 
 Next:
 
@@ -222,10 +222,11 @@ Done:
 - `doctor isolation` and `/proc/isolation` expose current cross-origin isolation, SharedArrayBuffer/Atomics availability, degraded reasons, and worker memory-region status.
 - Worker memory-region handles are kernel-tracked and fall back to ArrayBuffer copy transfer when cross-origin isolation is absent.
 - Package container launches now record deployment isolation, honor origin-isolated SharedArrayBuffer requirements, and block required entries with `EISOLATION` instead of silently degrading.
+- Release conformance now records origin-isolated QA evidence and preserves required headers, SharedArrayBuffer/Atomics state, worker transfer mode, and degraded modes in `dindbos-release-evidence-matrix.json`.
 
 Next:
 
-- Add browser QA coverage for an actually origin-isolated served build.
+- Add hosted-browser QA coverage for an actually origin-isolated served build.
 
 ### 8. Service Worker Boot And Offline Recovery
 
@@ -243,7 +244,7 @@ Done:
 
 Next:
 
-- Add release-browser matrix retention for Service Worker evidence artifacts.
+- Add hosted release evidence retention for Service Worker and browser-provider artifacts.
 
 ### 9. Conformance Lab
 
@@ -256,8 +257,8 @@ Done:
 - Real QA evidence records feed browser matrix rows and are mirrored through `/proc/conformance-evidence`, `/proc/conformance-evidence.json`, and `conformance evidence`.
 - `docs/conformance.md` documents levels, areas, browser matrix profiles, and smoke verification.
 - `npm run smoke:conformance` verifies report generation and shell output.
-- `npm run release:conformance` writes release JSON snapshots, a source-digested release manifest, a detached Ed25519 manifest signature, verification evidence, and SHA-256 sums.
-- `npm run smoke:release-conformance` verifies the generated release evidence, signature, tamper rejection, and digest lines.
+- `npm run release:conformance` writes release JSON snapshots, a release browser/origin-isolation evidence matrix, a source-digested release manifest, a detached Ed25519 manifest signature, verification evidence, and SHA-256 sums.
+- `npm run smoke:release-conformance` verifies the generated release evidence matrix, origin-isolated QA row, signature, tamper rejection, and digest lines.
 
 Next:
 

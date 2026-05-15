@@ -18,6 +18,7 @@ import { demoFileSystem, portfolioData } from "../src/demo/portfolio-demo.js";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_OUTPUT_DIR = "dist/release-conformance";
 const BUILD_INPUT_ROOTS = ["package.json", "package-lock.json", "vite.config.js", "index.html", "public", "src"];
+const RELEASE_EVIDENCE_MATRIX_FILE = "dindbos-release-evidence-matrix.json";
 const RELEASE_MANIFEST_FILE = "dindbos-release-manifest.json";
 const RELEASE_SIGNATURE_FILE = "dindbos-release-manifest.sig.json";
 const RELEASE_VERIFICATION_FILE = "dindbos-release-verification.json";
@@ -31,6 +32,12 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
   try {
     const os = await bootRuntime();
     const preEvidenceReport = os.conformanceReport();
+    const releaseEvidenceArtifacts = [
+      "dindbos-conformance.json",
+      "dindbos-conformance-evidence.json",
+      "dindbos-secure-boot.json",
+      RELEASE_EVIDENCE_MATRIX_FILE,
+    ];
     os.addConformanceEvidence({
       id: options.evidenceId || "release-conformance-snapshot",
       profile: options.evidenceProfile || "chromium-tab",
@@ -38,17 +45,27 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       runner: options.evidenceRunner || "release-conformance-artifacts",
       recordedAt: generatedAt,
       categories: preEvidenceReport.categories.map((category) => category.id),
-      artifacts: [
-        "dindbos-conformance.json",
-        "dindbos-conformance-evidence.json",
-        "dindbos-secure-boot.json",
-      ],
+      artifacts: releaseEvidenceArtifacts,
       notes: "Generated from a headless DindbOS boot during release artifact creation.",
+    });
+    const isolation = os.isolationStatus();
+    os.addConformanceEvidence({
+      id: options.isolationEvidenceId || "release-origin-isolation-qa",
+      profile: "cross-origin-isolated",
+      status: isolation.sharedMemory?.available ? "pass" : "degraded",
+      runner: options.evidenceRunner || "release-conformance-artifacts",
+      recordedAt: generatedAt,
+      categories: ["cross-origin-isolation", "worker-isolation", "wasm"],
+      artifacts: releaseEvidenceArtifacts,
+      notes: isolation.sharedMemory?.available
+        ? "Release runtime had crossOriginIsolated=true and SharedArrayBuffer/Atomics available."
+        : `Release runtime is not origin-isolated yet: ${(isolation.degradedModes || []).join("; ") || "unknown"}.`,
     });
 
     const conformance = os.writeConformanceProcfs("release-artifact");
     const secureBoot = os.writeSecureBootProcfs("release-artifact");
     const evidence = JSON.parse(os.fs.readFile("/proc/conformance-evidence.json"));
+    const releaseEvidenceMatrix = createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot });
     const sourceDigest = await sourceTreeDigest(repoRoot);
     const packageJson = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8"));
 
@@ -57,6 +74,7 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       jsonArtifact("dindbos-conformance.json", conformance, "application/json"),
       jsonArtifact("dindbos-conformance-evidence.json", evidence, "application/json"),
       jsonArtifact("dindbos-secure-boot.json", secureBoot, "application/json"),
+      jsonArtifact(RELEASE_EVIDENCE_MATRIX_FILE, releaseEvidenceMatrix, "application/vnd.dindbos.release-evidence-matrix+json"),
     ];
     const manifest = {
       service: "dindbos-release-conformance",
@@ -78,6 +96,12 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
         summary: conformance.summary,
         evidenceSummary: conformance.evidenceSummary,
         categories: conformance.categories.map((category) => ({ id: category.id, level: category.level })),
+        browserMatrix: conformance.browserMatrix.map((entry) => ({
+          profile: entry.profile,
+          level: entry.level,
+          evidenceStatus: entry.evidenceStatus,
+          evidenceCount: entry.evidenceCount,
+        })),
       },
       secureBoot: {
         ok: secureBoot.ok,
@@ -117,6 +141,7 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       outDir,
       files: [...outputArtifacts.map((artifact) => artifact.record.file), "SHA256SUMS"],
       manifest,
+      releaseEvidenceMatrix,
       signature: JSON.parse(signatureArtifact.content),
       verification,
       sha256Sums: sums,
@@ -188,6 +213,83 @@ function jsonArtifact(file, value, mediaType) {
       bytes: Buffer.byteLength(content),
       sha256: sha256(content),
     },
+  };
+}
+
+function createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot }) {
+  const evidenceRecords = Array.isArray(evidence.records) ? evidence.records : [];
+  const originRow = (conformance.browserMatrix || []).find((entry) => entry.profile === "cross-origin-isolated") || {};
+  const currentRow = (conformance.browserMatrix || []).find((entry) => entry.profile === "chromium-tab") || {};
+  return {
+    service: "dindbos-release-evidence-matrix",
+    version: 1,
+    generatedAt,
+    releaseGate: {
+      status: secureBoot.ok && conformance.summary?.unsupported === undefined ? "pass" : "degraded",
+      secureBoot: secureBoot.ok ? "pass" : "fail",
+      browserEvidenceProfiles: evidenceRecords.length,
+    },
+    browserMatrix: (conformance.browserMatrix || []).map((entry) => ({
+      profile: entry.profile,
+      level: entry.level,
+      evidenceCount: entry.evidenceCount,
+      evidenceStatus: entry.evidenceStatus,
+      lastEvidenceAt: entry.lastEvidenceAt,
+      lastRunner: entry.lastRunner,
+      notes: entry.notes,
+    })),
+    originIsolation: {
+      profile: "cross-origin-isolated",
+      level: originRow.level || "degraded",
+      evidenceStatus: originRow.evidenceStatus || "unverified",
+      evidenceCount: originRow.evidenceCount || 0,
+      current: isolation.current,
+      crossOriginIsolated: Boolean(isolation.crossOriginIsolated),
+      sharedMemory: {
+        status: isolation.sharedMemory?.status || "unknown",
+        available: Boolean(isolation.sharedMemory?.available),
+        sharedArrayBuffer: Boolean(isolation.sharedMemory?.sharedArrayBuffer),
+        atomics: Boolean(isolation.sharedMemory?.atomics),
+        decision: isolation.sharedMemory?.decision || "unknown",
+      },
+      requiredHeaders: isolation.deployment?.requiredHeaders || {},
+      degradedModes: isolation.degradedModes || [],
+      checks: [
+        {
+          id: "coop-header-declared",
+          status: isolation.deployment?.requiredHeaders?.["Cross-Origin-Opener-Policy"] === "same-origin" ? "pass" : "fail",
+          expected: "Cross-Origin-Opener-Policy: same-origin",
+        },
+        {
+          id: "coep-header-declared",
+          status: isolation.deployment?.requiredHeaders?.["Cross-Origin-Embedder-Policy"] ? "pass" : "fail",
+          expected: "Cross-Origin-Embedder-Policy: require-corp or credentialless",
+        },
+        {
+          id: "corp-policy-declared",
+          status: isolation.deployment?.requiredHeaders?.["Cross-Origin-Resource-Policy"] ? "pass" : "fail",
+          expected: "Cross-Origin-Resource-Policy for release assets",
+        },
+        {
+          id: "shared-memory-runtime",
+          status: isolation.sharedMemory?.available ? "pass" : "degraded",
+          expected: "crossOriginIsolated=true with SharedArrayBuffer and Atomics",
+        },
+        {
+          id: "worker-memory-transfer",
+          status: isolation.workerMemory?.status === "shared" ? "pass" : "degraded",
+          expected: "SharedArrayBuffer worker transfer when deployment is origin-isolated",
+          actual: isolation.workerMemory?.transfer || "unknown",
+        },
+      ],
+    },
+    currentProfile: {
+      profile: currentRow.profile || "chromium-tab",
+      level: currentRow.level || "supported",
+      evidenceStatus: currentRow.evidenceStatus || "unverified",
+      evidenceCount: currentRow.evidenceCount || 0,
+    },
+    evidenceRecords,
   };
 }
 
