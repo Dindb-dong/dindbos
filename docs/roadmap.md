@@ -75,17 +75,17 @@ The runtime completion baseline is closed. The next product step is packaging Di
 
 ## SDK Packaging Status
 
-Current cycle: PR 7, Create-DindbOS CLI.
+Current cycle: PR 8, Deployment Recipes And Isolation QA.
 
 Done in this cycle:
 
-- Added `dindbos/create` and the `create-dindbos` package bin for generating a minimal host app.
-- Added a generated Vite template with seeded files, IndexedDB storage, a sample `Hello.app`, built-in apps, and origin-isolation header guidance.
-- Added `npm run smoke:create-dindbos` to pack the SDK, install the package into a temporary CLI host, run the generated CLI from `node_modules`, and build the generated app against the same tarball.
+- Added SDK deployment recipes for Netlify, explicit static-server headers, GitHub Pages degraded mode, and local dev degraded mode.
+- Added `dindbos-deployment-recipes.json` to release conformance artifacts and linked deployment recipe summaries into the release evidence matrix and manifest.
+- Added `npm run smoke:deployment-recipes` to verify copyable headers, degraded-mode docs, and release artifact deployment evidence.
 
 Next cycle:
 
-- PR 8, Deployment Recipes And Isolation QA.
+- PR 9, npm Release Trust.
 
 ## 100% Completion Plan
 
