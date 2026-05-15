@@ -26,6 +26,15 @@ const DEFAULT_FRAME_INTERVAL_MS = 100;
 const DEFAULT_JPEG_QUALITY = 58;
 const DEFAULT_MAX_FRAME_WIDTH = 1280;
 const DEFAULT_MAX_FRAME_HEIGHT = 900;
+const CI_CHROME_FLAGS = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+];
+const HEADLESS_CHROME_FLAGS = [
+  "--disable-gpu",
+  "--hide-scrollbars",
+  "--mute-audio",
+];
 
 class BrowserDaemon {
   constructor(options = {}) {
@@ -67,6 +76,7 @@ class BrowserDaemon {
     }
     const args = [
       `--remote-debugging-port=${this.cdpPort}`,
+      "--remote-debugging-address=127.0.0.1",
       `--user-data-dir=${this.profileDir}`,
       "--no-first-run",
       "--no-default-browser-check",
@@ -75,10 +85,11 @@ class BrowserDaemon {
       "--window-size=1280,800",
       "about:blank",
     ];
-    if (this.headless) args.unshift("--headless=new");
+    if (isCi()) args.unshift(...CI_CHROME_FLAGS);
+    if (this.headless) args.unshift("--headless=new", ...HEADLESS_CHROME_FLAGS);
     this.chrome = spawn(this.chromePath, args, { stdio: ["ignore", "pipe", "pipe"] });
-    this.chrome.on("exit", (code) => {
-      console.error(`browserd: chromium exited with code ${code}`);
+    this.chrome.on("exit", (code, signal) => {
+      console.error(`browserd: chromium exited with ${signal || `code ${code}`}`);
     });
     const startupFailure = new Promise((_, reject) => {
       const onError = (error) => reject(new Error(`browserd: failed to launch Chromium: ${error.message}`));
@@ -675,6 +686,10 @@ function chromeCandidates() {
     "microsoft-edge",
     "brave-browser",
   ];
+}
+
+function isCi() {
+  return process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 }
 
 function normalizeUrl(value) {
