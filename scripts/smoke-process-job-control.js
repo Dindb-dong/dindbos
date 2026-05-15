@@ -55,13 +55,29 @@ assert(result.ok && result.value.status === 0 && result.value.process.image.comm
 const pty = os.pty.createSession({ name: "jobctl pty", input: "pty-data", columns: 90, rows: 28 });
 const ptyProcess = os.processes.spawn(app, { cwd: "/home/guest", ptySessionId: pty.id });
 const ptyContext = { ...context, process: ptyProcess };
+assert(os.pty.getSession(pty.id).ownerPid === ptyProcess.pid, "PTY session did not attach owner pid on process spawn");
+const deniedPtyProcess = os.processes.spawn(app, { cwd: "/home/guest" });
+result = os.syscall("fd.open", { path: `/dev/pts/${pty.id}`, flags: "r+" }, { ...context, process: deniedPtyProcess });
+assert(!result.ok && result.error.code === "EACCES", `foreign process opened protected PTY: ${JSON.stringify(result)}`);
+const ptyGroupPeer = os.processes.spawn(app, {
+  cwd: "/home/guest",
+  ptySessionId: pty.id,
+  processGroupId: ptyProcess.processGroupId,
+});
+result = os.syscall("fd.open", { path: `/dev/pts/${pty.id}`, flags: "r+" }, { ...context, process: ptyGroupPeer });
+assert(result.ok, `foreground process group peer could not open PTY: ${JSON.stringify(result)}`);
 result = os.syscall("fd.open", { path: `/dev/pts/${pty.id}`, flags: "r+" }, ptyContext);
 assert(result.ok, `fd.open /dev/pts mismatch: ${JSON.stringify(result)}`);
 const ptsFd = result.value.fd;
+assert(result.value.tty.ownerPid === ptyProcess.pid && result.value.tty.deviceMode === "0600", `PTY descriptor ownership metadata mismatch: ${JSON.stringify(result.value.tty)}`);
 result = os.syscall("fd.read", { fd: ptsFd, length: 8 }, ptyContext);
 assert(result.ok && result.value.data === "pty-data", `fd.read /dev/pts mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.write", { fd: ptsFd, data: " pts-out" }, ptyContext);
 assert(result.ok && os.pty.getSession(pty.id).output === " pts-out", `fd.write /dev/pts mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.ioctl", { fd: ptsFd, request: "tty.getMode" }, ptyContext);
+assert(result.ok && result.value.mode.canonical && result.value.mode.echo, `tty mode default mismatch: ${JSON.stringify(result)}`);
+result = os.syscall("fd.ioctl", { fd: ptsFd, request: "tty.setMode", mode: { raw: true, echo: false, canonical: false } }, ptyContext);
+assert(result.ok && result.value.mode.raw && !result.value.mode.echo && !result.value.mode.canonical, `tty raw mode mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("fd.ioctl", { fd: ptsFd, request: "tty.setWindowSize", columns: 120, rows: 32 }, ptyContext);
 assert(result.ok && os.pty.getSession(pty.id).columns === 120 && os.pty.getSession(pty.id).rows === 32, `tty resize mismatch: ${JSON.stringify(result)}`);
 result = os.syscall("process.signal", { pid: ptyProcess.pid, signal: "SIGTSTP" }, ptyContext);
@@ -69,9 +85,11 @@ assert(result.ok && result.value.delivery.targets.includes("pty"), `PTY signal d
 os.processes.syncProcfs();
 const ptyProc = JSON.parse(os.fs.readFile(`/proc/${ptyProcess.pid}/pty.json`));
 assert(ptyProc.session.events.some((entry) => entry.type === "resize" && entry.columns === 120), "PTY procfs missing resize event");
+assert(ptyProc.session.events.some((entry) => entry.type === "mode" && entry.mode.raw), "PTY procfs missing mode event");
+assert(ptyProc.session.terminalMode.raw && ptyProc.session.ownerPid === ptyProcess.pid, "PTY procfs missing ownership or terminal mode metadata");
 assert(ptyProc.events.some((entry) => entry.type === "signal" && entry.signal === "SIGTSTP"), "PTY procfs missing signal event");
 
-console.log("process job control smoke ok images jobs wait signal pts delivery");
+console.log("process job control smoke ok images jobs wait signal pts ownership mode delivery");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

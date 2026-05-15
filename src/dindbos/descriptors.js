@@ -16,7 +16,7 @@ export class DescriptorManager {
       nextFd: 3,
       descriptors: new Map(),
     };
-    const pty = this.os.pty?.getSession?.(options.ptySessionId);
+    const pty = options.ptySessionId ? this.os.pty?.attachSession?.(options.ptySessionId, process) || this.os.pty?.getSession?.(options.ptySessionId) : null;
     const ptyInput = pty ? this.os.pty?.peekInput?.(pty.id) : "";
     table.descriptors.set(STDIN_FD, streamDescriptor(STDIN_FD, "stdin", "stdin", { readable: true, buffer: String(options.stdin || ptyInput || ""), tty: pty }));
     table.descriptors.set(STDOUT_FD, streamDescriptor(STDOUT_FD, "stdout", "stdout", { writable: true, tty: pty }));
@@ -265,6 +265,27 @@ export class DescriptorManager {
         request,
         path: descriptor.path,
         ...descriptor.tty,
+      };
+    }
+    if (request === "tty.getMode") {
+      return {
+        fd: descriptor.fd,
+        request,
+        path: descriptor.path,
+        mode: ttyMode(descriptor),
+      };
+    }
+    if (request === "tty.setMode") {
+      if (!descriptor.tty?.id) throw descriptorError("ENOTTY", `fd.ioctl: ${descriptor.fd}: descriptor has no PTY session`);
+      const session = this.os.pty?.setMode?.(descriptor.tty.id, args.mode || args) || descriptor.tty;
+      descriptor.tty = session;
+      this.syncDescriptorObject(process, descriptor);
+      this.writeProcfs(process.pid);
+      return {
+        fd: descriptor.fd,
+        request,
+        path: descriptor.path,
+        mode: ttyMode(descriptor),
       };
     }
     if (request === "tty.isatty") {
@@ -545,10 +566,12 @@ export class DescriptorManager {
     if (!["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty", "/dev/clipboard"].includes(path) && !ptsMatch) {
       throw descriptorError("ENODEV", `fd.open: ${path}: no such device`);
     }
-    const tty = ptsMatch
-      ? this.os.pty?.getSession?.(ptsMatch[1]) || null
-      : path === "/dev/tty" ? this.os.pty?.getSession?.(process.context?.ptySessionId) || null : null;
+    const sessionId = ptsMatch ? ptsMatch[1] : process.ptySessionId || process.context?.ptySessionId || "";
+    let tty = ptsMatch
+      ? this.os.pty?.getSession?.(sessionId) || null
+      : path === "/dev/tty" && sessionId ? this.os.pty?.getSession?.(sessionId) || null : null;
     if (ptsMatch && !tty) throw descriptorError("ENODEV", `fd.open: ${path}: no such PTY`);
+    if (tty?.id) tty = this.os.pty?.authorizeSession?.(tty.id, process, "open") || tty;
     return {
       kind: "device",
       path,
@@ -749,7 +772,7 @@ function publicDescriptor(descriptor) {
     preopen: Boolean(descriptor.preopen),
     rights: descriptor.rights ? { ...descriptor.rights } : null,
     wasi: descriptor.wasi ? { ...descriptor.wasi } : null,
-    tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
+    tty: descriptor.tty ? publicTtyDescriptor(descriptor.tty) : null,
   };
 }
 
@@ -785,7 +808,7 @@ function descriptorObjectMetadata(descriptor) {
     flags: descriptor.flags || "",
     preopen: Boolean(descriptor.preopen),
     wasi: descriptor.wasi ? { ...descriptor.wasi } : null,
-    tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
+    tty: descriptor.tty ? publicTtyDescriptor(descriptor.tty) : null,
     pipeId: descriptor.pipe?.id ? Number(descriptor.pipe.id) : 0,
   };
 }
@@ -853,7 +876,7 @@ function deviceObjectMetadata(descriptor) {
     writable: Boolean(descriptor.writable),
     offset: Number(descriptor.offset || 0),
     flags: descriptor.flags || "",
-    tty: descriptor.tty ? { id: descriptor.tty.id || "", columns: descriptor.tty.columns || 80, rows: descriptor.tty.rows || 24 } : null,
+    tty: descriptor.tty ? publicTtyDescriptor(descriptor.tty) : null,
     descriptorObjectId: descriptor.objectId || "",
   };
 }
@@ -864,6 +887,7 @@ function deviceHandleMetadata(descriptor) {
     path: descriptor.path,
     descriptorHandleId: descriptor.handleId || "",
     descriptorObjectId: descriptor.objectId || "",
+    tty: descriptor.tty ? publicTtyDescriptor(descriptor.tty) : null,
   };
 }
 
@@ -890,6 +914,34 @@ function ttySize(descriptor) {
     rows: boundedInteger(source.rows, 24, 1, 1000),
     pixelWidth: boundedInteger(source.pixelWidth, 0, 0, 100000),
     pixelHeight: boundedInteger(source.pixelHeight, 0, 0, 100000),
+  };
+}
+
+function ttyMode(descriptor) {
+  return {
+    canonical: descriptor.tty?.terminalMode?.canonical !== false,
+    echo: descriptor.tty?.terminalMode?.echo !== false,
+    signals: descriptor.tty?.terminalMode?.signals !== false,
+    raw: Boolean(descriptor.tty?.terminalMode?.raw),
+  };
+}
+
+function publicTtyDescriptor(tty = {}) {
+  return {
+    id: tty.id || "",
+    columns: tty.columns || 80,
+    rows: tty.rows || 24,
+    ownerPid: Number(tty.ownerPid || 0),
+    ownerUid: Number(tty.ownerUid || 0),
+    ownerGid: Number(tty.ownerGid || 0),
+    foregroundProcessGroupId: Number(tty.foregroundProcessGroupId || 0),
+    deviceMode: tty.deviceMode || "0600",
+    terminalMode: {
+      canonical: tty.terminalMode?.canonical !== false,
+      echo: tty.terminalMode?.echo !== false,
+      signals: tty.terminalMode?.signals !== false,
+      raw: Boolean(tty.terminalMode?.raw),
+    },
   };
 }
 
