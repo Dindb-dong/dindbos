@@ -15,27 +15,42 @@ const FILES_COLUMN_ENTRY_LIMIT = 250;
 const FILES_SEARCH_RESULT_LIMIT = 200;
 export const BROWSER_LOCAL_HTML_SANDBOX = "allow-scripts allow-forms allow-popups";
 const BROWSER_CLOSED_TAB_LIMIT = 8;
+const DEFAULT_PORTFOLIO_DATA = {
+  name: "DindbOS.js",
+  summary: "Browser-native OS runtime mounted by the host application.",
+  projects: [
+    {
+      name: "Runtime",
+      type: "Web OS",
+      description: "Files, processes, packages, permissions, browser brokers, and diagnostics inside browser constraints.",
+    },
+  ],
+};
 
-export function installBuiltinApps(os, { portfolioData }) {
+export function installBuiltinApps(os, options = {}) {
+  const portfolioData = options.portfolioData || DEFAULT_PORTFOLIO_DATA;
+  const includePortfolio = options.includePortfolio !== false;
   const userHome = os.session.home || "/home/guest";
   const userDocumentReadRoots = documentReadRoots(userHome);
   const userDocumentWriteRoots = documentWriteRoots(userHome);
 
-  os.registerApp({
-    id: "portfolio",
-    name: "Portfolio",
-    title: "Portfolio.app",
-    icon: "portfolio",
-    pinned: true,
-    singleton: true,
-    width: 860,
-    height: 620,
-    manifest: {
-      capabilities: ["app.launch"],
-      fileSystem: { read: ["/mnt/portfolio", userHome], write: [] },
-    },
-    render: ({ content }) => renderPortfolio(content, portfolioData),
-  });
+  if (includePortfolio) {
+    os.registerApp({
+      id: "portfolio",
+      name: "Portfolio",
+      title: "Portfolio.app",
+      icon: "portfolio",
+      pinned: true,
+      singleton: true,
+      width: 860,
+      height: 620,
+      manifest: {
+        capabilities: ["app.launch"],
+        fileSystem: { read: ["/mnt/portfolio", userHome], write: [] },
+      },
+      render: ({ content }) => renderPortfolio(content, portfolioData),
+    });
+  }
 
   os.registerApp({
     id: "files",
