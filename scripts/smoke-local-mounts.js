@@ -266,6 +266,11 @@ assert(conflicts[0].reason === "modified-both", `sync conflict reason mismatch: 
 assert(mounts.operationStatus().some((operation) => operation.kind === "sync-conflict" && operation.status === "conflict"), "sync conflict operation was not reported");
 const status = await mounts.status();
 assert(status[0].conflicts.length === 1, "mount status did not expose sync conflict");
+const resolvedConflict = await mounts.resolveConflict("/mnt/disk/note.txt", { action: "overwrite-external" });
+assert(resolvedConflict.status === "resolved" && resolvedConflict.action === "overwrite-external", `sync conflict resolve mismatch: ${JSON.stringify(resolvedConflict)}`);
+assert(await mounts.readFile("/mnt/disk/note.txt") === "local v2", "sync conflict overwrite did not apply pending local write");
+assert(mounts.conflictStatus("/mnt/disk").length === 0, "resolved sync conflict remained active");
+assert(mounts.operationStatus().some((operation) => operation.kind === "sync-conflict-resolve" && operation.status === "complete"), "sync conflict resolution operation was not reported");
 await os.storage.writeValue("dindbos:local-folder-mounts", {
   version: 1,
   mounts: [

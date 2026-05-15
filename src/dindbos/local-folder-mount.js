@@ -345,15 +345,18 @@ export class LocalFolderMountManager {
     return new Uint8Array(await file.arrayBuffer());
   }
 
-  async writeFile(path, content, cwd = "/") {
+  async writeFile(path, content, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
     this.assertMountHandleForPath(normalized, ["write"]);
-    await this.assertNoSyncConflict(normalized, "write");
+    if (!options.force && options.conflictPolicy !== "overwrite-external") {
+      await this.assertNoSyncConflict(normalized, "write", { attemptedContent: String(content ?? "") });
+    }
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
     await writable.write(content);
     await writable.close();
+    this.conflicts.delete(normalized);
     await this.syncDirectory(this.os.fs.dirname(normalized));
     return this.stat(normalized);
   }
@@ -361,12 +364,15 @@ export class LocalFolderMountManager {
   async writeFileBytes(path, bytes, cwd = "/", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
     this.assertMountHandleForPath(normalized, ["write"]);
-    await this.assertNoSyncConflict(normalized, "write");
+    if (!options.force && options.conflictPolicy !== "overwrite-external") {
+      await this.assertNoSyncConflict(normalized, "write-bytes", { attemptedBytes: byteLength(bytes) });
+    }
     const { parentHandle, name } = await this.parentHandleFor(normalized, { create: true });
     const handle = await parentHandle.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
     await writable.write(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
     await writable.close();
+    this.conflicts.delete(normalized);
     await this.syncDirectory(this.os.fs.dirname(normalized));
     return this.stat(normalized);
   }
@@ -904,7 +910,7 @@ export class LocalFolderMountManager {
     });
   }
 
-  async assertNoSyncConflict(path, action) {
+  async assertNoSyncConflict(path, action, details = {}) {
     const previous = this.syncSnapshots.get(path);
     if (!previous) return;
     const external = await this.stat(path).catch(() => null);
@@ -912,7 +918,12 @@ export class LocalFolderMountManager {
     const conflict = this.syncConflictRecord(path, "modified-both", {
       action,
       previous,
-      local: { action, attemptedAt: new Date().toISOString() },
+      local: {
+        action,
+        attemptedAt: new Date().toISOString(),
+        attemptedContent: details.attemptedContent,
+        attemptedBytes: details.attemptedBytes,
+      },
       external: nodeSnapshot(external),
     });
     this.recordSyncConflict(conflict);
@@ -954,6 +965,38 @@ export class LocalFolderMountManager {
       operation.updatedAt = operation.finishedAt;
       operation.onProgress?.({ ...operation });
     }
+  }
+
+  async resolveConflict(path, options = {}) {
+    const normalized = this.os.fs.normalize(path);
+    const conflict = this.conflicts.get(normalized);
+    if (!conflict) throw new Error(`local mount sync conflict not found: ${normalized}`);
+    const action = normalizeLocalConflictAction(options.action || options.resolution);
+    if (action === "accept-external") {
+      this.conflicts.delete(normalized);
+      await this.syncDirectory(this.os.fs.dirname(normalized));
+    } else if (action === "overwrite-external") {
+      if (conflict.local?.attemptedContent === undefined) {
+        throw new Error(`local mount sync conflict ${normalized} has no pending write content`);
+      }
+      await this.writeFile(normalized, conflict.local.attemptedContent, "/", { force: true });
+    } else if (action === "keep-local") {
+      this.conflicts.delete(normalized);
+      await this.syncDirectory(this.os.fs.dirname(normalized));
+    }
+    const resolved = {
+      ...conflict,
+      status: "resolved",
+      action,
+      resolvedAt: new Date().toISOString(),
+      remainingConflicts: this.conflictStatus(this.os.fs.dirname(normalized)).length,
+    };
+    const operation = this.beginOperation("sync-conflict-resolve", normalized, normalized);
+    operation.status = "complete";
+    operation.detail = action;
+    operation.finishedAt = resolved.resolvedAt;
+    operation.updatedAt = resolved.resolvedAt;
+    return resolved;
   }
 
   recordSyncSnapshot(node) {
@@ -1113,6 +1156,17 @@ function localMountMetadata(kind, values = {}) {
     ownership: "dindbos-session-local",
     ...values,
   };
+}
+
+function normalizeLocalConflictAction(action = "accept-external") {
+  const value = String(action || "accept-external").toLowerCase();
+  if (["accept-external", "overwrite-external", "keep-local"].includes(value)) return value;
+  return "accept-external";
+}
+
+function byteLength(value) {
+  if (value instanceof Uint8Array) return value.byteLength;
+  return new TextEncoder().encode(String(value ?? "")).byteLength;
 }
 
 async function requestDirectoryPermission(handle, mode) {

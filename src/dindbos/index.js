@@ -1227,9 +1227,12 @@ export class DindbOS {
         startIndex,
         nextIndex: startIndex,
         totalFiles: files.length,
+        processedFiles: 0,
+        remainingFiles: Math.max(0, files.length - startIndex),
         dryRun,
       });
       let appliedFiles = 0;
+      let lastPlanned = null;
       for (let index = startIndex; index < files.length; index += 1) {
         if (appliedFiles >= maxFiles) {
           result.status = "interrupted";
@@ -1237,6 +1240,7 @@ export class DindbOS {
         }
         const file = files[index];
         const planned = this.planRemoteSyncApplyFile(file, options);
+        lastPlanned = planned;
         result.summary[planned.action] = Number(result.summary[planned.action] || 0) + 1;
         if (planned.action === "refuse") {
           result.refusedRecords.push(remoteSyncRefusalRecord(planned, index));
@@ -1254,6 +1258,10 @@ export class DindbOS {
           startIndex,
           nextIndex: result.nextIndex,
           totalFiles: files.length,
+          currentPath: planned.path,
+          currentAction: planned.action,
+          processedFiles: result.nextIndex - startIndex,
+          remainingFiles: Math.max(0, files.length - result.nextIndex),
           dryRun,
         });
       }
@@ -1280,6 +1288,10 @@ export class DindbOS {
         startIndex,
         nextIndex: result.nextIndex,
         totalFiles: files.length,
+        currentPath: lastPlanned?.path || "",
+        currentAction: lastPlanned?.action || "",
+        processedFiles: result.nextIndex - startIndex,
+        remainingFiles: Math.max(0, files.length - result.nextIndex),
         dryRun,
         summary: { ...result.summary },
       });
@@ -1421,6 +1433,10 @@ export class DindbOS {
       startIndex: Number(run.startIndex || 0),
       nextIndex: Number(run.nextIndex || 0),
       totalFiles: Number(run.totalFiles || 0),
+      processedFiles: Number(run.processedFiles || 0),
+      remainingFiles: Number(run.remainingFiles || 0),
+      currentPath: String(run.currentPath || ""),
+      currentAction: String(run.currentAction || ""),
       dryRun: Boolean(run.dryRun),
       summary: run.summary && typeof run.summary === "object" ? { ...run.summary } : {},
     };

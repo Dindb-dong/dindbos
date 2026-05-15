@@ -503,13 +503,16 @@ const interruptedApply = await resumeTarget.applyRemoteSyncSnapshot({
 });
 assert(interruptedApply.status === "interrupted" && interruptedApply.nextIndex === 1, "remote sync apply did not record interrupted run");
 assert(resumeTarget.remoteSyncStatus().lastApplyRun.status === "interrupted", "remote sync status did not expose interrupted apply run");
-assert(JSON.parse(resumeTarget.fs.readFile("/var/run/dindbos/remote-sync-apply.json")).nextIndex === 1, "remote sync apply checkpoint was not persisted");
+const interruptedCheckpoint = JSON.parse(resumeTarget.fs.readFile("/var/run/dindbos/remote-sync-apply.json"));
+assert(interruptedCheckpoint.nextIndex === 1, "remote sync apply checkpoint was not persisted");
+assert(interruptedCheckpoint.currentPath && interruptedCheckpoint.currentAction && interruptedCheckpoint.remainingFiles > 0, "remote sync apply checkpoint missing current file progress");
 const resumedApply = await resumeTarget.resumeRemoteSyncApply({
   passphrase: "session-sync-secret",
   snapshot: syncSnapshot,
 });
 assert(resumedApply.status === "complete" && resumedApply.startIndex === 1, "remote sync apply resume did not continue from checkpoint");
 assert(resumeTarget.remoteSyncStatus().lastApplyRun.status === "complete", "remote sync status did not record completed resumed apply");
+assert(resumeTarget.remoteSyncStatus().lastApplyRun.remainingFiles === 0, "remote sync completed checkpoint did not clear remaining files");
 assert(resumeTarget.fs.exists("/etc/dindbos/sync-settings.json"), "remote sync resumed apply did not restore remaining settings file");
 
 console.log("sessions smoke ok generated-home user-scopes ownership credentials session-switch admin-audit login-lock coordination file-events conflicts storage-flush app-state packages handoff handoff-relay package-lock reload-recovery sync-snapshot sync-coverage sync-merge sync-apply sync-repair sync-resume sync-retry");

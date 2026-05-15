@@ -175,10 +175,12 @@ Done:
 
 - Atomic write primitives, package staging, archive import staging, OPFS replay records, fsync-style barriers, storage status, and `fsck` first pass.
 - Cycle 3: storage transaction groups now cover writeback flushes, service lifecycle suspend/resume, and descriptor mapped-file writes; `/proc/storage-kernel.json`, `/proc/writeback`, `storage.kernel`, `storage fsck`, and Settings Storage Recovery expose page-cache/writeback/repair diagnostics.
+- Local mount writes now detect external changes before overwriting, keep pending write content with the conflict record, expose resolution operations, and can resolve by accepting external state or overwriting the external file through an explicit arbitration call.
+- Remote sync apply checkpoints now retain current file path/action plus processed and remaining counts, so interrupted apply/resume status is operator-readable under `/var/run/dindbos/remote-sync-apply.json`.
 
 Next:
 
-- Extend storage-kernel conflict repair into concurrent local mount write arbitration and remote sync apply checkpoints.
+- Broaden storage conflict repair into app-specific merge hooks for richer document formats.
 
 ### 5. Virtual Networking And Service Mesh
 
