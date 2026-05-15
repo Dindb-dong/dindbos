@@ -9,7 +9,7 @@ export function normalizeDindbOSHostConfig(options = {}) {
   const diagnostics = normalizeDiagnostics(options.diagnostics || {});
   return {
     root: options.root ?? null,
-    fileSystem: options.fileSystem || options.files || {},
+    fileSystem: normalizeFileSystemSeed(options.fileSystem || options.files || null),
     session: {
       user: "guest",
       product: "DindbOS.js",
@@ -78,6 +78,70 @@ function normalizeHostApps(apps) {
       name: String(app.name || id),
     };
   });
+}
+
+function normalizeFileSystemSeed(seed) {
+  if (!seed) return undefined;
+  if (seed.type === "directory" || seed.type === "file") return seed;
+  if (typeof seed !== "object") throw new Error("DindbOS host config: fileSystem must be a VFS tree or path map");
+  const root = { name: "", type: "directory", children: [] };
+  for (const [path, value] of Object.entries(seed)) {
+    addSeedPath(root, path, value);
+  }
+  return root;
+}
+
+function addSeedPath(root, path, value) {
+  const normalized = String(path || "").trim();
+  if (!normalized.startsWith("/")) throw new Error(`DindbOS host config: fileSystem path must be absolute: ${path}`);
+  const parts = normalized.split("/").filter(Boolean);
+  if (!parts.length) return;
+  let directory = root;
+  for (const part of parts.slice(0, -1)) {
+    directory = ensureSeedDirectory(directory, part);
+  }
+  const name = parts.at(-1);
+  const existingIndex = directory.children.findIndex((child) => child.name === name);
+  const node = seedNode(name, value);
+  if (existingIndex >= 0) directory.children[existingIndex] = node;
+  else directory.children.push(node);
+}
+
+function ensureSeedDirectory(parent, name) {
+  let node = parent.children.find((child) => child.name === name);
+  if (!node) {
+    node = { name, type: "directory", children: [] };
+    parent.children.push(node);
+  }
+  if (node.type !== "directory") throw new Error(`DindbOS host config: fileSystem path crosses file: ${name}`);
+  return node;
+}
+
+function seedNode(name, value) {
+  if (value && typeof value === "object" && (value.type === "directory" || value.type === "file")) {
+    return { ...value, name: value.name || name };
+  }
+  if (value && typeof value === "object" && !(value instanceof Uint8Array) && !(value instanceof ArrayBuffer)) {
+    const directory = { name, type: "directory", children: [] };
+    for (const [childName, childValue] of Object.entries(value)) {
+      addSeedPath(directory, `/${childName}`, childValue);
+    }
+    return directory;
+  }
+  return {
+    name,
+    type: "file",
+    mime: guessSeedMime(name, value),
+    content: value instanceof ArrayBuffer ? new Uint8Array(value) : value,
+  };
+}
+
+function guessSeedMime(name, value) {
+  if (value instanceof Uint8Array || value instanceof ArrayBuffer) return "application/octet-stream";
+  if (name.endsWith(".json")) return "application/json";
+  if (name.endsWith(".md")) return "text/markdown";
+  if (name.endsWith(".html")) return "text/html";
+  return "text/plain";
 }
 
 function normalizeStorage(storage) {
