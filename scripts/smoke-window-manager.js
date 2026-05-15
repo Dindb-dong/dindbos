@@ -145,6 +145,27 @@ function createTestClipboard() {
   };
 }
 
+function inputPriorityTarget(windowId, options = {}) {
+  return {
+    tagName: options.tagName || "DIV",
+    dataset: {},
+    closest: (selector) => {
+      if (selector === "[data-window-id]") return { dataset: { windowId } };
+      if (options.osManagedDrag && selector.includes("[draggable='true']")) return {};
+      if (options.titlebar && selector.includes(".dos-window-titlebar")) return {};
+      if (
+        selector.includes(".dos-shell")
+        || selector.includes(".dos-desktop")
+        || selector.includes(".dos-dock")
+        || selector.includes(".dos-menubar")
+        || selector.includes(".dos-window,")
+        || selector === ".dos-window"
+      ) return {};
+      return null;
+    },
+  };
+}
+
 function fakeTask(id) {
   const classList = {
     active: false,
@@ -385,8 +406,45 @@ async function runLiveWindowStateSmoke() {
     assert(imeRoute.handled && imeRoute.targetPid === 42, "compositor input router did not route IME event to focused window");
     const dropRoute = liveManager.routeInputEvent("drop", { clientX: 80, clientY: 90 });
     assert(dropRoute.handled && dropRoute.targetWindowId === "browser", "compositor input router did not route drop event");
+    const osTarget = inputPriorityTarget("browser");
+    let contextPrevented = false;
+    const contextRoute = liveManager.handleBrowserDefaultEvent("contextmenu", {
+      target: osTarget,
+      preventDefault: () => { contextPrevented = true; },
+    });
+    assert(contextRoute.handled && contextRoute.browserDefaultPrevented && contextPrevented, "OS context menu did not claim browser context menu");
+    let selectPrevented = false;
+    const selectRoute = liveManager.handleBrowserDefaultEvent("selectstart", {
+      target: osTarget,
+      preventDefault: () => { selectPrevented = true; },
+    });
+    assert(selectRoute.browserDefaultPrevented && selectPrevented, "OS selectstart did not suppress browser selection on chrome");
+    let textSelectPrevented = false;
+    const textSelectRoute = liveManager.handleBrowserDefaultEvent("selectstart", {
+      target: inputPriorityTarget("browser", { tagName: "INPUT" }),
+      preventDefault: () => { textSelectPrevented = true; },
+    });
+    assert(!textSelectRoute.browserDefaultPrevented && !textSelectPrevented, "text input selection was incorrectly suppressed");
+    let nativeDragPrevented = false;
+    const nativeDragRoute = liveManager.handleBrowserDefaultEvent("dragstart", {
+      target: osTarget,
+      preventDefault: () => { nativeDragPrevented = true; },
+    });
+    assert(nativeDragRoute.browserDefaultPrevented && nativeDragPrevented, "native browser drag was not suppressed on OS surface");
+    let managedDragPrevented = false;
+    const managedDragRoute = liveManager.handleBrowserDefaultEvent("dragstart", {
+      target: inputPriorityTarget("browser", { osManagedDrag: true }),
+      preventDefault: () => { managedDragPrevented = true; },
+    });
+    assert(!managedDragRoute.browserDefaultPrevented && !managedDragPrevented, "DindbOS managed drag was incorrectly suppressed");
+    let dropPrevented = false;
+    const claimedDropRoute = liveManager.handleBrowserDefaultEvent("drop", {
+      target: osTarget,
+      preventDefault: () => { dropPrevented = true; },
+    });
+    assert(claimedDropRoute.browserDefaultPrevented && dropPrevented, "OS drop did not suppress browser file-open defaults");
     const routedCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
-    assert(routedCompositor.inputRouter.routed >= 2 && routedCompositor.inputRouter.lastRoute.type === "drop", "/proc/compositor did not expose input router state");
+    assert(routedCompositor.inputRouter.routed >= 8 && routedCompositor.inputRouter.lastRoute.browserDefaultPrevented === true, "/proc/compositor did not expose input priority state");
     task.shortcuts = [
       { key: "ctrl+s", scope: "focused", command: "save-document" },
       { key: "ctrl+b", scope: "text-entry", command: "bold-text" },
