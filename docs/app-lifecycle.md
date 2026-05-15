@@ -47,7 +47,7 @@ Offline sync merge rules are exposed before full snapshot apply. `os.remoteSyncM
 
 `os.applyRemoteSyncSnapshot({ passphrase, snapshot, dryRun })` decrypts an encrypted snapshot, runs the merge planner for each file, writes safe remote or merged files, writes unsafe remote document/app-state versions under `.sync-conflicts`, refuses package metadata mutation, and records apply conflicts/refusals in `os.remoteSyncStatus().lastAppliedSnapshot`. A dry run returns the same action plan without mutating the VFS.
 
-Interrupted applies are checkpointed under `/var/run/dindbos/remote-sync-apply.json`. `os.resumeRemoteSyncApply({ passphrase, snapshot })` reads the last interrupted checkpoint, resumes at the recorded `nextIndex`, and updates `os.remoteSyncStatus().lastApplyRun` as `running`, `interrupted`, or `complete`.
+Interrupted applies are checkpointed under `/var/run/dindbos/remote-sync-apply.json`. The checkpoint includes the snapshot id, `nextIndex`, current path/action, processed count, and remaining count. `os.resumeRemoteSyncApply({ passphrase, snapshot })` reads the last interrupted checkpoint, resumes at the recorded `nextIndex`, and updates `os.remoteSyncStatus().lastApplyRun` as `running`, `interrupted`, or `complete`.
 
 Conflict repair is explicit. `os.listRemoteSyncConflicts()` scans `.sync-conflicts` folders and returns target paths, while `os.resolveRemoteSyncConflict(path, { action })` supports `use-conflict`, `keep-local`, and `delete-conflict`. Settings renders the same pending conflicts with repair buttons, and the shell exposes the boundary through `sync status`, `sync conflicts`, and `sync resolve <action> <conflict-path>`.
 
