@@ -4,6 +4,8 @@ DindbOS reports browser isolation as a runtime capability, not as a promise. Sha
 
 ## Deployment Profiles
 
+For copyable host deployment recipes, see [SDK Deployment Recipes](deployment.md).
+
 Default local or embedded profile:
 
 ```text

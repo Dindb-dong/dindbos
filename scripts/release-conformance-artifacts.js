@@ -19,6 +19,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_OUTPUT_DIR = "dist/release-conformance";
 const BUILD_INPUT_ROOTS = ["package.json", "package-lock.json", "vite.config.js", "index.html", "public", "src"];
 const RELEASE_EVIDENCE_MATRIX_FILE = "dindbos-release-evidence-matrix.json";
+const DEPLOYMENT_RECIPES_FILE = "dindbos-deployment-recipes.json";
 const RELEASE_MANIFEST_FILE = "dindbos-release-manifest.json";
 const RELEASE_SIGNATURE_FILE = "dindbos-release-manifest.sig.json";
 const RELEASE_VERIFICATION_FILE = "dindbos-release-verification.json";
@@ -36,6 +37,7 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       "dindbos-conformance.json",
       "dindbos-conformance-evidence.json",
       "dindbos-secure-boot.json",
+      DEPLOYMENT_RECIPES_FILE,
       RELEASE_EVIDENCE_MATRIX_FILE,
     ];
     os.addConformanceEvidence({
@@ -65,7 +67,8 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
     const conformance = os.writeConformanceProcfs("release-artifact");
     const secureBoot = os.writeSecureBootProcfs("release-artifact");
     const evidence = JSON.parse(os.fs.readFile("/proc/conformance-evidence.json"));
-    const releaseEvidenceMatrix = createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot });
+    const deploymentRecipes = createDeploymentRecipes({ generatedAt });
+    const releaseEvidenceMatrix = createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot, deploymentRecipes });
     const sourceDigest = await sourceTreeDigest(repoRoot);
     const packageJson = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8"));
 
@@ -74,6 +77,7 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       jsonArtifact("dindbos-conformance.json", conformance, "application/json"),
       jsonArtifact("dindbos-conformance-evidence.json", evidence, "application/json"),
       jsonArtifact("dindbos-secure-boot.json", secureBoot, "application/json"),
+      jsonArtifact(DEPLOYMENT_RECIPES_FILE, deploymentRecipes, "application/vnd.dindbos.deployment-recipes+json"),
       jsonArtifact(RELEASE_EVIDENCE_MATRIX_FILE, releaseEvidenceMatrix, "application/vnd.dindbos.release-evidence-matrix+json"),
     ];
     const manifest = {
@@ -109,6 +113,13 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
         algorithm: secureBoot.algorithm,
         summary: secureBoot.summary,
       },
+      deployment: {
+        recipes: deploymentRecipes.recipes.map((recipe) => ({
+          id: recipe.id,
+          status: recipe.expected.crossOriginIsolated ? "origin-isolated" : "degraded",
+          crossOriginIsolated: recipe.expected.crossOriginIsolated,
+        })),
+      },
       artifacts: baseArtifacts.map((artifact) => artifact.record),
     };
     const releaseManifest = jsonArtifact(RELEASE_MANIFEST_FILE, manifest, "application/json");
@@ -142,6 +153,7 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       files: [...outputArtifacts.map((artifact) => artifact.record.file), "SHA256SUMS"],
       manifest,
       releaseEvidenceMatrix,
+      deploymentRecipes,
       signature: JSON.parse(signatureArtifact.content),
       verification,
       sha256Sums: sums,
@@ -216,7 +228,7 @@ function jsonArtifact(file, value, mediaType) {
   };
 }
 
-function createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot }) {
+function createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isolation, secureBoot, deploymentRecipes }) {
   const evidenceRecords = Array.isArray(evidence.records) ? evidence.records : [];
   const originRow = (conformance.browserMatrix || []).find((entry) => entry.profile === "cross-origin-isolated") || {};
   const currentRow = (conformance.browserMatrix || []).find((entry) => entry.profile === "chromium-tab") || {};
@@ -289,7 +301,63 @@ function createReleaseEvidenceMatrix({ generatedAt, conformance, evidence, isola
       evidenceStatus: currentRow.evidenceStatus || "unverified",
       evidenceCount: currentRow.evidenceCount || 0,
     },
+    deploymentRecipes: deploymentRecipes.recipes.map((recipe) => ({
+      id: recipe.id,
+      label: recipe.label,
+      status: recipe.expected.crossOriginIsolated ? "origin-isolated" : "degraded",
+      crossOriginIsolated: recipe.expected.crossOriginIsolated,
+      config: recipe.config,
+    })),
     evidenceRecords,
+  };
+}
+
+function createDeploymentRecipes({ generatedAt }) {
+  const originHeaders = {
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "require-corp",
+    "Cross-Origin-Resource-Policy": "same-origin",
+  };
+  return {
+    service: "dindbos-deployment-recipes",
+    version: 1,
+    generatedAt,
+    recipes: [
+      {
+        id: "netlify-static",
+        label: "Netlify static deployment",
+        config: "examples/deployment/netlify.toml",
+        expected: { crossOriginIsolated: true, mode: "origin-isolated" },
+        requiredHeaders: originHeaders,
+        verification: ["doctor isolation", "cat /proc/isolation.json"],
+      },
+      {
+        id: "static-server-origin-isolated",
+        label: "Static server with explicit COOP/COEP/CORP headers",
+        config: "examples/deployment/static-headers.txt",
+        expected: { crossOriginIsolated: true, mode: "origin-isolated" },
+        requiredHeaders: originHeaders,
+        verification: ["doctor isolation", "cat /proc/isolation.json"],
+      },
+      {
+        id: "github-pages",
+        label: "GitHub Pages degraded deployment",
+        config: "examples/deployment/github-pages.md",
+        expected: { crossOriginIsolated: false, mode: "degraded" },
+        requiredHeaders: {},
+        verification: ["doctor isolation", "cat /proc/isolation.json"],
+        notes: "Repository pages cannot attach COOP/COEP/CORP headers to every route.",
+      },
+      {
+        id: "local-dev-default",
+        label: "Default local dev server",
+        config: "examples/deployment/local-dev.md",
+        expected: { crossOriginIsolated: false, mode: "degraded" },
+        requiredHeaders: {},
+        verification: ["doctor isolation", "cat /proc/isolation.json"],
+        notes: "Use custom middleware or a reverse proxy for local origin-isolated testing.",
+      },
+    ],
   };
 }
 
