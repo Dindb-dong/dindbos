@@ -173,11 +173,19 @@ function fakeTask(id) {
 }
 
 function installFakeDom() {
+  const windowListeners = new Map();
   globalThis.window = {
     innerWidth: 1024,
     innerHeight: 768,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    addEventListener: (type, handler) => {
+      windowListeners.set(type, handler);
+    },
+    removeEventListener: (type, handler) => {
+      if (windowListeners.get(type) === handler) windowListeners.delete(type);
+    },
+    dispatchTestEvent: (type, event = {}) => {
+      windowListeners.get(type)?.({ type, ...event });
+    },
   };
   globalThis.document = {
     createElement: (tag) => new FakeElement(tag),
@@ -336,6 +344,43 @@ async function runLiveWindowStateSmoke() {
     assert(JSON.parse(liveOs.fs.readFile("/proc/42/handles.json")).some((entry) => entry.id === task.handleId && entry.objectType === "window"), "/proc pid handles missing window handle");
     const procCompositor = JSON.parse(liveOs.fs.readFile("/proc/compositor"));
     assert(procCompositor.lastInputEvent.type === "pointerdown", "/proc/compositor did not expose last input event");
+    task.titlebar.listeners.pointerdown({
+      pointerId: 6,
+      button: 0,
+      clientX: 80,
+      clientY: 90,
+      target: { closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+    assert(task.frame.classList.contains("is-dragging"), "window drag did not mark the frame as dragging");
+    assert(task.titlebar.capturedPointerIds.has(6), "window drag did not capture the pointer");
+    globalThis.window.dispatchTestEvent("pointermove", {
+      pointerId: 6,
+      clientX: -800,
+      clientY: -800,
+      preventDefault: () => {},
+    });
+    assert(Number.parseFloat(task.frame.style.left) === 8, "window drag did not clamp left edge into viewport");
+    assert(Number.parseFloat(task.frame.style.top) === 58, "window drag did not clamp top edge below menu bar");
+    globalThis.window.dispatchTestEvent("pointerup", {
+      pointerId: 6,
+      clientX: 2,
+      clientY: 240,
+      preventDefault: () => {},
+    });
+    assert(!task.frame.classList.contains("is-dragging"), "window drag did not clear dragging state");
+    assert(task.titlebar.releasedPointerIds.includes(6), "window drag did not release pointer capture");
+    assert(Number.parseFloat(task.frame.style.left) === 8, "window drag did not snap to the left edge");
+    assert(Number.parseFloat(task.frame.style.width) === 504, "window drag did not apply left snap width");
+    task.titlebar.listeners.pointerdown({
+      pointerId: 66,
+      button: 2,
+      clientX: 80,
+      clientY: 90,
+      target: { closest: () => null },
+    });
+    assert(!task.titlebar.capturedPointerIds.has(66), "secondary pointer button started a window drag");
     const imeRoute = liveManager.routeInputEvent("compositionupdate", { data: "한" });
     assert(imeRoute.handled && imeRoute.targetPid === 42, "compositor input router did not route IME event to focused window");
     const dropRoute = liveManager.routeInputEvent("drop", { clientX: 80, clientY: 90 });
