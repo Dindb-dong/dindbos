@@ -15,6 +15,7 @@ import {
   publicHostConfig,
 } from "../src/sdk/index.js";
 import { mountDindbOSDesktop } from "../src/sdk/desktop.js";
+import { DindbOSDesktop, DindbOSProvider, useDindbOS } from "../src/sdk/react.js";
 import { createHeadlessDindbOS } from "../src/sdk/testing.js";
 
 assert(typeof DindbOS === "function", "DindbOS export missing");
@@ -27,6 +28,9 @@ assert(typeof normalizeDindbOSHostConfig === "function", "normalizeDindbOSHostCo
 assert(typeof prepareDindbOSHost === "function", "prepareDindbOSHost export missing");
 assert(typeof publicHostConfig === "function", "publicHostConfig export missing");
 assert(typeof mountDindbOSDesktop === "function", "mountDindbOSDesktop export missing");
+assert(typeof DindbOSDesktop === "function", "DindbOSDesktop export missing");
+assert(typeof DindbOSProvider === "function", "DindbOSProvider export missing");
+assert(typeof useDindbOS === "function", "useDindbOS export missing");
 assert(typeof createHeadlessDindbOS === "function", "createHeadlessDindbOS export missing");
 assert(BOOT_PHASES.some((phase) => phase.id === "desktop-render"), "BOOT_PHASES export incomplete");
 assert(compatibilitySnapshot(minimalRuntime()).runtime === "DindbOS.js", "compatibilitySnapshot export failed");

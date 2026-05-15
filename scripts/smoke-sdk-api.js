@@ -6,6 +6,7 @@ const modules = {
   desktop: await import("../src/sdk/desktop.js"),
   builtins: await import("../src/sdk/builtins.js"),
   testing: await import("../src/sdk/testing.js"),
+  react: await import("../src/sdk/react.js"),
 };
 
 const expected = {
@@ -40,6 +41,11 @@ const expected = {
   testing: [
     "createBootedTestDindbOS",
     "createHeadlessDindbOS",
+  ],
+  react: [
+    "DindbOSDesktop",
+    "DindbOSProvider",
+    "useDindbOS",
   ],
 };
 
