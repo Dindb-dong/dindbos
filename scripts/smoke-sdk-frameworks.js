@@ -18,8 +18,8 @@ const examples = [
 
 try {
   execFileSync("npm", ["run", "build:sdk"], { cwd: repoRoot, stdio: "inherit" });
-  const pack = JSON.parse(execFileSync("npm", ["pack", "--json"], { cwd: repoRoot, encoding: "utf8" }))[0];
-  tarball = resolve(repoRoot, pack.filename);
+  const pack = JSON.parse(execFileSync("npm", ["pack", "--json", "--pack-destination", workspace], { cwd: repoRoot, encoding: "utf8" }))[0];
+  tarball = resolve(workspace, pack.filename);
   assert(existsSync(tarball), `npm pack tarball missing: ${tarball}`);
 
   for (const example of examples) {
@@ -29,7 +29,6 @@ try {
   console.log(`sdk frameworks smoke ok examples=${examples.length} tarball=${pack.filename}`);
 } finally {
   await rm(workspace, { recursive: true, force: true });
-  if (tarball) await rm(tarball, { force: true });
 }
 
 async function verifyExample(example) {

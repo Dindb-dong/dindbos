@@ -15,6 +15,7 @@ import {
   publicHostConfig,
 } from "../src/sdk/index.js";
 import { mountDindbOSDesktop } from "../src/sdk/desktop.js";
+import { createDindbOSProject, normalizeProjectName } from "../src/sdk/create.js";
 import { DindbOSDesktop, DindbOSProvider, useDindbOS } from "../src/sdk/react.js";
 import { createHeadlessDindbOS } from "../src/sdk/testing.js";
 
@@ -28,6 +29,8 @@ assert(typeof normalizeDindbOSHostConfig === "function", "normalizeDindbOSHostCo
 assert(typeof prepareDindbOSHost === "function", "prepareDindbOSHost export missing");
 assert(typeof publicHostConfig === "function", "publicHostConfig export missing");
 assert(typeof mountDindbOSDesktop === "function", "mountDindbOSDesktop export missing");
+assert(typeof createDindbOSProject === "function", "createDindbOSProject export missing");
+assert(normalizeProjectName("Hello OS!") === "hello-os", "normalizeProjectName failed");
 assert(typeof DindbOSDesktop === "function", "DindbOSDesktop export missing");
 assert(typeof DindbOSProvider === "function", "DindbOSProvider export missing");
 assert(typeof useDindbOS === "function", "useDindbOS export missing");

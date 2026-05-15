@@ -7,12 +7,13 @@ import { join, resolve } from "node:path";
 
 const repoRoot = process.cwd();
 const hostDir = await mkdtemp(join(tmpdir(), "dindbos-sdk-host-"));
+const packDir = await mkdtemp(join(tmpdir(), "dindbos-sdk-pack-"));
 let tarball = "";
 
 try {
   execFileSync("npm", ["run", "build:sdk"], { cwd: repoRoot, stdio: "inherit" });
-  const pack = JSON.parse(execFileSync("npm", ["pack", "--json"], { cwd: repoRoot, encoding: "utf8" }))[0];
-  tarball = resolve(repoRoot, pack.filename);
+  const pack = JSON.parse(execFileSync("npm", ["pack", "--json", "--pack-destination", packDir], { cwd: repoRoot, encoding: "utf8" }))[0];
+  tarball = resolve(packDir, pack.filename);
   assert(existsSync(tarball), `npm pack tarball missing: ${tarball}`);
 
   await createHostProject(hostDir, tarball);
@@ -28,7 +29,7 @@ try {
   console.log(`sdk pack smoke ok tarball=${pack.filename} host=${hostDir}`);
 } finally {
   await rm(hostDir, { recursive: true, force: true });
-  if (tarball) await rm(tarball, { force: true });
+  await rm(packDir, { recursive: true, force: true });
 }
 
 async function createHostProject(targetDir, tarball) {

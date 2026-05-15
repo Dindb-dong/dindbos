@@ -7,6 +7,7 @@ const modules = {
   builtins: await import("../src/sdk/builtins.js"),
   testing: await import("../src/sdk/testing.js"),
   react: await import("../src/sdk/react.js"),
+  create: await import("../src/sdk/create.js"),
 };
 
 const expected = {
@@ -46,6 +47,10 @@ const expected = {
     "DindbOSDesktop",
     "DindbOSProvider",
     "useDindbOS",
+  ],
+  create: [
+    "createDindbOSProject",
+    "normalizeProjectName",
   ],
 };
 
