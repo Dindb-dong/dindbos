@@ -184,8 +184,8 @@ export function installBuiltinApps(os, options = {}) {
     icon: "settings",
     pinned: true,
     singleton: true,
-    width: 520,
-    height: 380,
+    width: 980,
+    height: 620,
     manifest: {
       capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read", "browser.read"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
@@ -3577,6 +3577,16 @@ function renderCalculator(content) {
   });
 }
 
+const SETTINGS_SECTIONS = [
+  { id: "overview", label: "General", detail: "Runtime overview", icon: "general" },
+  { id: "storage", label: "Storage", detail: "Save engine and recovery", icon: "storage" },
+  { id: "services", label: "Services", detail: "Runtime daemons", icon: "services" },
+  { id: "sync", label: "Sync", detail: "Remote checkpoints", icon: "sync" },
+  { id: "security", label: "Privacy & Security", detail: "Keychain and containers", icon: "security" },
+  { id: "browser", label: "Browser", detail: "Broker permissions", icon: "browser" },
+  { id: "folders", label: "Local Folders", detail: "Mounted directories", icon: "folders" },
+];
+
 function renderSettings(os, content) {
   content.innerHTML = `
     <section class="settings-app">
@@ -3599,6 +3609,30 @@ function renderSettings(os, content) {
 async function renderSettingsContent(os, content) {
   const snapshot = await settingsRuntimeSnapshot(os);
   content.innerHTML = settingsRuntimeMarkup(snapshot);
+  const settingsApp = content.querySelector(".settings-app");
+  const sectionButtons = [...content.querySelectorAll("[data-settings-section-button]")];
+  const sections = [...content.querySelectorAll("[data-settings-section]")];
+  const selectSettingsSection = (sectionId) => {
+    const nextSection = sections.find((section) => section.dataset.settingsSection === sectionId) || sections[0];
+    if (!nextSection) return;
+    const nextId = nextSection.dataset.settingsSection;
+    settingsApp.dataset.settingsActive = nextId;
+    sections.forEach((section) => {
+      const active = section === nextSection;
+      section.classList.toggle("is-active", active);
+      section.hidden = !active;
+    });
+    sectionButtons.forEach((button) => {
+      const active = button.dataset.settingsSectionButton === nextId;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    nextSection.querySelector("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")?.focus?.({ preventScroll: true });
+  };
+  sectionButtons.forEach((button) => {
+    button.addEventListener("click", () => selectSettingsSection(button.dataset.settingsSectionButton));
+  });
+  selectSettingsSection(settingsApp?.dataset.settingsActive || "overview");
   content.querySelectorAll("[data-settings-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -3666,91 +3700,152 @@ export async function settingsRuntimeSnapshot(os) {
 
 export function settingsRuntimeMarkup(snapshot) {
   return `
-    <section class="settings-app">
-      <p class="dos-kicker">System</p>
-      <h2>DindbOS.js Runtime</h2>
-      <dl>
-        <div><dt>User</dt><dd>${escapeHtml(snapshot.user || "guest")}</dd></div>
-        <div><dt>Home</dt><dd>${escapeHtml(snapshot.home || "/home/guest")}</dd></div>
-        <div><dt>Apps</dt><dd>${snapshot.apps.length}</dd></div>
-        <div><dt>Packages</dt><dd>${snapshot.packages.length}</dd></div>
-        <div><dt>Processes</dt><dd>${snapshot.processes.length}</dd></div>
-        <div><dt>Services</dt><dd>${snapshot.services.length}</dd></div>
-        <div><dt>Lifecycle</dt><dd>${escapeHtml(snapshot.lifecycle?.state || "unknown")}</dd></div>
-        <div><dt>Session Role</dt><dd>${escapeHtml(snapshot.coordination?.role || "unknown")}</dd></div>
-        <div><dt>Recovery</dt><dd>${escapeHtml(formatRecoverySummary(snapshot.recovery))}</dd></div>
-        <div><dt>Sync</dt><dd>${escapeHtml(formatSyncSummary(snapshot.sync))}</dd></div>
-        <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(snapshot.storage)}</dd></div>
-        <div><dt>Desktop</dt><dd>${escapeHtml(snapshot.desktop)}</dd></div>
-        <div><dt>Local Mounts</dt><dd>${snapshot.mounts.length ? `${snapshot.mounts.length} folder${snapshot.mounts.length === 1 ? "" : "s"}` : "none"}</dd></div>
-      </dl>
-      <section class="settings-panel">
-        <header>
-          <h3>Save Engine</h3>
-          <button type="button" data-settings-action="flush-storage">Flush now</button>
+    <section class="settings-app" data-settings-active="overview">
+      <aside class="settings-sidebar" aria-label="Settings categories">
+        <div class="settings-profile">
+          <span class="settings-profile-avatar" aria-hidden="true">${escapeHtml((snapshot.user || "guest").slice(0, 1).toUpperCase())}</span>
+          <div>
+            <strong>${escapeHtml(snapshot.user || "guest")}</strong>
+            <span>${escapeHtml(snapshot.home || "/home/guest")}</span>
+          </div>
+        </div>
+        <nav class="settings-nav" role="tablist" aria-label="System settings">
+          ${SETTINGS_SECTIONS.map((section) => `
+            <button
+              type="button"
+              class="settings-nav-item${section.id === "overview" ? " is-active" : ""}"
+              role="tab"
+              aria-controls="settings-section-${escapeAttr(section.id)}"
+              aria-selected="${section.id === "overview"}"
+              data-settings-section-button="${escapeAttr(section.id)}"
+            >
+              <span class="settings-nav-icon" data-settings-icon="${escapeAttr(section.icon)}" aria-hidden="true"></span>
+              <span>
+                <strong>${escapeHtml(section.label)}</strong>
+                <small>${escapeHtml(section.detail)}</small>
+              </span>
+            </button>
+          `).join("")}
+        </nav>
+      </aside>
+      <main class="settings-detail">
+        <header class="settings-detail-header">
+          <p class="dos-kicker">System</p>
+          <h2>DindbOS.js Runtime</h2>
+          <p>${escapeHtml(formatSettingsHeadline(snapshot))}</p>
         </header>
-        <p>${escapeHtml(formatStorageState(snapshot.storage))}</p>
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Storage Recovery</h3>
-          <button type="button" data-settings-action="storage-fsck-dry-run">Dry run</button>
-          <button type="button" data-settings-action="storage-fsck-repair">Repair</button>
-          <button type="button" data-settings-action="storage-fsck-salvage">Salvage</button>
-        </header>
-        ${renderSettingsStorageKernel(snapshot.storageKernel)}
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Services</h3>
-        </header>
-        ${renderSettingsServices(snapshot.services)}
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Lifecycle</h3>
-        </header>
-        ${renderSettingsLifecycle(snapshot.lifecycle, snapshot.recovery)}
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Session Coordination</h3>
-        </header>
-        ${renderSettingsSessionCoordination(snapshot.coordination)}
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Remote Sync</h3>
-        </header>
-        ${renderSettingsRemoteSync(snapshot.sync, snapshot.syncConflicts)}
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Keychain</h3>
-        </header>
-        ${renderSettingsKeychain(snapshot.keychain)}
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Browser Permissions</h3>
-        </header>
-        ${renderSettingsBrowserPermissions(snapshot.browser)}
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Container Security</h3>
-        </header>
-        ${renderSettingsContainerSecurity(snapshot.containerEvents)}
-      </section>
-      <section class="settings-panel">
-        <header>
-          <h3>Local Folders</h3>
-          <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
-        </header>
-        ${renderSettingsMounts(snapshot.mounts)}
-      </section>
+        <section class="settings-section is-active" id="settings-section-overview" data-settings-section="overview" role="tabpanel">
+          <section class="settings-panel settings-overview-panel">
+            <header>
+              <h3>Overview</h3>
+            </header>
+            <dl class="settings-summary-grid">
+              <div><dt>User</dt><dd>${escapeHtml(snapshot.user || "guest")}</dd></div>
+              <div><dt>Home</dt><dd>${escapeHtml(snapshot.home || "/home/guest")}</dd></div>
+              <div><dt>Apps</dt><dd>${snapshot.apps.length}</dd></div>
+              <div><dt>Packages</dt><dd>${snapshot.packages.length}</dd></div>
+              <div><dt>Processes</dt><dd>${snapshot.processes.length}</dd></div>
+              <div><dt>Services</dt><dd>${snapshot.services.length}</dd></div>
+              <div><dt>Lifecycle</dt><dd>${escapeHtml(snapshot.lifecycle?.state || "unknown")}</dd></div>
+              <div><dt>Session Role</dt><dd>${escapeHtml(snapshot.coordination?.role || "unknown")}</dd></div>
+              <div><dt>Recovery</dt><dd>${escapeHtml(formatRecoverySummary(snapshot.recovery))}</dd></div>
+              <div><dt>Sync</dt><dd>${escapeHtml(formatSyncSummary(snapshot.sync))}</dd></div>
+              <div><dt>Storage</dt><dd>${renderSettingsStorageStatus(snapshot.storage)}</dd></div>
+              <div><dt>Desktop</dt><dd>${escapeHtml(snapshot.desktop)}</dd></div>
+              <div><dt>Local Mounts</dt><dd>${snapshot.mounts.length ? `${snapshot.mounts.length} folder${snapshot.mounts.length === 1 ? "" : "s"}` : "none"}</dd></div>
+            </dl>
+          </section>
+          <section class="settings-panel">
+            <header>
+              <h3>Lifecycle</h3>
+            </header>
+            ${renderSettingsLifecycle(snapshot.lifecycle, snapshot.recovery)}
+          </section>
+          <section class="settings-panel">
+            <header>
+              <h3>Session Coordination</h3>
+            </header>
+            ${renderSettingsSessionCoordination(snapshot.coordination)}
+          </section>
+        </section>
+        <section class="settings-section" id="settings-section-storage" data-settings-section="storage" role="tabpanel" hidden>
+          <section class="settings-panel">
+            <header>
+              <h3>Save Engine</h3>
+              <button type="button" data-settings-action="flush-storage">Flush now</button>
+            </header>
+            <p>${escapeHtml(formatStorageState(snapshot.storage))}</p>
+          </section>
+          <section class="settings-panel">
+            <header>
+              <h3>Storage Recovery</h3>
+              <button type="button" data-settings-action="storage-fsck-dry-run">Dry run</button>
+              <button type="button" data-settings-action="storage-fsck-repair">Repair</button>
+              <button type="button" data-settings-action="storage-fsck-salvage">Salvage</button>
+            </header>
+            ${renderSettingsStorageKernel(snapshot.storageKernel)}
+          </section>
+        </section>
+        <section class="settings-section" id="settings-section-services" data-settings-section="services" role="tabpanel" hidden>
+          <section class="settings-panel">
+            <header>
+              <h3>Services</h3>
+            </header>
+            ${renderSettingsServices(snapshot.services)}
+          </section>
+        </section>
+        <section class="settings-section" id="settings-section-sync" data-settings-section="sync" role="tabpanel" hidden>
+          <section class="settings-panel">
+            <header>
+              <h3>Remote Sync</h3>
+            </header>
+            ${renderSettingsRemoteSync(snapshot.sync, snapshot.syncConflicts)}
+          </section>
+        </section>
+        <section class="settings-section" id="settings-section-security" data-settings-section="security" role="tabpanel" hidden>
+          <section class="settings-panel">
+            <header>
+              <h3>Keychain</h3>
+            </header>
+            ${renderSettingsKeychain(snapshot.keychain)}
+          </section>
+          <section class="settings-panel">
+            <header>
+              <h3>Container Security</h3>
+            </header>
+            ${renderSettingsContainerSecurity(snapshot.containerEvents)}
+          </section>
+        </section>
+        <section class="settings-section" id="settings-section-browser" data-settings-section="browser" role="tabpanel" hidden>
+          <section class="settings-panel">
+            <header>
+              <h3>Browser Permissions</h3>
+            </header>
+            ${renderSettingsBrowserPermissions(snapshot.browser)}
+          </section>
+        </section>
+        <section class="settings-section" id="settings-section-folders" data-settings-section="folders" role="tabpanel" hidden>
+          <section class="settings-panel">
+            <header>
+              <h3>Local Folders</h3>
+              <button type="button" data-settings-action="restore-mounts">Restore saved mounts</button>
+            </header>
+            ${renderSettingsMounts(snapshot.mounts)}
+          </section>
+        </section>
+      </main>
     </section>
   `;
+}
+
+function formatSettingsHeadline(snapshot) {
+  const parts = [
+    `${Number(snapshot.apps?.length || 0)} apps`,
+    `${Number(snapshot.processes?.length || 0)} processes`,
+    `${snapshot.storage?.backend || "memory"} storage`,
+    `${snapshot.coordination?.role || "single"} session`,
+  ];
+  return parts.join(" · ");
 }
 
 function renderSettingsBrowserPermissions(browser) {
