@@ -18,6 +18,9 @@ assert(
 assert(workflow.includes("CHROME_PATH="), "Pages workflow does not export a browser executable for browserd smoke tests");
 assert(workflow.includes("run: npm run smoke"), "Pages workflow does not gate deployment on npm run smoke");
 assert(workflow.includes("run: npm run build"), "Pages workflow does not build the static demo");
+assert(workflow.includes("Check Pages Availability"), "Pages workflow does not preflight Pages availability");
+assert(workflow.includes("/repos/${GITHUB_REPOSITORY}/pages"), "Pages workflow does not check the repository Pages endpoint");
+assert(workflow.includes("steps.pages.outputs.enabled == 'true'"), "Pages workflow does not guard Pages-only deployment steps");
 assert(workflow.includes("path: dist"), "Pages workflow does not upload the built static demo");
 assert(index.includes("./src/main.js?v=20260504-runtime"), "index.html cache buster does not point at the latest runtime demo");
 assert(main.includes("./dindbos/index.js?v=20260504-runtime"), "main.js DindbOS import cache buster is stale");
