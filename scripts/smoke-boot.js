@@ -2,6 +2,7 @@
 import { DindbOS, BOOT_PHASES } from "../src/dindbos/index.js";
 import { ShellSession } from "../src/dindbos/shell.js";
 import { installBuiltinApps } from "../src/dindbos/apps/builtins.js";
+import { bootDindbOS } from "../src/sdk/index.js";
 import { demoFileSystem, portfolioData } from "../src/demo/portfolio-demo.js";
 
 const restoreGlobals = installDomShim();
@@ -26,10 +27,10 @@ async function verifySuccessfulBootPhases() {
   const events = [];
   os.bus.on("boot:phase", (phase) => events.push(`${phase.id}:${phase.status}`));
 
-  await os.loadPersistentFileSystem();
-  await os.runBootPhase("package-registry-load", () => os.packages.bootstrap());
-  await os.runBootPhase("app-registry-load", () => installBuiltinApps(os, { portfolioData }));
-  os.boot();
+  await bootDindbOS(os, {
+    builtins: { portfolioData },
+    serviceWorker: false,
+  });
 
   const status = os.bootStatus();
   assert(status.map((phase) => phase.id).join(",") === BOOT_PHASES.map((phase) => phase.id).join(","), "boot phase order changed");
@@ -41,6 +42,9 @@ async function verifySuccessfulBootPhases() {
   });
   assert(events.includes("storage-load:running"), "storage-load running event missing");
   assert(events.includes("desktop-render:complete"), "desktop-render complete event missing");
+  const appRegistryPhase = status.find((phase) => phase.id === "app-registry-load");
+  assert(appRegistryPhase.detail.includes("apps registered"), `app registry phase detail was not human-readable: ${appRegistryPhase.detail}`);
+  assert(!appRegistryPhase.detail.includes("[object Object]"), "app registry phase detail leaked an object string");
   assert(os.apps.has("files"), "built-in apps were not registered during app-registry-load");
   assert(os.packages.info("hello-notes"), "package registry did not bootstrap sample package");
   assert(os.fs.exists("/opt/dindbos/packages/api-lab/dindbos.app.json"), "package registry did not bootstrap API Lab sample source");
@@ -190,6 +194,8 @@ async function verifySuccessfulBootPhases() {
   const bucketPolicy = os.storageBucketPolicy();
   assert(bucketPolicy.decision === "fallback-to-current-storage-stack", `unexpected storage bucket policy: ${bucketPolicy.decision}`);
   assert(bucketPolicy.areas.some((area) => area.root === "/tmp" && area.bucket === "session"), "storage bucket policy missing /tmp session area");
+  os.recoveryPanic = { reason: "boot-smoke-circular", runtime: os };
+  os.writeBootDiagnostics();
   const bootDiagnostics = JSON.parse(os.fs.readFile("/var/log/dindbos/boot.json"));
   assert(bootDiagnostics.phases.length === BOOT_PHASES.length, "boot diagnostics did not include all phases");
   assert(bootDiagnostics.phases.every((phase) => phase.status === "complete"), "boot diagnostics included incomplete phases");
@@ -197,6 +203,7 @@ async function verifySuccessfulBootPhases() {
   assert(bootDiagnostics.secureBoot.ok && bootDiagnostics.secureBoot.summary.measurementCount >= secureBoot.summary.measurementCount, "boot diagnostics missing secure boot measurements");
   assert(bootDiagnostics.serviceWorkerBoot.manifest.protocol === "dindbos-sw-boot.v1", "boot diagnostics missing service worker boot manifest");
   assert(bootDiagnostics.safeBootProfiles.some((profile) => profile.id === "safe-mode"), "boot diagnostics missing safe boot profiles");
+  assert(bootDiagnostics.panic.runtime === "[DindbOS]", "boot diagnostics did not sanitize circular runtime references");
   assert(os.fs.readFile("/var/log/dindbos/boot.log").includes("[complete] desktop-render"), "boot log missing desktop-render completion");
   const lifecycleDiagnostics = JSON.parse(os.fs.readFile("/var/run/dindbos/lifecycle.json"));
   assert(lifecycleDiagnostics.state === "active", `boot lifecycle state mismatch: ${lifecycleDiagnostics.state}`);

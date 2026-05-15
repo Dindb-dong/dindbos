@@ -27,7 +27,10 @@ export async function bootDindbOS(os, options = {}) {
   if (config.bootstrapPackages !== false) {
     await os.runBootPhase("package-registry-load", () => os.packages.bootstrap());
   }
-  await os.runBootPhase("app-registry-load", () => prepareDindbOSHost(os, config));
+  await os.runBootPhase("app-registry-load", async () => {
+    await prepareDindbOSHost(os, config);
+    return appRegistryBootDetail(os);
+  });
   os.boot();
   if (config.serviceWorker.enabled) {
     await os.registerServiceWorkerBoot(config.serviceWorker.scriptUrl);
@@ -77,4 +80,12 @@ function launchInitialApps(os, launch = []) {
     if (typeof entry === "string") os.launch(entry);
     else if (entry?.id) os.launch(entry.id, entry.context || {});
   }
+}
+
+function appRegistryBootDetail(os) {
+  const apps = os.apps?.list?.() || [];
+  const pinnedCount = apps.filter((app) => app.pinned).length;
+  const packageAppCount = apps.filter((app) => app.packageId).length;
+  const packageText = packageAppCount ? `, ${packageAppCount} package apps` : "";
+  return `${apps.length} apps registered, ${pinnedCount} pinned${packageText}`;
 }

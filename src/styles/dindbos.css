@@ -1,22 +1,59 @@
 /* Global theme tokens */
 :root {
-  --bg: #f7f1e8;
-  --bg-deep: #e9dfd2;
-  --surface: rgba(255, 252, 247, 0.94);
-  --surface-strong: #fffaf2;
-  --surface-muted: #efe6da;
-  --line: rgba(34, 42, 32, 0.14);
-  --line-strong: rgba(34, 42, 32, 0.26);
-  --text: #1b211c;
-  --ink: #1b211c;
-  --muted: #65705f;
-  --accent: #3b82f6;
-  --green: #2f8c52;
-  --yellow: #b77812;
-  --red: #c84234;
-  --shadow: 0 22px 56px rgba(52, 42, 29, 0.18);
+  --bg: #f4f7fb;
+  --bg-deep: #dce5ee;
+  --bg-vignette: rgba(49, 70, 90, 0.16);
+  --bg-radial-1: rgba(219, 231, 241, 0.92);
+  --bg-radial-2: rgba(236, 226, 214, 0.66);
+  --bg-radial-3: rgba(198, 215, 229, 0.58);
+  --bg-radial-4: rgba(245, 247, 249, 0.9);
+  --glass-bg: rgba(255, 255, 255, 0.52);
+  --glass-bg-hover: rgba(255, 255, 255, 0.64);
+  --glass-bg-active: rgba(255, 255, 255, 0.72);
+  --glass-bg-strong: rgba(255, 255, 255, 0.76);
+  --glass-bg-subtle: rgba(255, 255, 255, 0.34);
+  --glass-bg-muted: rgba(246, 249, 252, 0.58);
+  --glass-dark-bg: rgba(18, 24, 31, 0.58);
+  --glass-dark-bg-strong: rgba(25, 31, 39, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.58);
+  --glass-border-muted: rgba(255, 255, 255, 0.32);
+  --glass-border-strong: rgba(255, 255, 255, 0.78);
+  --glass-stroke: rgba(42, 53, 66, 0.12);
+  --glass-stroke-strong: rgba(42, 53, 66, 0.22);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
+  --glass-highlight-soft: rgba(255, 255, 255, 0.28);
+  --glass-shadow-color: rgba(38, 53, 71, 0.18);
+  --glass-shadow-ambient: rgba(88, 105, 122, 0.12);
+  --surface: var(--glass-bg);
+  --surface-strong: var(--glass-bg-strong);
+  --surface-muted: var(--glass-bg-muted);
+  --line: var(--glass-stroke);
+  --line-strong: var(--glass-stroke-strong);
+  --text: #18212b;
+  --ink: #101720;
+  --muted: #5f6d7a;
+  --muted-strong: #465563;
+  --accent: #2775d6;
+  --accent-soft: rgba(39, 117, 214, 0.16);
+  --accent-strong: #0f64c8;
+  --green: #2a8c5f;
+  --yellow: #b97918;
+  --red: #c84c43;
+  --shadow: 0 26px 70px var(--glass-shadow-color), 0 8px 22px var(--glass-shadow-ambient), inset 0 1px 0 var(--glass-highlight);
+  --shadow-soft: 0 14px 36px rgba(38, 53, 71, 0.12), inset 0 1px 0 var(--glass-highlight-soft);
+  --shadow-lift: 0 34px 88px rgba(38, 53, 71, 0.22), 0 12px 30px rgba(88, 105, 122, 0.14), inset 0 1px 0 var(--glass-highlight);
+  --radius: 22px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 28px;
+  --radius-pill: 999px;
+  --glass-blur: 28px;
+  --glass-blur-strong: 40px;
+  --transition-fast: 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition: 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-slow: 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  --focus-ring: 0 0 0 3px rgba(39, 117, 214, 0.26), 0 0 0 1px rgba(39, 117, 214, 0.68);
   --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Menlo, monospace;
-  --radius: 8px;
   font-family: SUIT, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -2376,6 +2413,646 @@ button {
   }
   100% {
     opacity: 0;
+  }
+}
+
+/* Liquid glass app background utility */
+.glass-app-background,
+.dos-shell {
+  position: relative;
+  min-height: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 14% 12%, var(--bg-radial-1) 0, transparent 30%),
+    radial-gradient(circle at 86% 16%, var(--bg-radial-2) 0, transparent 28%),
+    radial-gradient(circle at 74% 84%, var(--bg-radial-3) 0, transparent 34%),
+    linear-gradient(135deg, var(--bg) 0%, var(--bg-deep) 100%);
+  color: var(--text);
+}
+
+/* Liquid glass background depth field */
+.glass-app-background::before,
+.dos-shell::before {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  content: "";
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.44), transparent 38%, rgba(255, 255, 255, 0.2) 72%, transparent),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.42), transparent 42%);
+  opacity: 0.88;
+  pointer-events: none;
+}
+
+/* Liquid glass background atmosphere */
+.glass-app-background::after,
+.dos-shell::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  background:
+    radial-gradient(circle at 18% 74%, rgba(176, 193, 209, 0.24) 0, transparent 26%),
+    radial-gradient(circle at 92% 62%, rgba(229, 218, 204, 0.22) 0, transparent 30%),
+    linear-gradient(to bottom, transparent 0%, var(--bg-vignette) 100%);
+  pointer-events: none;
+}
+
+/* Shared glass panel primitive */
+.glass-panel,
+.glass-card,
+.glass-navbar,
+.glass-sidebar,
+.glass-modal,
+.glass-dropdown,
+.dos-menubar,
+.dos-window,
+.dos-dock-item,
+.dos-task,
+.pathbar,
+.files-toolbar button,
+.files-toolbar input,
+.files-mount-banner,
+.files-operation,
+.files-context-menu,
+.files-inspector,
+.activity-grid,
+.activity-detail,
+.activity-summary span,
+.activity-controls input,
+.activity-controls select,
+.activity-controls button,
+.browser-toolbar,
+.browser-status,
+.browser-diagnostics,
+.viewer-diagnostics,
+.settings-panel,
+.settings-mount-card,
+.trusted-ui-dialog,
+.dos-boot-panel {
+  border: 1px solid var(--glass-border-muted);
+  background: var(--glass-bg);
+  background-clip: padding-box;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.45);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.45);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Strong glass surfaces */
+.glass-panel,
+.glass-modal,
+.dos-window,
+.dos-boot-panel,
+.trusted-ui-dialog {
+  border-color: var(--glass-border);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.5);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(1.5);
+  box-shadow: var(--shadow);
+}
+
+/* Compact glass card utility */
+.glass-card {
+  position: relative;
+  overflow: hidden;
+  padding: 18px;
+  border-radius: var(--radius-md);
+  transition: transform var(--transition), border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+/* Floating glass panel utility */
+.glass-panel {
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  border-radius: var(--radius-lg);
+}
+
+/* Glass navigation utility */
+.glass-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 12px;
+  border-radius: var(--radius-pill);
+}
+
+/* Glass sidebar utility */
+.glass-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+}
+
+/* Glass modal utility */
+.glass-modal {
+  position: relative;
+  overflow: hidden;
+  width: min(560px, calc(100vw - 32px));
+  padding: 22px;
+  border-radius: var(--radius-lg);
+}
+
+/* Glass dropdown utility */
+.glass-dropdown {
+  position: absolute;
+  z-index: 50;
+  display: grid;
+  min-width: 190px;
+  gap: 3px;
+  padding: 7px;
+  border-radius: var(--radius-md);
+}
+
+/* Glass button utility */
+.glass-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  gap: 8px;
+  overflow: hidden;
+  padding: 0 14px;
+  border: 1px solid var(--glass-border-muted);
+  border-radius: var(--radius-pill);
+  background: var(--glass-bg);
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.45);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.45);
+  box-shadow: var(--shadow-soft);
+  transition: transform var(--transition), border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+/* Glass button shine */
+.glass-button::after,
+.glass-card::after,
+.dos-dock-item::after,
+.dos-task::after {
+  position: absolute;
+  top: -40%;
+  bottom: -40%;
+  left: -80%;
+  width: 52%;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: skewX(-18deg);
+  transition: left var(--transition-slow), opacity var(--transition);
+}
+
+/* Glass button hover shine */
+.glass-button:hover::after,
+.glass-card:hover::after,
+.dos-dock-item:hover::after,
+.dos-task:hover::after {
+  left: 118%;
+  opacity: 1;
+}
+
+/* Glass input utility */
+.glass-input,
+.glass-dropdown select,
+.glass-dropdown input {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--glass-border-muted);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--ink);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.32);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.32);
+  box-shadow: inset 0 1px 0 var(--glass-highlight-soft), 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* Glass badge utility */
+.glass-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--glass-border-muted);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.7)) saturate(1.35);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.7)) saturate(1.35);
+}
+
+/* Glass divider utility */
+.glass-divider {
+  width: 100%;
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, var(--glass-stroke), var(--glass-highlight), var(--glass-stroke), transparent);
+}
+
+/* Glass hover lift */
+.glass-card:hover,
+.glass-button:hover,
+.dos-dock-item:hover,
+.dos-task:hover,
+.dos-icon:hover,
+.portfolio-grid article:hover,
+.file-tile:hover,
+.settings-mount-card:hover {
+  border-color: var(--glass-border);
+  background: var(--glass-bg-hover);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+
+/* Glass active press */
+.glass-button:active,
+.dos-dock-item:active,
+.dos-task:active,
+.dos-icon:active,
+.files-toolbar button:active,
+.activity-controls button:active,
+.browser-toolbar button:active,
+.viewer-toolbar button:active,
+.settings-panel button:active {
+  background: var(--glass-bg-active);
+  box-shadow: var(--shadow-soft);
+  transform: translateY(0) scale(0.985);
+}
+
+/* Global focus ring */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.glass-card:focus-visible,
+.glass-panel:focus-visible,
+.dos-window:focus-visible,
+.dos-icon:focus-visible,
+.dos-dock-item:focus-visible,
+.files-row:focus-visible,
+.activity-row:focus-visible {
+  outline: 0;
+  box-shadow: var(--shadow-soft), var(--focus-ring);
+}
+
+/* Liquid glass desktop menubar */
+.dos-menubar {
+  height: 46px;
+  padding: 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.46);
+}
+
+/* Liquid glass brand button */
+.dos-brand {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-pill);
+  background: rgba(16, 23, 32, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 8px 18px rgba(16, 23, 32, 0.16);
+  transition: transform var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* Liquid glass brand hover */
+.dos-brand:hover {
+  background: rgba(16, 23, 32, 0.94);
+  transform: translateY(-1px);
+}
+
+/* Liquid glass task button */
+.dos-task {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+}
+
+/* Liquid glass dock item */
+.dos-dock-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  transition: transform var(--transition), border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+/* Liquid glass desktop icon */
+.dos-icon {
+  transition: transform var(--transition), border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+/* Liquid glass icon hover */
+.dos-icon:hover {
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.65)) saturate(1.25);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.65)) saturate(1.25);
+}
+
+/* Liquid glass icon art */
+.dos-icon-art {
+  border-color: rgba(255, 255, 255, 0.64);
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.38));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 16px 28px rgba(38, 53, 71, 0.14);
+}
+
+/* Liquid glass window frame */
+.dos-window {
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.58);
+  transition: transform var(--transition), opacity var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+/* Liquid glass active window */
+.dos-window.is-active {
+  border-color: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-lift), 0 0 0 1px rgba(39, 117, 214, 0.18);
+}
+
+/* Liquid glass window titlebar */
+.dos-window-titlebar {
+  border-bottom-color: var(--glass-stroke);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.42));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.8)) saturate(1.35);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.8)) saturate(1.35);
+}
+
+/* Liquid glass window content */
+.dos-window-content {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(246, 249, 252, 0.24)),
+    rgba(255, 255, 255, 0.26);
+}
+
+/* Liquid glass control buttons */
+.dos-window-controls button {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.54), 0 2px 5px rgba(16, 23, 32, 0.16);
+  transition: filter var(--transition-fast), transform var(--transition-fast);
+}
+
+/* Liquid glass control hover */
+.dos-window-controls button:hover {
+  filter: saturate(1.12) brightness(1.05);
+  transform: translateY(-1px);
+}
+
+/* Liquid glass app panes */
+.files-sidebar,
+.files-inspector,
+.activity-detail,
+.browser-app {
+  background: rgba(255, 255, 255, 0.34);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.32);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.32);
+}
+
+/* Liquid glass repeated cards */
+.portfolio-grid article,
+.files-operation-history li,
+.file-tile,
+.viewer-diagnostics,
+.package-app dl div,
+.settings-app dl div,
+.settings-panel,
+.settings-mount-card {
+  border-color: var(--glass-border-muted);
+  background: rgba(255, 255, 255, 0.38);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.78)) saturate(1.3);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.78)) saturate(1.3);
+  box-shadow: inset 0 1px 0 var(--glass-highlight-soft), 0 10px 24px rgba(38, 53, 71, 0.08);
+}
+
+/* Liquid glass form controls */
+.pathbar button,
+.files-breadcrumb button,
+.files-toolbar button,
+.files-toolbar input,
+.files-mount-banner button,
+.activity-detail button,
+.browser-toolbar button,
+.browser-toolbar input,
+.text-app textarea,
+.text-app button,
+.calculator-app button,
+.viewer-toolbar button,
+.settings-panel button,
+.trusted-ui-dialog button {
+  border-color: var(--glass-border-muted);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.44);
+  color: var(--ink);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.7)) saturate(1.25);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.7)) saturate(1.25);
+  box-shadow: inset 0 1px 0 var(--glass-highlight-soft), 0 6px 16px rgba(38, 53, 71, 0.08);
+  transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+/* Liquid glass form hover */
+.pathbar button:hover,
+.files-breadcrumb button:hover,
+.files-toolbar button:hover,
+.files-mount-banner button:hover,
+.activity-detail button:hover,
+.browser-toolbar button:hover,
+.text-app button:hover,
+.calculator-app button:hover,
+.viewer-toolbar button:hover,
+.settings-panel button:hover,
+.trusted-ui-dialog button:hover {
+  border-color: var(--glass-border);
+  background: var(--glass-bg-hover);
+  transform: translateY(-1px);
+}
+
+/* Liquid glass selected states */
+.files-sidebar button.is-active,
+.files-row.is-selected,
+.activity-row.is-selected {
+  background: rgba(39, 117, 214, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+/* Liquid glass data rows */
+.files-row,
+.activity-row {
+  border-bottom-color: rgba(42, 53, 66, 0.07);
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+/* Liquid glass data row hover */
+.files-row:hover,
+.activity-row:hover {
+  background: rgba(255, 255, 255, 0.36);
+}
+
+/* Liquid glass terminal */
+.terminal-app {
+  background:
+    linear-gradient(180deg, rgba(9, 14, 13, 0.92), rgba(4, 7, 7, 0.96)),
+    var(--glass-dark-bg-strong);
+  color: #b9f6ce;
+}
+
+/* Liquid glass boot overlay */
+.dos-boot-screen {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(74, 93, 111, 0.44) 0, transparent 28%),
+    radial-gradient(circle at 84% 72%, rgba(181, 171, 157, 0.28) 0, transparent 32%),
+    linear-gradient(135deg, #111821 0%, #090d12 100%);
+}
+
+/* Liquid glass boot panel */
+.dos-boot-panel {
+  background: rgba(20, 27, 35, 0.64);
+  color: #f4f7fb;
+}
+
+/* Liquid glass boot row */
+.dos-boot-log li {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Liquid glass unsupported fallback */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  /* Fallback glass surfaces */
+  .glass-panel,
+  .glass-card,
+  .glass-navbar,
+  .glass-sidebar,
+  .glass-modal,
+  .glass-button,
+  .glass-input,
+  .glass-dropdown,
+  .dos-menubar,
+  .dos-window,
+  .dos-dock-item,
+  .dos-task,
+  .pathbar,
+  .files-sidebar,
+  .files-inspector,
+  .activity-detail,
+  .browser-toolbar,
+  .trusted-ui-dialog,
+  .dos-boot-panel {
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 18px 46px rgba(38, 53, 71, 0.16);
+  }
+}
+
+/* Liquid glass reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  /* Reduced motion global */
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  /* Reduced motion lift reset */
+  .glass-card:hover,
+  .glass-button:hover,
+  .dos-dock-item:hover,
+  .dos-task:hover,
+  .dos-icon:hover,
+  .portfolio-grid article:hover,
+  .file-tile:hover,
+  .settings-mount-card:hover {
+    transform: none;
+  }
+}
+
+/* Liquid glass dark mode */
+@media (prefers-color-scheme: dark) {
+  /* Dark mode tokens */
+  :root {
+    --bg: #111821;
+    --bg-deep: #05080d;
+    --bg-vignette: rgba(0, 0, 0, 0.42);
+    --bg-radial-1: rgba(73, 91, 109, 0.34);
+    --bg-radial-2: rgba(111, 97, 83, 0.28);
+    --bg-radial-3: rgba(40, 74, 94, 0.34);
+    --glass-bg: rgba(25, 32, 41, 0.52);
+    --glass-bg-hover: rgba(34, 42, 52, 0.64);
+    --glass-bg-active: rgba(44, 54, 66, 0.72);
+    --glass-bg-strong: rgba(28, 36, 46, 0.74);
+    --glass-bg-subtle: rgba(255, 255, 255, 0.08);
+    --glass-bg-muted: rgba(24, 31, 40, 0.58);
+    --glass-border: rgba(255, 255, 255, 0.2);
+    --glass-border-muted: rgba(255, 255, 255, 0.12);
+    --glass-border-strong: rgba(255, 255, 255, 0.32);
+    --glass-stroke: rgba(255, 255, 255, 0.1);
+    --glass-stroke-strong: rgba(255, 255, 255, 0.18);
+    --glass-highlight: rgba(255, 255, 255, 0.2);
+    --glass-highlight-soft: rgba(255, 255, 255, 0.12);
+    --glass-shadow-color: rgba(0, 0, 0, 0.38);
+    --glass-shadow-ambient: rgba(0, 0, 0, 0.26);
+    --text: #edf4fb;
+    --ink: #f8fbff;
+    --muted: #a8b5c2;
+    --muted-strong: #c4ced8;
+    --accent: #6aaeff;
+    --accent-soft: rgba(106, 174, 255, 0.18);
+    --accent-strong: #8dc1ff;
+  }
+
+  /* Dark mode desktop labels */
+  .dos-icon-label {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.42);
+  }
+
+  /* Dark mode window titlebar */
+  .dos-window-titlebar {
+    background: linear-gradient(180deg, rgba(45, 55, 67, 0.72), rgba(24, 31, 40, 0.48));
+  }
+
+  /* Dark mode window content */
+  .dos-window-content {
+    background: rgba(19, 26, 35, 0.4);
+  }
+
+  /* Dark mode controls */
+  .glass-input,
+  .pathbar button,
+  .files-breadcrumb button,
+  .files-toolbar button,
+  .files-toolbar input,
+  .activity-controls input,
+  .activity-controls select,
+  .activity-controls button,
+  .browser-toolbar button,
+  .browser-toolbar input,
+  .text-app textarea,
+  .text-app button,
+  .calculator-app button,
+  .viewer-toolbar button,
+  .settings-panel button {
+    background: rgba(255, 255, 255, 0.09);
+    color: var(--ink);
+  }
+
+  /* Dark mode rows */
+  .portfolio-grid article,
+  .files-operation-history li,
+  .file-tile,
+  .viewer-diagnostics,
+  .package-app dl div,
+  .settings-app dl div,
+  .settings-panel,
+  .settings-mount-card {
+    background: rgba(255, 255, 255, 0.08);
   }
 }
 
