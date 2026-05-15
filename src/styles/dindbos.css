@@ -7,12 +7,17 @@
   --bg-radial-2: rgba(236, 226, 214, 0.66);
   --bg-radial-3: rgba(198, 215, 229, 0.58);
   --bg-radial-4: rgba(245, 247, 249, 0.9);
-  --glass-bg: rgba(255, 255, 255, 0.52);
-  --glass-bg-hover: rgba(255, 255, 255, 0.64);
-  --glass-bg-active: rgba(255, 255, 255, 0.72);
-  --glass-bg-strong: rgba(255, 255, 255, 0.76);
-  --glass-bg-subtle: rgba(255, 255, 255, 0.34);
-  --glass-bg-muted: rgba(246, 249, 252, 0.58);
+  --glass-bg: rgba(255, 255, 255, 0.42);
+  --glass-bg-hover: rgba(255, 255, 255, 0.54);
+  --glass-bg-active: rgba(255, 255, 255, 0.62);
+  --glass-bg-strong: rgba(255, 255, 255, 0.6);
+  --glass-bg-subtle: rgba(255, 255, 255, 0.24);
+  --glass-bg-muted: rgba(246, 249, 252, 0.42);
+  --glass-lens: linear-gradient(145deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.24) 38%, rgba(255, 255, 255, 0.1) 58%, rgba(212, 225, 237, 0.14) 100%);
+  --glass-lens-strong: linear-gradient(145deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.32) 36%, rgba(255, 255, 255, 0.14) 62%, rgba(203, 219, 233, 0.18) 100%);
+  --glass-edge-light: rgba(255, 255, 255, 0.92);
+  --glass-edge-shadow: rgba(43, 58, 75, 0.16);
+  --glass-caustic: rgba(255, 255, 255, 0.2);
   --glass-dark-bg: rgba(18, 24, 31, 0.58);
   --glass-dark-bg-strong: rgba(25, 31, 39, 0.78);
   --glass-border: rgba(255, 255, 255, 0.58);
@@ -39,9 +44,9 @@
   --green: #2a8c5f;
   --yellow: #b97918;
   --red: #c84c43;
-  --shadow: 0 26px 70px var(--glass-shadow-color), 0 8px 22px var(--glass-shadow-ambient), inset 0 1px 0 var(--glass-highlight);
-  --shadow-soft: 0 14px 36px rgba(38, 53, 71, 0.12), inset 0 1px 0 var(--glass-highlight-soft);
-  --shadow-lift: 0 34px 88px rgba(38, 53, 71, 0.22), 0 12px 30px rgba(88, 105, 122, 0.14), inset 0 1px 0 var(--glass-highlight);
+  --shadow: 0 28px 74px var(--glass-shadow-color), 0 10px 26px var(--glass-shadow-ambient), inset 0 1px 0 var(--glass-edge-light), inset 0 -1px 0 rgba(43, 58, 75, 0.06);
+  --shadow-soft: 0 16px 40px rgba(38, 53, 71, 0.13), inset 0 1px 0 var(--glass-highlight-soft), inset 0 -1px 0 rgba(43, 58, 75, 0.05);
+  --shadow-lift: 0 36px 92px rgba(38, 53, 71, 0.24), 0 14px 34px rgba(88, 105, 122, 0.15), inset 0 1px 0 var(--glass-edge-light), inset 0 -1px 0 rgba(43, 58, 75, 0.08);
   --radius: 22px;
   --radius-sm: 12px;
   --radius-md: 18px;
@@ -2424,6 +2429,8 @@ button {
   overflow: hidden;
   isolation: isolate;
   background:
+    linear-gradient(132deg, transparent 0 17%, rgba(255, 255, 255, 0.3) 17% 22%, transparent 22% 41%, rgba(177, 197, 214, 0.28) 41% 48%, transparent 48% 100%),
+    linear-gradient(42deg, transparent 0 55%, rgba(236, 226, 214, 0.28) 55% 62%, transparent 62% 100%),
     radial-gradient(circle at 14% 12%, var(--bg-radial-1) 0, transparent 30%),
     radial-gradient(circle at 86% 16%, var(--bg-radial-2) 0, transparent 28%),
     radial-gradient(circle at 74% 84%, var(--bg-radial-3) 0, transparent 34%),
@@ -2527,6 +2534,23 @@ button {
   overflow: hidden;
   padding: 22px;
   border-radius: var(--radius-lg);
+}
+
+/* Glass utility refractive rim */
+.glass-panel::before,
+.glass-card::before,
+.glass-modal::before,
+.glass-navbar::before,
+.glass-sidebar::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.58), transparent 26%, transparent 72%, rgba(255, 255, 255, 0.22)),
+    radial-gradient(ellipse at 18% 0%, rgba(255, 255, 255, 0.28), transparent 34%);
+  box-shadow: inset 0 1px 0 var(--glass-edge-light), inset 0 -1px 0 rgba(43, 58, 75, 0.1);
+  pointer-events: none;
 }
 
 /* Glass navigation utility */
@@ -2710,14 +2734,31 @@ textarea:focus-visible,
 
 /* Liquid glass desktop menubar */
 .dos-menubar {
+  overflow: hidden;
   height: 46px;
   padding: 7px;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.46);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 255, 255, 0.78), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.34)),
+    rgba(255, 255, 255, 0.34);
+}
+
+/* Liquid glass menubar rim */
+.dos-menubar::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  border-radius: inherit;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.68), transparent 24%, transparent 72%, rgba(255, 255, 255, 0.2));
+  box-shadow: inset 0 1px 0 var(--glass-edge-light), inset 0 -1px 0 rgba(43, 58, 75, 0.09);
+  pointer-events: none;
 }
 
 /* Liquid glass brand button */
 .dos-brand {
+  position: relative;
+  z-index: 1;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius-pill);
   background: rgba(16, 23, 32, 0.86);
@@ -2734,8 +2775,16 @@ textarea:focus-visible,
 /* Liquid glass task button */
 .dos-task {
   position: relative;
+  z-index: 1;
   overflow: hidden;
   border-radius: var(--radius-pill);
+}
+
+/* Liquid glass menu content */
+.dos-taskstrip,
+.dos-clock {
+  position: relative;
+  z-index: 1;
 }
 
 /* Liquid glass dock item */
@@ -2743,7 +2792,27 @@ textarea:focus-visible,
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.72), transparent 38%),
+    var(--glass-lens);
   transition: transform var(--transition), border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+/* Liquid glass dock rim */
+.dos-dock-item::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 var(--glass-edge-light), inset 1px 0 0 rgba(255, 255, 255, 0.28), inset -1px 0 0 rgba(43, 58, 75, 0.08), inset 0 -1px 0 rgba(43, 58, 75, 0.1);
+  pointer-events: none;
+}
+
+/* Liquid glass dock content */
+.dos-dock-glyph,
+.dos-dock-item span {
+  position: relative;
+  z-index: 1;
 }
 
 /* Liquid glass desktop icon */
@@ -2768,8 +2837,46 @@ textarea:focus-visible,
 /* Liquid glass window frame */
 .dos-window {
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.58);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.48), transparent 42%),
+    radial-gradient(circle at 90% 112%, rgba(190, 209, 226, 0.2), transparent 44%),
+    var(--glass-lens);
   transition: transform var(--transition), opacity var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+/* Liquid glass window refractive rim */
+.dos-window::before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  content: "";
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), transparent 23%, transparent 76%, rgba(255, 255, 255, 0.34)),
+    linear-gradient(45deg, transparent 6%, rgba(255, 255, 255, 0.28) 8%, transparent 14%, transparent 82%, rgba(61, 82, 104, 0.08) 94%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge-light),
+    inset 1px 0 0 rgba(255, 255, 255, 0.42),
+    inset -1px 0 0 rgba(43, 58, 75, 0.08),
+    inset 0 -1px 0 rgba(43, 58, 75, 0.12);
+  opacity: 0.86;
+  pointer-events: none;
+}
+
+/* Liquid glass window lens sheen */
+.dos-window::after {
+  position: absolute;
+  inset: 1px;
+  z-index: 1;
+  content: "";
+  border-radius: calc(var(--radius-lg) - 1px);
+  background:
+    radial-gradient(ellipse at 22% 4%, rgba(255, 255, 255, 0.34), transparent 30%),
+    radial-gradient(ellipse at 94% 52%, rgba(255, 255, 255, 0.16), transparent 34%),
+    linear-gradient(110deg, transparent 0%, transparent 34%, rgba(255, 255, 255, 0.12) 47%, transparent 58%);
+  mix-blend-mode: screen;
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 /* Liquid glass active window */
@@ -2780,17 +2887,24 @@ textarea:focus-visible,
 
 /* Liquid glass window titlebar */
 .dos-window-titlebar {
+  position: relative;
+  z-index: 2;
   border-bottom-color: var(--glass-stroke);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.42));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.24)),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.32), transparent 38%, rgba(255, 255, 255, 0.14));
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.8)) saturate(1.35);
   backdrop-filter: blur(calc(var(--glass-blur) * 0.8)) saturate(1.35);
 }
 
 /* Liquid glass window content */
 .dos-window-content {
+  position: relative;
+  z-index: 2;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(246, 249, 252, 0.24)),
-    rgba(255, 255, 255, 0.26);
+    radial-gradient(circle at 15% 0%, rgba(255, 255, 255, 0.32), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(246, 249, 252, 0.1)),
+    rgba(255, 255, 255, 0.08);
 }
 
 /* Liquid glass control buttons */
@@ -2810,9 +2924,24 @@ textarea:focus-visible,
 .files-inspector,
 .activity-detail,
 .browser-app {
-  background: rgba(255, 255, 255, 0.34);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 255, 255, 0.32), transparent 42%),
+    rgba(255, 255, 255, 0.14);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.32);
   backdrop-filter: blur(var(--glass-blur)) saturate(1.32);
+}
+
+/* Liquid glass files main pane */
+.files-main {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12), transparent 18%, rgba(255, 255, 255, 0.08)),
+    rgba(255, 255, 255, 0.06);
+}
+
+/* Liquid glass file columns */
+.files-column-view,
+.files-column {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Liquid glass repeated cards */
@@ -2825,7 +2954,9 @@ textarea:focus-visible,
 .settings-panel,
 .settings-mount-card {
   border-color: var(--glass-border-muted);
-  background: rgba(255, 255, 255, 0.38);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.58), transparent 40%),
+    rgba(255, 255, 255, 0.3);
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.78)) saturate(1.3);
   backdrop-filter: blur(calc(var(--glass-blur) * 0.78)) saturate(1.3);
   box-shadow: inset 0 1px 0 var(--glass-highlight-soft), 0 10px 24px rgba(38, 53, 71, 0.08);
@@ -2848,7 +2979,9 @@ textarea:focus-visible,
 .trusted-ui-dialog button {
   border-color: var(--glass-border-muted);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.44);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(255, 255, 255, 0.34)),
+    rgba(255, 255, 255, 0.3);
   color: var(--ink);
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.7)) saturate(1.25);
   backdrop-filter: blur(calc(var(--glass-blur) * 0.7)) saturate(1.25);
@@ -2990,6 +3123,11 @@ textarea:focus-visible,
     --glass-bg-strong: rgba(28, 36, 46, 0.74);
     --glass-bg-subtle: rgba(255, 255, 255, 0.08);
     --glass-bg-muted: rgba(24, 31, 40, 0.58);
+    --glass-lens: linear-gradient(145deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.08) 38%, rgba(255, 255, 255, 0.04) 58%, rgba(87, 111, 134, 0.16) 100%);
+    --glass-lens-strong: linear-gradient(145deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.12) 36%, rgba(255, 255, 255, 0.06) 62%, rgba(87, 111, 134, 0.2) 100%);
+    --glass-edge-light: rgba(255, 255, 255, 0.26);
+    --glass-edge-shadow: rgba(0, 0, 0, 0.28);
+    --glass-caustic: rgba(255, 255, 255, 0.08);
     --glass-border: rgba(255, 255, 255, 0.2);
     --glass-border-muted: rgba(255, 255, 255, 0.12);
     --glass-border-strong: rgba(255, 255, 255, 0.32);
@@ -3056,8 +3194,608 @@ textarea:focus-visible,
   }
 }
 
+/* Desktop OS composition pass */
+.dos-shell {
+  background:
+    linear-gradient(135deg, rgba(237, 243, 248, 0.7), rgba(206, 219, 231, 0.58)),
+    linear-gradient(24deg, transparent 0 46%, rgba(98, 122, 143, 0.16) 46% 53%, transparent 53% 100%),
+    linear-gradient(137deg, transparent 0 23%, rgba(255, 255, 255, 0.24) 23% 29%, transparent 29% 100%),
+    radial-gradient(circle at 16% 18%, rgba(246, 250, 253, 0.82) 0, transparent 30%),
+    radial-gradient(circle at 82% 20%, rgba(217, 226, 235, 0.62) 0, transparent 32%),
+    linear-gradient(135deg, #edf3f8 0%, #c7d5e1 100%);
+}
+
+/* Desktop OS top panel */
+.dos-menubar {
+  top: 12px;
+  right: 18px;
+  left: 18px;
+  height: 38px;
+  padding: 4px 8px;
+  border-color: rgba(255, 255, 255, 0.52);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(246, 250, 253, 0.42)),
+    rgba(255, 255, 255, 0.3);
+  box-shadow: 0 18px 44px rgba(34, 48, 63, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+/* Desktop OS brand chip */
+.dos-brand {
+  height: 28px;
+  padding: 0 13px;
+  border-radius: 14px;
+  background: rgba(14, 21, 29, 0.92);
+  color: #f6f8fb;
+  font-size: 13px;
+}
+
+/* Desktop OS task tabs */
+.dos-taskstrip {
+  justify-content: center;
+  gap: 5px;
+}
+
+/* Desktop OS task button */
+.dos-task {
+  max-width: 190px;
+  height: 28px;
+  padding: 0 12px;
+  border-color: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.42);
+  color: #17212d;
+  font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 7px 16px rgba(34, 48, 63, 0.08);
+}
+
+/* Desktop OS clock */
+.dos-clock {
+  min-width: 86px;
+  color: #17212d;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Desktop OS icon field */
+.dos-desktop {
+  inset: 72px 20px 104px 28px;
+  grid-template-columns: repeat(auto-fill, 92px);
+  grid-auto-rows: 108px;
+  gap: 12px 16px;
+  max-width: 560px;
+}
+
+/* Desktop OS icon tile */
+.dos-icon {
+  height: 104px;
+  gap: 7px;
+  padding: 7px 5px;
+  border-radius: 14px;
+}
+
+/* Desktop OS icon hover */
+.dos-icon:hover {
+  background: rgba(255, 255, 255, 0.26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52), 0 10px 24px rgba(34, 48, 63, 0.08);
+}
+
+/* Desktop OS icon art */
+.dos-icon-art {
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
+}
+
+/* Desktop OS icon label */
+.dos-icon-label {
+  max-width: 90px;
+  color: #17212d;
+  font-size: 11px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.86);
+}
+
+/* Desktop OS bottom dock */
+.dos-dock {
+  top: auto;
+  right: 50%;
+  bottom: 18px;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100vw - 44px);
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(231, 240, 248, 0.24)),
+    rgba(255, 255, 255, 0.28);
+  -webkit-backdrop-filter: blur(32px) saturate(1.45);
+  backdrop-filter: blur(32px) saturate(1.45);
+  box-shadow: 0 24px 68px rgba(34, 48, 63, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  transform: translateX(50%);
+}
+
+/* Desktop OS dock icon */
+.dos-dock-item {
+  grid-template-columns: 1fr;
+  width: 50px;
+  min-width: 50px;
+  min-height: 50px;
+  justify-items: center;
+  gap: 0;
+  padding: 0;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 26% 8%, rgba(255, 255, 255, 0.68), transparent 45%),
+    rgba(255, 255, 255, 0.26);
+  text-align: center;
+}
+
+/* Desktop OS dock icon hover */
+.dos-dock-item:hover {
+  transform: translateY(-8px) scale(1.08);
+}
+
+/* Desktop OS dock glyph */
+.dos-dock-glyph {
+  width: 30px;
+  height: 30px;
+}
+
+/* Desktop OS dock glyph vector */
+.dos-dock-glyph svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Desktop OS dock tooltip */
+.dos-dock-item span:last-child {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  max-width: 140px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 9px;
+  background: rgba(22, 29, 38, 0.82);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  white-space: nowrap;
+}
+
+/* Desktop OS dock tooltip hover */
+.dos-dock-item:hover span:last-child,
+.dos-dock-item:focus-visible span:last-child {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Desktop OS window layer */
+.dos-window-layer {
+  inset: 58px 0 86px;
+}
+
+/* Desktop OS window frame */
+.dos-window {
+  grid-template-rows: 40px minmax(0, 1fr);
+  min-width: 420px;
+  min-height: 300px;
+  border-radius: 20px;
+}
+
+/* Desktop OS maximized window */
+.dos-window.is-maximized {
+  inset: 58px 18px 90px 18px !important;
+}
+
+/* Desktop OS titlebar */
+.dos-window-titlebar {
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 40px;
+  padding: 0 11px 0 15px;
+}
+
+/* Desktop OS title text */
+.dos-window-titlebar strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Desktop OS window controls */
+.dos-window-controls {
+  order: -1;
+  gap: 8px;
+}
+
+/* Desktop OS control dots */
+.dos-window-controls button {
+  width: 13px;
+  height: 13px;
+  overflow: hidden;
+  color: transparent;
+  font-size: 0;
+}
+
+/* Desktop OS content padding */
+.dos-window-content {
+  padding: 14px;
+}
+
+/* Desktop OS files layout */
+.files-app {
+  grid-template-columns: 178px minmax(360px, 1fr) 224px;
+  margin: -14px;
+}
+
+/* Desktop OS files sidebar */
+.files-sidebar {
+  gap: 16px;
+  padding: 13px 10px;
+  background: rgba(232, 241, 249, 0.34);
+}
+
+/* Desktop OS files sidebar heading */
+.files-sidebar h3 {
+  margin: 0 10px 5px;
+  color: #647383;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+/* Desktop OS files sidebar button */
+.files-sidebar button {
+  min-height: 31px;
+  border-radius: 9px;
+  color: #17212d;
+  font-size: 13px;
+}
+
+/* Desktop OS files active sidebar button */
+.files-sidebar button.is-active {
+  border-color: rgba(39, 117, 214, 0.42);
+  background: rgba(39, 117, 214, 0.16);
+}
+
+/* Desktop OS file path bar */
+.pathbar {
+  margin: 12px 12px 8px;
+  padding: 8px 10px;
+  border-radius: 16px;
+}
+
+/* Desktop OS files toolbar */
+.files-toolbar {
+  grid-template-columns: repeat(10, max-content) minmax(132px, 1fr);
+  gap: 7px;
+  padding: 0 12px 9px;
+}
+
+/* Desktop OS files controls */
+.files-toolbar button,
+.files-toolbar input,
+.pathbar button,
+.files-breadcrumb button {
+  min-height: 31px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+/* Desktop OS column view */
+.files-column-view {
+  border-top-color: rgba(42, 53, 66, 0.1);
+  border-bottom-color: rgba(42, 53, 66, 0.1);
+}
+
+/* Desktop OS file row */
+.files-row {
+  min-height: 33px;
+  padding: 0 10px;
+  color: #17212d;
+  font-size: 13px;
+}
+
+/* Desktop OS selected file row */
+.files-row.is-selected {
+  background: rgba(39, 117, 214, 0.18);
+}
+
+/* Desktop OS inspector */
+.files-inspector {
+  padding: 16px;
+  background: rgba(236, 244, 250, 0.28);
+}
+
+/* Desktop OS inspector heading */
+.files-inspector h3 {
+  font-size: 17px;
+}
+
+/* Desktop OS status bar */
+.files-status {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(42, 53, 66, 0.08);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Desktop OS terminal pane */
+.terminal-app {
+  background:
+    linear-gradient(180deg, rgba(14, 20, 26, 0.96), rgba(7, 10, 14, 0.98)),
+    #0b1016;
+  color: #b7f7c9;
+}
+
+/* Desktop OS activity grid */
+.activity-grid {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Desktop OS activity rows */
+.activity-row {
+  min-height: 36px;
+  font-size: 12px;
+}
+
+/* Desktop OS compact action hover */
+.files-toolbar button:hover,
+.pathbar button:hover,
+.files-breadcrumb button:hover,
+.activity-controls button:hover,
+.browser-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.58);
+}
+
+/* Desktop OS transparent app material */
+.dos-window:has(.settings-app),
+.dos-window:has(.browser-app),
+.dos-window:has(.viewer-app) {
+  background:
+    radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.36), transparent 42%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.34), rgba(225, 236, 246, 0.12));
+  -webkit-backdrop-filter: blur(54px) saturate(1.55);
+  backdrop-filter: blur(54px) saturate(1.55);
+}
+
+/* Desktop OS transparent app titlebar */
+.dos-window:has(.settings-app) .dos-window-titlebar,
+.dos-window:has(.browser-app) .dos-window-titlebar,
+.dos-window:has(.viewer-app) .dos-window-titlebar {
+  border-bottom-color: rgba(255, 255, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(239, 246, 252, 0.14)),
+    rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  backdrop-filter: blur(30px) saturate(1.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+/* Desktop OS transparent app active titlebar */
+.dos-window.is-active:has(.settings-app) .dos-window-titlebar,
+.dos-window.is-active:has(.browser-app) .dos-window-titlebar,
+.dos-window.is-active:has(.viewer-app) .dos-window-titlebar {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(237, 246, 255, 0.2)),
+    rgba(255, 255, 255, 0.14);
+}
+
+/* Desktop OS Settings window scale */
+.dos-window:has(.settings-app):not(.is-maximized) {
+  width: min(980px, calc(100vw - 84px)) !important;
+  height: min(620px, calc(100vh - 260px)) !important;
+}
+
+/* Desktop OS transparent app content */
+.dos-window:has(.settings-app) .dos-window-content,
+.dos-window:has(.browser-app) .dos-window-content,
+.dos-window:has(.viewer-app) .dos-window-content {
+  padding: 0;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 255, 255, 0.24), transparent 34%),
+    rgba(255, 255, 255, 0.04);
+}
+
+/* macOS-like Settings surface */
+.settings-app {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  align-content: start;
+  gap: 12px 16px;
+  min-height: 100%;
+  padding: 18px;
+  overflow: auto;
+  background:
+    linear-gradient(90deg, rgba(244, 248, 252, 0.5), rgba(255, 255, 255, 0.18) 32%, rgba(255, 255, 255, 0.06)),
+    rgba(255, 255, 255, 0.08);
+}
+
+/* Settings header kicker */
+.settings-app > .dos-kicker {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #647383;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* Settings title */
+.settings-app > h2 {
+  grid-column: 1 / -1;
+  margin: -4px 0 6px;
+  color: #141b24;
+  font-size: 30px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+/* Settings summary sidebar */
+.settings-app > dl:first-of-type {
+  position: sticky;
+  top: 0;
+  grid-column: 1;
+  grid-row: 3 / span 40;
+  display: grid;
+  align-self: start;
+  gap: 4px;
+  max-height: calc(100dvh - 190px);
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(241, 246, 250, 0.24)),
+    rgba(255, 255, 255, 0.22);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  backdrop-filter: blur(30px) saturate(1.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 18px 44px rgba(34, 48, 63, 0.12);
+}
+
+/* Settings summary row */
+.settings-app > dl:first-of-type > div {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: center;
+  min-height: 34px;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Settings summary row hover */
+.settings-app > dl:first-of-type > div:hover {
+  background: rgba(39, 117, 214, 0.12);
+}
+
+/* Settings summary term */
+.settings-app > dl:first-of-type dt {
+  color: #5f6d7a;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+/* Settings summary value */
+.settings-app > dl:first-of-type dd {
+  overflow: hidden;
+  color: #17212d;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Settings content panel */
+.settings-app > .settings-panel {
+  grid-column: 2;
+  margin: 0;
+  padding: 18px 20px;
+  border-color: rgba(255, 255, 255, 0.5);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(246, 249, 252, 0.2)),
+    rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76), 0 18px 46px rgba(34, 48, 63, 0.1);
+}
+
+/* Settings panel header */
+.settings-app > .settings-panel header {
+  min-height: 34px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(42, 53, 66, 0.08);
+}
+
+/* Settings panel title */
+.settings-app > .settings-panel h3 {
+  color: #141b24;
+  font-size: 17px;
+  font-weight: 760;
+}
+
+/* Settings panel list */
+.settings-panel dl {
+  gap: 0;
+}
+
+/* Settings panel row */
+.settings-panel dl div,
+.settings-app > .settings-panel .settings-mount-card {
+  min-height: 42px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(42, 53, 66, 0.08);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Settings panel final row */
+.settings-panel dl div:last-child,
+.settings-app > .settings-panel .settings-mount-card:last-child {
+  border-bottom: 0;
+}
+
+/* Settings field label */
+.settings-panel dt {
+  color: #465563;
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: none;
+}
+
+/* Settings field value */
+.settings-panel dd,
+.settings-panel p,
+.settings-mount-card span,
+.settings-mount-card small {
+  color: #3f4d5b;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* Settings action button */
+.settings-app .settings-panel button {
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: rgba(235, 239, 243, 0.86);
+  color: #17212d;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* Settings primary feeling button hover */
+.settings-app .settings-panel button:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+/* Settings cards list */
+.settings-app .settings-mount-list {
+  gap: 0;
+  overflow: hidden;
+  border-radius: 14px;
+}
+
 /* Mobile layout */
 @media (max-width: 760px) {
+  /* Mobile window layer */
+  .dos-window-layer {
+    inset: 0;
+  }
+
   /* Mobile menu bar */
   .dos-menubar {
     right: 10px;
@@ -3079,6 +3817,8 @@ textarea:focus-visible,
     right: 10px;
     bottom: 14px;
     left: 10px;
+    width: auto;
+    max-width: none;
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 6px;
     transform: none;
@@ -3108,16 +3848,26 @@ textarea:focus-visible,
   }
 
   /* Mobile window */
+  .dos-window,
   .dos-window:not(.is-maximized) {
     inset: 70px 10px 92px !important;
     width: auto !important;
     height: auto !important;
     min-width: 0;
+    max-width: calc(100vw - 20px);
+  }
+
+  /* Mobile Settings window scale */
+  .dos-window:has(.settings-app):not(.is-maximized) {
+    width: auto !important;
+    height: auto !important;
   }
 
   /* Mobile maximized window */
   .dos-window.is-maximized {
     inset: 70px 10px 92px !important;
+    width: auto !important;
+    min-width: 0;
   }
 
   /* Mobile resize handle */
@@ -3128,6 +3878,25 @@ textarea:focus-visible,
   /* Mobile portfolio grid */
   .portfolio-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Mobile Settings layout */
+  .settings-app {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  /* Mobile Settings title */
+  .settings-app > h2 {
+    font-size: 24px;
+  }
+
+  /* Mobile Settings summary */
+  .settings-app > dl:first-of-type,
+  .settings-app > .settings-panel {
+    position: static;
+    grid-column: 1;
+    max-height: none;
   }
 
   /* Mobile file app */
