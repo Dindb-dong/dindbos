@@ -75,17 +75,17 @@ The runtime completion baseline is closed. The next product step is packaging Di
 
 ## SDK Packaging Status
 
-Current cycle: PR 4, Type Declarations And API Stability.
+Current cycle: PR 5, Tarball Host App Smoke.
 
 Done in this cycle:
 
-- Added source-authored `.d.ts` files for `dindbos`, `dindbos/desktop`, `dindbos/builtins`, and `dindbos/testing`.
-- Updated SDK builds to copy committed declarations into `dist` instead of generating placeholder types.
-- Added API export snapshot coverage through `npm run smoke:sdk-api`.
+- Added `npm run smoke:sdk-pack` to build the SDK, create a real npm tarball, install it into a temporary external host project, and verify package imports from `node_modules`.
+- The host smoke imports `dindbos`, imports `dindbos/styles.css`, runs a Vite host build, and executes a packed-runtime smoke that prepares built-in apps and writes to the VFS.
+- The tarball smoke cleans up the generated host project and package tarball after verification.
 
 Next cycle:
 
-- PR 5, Tarball Host App Smoke.
+- PR 6, Framework Examples And Adapters.
 
 ## 100% Completion Plan
 
