@@ -58,9 +58,11 @@ Runtime callers can append records with `os.addConformanceEvidence(record)`. Din
 - `dindbos-conformance-evidence.json`
 - `dindbos-secure-boot.json`
 - `dindbos-release-manifest.json`
+- `dindbos-release-manifest.sig.json`
+- `dindbos-release-verification.json`
 - `SHA256SUMS`
 
-The release manifest records the package version, git commit, dirty-worktree flag, source tree aggregate digest, conformance summary, secure boot summary, and SHA-256 digest for every emitted artifact.
+The release manifest records the package version, git commit, dirty-worktree flag, source tree aggregate digest, conformance summary, secure boot summary, and SHA-256 digest for every core evidence artifact. `dindbos-release-manifest.sig.json` is a detached Ed25519 signature over the manifest bytes and manifest digest. `dindbos-release-verification.json` records the verifier result, key id, signature file, and manifest digest. Production release jobs should provide `DINDBOS_RELEASE_SIGNING_KEY_PEM`; local smoke runs use an ephemeral Ed25519 key so verification behavior stays testable without committing release secrets.
 
 `npm run smoke:conformance` verifies report generation, shell formatting, matrix output, QA evidence output, and `doctor conformance`.
-`npm run smoke:release-conformance` verifies release artifact generation, secure boot status, manifest records, and SHA-256 digest lines.
+`npm run smoke:release-conformance` verifies release artifact generation, secure boot status, manifest records, Ed25519 signature verification, tamper rejection, and SHA-256 digest lines.

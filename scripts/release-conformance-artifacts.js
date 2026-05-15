@@ -1,5 +1,12 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  sign as signPayload,
+  verify as verifyPayload,
+} from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
@@ -11,6 +18,10 @@ import { demoFileSystem, portfolioData } from "../src/demo/portfolio-demo.js";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_OUTPUT_DIR = "dist/release-conformance";
 const BUILD_INPUT_ROOTS = ["package.json", "package-lock.json", "vite.config.js", "index.html", "public", "src"];
+const RELEASE_MANIFEST_FILE = "dindbos-release-manifest.json";
+const RELEASE_SIGNATURE_FILE = "dindbos-release-manifest.sig.json";
+const RELEASE_VERIFICATION_FILE = "dindbos-release-verification.json";
+const RELEASE_SIGNATURE_PAYLOAD = "dindbos-release-manifest-v1";
 
 export async function buildReleaseConformanceArtifacts(options = {}) {
   const repoRoot = resolve(options.repoRoot || REPO_ROOT);
@@ -76,24 +87,81 @@ export async function buildReleaseConformanceArtifacts(options = {}) {
       },
       artifacts: baseArtifacts.map((artifact) => artifact.record),
     };
-    const releaseManifest = jsonArtifact("dindbos-release-manifest.json", manifest, "application/json");
+    const releaseManifest = jsonArtifact(RELEASE_MANIFEST_FILE, manifest, "application/json");
     const artifacts = [...baseArtifacts, releaseManifest];
     for (const artifact of artifacts) {
       await writeFile(join(outDir, artifact.record.file), artifact.content, "utf8");
     }
-    const sums = artifacts
+    const signingKey = resolveReleaseSigningKey(options);
+    const signatureArtifact = jsonArtifact(
+      RELEASE_SIGNATURE_FILE,
+      createReleaseManifestSignature(releaseManifest, generatedAt, signingKey),
+      "application/vnd.dindbos.release-signature+json",
+    );
+    await writeFile(join(outDir, signatureArtifact.record.file), signatureArtifact.content, "utf8");
+
+    const verification = await verifyReleaseManifestSignature({ outDir, verifiedAt: generatedAt });
+    const verificationArtifact = jsonArtifact(
+      RELEASE_VERIFICATION_FILE,
+      verification,
+      "application/vnd.dindbos.release-verification+json",
+    );
+    await writeFile(join(outDir, verificationArtifact.record.file), verificationArtifact.content, "utf8");
+
+    const outputArtifacts = [...artifacts, signatureArtifact, verificationArtifact];
+    const sums = outputArtifacts
       .map((artifact) => `${artifact.record.sha256}  ${artifact.record.file}`)
       .join("\n") + "\n";
     await writeFile(join(outDir, "SHA256SUMS"), sums, "utf8");
     return {
       outDir,
-      files: [...artifacts.map((artifact) => artifact.record.file), "SHA256SUMS"],
+      files: [...outputArtifacts.map((artifact) => artifact.record.file), "SHA256SUMS"],
       manifest,
+      signature: JSON.parse(signatureArtifact.content),
+      verification,
       sha256Sums: sums,
     };
   } finally {
     restoreGlobals();
   }
+}
+
+export async function verifyReleaseManifestSignature(options = {}) {
+  const outDir = resolve(options.outDir || join(REPO_ROOT, DEFAULT_OUTPUT_DIR));
+  const manifestContent = await readFile(join(outDir, RELEASE_MANIFEST_FILE), "utf8");
+  const signature = JSON.parse(await readFile(join(outDir, RELEASE_SIGNATURE_FILE), "utf8"));
+  const manifestSha256 = sha256(manifestContent);
+  const expectedSha256 = signature.manifest?.sha256;
+  if (signature.service !== "dindbos-release-signature") {
+    throw new Error(`unsupported release signature service: ${signature.service || "missing"}`);
+  }
+  if (signature.algorithm !== "ed25519") {
+    throw new Error(`unsupported release signature algorithm: ${signature.algorithm || "missing"}`);
+  }
+  if (signature.file !== RELEASE_MANIFEST_FILE) {
+    throw new Error(`release signature file mismatch: ${signature.file || "missing"}`);
+  }
+  if (expectedSha256 !== manifestSha256) {
+    throw new Error("release manifest digest does not match signature metadata");
+  }
+  const payload = releaseManifestSigningPayload(manifestContent, manifestSha256);
+  const publicKey = createPublicKey(signature.publicKeyPem);
+  const verified = verifyPayload(null, payload, publicKey, fromBase64UrlSignature(signature.signature));
+  if (!verified) throw new Error("release manifest signature verification failed");
+  return {
+    service: "dindbos-release-verification",
+    version: 1,
+    verifiedAt: options.verifiedAt || new Date().toISOString(),
+    ok: true,
+    algorithm: signature.algorithm,
+    keyId: signature.keyId,
+    file: RELEASE_MANIFEST_FILE,
+    signatureFile: RELEASE_SIGNATURE_FILE,
+    manifest: {
+      sha256: manifestSha256,
+      bytes: Buffer.byteLength(manifestContent),
+    },
+  };
 }
 
 async function bootRuntime() {
@@ -121,6 +189,51 @@ function jsonArtifact(file, value, mediaType) {
       sha256: sha256(content),
     },
   };
+}
+
+function resolveReleaseSigningKey(options) {
+  const privateKeyPem = options.signingPrivateKeyPem || process.env.DINDBOS_RELEASE_SIGNING_KEY_PEM;
+  if (privateKeyPem) {
+    const privateKey = createPrivateKey(privateKeyPem);
+    const publicKey = createPublicKey(privateKey);
+    return {
+      privateKey,
+      publicKey,
+      source: "provided",
+    };
+  }
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  return {
+    privateKey,
+    publicKey,
+    source: "ephemeral",
+  };
+}
+
+function createReleaseManifestSignature(releaseManifest, signedAt, signingKey) {
+  const publicKeyPem = signingKey.publicKey.export({ type: "spki", format: "pem" });
+  const payload = releaseManifestSigningPayload(releaseManifest.content, releaseManifest.record.sha256);
+  const signature = signPayload(null, payload, signingKey.privateKey);
+  return {
+    service: "dindbos-release-signature",
+    version: 1,
+    payload: RELEASE_SIGNATURE_PAYLOAD,
+    file: RELEASE_MANIFEST_FILE,
+    algorithm: "ed25519",
+    keyId: `ed25519-spki-sha256:${sha256(publicKeyPem).slice(0, 32)}`,
+    keySource: signingKey.source,
+    publicKeyPem,
+    signature: `ed25519-sig:v1:${signature.toString("base64url")}`,
+    signedAt,
+    manifest: {
+      sha256: releaseManifest.record.sha256,
+      bytes: releaseManifest.record.bytes,
+    },
+  };
+}
+
+function releaseManifestSigningPayload(manifestContent, manifestSha256) {
+  return Buffer.from(`${RELEASE_SIGNATURE_PAYLOAD}\nsha256:${manifestSha256}\n${manifestContent}`, "utf8");
 }
 
 async function sourceTreeDigest(repoRoot) {
@@ -171,6 +284,12 @@ function gitValue(repoRoot, args) {
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function fromBase64UrlSignature(value) {
+  const prefix = "ed25519-sig:v1:";
+  if (!String(value).startsWith(prefix)) throw new Error("release signature has invalid encoding prefix");
+  return Buffer.from(String(value).slice(prefix.length), "base64url");
 }
 
 function installDomShim() {
