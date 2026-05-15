@@ -4971,6 +4971,13 @@ function createRuntimePtyManager() {
       const session = {
         id,
         name: String(options.name || id),
+        ownerPid: Number(options.ownerPid || 0),
+        ownerUid: Number(options.ownerUid ?? options.uid ?? 0),
+        ownerGid: Number(options.ownerGid ?? options.gid ?? 0),
+        ownerUser: String(options.ownerUser || options.user || ""),
+        foregroundProcessGroupId: Number(options.foregroundProcessGroupId || 0),
+        deviceMode: normalizePtyDeviceMode(options.deviceMode || options.permissions || "0600"),
+        terminalMode: normalizePtyTerminalMode(options.terminalMode || options.mode || {}),
         columns: boundedInteger(options.columns, 80, 1, 1000),
         rows: boundedInteger(options.rows, 24, 1, 1000),
         input: String(options.input || ""),
@@ -4982,9 +4989,34 @@ function createRuntimePtyManager() {
       sessions.set(id, session);
       return { ...session };
     },
+    attachSession(id, process = {}) {
+      const session = sessions.get(String(id || ""));
+      if (!session) return null;
+      if (!session.ownerPid) {
+        session.ownerPid = Number(process.pid || 0);
+        session.ownerUid = Number(process.euid ?? process.uid ?? session.ownerUid ?? 0);
+        session.ownerGid = Number(process.egid ?? process.gid ?? session.ownerGid ?? 0);
+        session.ownerUser = String(process.user || session.ownerUser || "");
+      }
+      if (!session.foregroundProcessGroupId) session.foregroundProcessGroupId = Number(process.processGroupId || process.pid || 0);
+      session.updatedAt = new Date().toISOString();
+      return clonePtySession(session);
+    },
+    authorizeSession(id, process = {}, access = "open") {
+      const session = sessions.get(String(id || ""));
+      if (!session) throw codedError("ENODEV", `pty: ${id}: no such session`);
+      const pid = Number(process.pid || 0);
+      const processGroupId = Number(process.processGroupId || 0);
+      const uid = Number(process.euid ?? process.uid ?? -1);
+      const allowed = uid === 0
+        || pid === Number(session.ownerPid || 0)
+        || (processGroupId && processGroupId === Number(session.foregroundProcessGroupId || 0));
+      if (!allowed) throw codedError("EACCES", `pty: ${id}: ${access}: permission denied`);
+      return clonePtySession(session);
+    },
     getSession(id) {
       const session = sessions.get(String(id || ""));
-      return session ? { ...session } : null;
+      return session ? clonePtySession(session) : null;
     },
     peekInput(id) {
       return sessions.get(String(id || ""))?.input || "";
@@ -5005,7 +5037,16 @@ function createRuntimePtyManager() {
       session.updatedAt = new Date().toISOString();
       session.events.push({ type: "resize", columns: session.columns, rows: session.rows, at: session.updatedAt });
       session.events = session.events.slice(-50);
-      return { ...session, events: [...session.events] };
+      return clonePtySession(session);
+    },
+    setMode(id, mode = {}) {
+      const session = sessions.get(String(id || ""));
+      if (!session) return null;
+      session.terminalMode = normalizePtyTerminalMode({ ...session.terminalMode, ...mode });
+      session.updatedAt = new Date().toISOString();
+      session.events.push({ type: "mode", mode: { ...session.terminalMode }, at: session.updatedAt });
+      session.events = session.events.slice(-50);
+      return clonePtySession(session);
     },
     signalSession(id, event = {}) {
       const session = sessions.get(String(id || ""));
@@ -5034,8 +5075,30 @@ function createRuntimePtyManager() {
       return sessions.delete(String(id || ""));
     },
     listSessions() {
-      return [...sessions.values()].map((session) => ({ ...session }));
+      return [...sessions.values()].map(clonePtySession);
     },
+  };
+}
+
+function clonePtySession(session) {
+  return {
+    ...session,
+    terminalMode: { ...(session.terminalMode || {}) },
+    events: [...(session.events || [])],
+  };
+}
+
+function normalizePtyDeviceMode(mode = "0600") {
+  const value = String(mode || "0600").replace(/^0o?/, "");
+  return /^[0-7]{3,4}$/.test(value) ? value.padStart(4, "0") : "0600";
+}
+
+function normalizePtyTerminalMode(mode = {}) {
+  return {
+    canonical: mode.canonical !== false && mode.raw !== true,
+    echo: mode.echo !== false && mode.raw !== true,
+    signals: mode.signals !== false,
+    raw: Boolean(mode.raw),
   };
 }
 

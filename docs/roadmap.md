@@ -160,11 +160,12 @@ Done:
 - `process.spawn`, `process.exec`, `process.wait`, `process.signal`, and `process.jobs` syscalls provide first-pass process session control.
 - Shell `jobs`, `fg`, `bg`, `wait`, and signal-aware `kill` route through ProcessManager.
 - `/dev/pts/<session>` PTY descriptors can bind directly to runtime PTY sessions.
-- Signal delivery records executor, NodeCompat, WASM, job, and PTY targets; `/proc/<pid>/signals.json` and `/proc/<pid>/pty.json` expose delivery and terminal resize events.
+- `/dev/pts/<session>` now enforces PTY owner or foreground process-group access, and PTY descriptors expose owner uid/gid, device mode, and terminal mode metadata.
+- Signal delivery records executor, NodeCompat, WASM, job, and PTY targets; `/proc/<pid>/signals.json` and `/proc/<pid>/pty.json` expose delivery, terminal resize, and terminal mode events.
 
 Next:
 
-- Add terminal mode flags and richer PTY master/slave ownership checks.
+- Broaden PTY line-discipline behavior as interactive shells need canonical editing and signal characters.
 
 ### 4. Storage Kernel And Recovery
 
