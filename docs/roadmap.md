@@ -71,7 +71,22 @@ Focused checks:
 
 ## Active Queue
 
-The next work should harden the kernel boundary before adding broad UX polish.
+The runtime completion baseline is closed. The next product step is packaging DindbOS as an embeddable npm SDK so other web projects can install and boot the OS runtime with `npm install dindbos`. See `docs/sdk-packaging.md`.
+
+## SDK Packaging Status
+
+Current cycle: PR 1, Public SDK Entrypoints.
+
+Done in this cycle:
+
+- Added source-level SDK entrypoints for core runtime creation, desktop mounting, built-in app registration, and testing helpers.
+- Converted the demo app bootstrap to consume the SDK creation and boot helpers.
+- Added source import smoke coverage for public SDK entrypoints.
+- Added `docs/sdk-packaging.md` as the public npm readiness plan.
+
+Next cycle:
+
+- PR 2, Host Configuration Contract.
 
 ## 100% Completion Plan
 
