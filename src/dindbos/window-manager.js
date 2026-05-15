@@ -1123,20 +1123,31 @@ function createResizeHandles() {
 
 function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {}) {
   let drag = null;
-  titlebar.addEventListener("pointerdown", (event) => {
-    if (event.target.closest("button") || frame.classList.contains("is-maximized")) return;
-    const rect = frame.getBoundingClientRect();
-    drag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
-    titlebar.setPointerCapture(event.pointerId);
-    captureHooks.onCapture?.({ pointerId: event.pointerId, target: titlebar });
-  });
-  titlebar.addEventListener("pointermove", (event) => {
-    if (!drag) return;
-    frame.style.left = `${clamp(drag.left + event.clientX - drag.x, 8, window.innerWidth - 120)}px`;
-    frame.style.top = `${clamp(drag.top + event.clientY - drag.y, 58, window.innerHeight - 80)}px`;
-  });
-  titlebar.addEventListener("pointerup", (event) => {
-    if (drag) {
+  const move = (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const next = constrainWindowRect(
+      {
+        left: drag.left + event.clientX - drag.x,
+        top: drag.top + event.clientY - drag.y,
+        width: drag.width,
+        height: drag.height,
+      },
+      viewport,
+    );
+    frame.style.left = `${next.left}px`;
+    frame.style.top = `${next.top}px`;
+    event.preventDefault?.();
+  };
+  const end = (event = {}) => {
+    if (!drag || (event.pointerId && event.pointerId !== drag.pointerId)) return;
+    const endedDrag = drag;
+    drag = null;
+    frame.classList.remove("is-dragging");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", end);
+    window.removeEventListener("pointercancel", end);
+    if (event.type !== "pointercancel") {
       const viewport = { width: window.innerWidth, height: window.innerHeight };
       const zone = snapZoneForPoint({ x: event.clientX, y: event.clientY }, viewport);
       const snapped = snapWindowRect(zone, viewport);
@@ -1148,10 +1159,24 @@ function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {
           height: `${snapped.height}px`,
         });
       }
-      onPlacement();
     }
-    drag = null;
-    captureHooks.onRelease?.({ pointerId: event.pointerId, target: titlebar });
+    if (titlebar.hasPointerCapture?.(endedDrag.pointerId)) titlebar.releasePointerCapture(endedDrag.pointerId);
+    onPlacement();
+    captureHooks.onRelease?.({ pointerId: endedDrag.pointerId, target: titlebar });
+    event.preventDefault?.();
+  };
+  titlebar.addEventListener("pointerdown", (event) => {
+    if (event.button > 0 || event.target.closest("button") || frame.classList.contains("is-maximized")) return;
+    const rect = frame.getBoundingClientRect();
+    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    frame.classList.add("is-dragging");
+    titlebar.setPointerCapture(event.pointerId);
+    captureHooks.onCapture?.({ pointerId: event.pointerId, target: titlebar });
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    event.preventDefault?.();
+    event.stopPropagation?.();
   });
 }
 
