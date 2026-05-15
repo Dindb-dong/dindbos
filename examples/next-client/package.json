@@ -1,0 +1,15 @@
+{
+  "name": "dindbos-next-client-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build"
+  },
+  "dependencies": {
+    "dindbos": "*",
+    "next": "^15.0.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  }
+}

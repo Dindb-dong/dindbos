@@ -7,6 +7,7 @@ const entrypoints = {
   desktop: resolve("src/sdk/desktop.js"),
   builtins: resolve("src/sdk/builtins.js"),
   testing: resolve("src/sdk/testing.js"),
+  react: resolve("src/sdk/react.js"),
 };
 
 export default defineConfig({

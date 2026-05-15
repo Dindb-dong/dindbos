@@ -8,11 +8,13 @@ const expectedDistFiles = [
   "desktop.js",
   "builtins.js",
   "testing.js",
+  "react.js",
   "styles.css",
   "index.d.ts",
   "desktop.d.ts",
   "builtins.d.ts",
   "testing.d.ts",
+  "react.d.ts",
 ];
 
 execFileSync("npm", ["run", "build:sdk"], { stdio: "inherit" });
@@ -36,6 +38,7 @@ const files = new Set(pack.files.map((entry) => entry.path));
   "dist/desktop.js",
   "dist/builtins.js",
   "dist/testing.js",
+  "dist/react.js",
   "dist/styles.css",
   "dist/index.d.ts",
   "package.json",
