@@ -1,6 +1,6 @@
 # DindbOS.js
 
-DindbOS.js is a browser-native desktop runtime for portfolio sites, docs, demos, and web OS experiments.
+DindbOS.js is an embeddable browser-native OS runtime for web apps.
 
 It is not a Linux kernel emulator. It is a small OS-style runtime for the browser:
 
@@ -16,9 +16,49 @@ It is not a Linux kernel emulator. It is a small OS-style runtime for the browse
 - window manager
 - desktop shell
 - built-in apps
-- portfolio/demo mounting
+- conformance and release evidence
 
-The first demo boots a portfolio inside DindbOS instead of decorating a portfolio page to look like an OS.
+## Install In A Web App
+
+```bash
+npm install dindbos
+```
+
+```js
+import { createAndBootDindbOS } from "dindbos";
+import "dindbos/styles.css";
+
+await createAndBootDindbOS({
+  root: "#app",
+  fileSystem: {
+    "/home/guest/readme.md": "# Hello from DindbOS\n",
+  },
+  builtins: { includePortfolio: false },
+  launch: ["files", "terminal"],
+});
+```
+
+Expected result: a DindbOS desktop mounts into `#app`, Files.app can open `/home/guest/readme.md`, Terminal.app can read and write the same VFS, and `/proc/conformance.json` describes the active browser constraints.
+
+## Create A Host App
+
+```bash
+npx create-dindbos my-web-os
+cd my-web-os
+npm install
+npm run dev
+```
+
+The generated project seeds `/home/guest/readme.md`, registers one host `Hello.app`, installs built-ins, and includes origin-isolation header notes.
+
+## Framework Examples
+
+- Vanilla Vite: `examples/vanilla-vite`
+- React Vite: `examples/react-vite`
+- Next.js client-only route: `examples/next-client`
+- Astro client-only island: `examples/astro-island`
+
+See `examples/README.md` and `docs/deployment.md`.
 
 ## Demo
 
@@ -31,6 +71,16 @@ npm run dev
 ```
 
 Then open `http://127.0.0.1:5174`.
+
+## Troubleshooting
+
+- Blank mount: verify the `root` selector exists before booting.
+- Missing styles: import `dindbos/styles.css` from the host entrypoint.
+- Storage denial: switch to memory/custom storage or clear the named IndexedDB storage key.
+- Service Worker scope: keep `serviceWorker.enabled` false unless the host controls the route scope.
+- Origin isolation: use `docs/deployment.md` and then run `doctor isolation`.
+
+More cases are in `docs/troubleshooting.md`.
 
 ## Project Shape
 

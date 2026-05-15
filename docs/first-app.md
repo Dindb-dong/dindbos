@@ -2,6 +2,25 @@
 
 This guide builds a small package app that installs from `dindbos.app.json`, creates a launcher, and runs through the DindbOS package/runtime path.
 
+For a host app that embeds DindbOS through npm, start with:
+
+```bash
+npm install dindbos
+```
+
+```js
+import { createAndBootDindbOS } from "dindbos";
+import "dindbos/styles.css";
+
+await createAndBootDindbOS({
+  root: "#app",
+  apps: [helloHostApp],
+  builtins: { includePortfolio: false },
+});
+```
+
+For a generated host project, run `npx create-dindbos my-web-os`. The rest of this guide focuses on packages installed inside a running DindbOS runtime.
+
 ## 1. Create The Package Directory
 
 In Terminal.app:
