@@ -328,6 +328,7 @@ Only browser-safe JavaScript packages are expected to work. Native addons, lifec
 ## Support Policy
 
 Supported browser targets, stability labels, manifest/registry versioning expectations, and local environment safety rules are documented in `docs/support.md`. Runtime changes and pre-tag release notes are tracked in `docs/changelog.md`.
+The npm release and Trusted Publishing flow is documented in `docs/npm-publishing.md`.
 
 ## App Development
 
