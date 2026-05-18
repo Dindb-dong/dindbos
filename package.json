@@ -33,7 +33,7 @@
     "./styles.css": "./dist/styles.css"
   },
   "bin": {
-    "create-dindbos": "./dist/create.js"
+    "create-dindbos": "dist/create.js"
   },
   "files": [
     "dist",
