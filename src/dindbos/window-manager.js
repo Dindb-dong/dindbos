@@ -221,6 +221,10 @@ export class WindowManager {
     }, MINIMIZE_ANIMATION_MS);
     this.os.processes.updateWindowState?.(task.pid, "minimized", { windowId: id });
     this.syncWindowObject(task);
+    if (this.activeWindowId === id) {
+      this.activeWindowId = newestVisibleWindowId(this.windows, id);
+      this.windows.forEach((item) => item.frame.classList.toggle("is-active", item.id === this.activeWindowId));
+    }
     this.renderTasks();
     this.writeCompositorProcfs("minimize");
   }
@@ -978,8 +982,8 @@ export class WindowManager {
   nextPosition(width, height) {
     const offset = (this.cascade++ % 7) * 28;
     return {
-      x: Math.max(12, Math.min(180 + offset, window.innerWidth - width - 12)),
-      y: Math.max(72, Math.min(96 + offset, window.innerHeight - height - 16)),
+      x: Math.max(12, Math.min(180 + offset, window.innerWidth - Number(width || 0) - 12)),
+      y: Math.max(72, Math.min(96 + offset, window.innerHeight - Number(height || 0) - 16)),
     };
   }
 
@@ -990,13 +994,14 @@ export class WindowManager {
       height: globalThis.window?.innerHeight || 768,
     };
     if (isMobileWindowViewport(viewport)) return mobileWindowPlacement(viewport);
-    const position = this.nextPosition(config.width, config.height);
+    const preferred = preferredWindowSize(config, viewport);
+    const position = this.nextPosition(preferred.width, preferred.height);
     const fallback = {
       left: position.x,
       top: position.y,
-      width: config.width,
-      height: config.height,
-      maximized: false,
+      width: preferred.width,
+      height: preferred.height,
+      maximized: preferred.maximized,
     };
     return restoreWindowPlacement(saved, fallback, viewport);
   }
@@ -1078,6 +1083,25 @@ export function mobileWindowPlacement(viewport) {
     width,
     height,
     maximized: true,
+  };
+}
+
+export function preferredWindowSize(config = {}, viewport = {}) {
+  const viewportWidth = Number(viewport.width || 1024);
+  const viewportHeight = Number(viewport.height || 768);
+  const hasExplicitWidth = Number.isFinite(Number(config.width));
+  const hasExplicitHeight = Number.isFinite(Number(config.height));
+  if (hasExplicitWidth || hasExplicitHeight) {
+    return {
+      width: hasExplicitWidth ? Number(config.width) : 760,
+      height: hasExplicitHeight ? Number(config.height) : 520,
+      maximized: false,
+    };
+  }
+  return {
+    width: Math.max(MIN_WIDTH, Math.round(viewportWidth - 56)),
+    height: Math.max(MIN_HEIGHT, Math.round(viewportHeight - 112)),
+    maximized: false,
   };
 }
 
@@ -1264,6 +1288,10 @@ function clamp(value, min, max) {
 
 function newestWindowId(windows) {
   return [...windows.keys()].at(-1) || "";
+}
+
+function newestVisibleWindowId(windows, exceptId = "") {
+  return [...windows.values()].filter((task) => task.id !== exceptId && !task.minimized).at(-1)?.id || "";
 }
 
 function windowIdFromEventTarget(target) {

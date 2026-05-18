@@ -17,6 +17,7 @@ export class AppRegistry {
       this.writeManifestFile(manifest);
       this.removePreviousApplicationFile(previous, app, manifest);
       this.writeApplicationFile(app, manifest);
+      this.writeDesktopApplicationFile(app, manifest);
       return this.getManifest(app.id);
     } catch (error) {
       this.os.fs.root = beforeRoot;
@@ -37,6 +38,8 @@ export class AppRegistry {
       if (this.os.fs.exists(manifestPath)) this.os.fs.remove(manifestPath, "/", {}, system);
       const applicationPath = this.applicationPathFor(app, app.manifest);
       if (this.os.fs.exists(applicationPath)) this.os.fs.remove(applicationPath, "/", {}, system);
+      const desktopPath = this.desktopApplicationPathFor(app, app.manifest);
+      if (desktopPath && this.os.fs.exists(desktopPath)) this.os.fs.remove(desktopPath, "/", {}, system);
       return true;
     } catch (error) {
       this.os.fs.root = beforeRoot;
@@ -69,8 +72,8 @@ export class AppRegistry {
       pid: process.pid,
       title: typeof app.title === "function" ? app.title(context) : app.title || app.name,
       icon: app.icon || "app",
-      width: app.width || 760,
-      height: app.height || 520,
+      width: app.width,
+      height: app.height,
       singleton: app.singleton,
       manifest: app.manifest,
       shortcuts: app.manifest?.shortcuts || [],
@@ -151,17 +154,45 @@ export class AppRegistry {
     );
   }
 
+  writeDesktopApplicationFile(app, manifest) {
+    const desktopPath = this.desktopApplicationPathFor(app, manifest);
+    if (!desktopPath) return;
+    const system = this.os.permissions.systemPrincipal();
+    this.os.fs.createApp(
+      desktopPath,
+      manifest.id,
+      app.icon || "app",
+      "/",
+      { owner: this.os.session?.user || "guest", group: this.os.session?.groups?.[0] || "users", permissions: "-rwxr-xr-x" },
+      system,
+    );
+  }
+
   removePreviousApplicationFile(previous, app, manifest) {
     if (!previous || !this.os.fs.exists("/usr/share/applications")) return;
     const previousPath = this.applicationPathFor(previous, previous.manifest);
     const nextPath = this.applicationPathFor(app, manifest);
     if (previousPath === nextPath || !this.os.fs.exists(previousPath)) return;
     this.os.fs.remove(previousPath, "/", {}, this.os.permissions.systemPrincipal());
+    const previousDesktopPath = this.desktopApplicationPathFor(previous, previous.manifest);
+    const nextDesktopPath = this.desktopApplicationPathFor(app, manifest);
+    if (previousDesktopPath && previousDesktopPath !== nextDesktopPath && this.os.fs.exists(previousDesktopPath)) {
+      this.os.fs.remove(previousDesktopPath, "/", {}, this.os.permissions.systemPrincipal());
+    }
   }
 
   applicationPathFor(app, manifest = app?.manifest || {}) {
     const appName = sanitizeLauncherName(typeof app?.name === "string" && app.name ? app.name : manifest.name);
     return `/usr/share/applications/${appName}.app`;
+  }
+
+  desktopApplicationPathFor(app, manifest = app?.manifest || {}) {
+    if (app?.desktop === false) return "";
+    if (app?.desktop !== true && app?.pinned !== true) return "";
+    const desktopPath = this.os.session?.desktopPath || this.os.fs?.join?.(this.os.session?.home || "/home/guest", "Desktop");
+    if (!desktopPath || !this.os.fs.exists(desktopPath)) return "";
+    const appName = sanitizeLauncherName(typeof app?.name === "string" && app.name ? app.name : manifest.name);
+    return this.os.fs.join(desktopPath, `${appName}.app`);
   }
 }
 

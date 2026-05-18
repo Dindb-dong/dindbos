@@ -5,6 +5,7 @@ import {
   isMobileWindowViewport,
   mobileWindowPlacement,
   nextFocusWindowId,
+  preferredWindowSize,
   readWindowPlacements,
   restoreWindowPlacement,
   snapWindowRect,
@@ -50,6 +51,11 @@ assert(mobilePlacement.left === 10 && mobilePlacement.top === 70, "mobile placem
 assert(mobilePlacement.width === 370, `mobile placement width mismatch: ${mobilePlacement.width}`);
 assert(mobilePlacement.height === 478, `mobile placement height mismatch: ${mobilePlacement.height}`);
 assert(mobilePlacement.maximized === true, "mobile placement was not maximized");
+const fillPlacement = preferredWindowSize({}, { width: 1200, height: 800 });
+assert(fillPlacement.width === 1144, `default app width did not fill viewport: ${fillPlacement.width}`);
+assert(fillPlacement.height === 688, `default app height did not fill viewport: ${fillPlacement.height}`);
+const explicitPlacement = preferredWindowSize({ width: 420 }, { width: 1200, height: 800 });
+assert(explicitPlacement.width === 420 && explicitPlacement.height === 520, "explicit app size fallback mismatch");
 
 assert(snapZoneForPoint({ x: 2, y: 300 }, { width: 900, height: 700 }) === "left", "left snap zone mismatch");
 assert(snapZoneForPoint({ x: 890, y: 300 }, { width: 900, height: 700 }) === "right", "right snap zone mismatch");
@@ -112,8 +118,9 @@ assert(prevented, "alt-tab shortcut did not prevent default");
 assert(manager.activeWindowId === "two", "alt-tab shortcut did not cycle focus");
 manager.handleGlobalKeyDown({ ctrlKey: true, key: "m", preventDefault: () => {} });
 assert(manager.windows.get("two").minimized === true, "ctrl-m did not minimize active window");
+assert(manager.activeWindowId === "one", "minimizing active window did not focus the next visible window");
 manager.handleGlobalKeyDown({ ctrlKey: true, key: "w", preventDefault: () => {} });
-assert(!manager.windows.has("two"), "ctrl-w did not close active window");
+assert(!manager.windows.has("one"), "ctrl-w did not close active visible window");
 
 function bootOs() {
   const permissions = new PermissionPolicy();
@@ -182,6 +189,7 @@ function fakeTask(id) {
     },
   };
   return {
+    id,
     pid: id,
     title: id,
     frame: {
