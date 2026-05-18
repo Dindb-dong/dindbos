@@ -394,6 +394,20 @@ async function runLiveWindowStateSmoke() {
     assert(task.titlebar.releasedPointerIds.includes(6), "window drag did not release pointer capture");
     assert(Number.parseFloat(task.frame.style.left) === 8, "window drag did not snap to the left edge");
     assert(Number.parseFloat(task.frame.style.width) === 504, "window drag did not apply left snap width");
+    task.titlebar.listeners.dblclick({
+      target: { closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+    assert(task.maximized === true, "window titlebar double click did not maximize");
+    assert(task.frame.classList.contains("is-maximized"), "window titlebar double click did not mark frame maximized");
+    task.titlebar.listeners.dblclick({
+      target: { closest: () => null },
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    });
+    assert(task.maximized === false, "window titlebar double click did not restore");
+    assert(!task.frame.classList.contains("is-maximized"), "window titlebar double click did not clear maximized state");
     task.titlebar.listeners.pointerdown({
       pointerId: 66,
       button: 2,

@@ -3342,6 +3342,7 @@ textarea:focus-visible,
   min-height: 50px;
   justify-items: center;
   gap: 0;
+  overflow: visible;
   padding: 0;
   border-radius: 16px;
   background:
@@ -3372,6 +3373,7 @@ textarea:focus-visible,
   position: absolute;
   bottom: calc(100% + 10px);
   left: 50%;
+  z-index: 5;
   max-width: 140px;
   padding: 5px 8px;
   border: 1px solid rgba(255, 255, 255, 0.4);
@@ -3396,7 +3398,7 @@ textarea:focus-visible,
 
 /* Desktop OS window layer */
 .dos-window-layer {
-  inset: 58px 0 86px;
+  inset: 0 0 86px;
 }
 
 /* Desktop OS window frame */
@@ -3414,7 +3416,7 @@ textarea:focus-visible,
 
 /* Desktop OS titlebar */
 .dos-window-titlebar {
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 40px;
   padding: 0 11px 0 15px;
 }
@@ -3427,7 +3429,7 @@ textarea:focus-visible,
 
 /* Desktop OS window controls */
 .dos-window-controls {
-  order: -1;
+  order: 0;
   gap: 8px;
 }
 

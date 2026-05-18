@@ -162,6 +162,12 @@ export class WindowManager {
     titlebar.querySelector("[data-window-minimize]").addEventListener("click", () => this.minimize(config.id));
     titlebar.querySelector("[data-window-maximize]").addEventListener("click", () => this.maximize(config.id));
     titlebar.querySelector("[data-window-close]").addEventListener("click", () => this.close(config.id));
+    titlebar.addEventListener("dblclick", (event) => {
+      if (event.target.closest("button")) return;
+      this.maximize(config.id);
+      event.preventDefault?.();
+      event.stopPropagation?.();
+    });
     frame.addEventListener("pointerdown", (event) => {
       this.focus(config.id);
       this.routeInputEvent("pointerdown", event, { targetWindowId: config.id });
@@ -1182,7 +1188,7 @@ function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {
   };
   titlebar.addEventListener("pointerdown", (event) => {
     if (event.button > 0 || event.target.closest("button") || frame.classList.contains("is-maximized")) return;
-    const rect = frame.getBoundingClientRect();
+    const rect = windowLocalRect(frame);
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     frame.classList.add("is-dragging");
     titlebar.setPointerCapture(event.pointerId);
@@ -1193,6 +1199,21 @@ function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {
     event.preventDefault?.();
     event.stopPropagation?.();
   });
+}
+
+function windowLocalRect(frame) {
+  const viewportRect = typeof frame.getBoundingClientRect === "function" ? frame.getBoundingClientRect() : {};
+  const layerRect = typeof frame.offsetParent?.getBoundingClientRect === "function"
+    ? frame.offsetParent.getBoundingClientRect()
+    : { left: 0, top: 0 };
+  const styleLeft = Number.parseFloat(frame.style.left);
+  const styleTop = Number.parseFloat(frame.style.top);
+  return {
+    left: Number.isFinite(styleLeft) ? styleLeft : Number(viewportRect.left || 0) - Number(layerRect.left || 0),
+    top: Number.isFinite(styleTop) ? styleTop : Number(viewportRect.top || 0) - Number(layerRect.top || 0),
+    width: Number.parseFloat(frame.style.width) || Number(viewportRect.width || MIN_WIDTH),
+    height: Number.parseFloat(frame.style.height) || Number(viewportRect.height || MIN_HEIGHT),
+  };
 }
 
 function makeResizable(frame, onPlacement = () => {}, captureHooks = {}) {
