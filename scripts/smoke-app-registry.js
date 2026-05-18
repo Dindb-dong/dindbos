@@ -9,6 +9,7 @@ const registry = new AppRegistry(os);
 registry.register({
   id: "settings",
   name: "Settings",
+  pinned: true,
   singleton: true,
   render: () => "",
 });
@@ -46,6 +47,8 @@ assert(os.crashWindowTitle === "Crashy - crashed", "crash window title was not u
 
 assert(os.fs.exists("/usr/share/dindbos/manifests/settings.json"), "app registry did not write settings manifest");
 assert(os.fs.exists("/usr/share/applications/Settings.app"), "app registry did not write settings launcher");
+assert(os.fs.exists("/home/guest/Desktop/Settings.app"), "app registry did not write pinned app desktop launcher");
+assert(!os.fs.exists("/home/guest/Desktop/Note.app"), "app registry wrote unpinned app desktop launcher");
 const originalCreateApp = os.fs.createApp.bind(os.fs);
 os.fs.createApp = (path, ...args) => {
   if (path.endsWith("/Broken.app")) throw new Error("launcher failed");
@@ -60,6 +63,7 @@ registry.register({ id: "todo", name: "Todo", render: () => "" });
 assert(registry.has("todo"), "todo app did not register");
 assert(os.fs.exists("/usr/share/dindbos/manifests/todo.json"), "todo manifest missing before unregister transaction");
 assert(os.fs.exists("/usr/share/applications/Todo.app"), "todo launcher missing before unregister transaction");
+assert(!os.fs.exists("/home/guest/Desktop/Todo.app"), "unpinned todo desktop launcher was created");
 const originalRemove = os.fs.remove.bind(os.fs);
 os.fs.remove = (path, ...args) => {
   if (path.endsWith("/Todo.app")) throw new Error("launcher remove failed");
@@ -75,6 +79,11 @@ assert(!registry.has("todo"), "app unregister left app registered");
 assert(!os.fs.exists("/usr/share/dindbos/manifests/todo.json"), "app unregister left manifest file");
 assert(!os.fs.exists("/usr/share/applications/Todo.app"), "app unregister left launcher file");
 
+registry.register({ id: "sticky", name: "Sticky", pinned: true, render: () => "" });
+assert(os.fs.exists("/home/guest/Desktop/Sticky.app"), "pinned sticky desktop launcher missing before unregister");
+assert(registry.unregister("sticky") === true, "pinned sticky unregister did not return true");
+assert(!os.fs.exists("/home/guest/Desktop/Sticky.app"), "pinned sticky unregister left desktop launcher");
+
 console.log("app registry smoke ok singleton non-singleton crash-isolation transactions");
 
 function bootOs() {
@@ -84,6 +93,9 @@ function bootOs() {
   fs.createDirectory("/usr", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/usr/share", "/", { owner: "root", group: "root" }, system);
   fs.createDirectory("/usr/share/applications", "/", { owner: "root", group: "root" }, system);
+  fs.createDirectory("/home", "/", { owner: "root", group: "root" }, system);
+  fs.createDirectory("/home/guest", "/", { owner: "guest", group: "users" }, system);
+  fs.createDirectory("/home/guest/Desktop", "/", { owner: "guest", group: "users" }, system);
   const opened = new Map();
   const os = {
     fs,
