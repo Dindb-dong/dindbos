@@ -23,8 +23,8 @@ assert(workflow.includes("/repos/${GITHUB_REPOSITORY}/pages"), "Pages workflow d
 assert(workflow.includes("steps.pages.outputs.enabled == 'true'"), "Pages workflow does not guard Pages-only deployment steps");
 assert(workflow.includes("path: dist"), "Pages workflow does not upload the built static demo");
 assert(index.includes("./src/main.js?v=20260504-runtime"), "index.html cache buster does not point at the latest runtime demo");
-assert(main.includes("./dindbos/index.js?v=20260504-runtime"), "main.js DindbOS import cache buster is stale");
-assert(main.includes("./dindbos/apps/builtins.js?v=20260504-runtime"), "main.js builtins import cache buster is stale");
+assert(main.includes("./sdk/index.js"), "main.js SDK import is missing");
+assert(main.includes("./ui/boot-screen.js?v=20260506-real-boot"), "main.js boot screen import cache buster is stale");
 assert(main.includes("./demo/portfolio-demo.js?v=20260504-runtime"), "main.js demo import cache buster is stale");
 
 console.log("pages workflow smoke ok");
