@@ -18,8 +18,8 @@ export function createDesktopRenderer(options = {}) {
     renderDesktop(entries = []) {
       desktopRoot.render(h(DesktopGrid, { entries, isMobile, openNode }));
     },
-    renderDock(apps = []) {
-      dockRoot.render(h(DockList, { apps, launchApp }));
+    renderDock(apps = [], dockApps = [], appStates = {}) {
+      dockRoot.render(h(DockList, { apps, dockApps, appStates, launchApp }));
     },
     unmount() {
       desktopRoot.unmount();
@@ -59,20 +59,51 @@ function DesktopGrid({ entries, isMobile, openNode }) {
   ));
 }
 
-function DockList({ apps, launchApp }) {
-  return apps.map((app) => h(
+function DockList({ apps, dockApps, appStates, launchApp }) {
+  const pinnedItems = apps.map((app) => h(
     "button",
     {
       key: app.id,
-      className: "dos-dock-item",
+      className: dockItemClass(appStates[app.id]),
       type: "button",
       "data-icon": app.icon || "app",
+      "data-dock-app-id": app.id,
       "aria-label": `Launch ${app.name}`,
       onClick: () => launchApp(app.id),
     },
     h("span", { className: "dos-dock-glyph", "aria-hidden": "true" }, h(IconForType, { type: app.icon || "app" })),
     h("span", null, app.name),
   ));
+  const transientItems = dockApps.map((app) => h(
+    "button",
+    {
+      key: `dock-app:${app.id}`,
+      className: dockItemClass(app),
+      type: "button",
+      "data-icon": app.icon || "app",
+      "data-dock-app-id": app.id,
+      "data-minimized-window-id": app.windowId || undefined,
+      "aria-label": app.minimized ? `Restore ${app.title || app.name}` : `Focus ${app.title || app.name}`,
+      onClick: () => launchApp(app.id),
+    },
+    h("span", { className: "dos-dock-glyph", "aria-hidden": "true" }, h(IconForType, { type: app.icon || "app" })),
+    h("span", null, app.title || app.name),
+  ));
+  if (!transientItems.length) return pinnedItems;
+  return [
+    ...pinnedItems,
+    h("span", { key: "dock-app-separator", className: "dos-dock-separator", "aria-hidden": "true" }),
+    ...transientItems,
+  ];
+}
+
+function dockItemClass(state = {}) {
+  return [
+    "dos-dock-item",
+    state.running ? "is-running" : "",
+    state.minimized ? "is-minimized" : "",
+    state.windowId ? "dos-dock-window" : "",
+  ].filter(Boolean).join(" ");
 }
 
 function IconForType({ type }) {

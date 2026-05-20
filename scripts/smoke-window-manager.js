@@ -119,6 +119,13 @@ assert(manager.activeWindowId === "two", "alt-tab shortcut did not cycle focus")
 manager.handleGlobalKeyDown({ ctrlKey: true, key: "m", preventDefault: () => {} });
 assert(manager.windows.get("two").minimized === true, "ctrl-m did not minimize active window");
 assert(manager.activeWindowId === "one", "minimizing active window did not focus the next visible window");
+assert(manager.minimizedWindows().some((entry) => entry.id === "two"), "minimized windows did not expose dock entries");
+assert(manager.appDockStates().two.minimized === true, "minimized app did not expose yellow dock state");
+assert(manager.dockApps(new Set(["one"])).some((entry) => entry.id === "two" && entry.minimized), "unpinned minimized app did not expose a dock thumbnail");
+assert(manager.restoreLatestMinimizedApp("two") === true, "restoreLatestMinimizedApp did not restore the app window");
+assert(manager.windows.get("two").minimized === false, "restoreLatestMinimizedApp left the window minimized");
+assert(manager.focusLatestAppWindow("two") === true, "focusLatestAppWindow did not focus the running app window");
+manager.focus("one");
 manager.handleGlobalKeyDown({ ctrlKey: true, key: "w", preventDefault: () => {} });
 assert(!manager.windows.has("one"), "ctrl-w did not close active visible window");
 
@@ -190,6 +197,7 @@ function fakeTask(id) {
   };
   return {
     id,
+    appId: id,
     pid: id,
     title: id,
     frame: {
@@ -331,6 +339,11 @@ async function runLiveWindowStateSmoke() {
     };
     const liveManager = new WindowManager(liveOs);
     liveOs.windows = liveManager;
+    let dockRenderCount = 0;
+    liveOs.shell = {
+      refs: { dock: new FakeElement("dock") },
+      renderDock: () => { dockRenderCount += 1; },
+    };
     const layer = new FakeElement("div");
     const taskStrip = new FakeElement("nav");
     liveManager.mount(layer, taskStrip);
@@ -352,10 +365,14 @@ async function runLiveWindowStateSmoke() {
     const task = liveManager.windows.get("browser");
     assert(task.frame.hidden === false, "window was hidden before minimize animation could run");
     assert(task.frame.classList.contains("is-minimizing"), "window did not enter minimizing animation state");
-    await new Promise((resolve) => setTimeout(resolve, 190));
+    assert(liveManager.minimizedWindows().some((entry) => entry.id === "browser" && entry.appId === "browser"), "minimized browser was not exposed to dock");
+    assert(liveManager.appDockStates().browser.minimized === true, "minimized browser did not expose minimized dock state");
+    assert(liveManager.dockApps(new Set()).some((entry) => entry.id === "browser" && entry.minimized), "running unpinned browser did not expose dock app item");
+    assert(dockRenderCount >= 2, "minimize did not request dock rerender");
+    await new Promise((resolve) => setTimeout(resolve, 300));
     assert(task.frame.hidden === true, "window was not hidden after minimize animation");
     assert(!task.frame.classList.contains("is-minimizing"), "window kept minimizing class after animation");
-    liveManager.focus("browser");
+    assert(liveManager.restoreLatestMinimizedApp("browser") === true, "dock app restore did not reopen minimized browser");
     assert(api.getState("browser").address === "https://example.com", "window API state was not preserved after minimize/focus");
     assert(task.frame.hidden === false, "focus did not reveal minimized window");
     assert(!task.frame.classList.contains("is-minimizing"), "focus did not cancel minimizing animation state");

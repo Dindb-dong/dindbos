@@ -2,7 +2,7 @@ import { canUseCapability } from "./app-manifest.js?v=20260422-browserd";
 
 const MIN_WIDTH = 340;
 const MIN_HEIGHT = 240;
-const MINIMIZE_ANIMATION_MS = 160;
+const MINIMIZE_ANIMATION_MS = 260;
 const TRUSTED_UI_Z_BASE = 100_000;
 const WINDOW_PLACEMENTS_DIR = "/var/lib/dindbos/window-placements";
 
@@ -189,10 +189,10 @@ export class WindowManager {
     return api;
   }
 
-  focus(id) {
+  focus(id, options = {}) {
     const task = this.windows.get(id);
     if (!task) return;
-    cancelMinimizeAnimation(task);
+    if (!options.preserveWindowAnimation) cancelWindowAnimation(task);
     task.frame.hidden = false;
     task.minimized = false;
     this.activeWindowId = id;
@@ -209,10 +209,11 @@ export class WindowManager {
     if (!task) return;
     if (task.minimized && task.frame.hidden) return;
     this.releaseProcessCapture(task.pid, "process-suspend");
+    cancelWindowAnimation(task);
     task.minimized = true;
     task.frame.hidden = false;
-    task.frame.classList.add("is-minimizing");
-    clearTimeout(task.minimizeTimer);
+    this.renderTasks();
+    startMinimizeAnimation(task, () => this.minimizeTargetRect(task));
     task.minimizeTimer = setTimeout(() => {
       task.minimizeTimer = null;
       if (!task.minimized) return;
@@ -232,9 +233,15 @@ export class WindowManager {
   restore(id) {
     const task = this.windows.get(id);
     if (!task) return;
+    const wasMinimized = task.minimized || task.frame.hidden;
+    const targetRect = this.minimizeTargetRect(task);
+    cancelWindowAnimation(task);
     task.minimized = false;
     task.frame.hidden = false;
-    this.focus(id);
+    if (wasMinimized) startRestoreAnimation(task, targetRect);
+    this.os.processes.updateWindowState?.(task.pid, "restored", { windowId: id });
+    this.focus(id, { preserveWindowAnimation: wasMinimized });
+    this.writeCompositorProcfs("restore");
   }
 
   maximize(id) {
@@ -252,7 +259,7 @@ export class WindowManager {
   close(id, options = {}) {
     const task = this.windows.get(id);
     if (!task) return;
-    cancelMinimizeAnimation(task);
+    cancelWindowAnimation(task);
     this.releasePointerLock(id, "window-close");
     this.releaseWindowCapture(id, "window-close");
     this.saveWindowPlacement(id);
@@ -295,17 +302,93 @@ export class WindowManager {
   }
 
   renderTasks() {
-    if (!this.taskStrip) return;
-    this.taskStrip.innerHTML = "";
-    this.windows.forEach((task, id) => {
-      const button = document.createElement("button");
-      button.className = "dos-task";
-      button.type = "button";
-      button.textContent = task.title;
-      button.classList.toggle("is-minimized", task.minimized);
-      button.addEventListener("click", () => (task.minimized ? this.restore(id) : this.focus(id)));
-      this.taskStrip.appendChild(button);
+    if (this.taskStrip) {
+      this.taskStrip.innerHTML = "";
+      this.windows.forEach((task, id) => {
+        const button = document.createElement("button");
+        button.className = "dos-task";
+        button.type = "button";
+        button.textContent = task.title;
+        button.classList.toggle("is-minimized", task.minimized);
+        button.addEventListener("click", () => (task.minimized ? this.restore(id) : this.focus(id)));
+        this.taskStrip.appendChild(button);
+      });
+    }
+    this.os.shell?.renderDock?.();
+  }
+
+  minimizedWindows() {
+    return [...this.windows.values()].filter((task) => task.minimized).map((task) => ({
+      id: task.id,
+      appId: task.appId,
+      title: task.title,
+      name: task.title || task.name || task.appId || task.id,
+      icon: task.icon || "app",
+    }));
+  }
+
+  appDockStates() {
+    const states = {};
+    for (const task of this.windows.values()) {
+      const appId = String(task.appId || "");
+      if (!appId) continue;
+      const state = states[appId] || { running: false, minimized: false, visible: false };
+      state.running = true;
+      state.minimized = state.minimized || Boolean(task.minimized);
+      state.visible = state.visible || !task.minimized;
+      states[appId] = state;
+    }
+    Object.values(states).forEach((state) => {
+      state.minimized = state.running && state.minimized && !state.visible;
+      delete state.visible;
     });
+    return states;
+  }
+
+  dockApps(pinnedAppIds = new Set()) {
+    const pinned = pinnedAppIds instanceof Set ? pinnedAppIds : new Set(pinnedAppIds || []);
+    const states = this.appDockStates();
+    const latestByApp = new Map();
+    for (const task of this.windows.values()) {
+      if (!task.appId || pinned.has(task.appId)) continue;
+      latestByApp.set(task.appId, task);
+    }
+    return [...latestByApp.values()].map((task) => ({
+      id: task.appId,
+      appId: task.appId,
+      windowId: task.id,
+      title: task.title,
+      name: task.name || task.title || task.appId,
+      icon: task.icon || "app",
+      minimized: Boolean(states[task.appId]?.minimized),
+      running: Boolean(states[task.appId]?.running),
+    }));
+  }
+
+  restoreLatestMinimizedApp(appId) {
+    const id = [...this.windows.values()].filter((task) => task.appId === appId && task.minimized).at(-1)?.id || "";
+    if (!id) return false;
+    this.restore(id);
+    return true;
+  }
+
+  focusLatestAppWindow(appId) {
+    const id = [...this.windows.values()].filter((task) => task.appId === appId && !task.minimized).at(-1)?.id || "";
+    if (!id) return false;
+    this.focus(id);
+    return true;
+  }
+
+  minimizeTargetRect(task) {
+    const windowSelector = `[data-minimized-window-id="${cssEscape(task.id)}"]`;
+    const appSelector = `[data-dock-app-id="${cssEscape(task.appId)}"]`;
+    const dockRoot = this.os.shell?.refs?.dock;
+    const dockItem = dockRoot?.querySelector?.(windowSelector)
+      || dockRoot?.querySelector?.(appSelector)
+      || globalThis.document?.querySelector?.(windowSelector)
+      || globalThis.document?.querySelector?.(appSelector);
+    const dock = this.os.shell?.refs?.dock || globalThis.document?.querySelector?.(".dos-dock");
+    return elementRect(dockItem) || elementCenterRect(dock) || viewportBottomCenterRect();
   }
 
   openTrustedPrompt(prompt = {}, options = {}) {
@@ -1603,10 +1686,112 @@ function isTextEntryEventTarget(target) {
   return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable === true;
 }
 
-function cancelMinimizeAnimation(task) {
+function cancelWindowAnimation(task) {
   clearTimeout(task.minimizeTimer);
+  clearTimeout(task.restoreTimer);
+  cancelAnimationFrameCompat(task.minimizeFrame);
+  cancelAnimationFrameCompat(task.restoreFrame);
   task.minimizeTimer = null;
+  task.restoreTimer = null;
+  task.minimizeFrame = null;
+  task.restoreFrame = null;
   task.frame.classList.remove("is-minimizing");
+  task.frame.classList.remove("is-restoring");
+}
+
+function startMinimizeAnimation(task, targetRectForTask) {
+  task.minimizeFrame = requestAnimationFrameCompat(() => {
+    task.minimizeFrame = null;
+    applyDockAnimationVars(task, targetRectForTask?.());
+    task.frame.classList.add("is-minimizing");
+  });
+}
+
+function startRestoreAnimation(task, targetRect) {
+  applyDockAnimationVars(task, targetRect);
+  task.frame.classList.add("is-restoring");
+  task.restoreFrame = requestAnimationFrameCompat(() => {
+    task.restoreFrame = null;
+    task.frame.classList.remove("is-restoring");
+  });
+  task.restoreTimer = setTimeout(() => {
+    task.restoreTimer = null;
+    task.frame.classList.remove("is-restoring");
+  }, MINIMIZE_ANIMATION_MS);
+}
+
+function applyDockAnimationVars(task, targetRect) {
+  const source = elementRect(task.frame) || surfaceRectForTask(task);
+  const target = targetRect || viewportBottomCenterRect();
+  const sourceCenter = rectCenter(source);
+  const targetCenter = rectCenter(target);
+  const scaleX = clamp(Number(target.width || 56) / Math.max(Number(source.width || MIN_WIDTH), 1), 0.08, 0.22);
+  const scaleY = clamp(Number(target.height || 56) / Math.max(Number(source.height || MIN_HEIGHT), 1), 0.08, 0.22);
+  task.frame.style.setProperty?.("--minimize-x", `${Math.round(targetCenter.x - sourceCenter.x)}px`);
+  task.frame.style.setProperty?.("--minimize-y", `${Math.round(targetCenter.y - sourceCenter.y)}px`);
+  task.frame.style.setProperty?.("--minimize-scale-x", String(scaleX));
+  task.frame.style.setProperty?.("--minimize-scale-y", String(scaleY));
+}
+
+function elementRect(element) {
+  if (!element || typeof element.getBoundingClientRect !== "function") return null;
+  const rect = element.getBoundingClientRect();
+  const width = Number(rect.width || rect.right - rect.left || 0);
+  const height = Number(rect.height || rect.bottom - rect.top || 0);
+  if (!width || !height) return null;
+  return {
+    left: Number(rect.left || 0),
+    top: Number(rect.top || 0),
+    width,
+    height,
+  };
+}
+
+function elementCenterRect(element) {
+  const rect = elementRect(element);
+  if (!rect) return null;
+  return {
+    left: rect.left + rect.width / 2 - 26,
+    top: rect.top + rect.height / 2 - 26,
+    width: 52,
+    height: 52,
+  };
+}
+
+function viewportBottomCenterRect() {
+  const width = globalThis.window?.innerWidth || 1024;
+  const height = globalThis.window?.innerHeight || 768;
+  return {
+    left: width / 2 - 26,
+    top: height - 72,
+    width: 52,
+    height: 52,
+  };
+}
+
+function rectCenter(rect) {
+  return {
+    x: Number(rect.left || 0) + Number(rect.width || 0) / 2,
+    y: Number(rect.top || 0) + Number(rect.height || 0) / 2,
+  };
+}
+
+function requestAnimationFrameCompat(callback) {
+  const raf = globalThis.window?.requestAnimationFrame || globalThis.requestAnimationFrame;
+  if (typeof raf === "function") return raf.call(globalThis.window || globalThis, callback);
+  callback();
+  return 0;
+}
+
+function cancelAnimationFrameCompat(id) {
+  if (!id) return;
+  const cancel = globalThis.window?.cancelAnimationFrame || globalThis.cancelAnimationFrame;
+  if (typeof cancel === "function") cancel.call(globalThis.window || globalThis, id);
+}
+
+function cssEscape(value) {
+  if (globalThis.CSS?.escape) return globalThis.CSS.escape(String(value || ""));
+  return String(value || "").replace(/["\\]/g, "\\$&");
 }
 
 function cloneState(value) {

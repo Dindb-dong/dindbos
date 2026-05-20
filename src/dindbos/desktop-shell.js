@@ -31,7 +31,11 @@ export class DesktopShell {
       dockElement: this.refs.dock,
       isMobile: () => window.matchMedia("(max-width: 760px)").matches,
       onOpenNode: (node) => this.os.openNode(node),
-      onLaunchApp: (id) => this.os.launch(id),
+      onLaunchApp: (id) => {
+        if (this.os.windows?.restoreLatestMinimizedApp?.(id)) return;
+        if (this.os.windows?.focusLatestAppWindow?.(id)) return;
+        this.os.launch(id);
+      },
     });
     root.querySelector("[data-launch='portfolio']").addEventListener("click", () => this.os.launch("portfolio"));
     window.setInterval(() => this.tickClock(), 1000);
@@ -54,7 +58,10 @@ export class DesktopShell {
 
   renderDock() {
     const apps = this.os.apps.list().filter((app) => app.pinned);
-    this.renderer.renderDock(apps);
+    const pinnedAppIds = new Set(apps.map((app) => app.id));
+    const dockApps = this.os.windows?.dockApps?.(pinnedAppIds) || [];
+    const appStates = this.os.windows?.appDockStates?.() || {};
+    this.renderer.renderDock(apps, dockApps, appStates);
   }
 
   tickClock() {
