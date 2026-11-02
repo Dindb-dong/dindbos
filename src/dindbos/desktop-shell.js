@@ -76,11 +76,12 @@ export class DesktopShell {
     this.contextApp = appId ? this.os.apps.list().find((app) => app.id === appId) : null;
     const kind = dockItem ? "dock" : this.contextApp ? "desktop-app" : icon ? "desktop-item" : "desktop";
     this.openPanel(kind, dockItem || icon);
+    if (dockItem) this.refs.dock.dataset.contextOpen = "true";
     const menu = this.refs.overlays.firstElementChild;
     const bounds = this.refs.shell.getBoundingClientRect();
     const anchor = (dockItem || icon)?.getBoundingClientRect();
-    const x = event.clientX || anchor?.left || bounds.left;
-    const y = event.clientY || anchor?.bottom || bounds.top + 34;
+    const x = dockItem && anchor ? anchor.left + anchor.width / 2 - menu.offsetWidth / 2 : event.clientX || anchor?.left || bounds.left;
+    const y = dockItem && anchor ? anchor.top - menu.offsetHeight - 8 : event.clientY || anchor?.bottom || bounds.top + 34;
     menu.style.left = `${Math.max(6, Math.min(x - bounds.left, bounds.width - menu.offsetWidth - 8))}px`;
     menu.style.top = `${Math.max(34, Math.min(y - bounds.top, bounds.height - menu.offsetHeight - 8))}px`;
   }
@@ -195,6 +196,7 @@ export class DesktopShell {
   closePanel(restoreFocus = true) {
     if (!this.activePanel) return;
     this.activePanel = "";
+    if (this.refs.dock?.dataset) delete this.refs.dock.dataset.contextOpen;
     this.panels?.disposePanel();
     this.refs.overlays?.replaceChildren?.();
     this.root?.querySelectorAll?.("[data-shell-panel][aria-expanded='true']").forEach((button) => {

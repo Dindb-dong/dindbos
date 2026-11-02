@@ -135,6 +135,7 @@
 }
 .dindbos-host .dos-dock-item::before,
 .dindbos-host .dos-dock-item::after { display: none; }
+.dindbos-host .dos-dock[data-context-open] .dos-dock-item { --dock-proximity: 0 !important; transition: none; }
 .dindbos-host .dos-dock-item:hover,
 .dindbos-host .dos-dock-item:active { background: transparent; box-shadow: none; transform: none; }
 .dindbos-host .dos-dock-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; box-shadow: 0 0 0 2px rgb(255 255 255 / .8); }

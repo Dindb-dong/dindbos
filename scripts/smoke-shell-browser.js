@@ -79,9 +79,13 @@ try {
   await page.getByRole('menuitem',{name:'Open',exact:true}).click();
   const counter = page.locator('.dos-window[data-app-id="counter"]');
   await counter.getByRole('button',{name:'Minimize',exact:true}).first().click();
+  await expect(counter).toBeHidden();
   await dockApp.click({button:'right'});
   await expect(page.getByRole('menuitem',{name:/My App — Minimized/})).toBeVisible();
   await expect(page.getByRole('menuitem',{name:'Quit',exact:true})).toBeVisible();
+  await expect.poll(() => page.locator('.dos-shell-menu').evaluate((element) => Number(getComputedStyle(element).opacity))).toBe(1);
+  const [dockMenuBox, dockItemBox] = await Promise.all([page.locator('.dos-shell-menu').boundingBox(), dockApp.boundingBox()]);
+  assert(dockMenuBox.y + dockMenuBox.height <= dockItemBox.y - 4, `Dock menus must open above their icon: ${JSON.stringify({dockMenuBox,dockItemBox})}`);
   if(output) await page.screenshot({path:join(output,'dock-app-context.png')});
   await page.getByRole('menuitem',{name:/My App — Minimized/}).click();
   await expect(counter).toBeVisible();

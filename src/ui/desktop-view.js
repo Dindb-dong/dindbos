@@ -79,11 +79,12 @@ function DockList({ apps, dockApps, appStates, launchApp, element }) {
       element.querySelectorAll(".dos-dock-item").forEach((item) => item.style.removeProperty("--dock-proximity"));
     };
     const move = (event) => {
-      if (event.pointerType === "touch" || element.closest(".dindbos-host")?.clientWidth <= 500 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return reset();
+      if (element.dataset.contextOpen || event.pointerType === "touch" || element.closest(".dindbos-host")?.clientWidth <= 500 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return reset();
       pointerX = event.clientX;
       if (frame !== null) return;
       frame = requestAnimationFrame(() => {
         frame = null;
+        if (element.dataset.contextOpen) return reset();
         if (pointerX === null) return;
         for (const item of element.querySelectorAll(".dos-dock-item")) {
           const rect = item.getBoundingClientRect();
