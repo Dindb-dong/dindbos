@@ -28,7 +28,7 @@ const baseUrl = `http://${host}:${address.port}/`;
 let browser = null;
 
 try {
-  browser = await chromium.launch({ headless: true, args: launchArgs });
+  browser = await chromium.launch({ headless: true, args: launchArgs, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
   const context = await browser.newContext({ serviceWorkers: "allow" });
   const page = await context.newPage();
   const result = await runServiceWorkerRecoverySmoke(context, page, baseUrl);

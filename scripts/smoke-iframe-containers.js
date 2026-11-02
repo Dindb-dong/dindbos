@@ -28,7 +28,7 @@ const baseUrl = `http://${host}:${address.port}/`;
 let browser = null;
 
 try {
-  browser = await chromium.launch({ headless: true, args: launchArgs });
+  browser = await chromium.launch({ headless: true, args: launchArgs, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
   const page = await browser.newPage();
   const result = await runIframeContainerSmoke(page, baseUrl);
   assert(result.heartbeatStatus === "mounted", `heartbeat status mismatch: ${JSON.stringify(result)}`);

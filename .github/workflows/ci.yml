@@ -1,0 +1,71 @@
+name: SDK and desktop verification
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Use the runner's existing Chrome
+        shell: bash
+        run: |
+          chrome_path="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$chrome_path" ]; then
+            echo "::error::The runner must provide Chrome or Chromium; browser installation is intentionally not part of this workflow."
+            exit 1
+          fi
+          echo "CHROME_PATH=$chrome_path" >> "$GITHUB_ENV"
+
+      - name: Verify existing runtime behavior
+        run: npm run smoke
+
+      - name: Check public TypeScript contracts
+        run: npm run typecheck
+
+      - name: Verify host lifecycle, apps, UI contracts, and CLI
+        run: npm run verify:host-contracts
+
+      - name: Verify real browser interactions
+        run: npm run verify:ui
+
+      - name: Verify packed SDK and framework examples
+        run: |
+          npm run smoke:sdk-pack
+          npm run smoke:sdk-frameworks
+
+      - name: Build demo
+        run: npm run build
+
+      - name: Retain browser verification screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-verification-screenshots
+          path: internal/docs/qa/ui
+          if-no-files-found: ignore
+          retention-days: 7

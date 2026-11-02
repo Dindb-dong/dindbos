@@ -6,6 +6,7 @@ import { createServer } from "vite";
 const port = Number(process.env.DINDBOS_REACT_QA_PORT || 5196);
 const server = await createServer({
   configFile: false,
+  optimizeDeps: { entries: ["scripts/fixtures/react-apps.jsx"] },
   plugins: [{
     name: "react-sdk-fixture",
     configureServer(vite) {
