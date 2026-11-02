@@ -1,5 +1,8 @@
 import { mountAppIcon } from "../../ui/app-icon.js";
 import { renderDocumentEditor } from "./document-editor.js";
+import { renderNotes, renderReminders, renderCalendar } from "./productivity.js";
+import { renderPhotos, renderMusic } from "./media.js";
+import { renderClock } from "./clock.js";
 import { appearanceMarkup, wireAppearanceControls, welcomeMarkup } from "./appearance.js";
 import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js";
 import {
@@ -205,6 +208,24 @@ export function installBuiltinApps(os, options = {}) {
     },
     render: ({ content, os: runtime }) => renderSettings(runtime, content, appearance),
   });
+  for (const [id, name, render, width, height, accepts] of [
+    ["notes", "Notes", renderNotes, 840, 580],
+    ["reminders", "Reminders", renderReminders, 780, 560],
+    ["calendar", "Calendar", renderCalendar, 880, 630],
+    ["clock", "Clock", renderClock, 680, 560],
+    ["photos", "Photos", renderPhotos, 820, 580, ["image/*"]],
+    ["music", "Music", renderMusic, 820, 580, ["audio/*"]],
+  ]) {
+    register({
+      id, name, icon: id, title: name, singleton: true, desktop: false, pinned: false, width, height,
+      ...(accepts ? { accepts } : {}),
+      manifest: {
+        capabilities: id === "clock" ? [] : ["storage.read"],
+        fileSystem: { read: id === "clock" ? [] : ["photos", "music"].includes(id) ? userDocumentReadRoots : [userHome], write: id === "clock" ? [] : [userHome] },
+      },
+      render: ({ os: runtime, content, context, window }) => render(runtime, content, context, window),
+    });
+  }
   if (options.includeWelcome) {
     register({
       id: "welcome", name: "Welcome", title: "Welcome to DindbOS", icon: "welcome",
@@ -2960,6 +2981,16 @@ export function browserViewportMetrics(rect = {}, deviceScaleFactor = 1, navigat
 }
 
 function renderViewer(os, content, node) {
+  if (!node) {
+    const controller = new AbortController();
+    const filesAvailable = os.apps.list().some((app) => app.id === "files");
+    content.innerHTML = `<section class="viewer-app viewer-empty">${filesMiniIcon("document")}<h2>Open a document</h2><p>Choose a document or image from Files to view it here.</p>${filesAvailable ? '<button type="button" data-viewer-open-files>Browse Files</button>' : ""}<p role="alert" data-viewer-empty-error hidden></p></section>`;
+    content.querySelector("[data-viewer-open-files]")?.addEventListener("click", () => {
+      try { os.launch("files"); }
+      catch (error) { const alert = content.querySelector("[data-viewer-empty-error]"); alert.textContent = error.message; alert.hidden = false; }
+    }, { signal: controller.signal });
+    return () => controller.abort();
+  }
   let disposed = false;
   content.innerHTML = `
     <section class="viewer-app">
@@ -2993,7 +3024,7 @@ async function renderViewerBytes(os, content, node, isDisposed = () => false) {
   if (url && content.dataset) content.dataset.viewerObjectUrl = url;
   const previewState = bytes
     ? viewerPreviewForBytes(bytes, mime)
-    : { preview: node?.content ? fileContentPreview(node.content) : "Preview adapter pending.", status: "" };
+    : { preview: node?.content ? fileContentPreview(node.content) : "This document has no preview content.", status: "" };
   const status = mime === "application/pdf" ? viewerPdfAdapterStatus() : previewState.status;
   const diagnostics = buildViewerDiagnostics({
     node,

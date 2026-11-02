@@ -28,7 +28,7 @@
   }
 
   .dos-window.is-maximized {
-    inset: 38px 8px 82px !important;
+    inset: 38px 8px var(--window-workspace-bottom, 82px) !important;
     width: auto !important;
     height: auto !important;
     border-radius: 12px;

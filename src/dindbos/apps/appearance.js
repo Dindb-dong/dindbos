@@ -70,7 +70,7 @@ export function welcomeMarkup(appearance = {}) {
     <section class="welcome-app">
       <header class="welcome-heading"><span class="welcome-symbol" aria-hidden="true">D</span><h1>Your web. Your desktop.</h1><p>A familiar workspace, made from the components you already build.</p></header>
       <nav class="welcome-apps" aria-label="Explore built-in apps">
-        ${[["files", "Files", "Browse your workspace"], ["terminal", "Terminal", "Run a command"], ["calculator", "Calculator", "Work something out"], ["settings", "Settings", "Make yourself at home"]].map(([id, name, detail]) => `<button type="button" data-welcome-launch="${id}"><span class="welcome-app-art" data-welcome-icon="${id}" aria-hidden="true"></span><strong>${name}</strong><span>${detail}</span></button>`).join("")}
+        ${[["files", "Files", "Browse your workspace"], ["notes", "Notes", "Capture a thought"], ["reminders", "Reminders", "Plan what comes next"], ["calendar", "Calendar", "Make time for it"], ["photos", "Photos", "Your image library"], ["music", "Music", "Listen to your files"], ["clock", "Clock", "Keep track of time"], ["settings", "Settings", "Make yourself at home"]].map(([id, name, detail]) => `<button type="button" data-welcome-launch="${id}"><span class="welcome-app-art" data-welcome-icon="${id}" aria-hidden="true"></span><strong>${name}</strong><span>${detail}</span></button>`).join("")}
       </nav>
       <div class="welcome-customize">${appearanceMarkup(appearance)}</div>
       <section class="welcome-code"><h2>Bring your own app</h2><p>Keep your React components, state, and context. Give them a window.</p><pre><code>import { DindbOSDesktop, DindbOSApp } from "dindbos/react";

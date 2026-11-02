@@ -42,6 +42,8 @@ function DesktopGrid({ entries, isMobile, openNode, onSelectNode }) {
     className: `dos-icon${selected === (entry.path || entry.name) ? " is-selected" : ""}`,
     type: "button", "data-icon": typeof entry.icon === "string" ? entry.icon : "custom",
     "data-desktop-path": entry.path,
+    "data-desktop-app-id": entry.appId || undefined,
+    "data-desktop-kind": entry.kind,
     "aria-label": `Open ${entry.name}`, "aria-pressed": selected === (entry.path || entry.name),
     onPointerDown: () => select(entry),
     onClick: (event) => {

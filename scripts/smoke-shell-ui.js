@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { DesktopShell } from "../src/dindbos/desktop-shell.js";
-import { calendarCells, filterApplications } from "../src/ui/shell-panels.js";
+import { ShellPanels, calendarCells, filterApplications } from "../src/ui/shell-panels.js";
 
 const february = calendarCells(new Date(2024, 1, 15));
 assert.equal(february.length % 7, 0);
@@ -29,3 +29,7 @@ assert.equal(shell.slotCleanups.size, 0);
 assert.equal(shell.renderer, null);
 assert.doesNotThrow(() => shell.destroy(), "destroy must remain safe after cleanup failure");
 console.log("shell UI smoke ok calendar, search, and fault-tolerant disposal");
+const closed = [];
+const panels = new ShellPanels({ os: { windows: { windows: new Map([["a", {id:"a",appId:"text"}], ["b", {id:"b",appId:"text"}], ["other", {id:"other",appId:"notes"}]]), close: async (id) => { closed.push(id); return false; } } } });
+assert.equal(await panels.quitApp("text"), false);
+assert.deepEqual(closed, ["b"], "canceling an unsaved window must stop app Quit before another confirmation opens");

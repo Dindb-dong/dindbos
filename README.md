@@ -19,7 +19,7 @@ A macOS-inspired desktop SDK for portfolios, interactive projects, and pages tha
 | Documents and app content | Virtual files, browser-backed storage, and file associations |
 | An embedded page or full-screen experience | Container-based layout and runtime cleanup |
 
-The [portfolio](https://dindb-dong.github.io/) is a real SDK consumer. Built-in Files, TextEdit, Viewer, Terminal, Calculator, and Settings give a new desktop something useful to do.
+The [portfolio](https://dindb-dong.github.io/) is a real SDK consumer. Built-in Files, Notes, Reminders, Calendar, Photos, Music, Clock, TextEdit, Viewer, Terminal, Calculator, Activity Monitor, and Settings give a new desktop something useful to do. [App features and storage](docs/builtin-apps.md).
 
 > This README describes the current source revision. The new APIs need its corresponding package build; until that revision is published, use the local tarball instructions in [INSTALL.md](INSTALL.md). The hosted demo may still show an earlier release.
 

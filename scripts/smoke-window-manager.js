@@ -66,6 +66,23 @@ assert(leftSnap.width === 442 && leftSnap.height === 626, `left snap size mismat
 const rightSnap = snapWindowRect("right", { width: 900, height: 700 });
 assert(rightSnap.left === 450 && rightSnap.width === 442, `right snap mismatch: ${JSON.stringify(rightSnap)}`);
 
+const workspaceViewport = new WindowManager({
+  root: { clientWidth: 1440, clientHeight: 900, getBoundingClientRect: () => ({ left: 70, top: 120, width: 1440, height: 900 }) },
+  shell: { refs: { dock: { getBoundingClientRect: () => ({ left: 600, top: 943, width: 400, height: 69 }) } } },
+}).viewport();
+assert(workspaceViewport.bottomInset === 85, "Dock reservation must be measured relative to its own host, including the gap");
+const calendarBounds = constrainWindowRect({ left: 320, top: 235, width: 880, height: 630 }, workspaceViewport);
+assert(calendarBounds.top + calendarBounds.height === 815, "a cascaded Calendar must stop above the visible Dock");
+const dockSnap = snapWindowRect("right", workspaceViewport);
+assert(dockSnap.top + dockSnap.height === 815, "snapped windows must use the same Dock boundary");
+const oversizedWorkspace = constrainWindowRect({ left: 0, top: 0, width: 1440, height: 900 }, workspaceViewport);
+assert(oversizedWorkspace.height === 757, "large windows must fit the remaining menu/Dock workspace");
+const hiddenDockViewport = new WindowManager({
+  root: { clientWidth: 900, clientHeight: 700, getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+  shell: { refs: { dock: { getBoundingClientRect: () => ({ top: 0, width: 0, height: 0 }) } } },
+}).viewport();
+assert(hiddenDockViewport.bottomInset === 8, "an absent or hidden Dock must not reserve a phantom fixed height");
+
 const restored = restoreWindowPlacement(
   { left: 9000, top: 9000, width: 480, height: 360, maximized: true },
   { left: 40, top: 80, width: 500, height: 380, maximized: false },

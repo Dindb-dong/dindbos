@@ -1,0 +1,148 @@
+@scope (.dindbos-host) to (.dindbos-host) {
+  .dos-window-content:has(> .productivity-app) { padding: 0; overflow: hidden; container: app-pane / inline-size; }
+  .productivity-app { height: 100%; min-height: 0; color: var(--text); background: var(--content-bg); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; position: relative; overflow: hidden; }
+  .productivity-app *, .productivity-app *::before, .productivity-app *::after { box-sizing: border-box; }
+  .productivity-app button, .productivity-app input, .productivity-app textarea { font: inherit; color: inherit; }
+  .productivity-app button { cursor: default; border: 1px solid var(--line); border-radius: 6px; background: var(--control-bg); padding: 5px 10px; box-shadow: none; }
+  .productivity-app button:hover { background: var(--control-hover); transform: none; }
+  .productivity-app button:focus-visible, .productivity-app input:focus-visible, .productivity-app textarea:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent); outline-offset: -2px; }
+  .productivity-app .productivity-icon-button { width: 30px; height: 30px; flex: 0 0 30px; padding: 5px; border: 0; display: grid; place-items: center; background: transparent; }
+  .productivity-app svg { width: 20px; height: 20px; }
+  .productivity-error { margin: 10px; padding: 10px; border: 1px solid var(--line); background: var(--control-bg); border-radius: 6px; font-size: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .productivity-error > span { flex: 1 1 140px; overflow-wrap: anywhere; }
+  .productivity-error > button { flex: 0 0 auto; }
+  .productivity-error[hidden] { display: none; }
+  .productivity-unavailable { padding: 24px; }
+  .productivity-search { display: block; margin: 0 10px 10px; }
+  .productivity-search input { min-width: 0; width: 100%; height: 28px; background: var(--control-bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+  .productivity-empty { min-width: 0; min-height: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; color: var(--muted); text-align: center; }
+  .productivity-empty h2, .productivity-empty p { min-width: 0; width: 100%; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+  .productivity-empty > svg { width: 38px; height: 38px; stroke-width: 1; margin-bottom: 4px; }
+  .productivity-empty h2 { font-size: 17px; color: var(--text); font-weight: 600; letter-spacing: -.3px; margin: 0; }
+  .productivity-empty p { font-size: 12px; margin: 0; max-width: 260px; }
+  .productivity-empty button { margin-top: 7px; }
+  .productivity-empty-list { margin: 22px 12px; color: var(--muted); text-align: center; font-size: 12px; }
+
+  .notes-app { display: grid; grid-template-columns: 215px minmax(0, 1fr); }
+  .notes-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--sidebar-bg); border-right: 1px solid var(--line); }
+  .notes-sidebar header { display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; min-height: 48px; }
+  .notes-sidebar header strong { font-size: 13px; }
+  .notes-sidebar header strong span { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 5px; }
+  .notes-list { overflow: auto; flex: 1; min-height: 0; padding: 0 8px 12px; }
+  .notes-list button { display: flex; flex-direction: column; align-items: stretch; width: 100%; min-width: 0; border: 0; padding: 10px; margin-bottom: 3px; background: transparent; text-align: left; border-radius: 7px; gap: 3px; }
+  .notes-list button[aria-pressed=true] { background: var(--accent-soft); }
+  .notes-list button strong, .notes-list button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .notes-list button strong { font-size: 12px; font-weight: 600; }
+  .notes-list button span { font-size: 11px; color: var(--muted); }
+  .notes-list button time { font-size: 10px; color: var(--muted); }
+  .note-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .note-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 15px; min-height: 45px; }
+  .note-toolbar time { font-size: 10px; color: var(--muted); }
+  .note-editor > input[data-note-title] { padding: 8px 25px; width: 100%; border: 0; border-radius: 0; min-height: 50px; background: transparent; font-size: 24px; font-weight: 650; letter-spacing: -.65px; }
+  .note-editor > textarea { flex: 1; min-height: 80px; width: 100%; border: 0; resize: none; background: transparent; padding: 8px 25px 25px; font-size: 14px; line-height: 1.7; }
+
+  .reminders-app { display: grid; grid-template-columns: 185px minmax(0, 1fr); }
+  .productivity-sidebar { background: var(--sidebar-bg); border-right: 1px solid var(--line); padding: 20px 10px; min-width: 0; overflow: auto; }
+  .productivity-sidebar h2 { margin: 0 9px 12px; color: var(--muted); font-size: 11px; font-weight: 600; }
+  .productivity-sidebar button { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; margin-bottom: 4px; background: transparent; border: 0; font-size: 12px; }
+  .productivity-sidebar button[aria-pressed=true] { background: var(--accent-soft); }
+  .productivity-sidebar button strong { font-size: 11px; color: var(--muted); }
+  .reminder-main { min-width: 0; min-height: 0; overflow: auto; padding: 20px 22px; }
+  .reminder-main > header { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 18px; }
+  .reminder-main h1 { font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -.8px; color: var(--accent); margin: 0; }
+  .reminder-main > header > span { font-size: 28px; font-weight: 600; color: var(--accent); }
+  :scope[data-appearance=dark] .reminder-main h1, :scope[data-appearance=dark] .reminder-main > header > span { color: color-mix(in srgb, var(--accent) 65%, white); }
+  .reminder-create { display: grid; grid-template-columns: minmax(80px, 1fr) 112px 30px; gap: 6px; align-items: center; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  .reminder-create input { height: 30px; min-width: 0; border: 0; border-radius: 4px; padding: 4px; background: transparent; }
+  .reminder-create input[type=date] { font-size: 10px; color: var(--muted); }
+  .reminder-list { margin: 0; padding: 0; list-style: none; }
+  .reminder-list li { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; min-height: 52px; border-bottom: 1px solid var(--line); gap: 8px; }
+  .reminder-list li > label { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+  .reminder-list input[type=checkbox] { appearance: none; width: 19px; height: 19px; flex: 0 0 19px; border: 1px solid var(--line-strong); border-radius: 50%; background: transparent; cursor: pointer; }
+  .reminder-list input[type=checkbox]:checked { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 3px var(--content-bg); }
+  .reminder-list li > label > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .reminder-list strong { font-weight: 400; overflow-wrap: anywhere; }
+  .reminder-list .is-complete { text-decoration: line-through; color: var(--muted); }
+  .reminder-list small { font-size: 10px; color: var(--muted); }
+  .reminder-list small.is-overdue { color: #c4433d; }
+  .reminder-list li > button { opacity: .5; }
+  .reminder-list li:hover > button, .reminder-list li:focus-within > button { opacity: 1; }
+  .reminder-empty { height: auto; min-height: 220px; }
+
+  .calendar-app { display: grid; grid-template-columns: minmax(0, 1fr) 220px; }
+  .calendar-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 17px 18px 20px; }
+  .calendar-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-bottom: 18px; }
+  .calendar-toolbar h1 { font-size: 23px; font-weight: 600; letter-spacing: -.6px; margin: 0; }
+  .calendar-toolbar > div { display: flex; align-items: center; gap: 1px; }
+  .calendar-toolbar > div > button:not(.productivity-icon-button) { background: transparent; padding: 4px 6px; border: 0; font-size: 11px; }
+  .calendar-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; color: var(--muted); font-size: 10px; padding-bottom: 9px; }
+  .calendar-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: repeat(6, minmax(39px, 1fr)); gap: 3px; min-height: 0; flex: 1; }
+  .calendar-month button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 0; background: transparent; padding: 2px; font-size: 12px; min-width: 0; }
+  .calendar-month button span { width: 25px; height: 25px; border-radius: 50%; display: grid; place-items: center; }
+  .calendar-month button.is-other-month { color: var(--muted); opacity: .55; }
+  .calendar-month button.is-today > span { background: var(--accent); color: white; }
+  .calendar-month button[aria-pressed=true] { background: var(--accent-soft); }
+  .calendar-month i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+  .calendar-agenda { min-height: 0; min-width: 0; overflow: auto; border-left: 1px solid var(--line); padding: 20px 15px; background: var(--sidebar-bg); }
+  .calendar-agenda > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .calendar-agenda small { color: var(--muted); font-size: 11px; }
+  .calendar-agenda h2 { font-size: 20px; font-weight: 600; margin: 2px 0; letter-spacing: -.4px; }
+  .calendar-agenda ul { list-style: none; margin: 24px 0 0; padding: 0; }
+  .calendar-agenda li { display: grid; grid-template-columns: minmax(0, 1fr) 24px; gap: 3px; margin-bottom: 14px; padding: 9px; background: var(--accent-soft); border-radius: 6px; }
+  .calendar-agenda li time { font-size: 10px; color: var(--muted); grid-column: 1; }
+  .calendar-agenda li strong { font-weight: 500; font-size: 12px; overflow-wrap: anywhere; grid-column: 1; }
+  .calendar-agenda li button { grid-column: 2; grid-row: 1 / 3; align-self: center; width: 24px !important; height: 24px !important; flex-basis: 24px !important; opacity: .5; }
+  .calendar-agenda li button:hover, .calendar-agenda li button:focus-visible { opacity: 1; }
+  .calendar-no-events { color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 22px; }
+
+  .productivity-sheet-backdrop { position: absolute; inset: 0; z-index: 200; display: flex; justify-content: center; align-items: flex-start; padding: 20px 12px; background: #0002; }
+  .productivity-sheet { width: min(350px, 100%); padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--content-bg); box-shadow: var(--menu-shadow); display: flex; flex-direction: column; gap: 13px; color: var(--text); }
+  .productivity-sheet h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.2px; }
+  .productivity-sheet p { margin: 0; color: var(--muted); font-size: 12px; }
+  .productivity-sheet label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; }
+  .productivity-sheet label input { width: 100%; padding: 7px; background: var(--control-bg); border: 1px solid var(--line); border-radius: 5px; }
+  .productivity-sheet footer { display: flex; justify-content: flex-end; gap: 7px; padding-top: 7px; }
+  .productivity-sheet footer button:last-child { background: var(--accent); color: white; border-color: transparent; }
+  .productivity-sheet footer button.is-destructive { background: #bd3934; }
+
+  @container app-pane (max-width: 580px) {
+    .notes-app { grid-template-columns: 155px minmax(0, 1fr); }
+    .notes-list button { padding: 8px; }
+    .note-editor > input[data-note-title] { font-size: 21px; padding: 8px 16px; }
+    .note-editor > textarea { padding: 8px 16px 16px; }
+    .reminders-app { grid-template-columns: 130px minmax(0, 1fr); }
+    .reminder-main { padding: 18px 14px; }
+    .reminder-main h1, .reminder-main > header > span { font-size: 23px; }
+    .reminder-create { grid-template-columns: minmax(0, 1fr) 30px; }
+    .reminder-create input[type=date] { grid-row: 2; grid-column: 1 / 3; max-width: 120px; }
+    .reminder-create button { grid-column: 2; grid-row: 1; }
+    .calendar-app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(300px, 1fr) minmax(125px, .55fr); overflow: auto; }
+    .calendar-agenda { border-left: 0; border-top: 1px solid var(--line); padding: 14px 18px; }
+    .calendar-agenda h2 { font-size: 17px; }
+    .calendar-agenda ul { margin-top: 10px; }
+    .calendar-no-events { margin-top: 9px; }
+    .calendar-main { padding: 12px; }
+    .calendar-toolbar { padding-bottom: 10px; }
+    .calendar-toolbar h1 { font-size: 19px; }
+    .calendar-month { grid-template-rows: repeat(6, minmax(32px, 1fr)); }
+  }
+  @container app-pane (max-width: 400px) {
+    .notes-app { grid-template-columns: 120px minmax(0, 1fr); }
+    .notes-sidebar header { padding: 8px; }
+    .notes-list { padding: 0 4px 8px; }
+    .notes-list button span { display: none; }
+    .notes-list button strong { font-size: 11px; }
+    .note-toolbar { padding: 6px 8px; gap: 2px; }
+    .note-toolbar time { font-size: 9px; }
+    .note-editor > input[data-note-title] { font-size: 19px; padding: 6px 10px; }
+    .note-editor > textarea { padding: 6px 10px 15px; font-size: 13px; }
+    .reminders-app { display: flex; flex-direction: column; }
+    .reminders-app .productivity-sidebar { display: flex; gap: 3px; flex: 0 0 auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 7px; }
+    .reminders-app .productivity-sidebar h2 { display: none; }
+    .reminders-app .productivity-sidebar button { margin: 0; padding: 7px; gap: 5px; font-size: 11px; }
+    .reminder-main { flex: 1; }
+    .reminder-create { grid-template-columns: minmax(80px, 1fr) 110px 30px; }
+    .reminder-create input[type=date] { grid-row: auto; grid-column: auto; }
+    .reminder-create button { grid-row: auto; grid-column: auto; }
+  }
+}

@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { createChronometer, formatDuration } from '../src/dindbos/apps/clock.js';
+let now=0;
+const clock=createChronometer(()=>now);
+assert.equal(clock.read(),0);
+clock.start(); now=1234; assert.equal(clock.read(),1234);
+clock.start(); now=1500; assert.equal(clock.read(),1500,'repeat start must not reset elapsed');
+clock.pause(); now=9000; assert.equal(clock.read(),1500,'pause freezes time');
+clock.start(); now=10500; assert.equal(clock.read(),3000,'resume adds to prior elapsed');
+clock.reset(); assert.equal(clock.running,false); assert.equal(clock.read(),0);
+assert.equal(formatDuration(3723456,true),'1:02:03.45');
+assert.equal(formatDuration(-1),'00:00');
+console.log('clock smoke ok monotonic elapsed start/pause/resume/reset and duration formatting');

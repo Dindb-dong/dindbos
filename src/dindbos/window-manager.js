@@ -91,6 +91,8 @@ export class WindowManager {
     if (typeof globalThis.ResizeObserver === "function" && this.os.root) {
       this.resizeObserver = new ResizeObserver(this.boundKeepWindowsInViewport);
       this.resizeObserver.observe(this.os.root);
+      const dock = this.os.shell?.refs?.dock;
+      if (dock) this.resizeObserver.observe(dock);
     }
     this.ensureTrustedSurfacesOnTop();
     this.writeCompositorProcfs("mount");
@@ -108,9 +110,17 @@ export class WindowManager {
   viewport() {
     const root = this.os.root;
     const rect = root?.getBoundingClientRect?.();
+    const height = root ? Math.max(1, root.clientHeight || rect?.height || 1) : globalThis.window?.innerHeight || 768;
+    const dock = this.os.shell?.refs?.dock;
+    const dockRect = dock?.getBoundingClientRect?.();
+    // Reserve the actual Dock, including consumer-supplied Dock slots, in host coordinates.
+    const bottomInset = dockRect?.height > 0 && dockRect.width > 0 && dockRect.top >= Number(rect?.top || 0)
+      ? Math.max(8, height - (dockRect.top - Number(rect?.top || 0)) + 8)
+      : 8;
     return {
       width: root ? Math.max(1, root.clientWidth || rect?.width || 1) : globalThis.window?.innerWidth || 1024,
-      height: root ? Math.max(1, root.clientHeight || rect?.height || 1) : globalThis.window?.innerHeight || 768,
+      height,
+      bottomInset,
       left: Number(rect?.left || 0),
       top: Number(rect?.top || 0),
     };
@@ -168,6 +178,7 @@ export class WindowManager {
     frame.setAttribute?.("role", "group");
     frame.setAttribute?.("aria-label", config.title || config.appId || "App window");
     const placement = this.initialPlacement(config);
+    frame.style.setProperty?.("--window-workspace-bottom", `${this.viewport().bottomInset}px`);
     Object.assign(frame.style, {
       width: `${placement.width}px`,
       height: `${placement.height}px`,
@@ -355,6 +366,7 @@ export class WindowManager {
     const task = this.windows.get(id);
     if (!task) return;
     const before = elementRect(task.frame);
+    task.frame.style.setProperty?.("--window-workspace-bottom", `${this.viewport().bottomInset}px`);
     cancelWindowAnimation(task);
     task.maximized = !task.maximized;
     task.frame.classList.toggle("is-maximized", task.maximized);
@@ -678,6 +690,7 @@ export class WindowManager {
   keepWindowsInViewport() {
     const viewport = this.viewport();
     this.windows.forEach((task) => {
+      task.frame.style.setProperty?.("--window-workspace-bottom", `${viewport.bottomInset}px`);
       if (task.maximized) return;
       const rect = {
         left: Number.parseFloat(task.frame.style.left) || 0,
@@ -1283,12 +1296,13 @@ export function constrainWindowRect(rect, viewport) {
   const viewportWidth = Number(viewport.width || 1024);
   const viewportHeight = Number(viewport.height || 768);
   const maxWidth = Math.max(160, viewportWidth - 16);
-  const maxHeight = Math.max(160, viewportHeight - 66);
+  const bottomInset = Math.max(8, Number(viewport.bottomInset || 8));
+  const maxHeight = Math.max(160, viewportHeight - 58 - bottomInset);
   const width = Math.min(Math.max(Number(rect.width || MIN_WIDTH), 160), maxWidth);
   const height = Math.min(Math.max(Number(rect.height || MIN_HEIGHT), 160), maxHeight);
   return {
     left: Math.round(clamp(Number(rect.left || 0), 8, Math.max(8, viewportWidth - width - 8))),
-    top: Math.round(clamp(Number(rect.top || 0), 58, Math.max(58, viewportHeight - height - 8))),
+    top: Math.round(clamp(Number(rect.top || 0), 58, Math.max(58, viewportHeight - height - bottomInset))),
     width: Math.round(width),
     height: Math.round(height),
   };
@@ -1319,7 +1333,7 @@ export function snapWindowRect(zone, viewport) {
   const width = Number(viewport.width || 1024);
   const height = Number(viewport.height || 768);
   const top = 58;
-  const bottomInset = 16;
+  const bottomInset = Math.max(16, Number(viewport.bottomInset || 16));
   const availableHeight = Math.max(160, height - top - bottomInset);
   const rightStart = Math.round(width / 2);
   if (zone === "left") return { left: 8, top, width: Math.max(160, rightStart - 8), height: availableHeight };
@@ -1335,7 +1349,7 @@ export function isMobileWindowViewport(viewport) {
 
 export function mobileWindowPlacement(viewport) {
   const width = Math.max(200, Number(viewport.width || 390) - 20);
-  const height = Math.max(160, Number(viewport.height || 640) - 162);
+  const height = Math.max(160, Number(viewport.height || 640) - Math.max(162, 70 + Number(viewport.bottomInset || 8)));
   return {
     left: 10,
     top: 70,
@@ -1494,7 +1508,8 @@ function makeResizable(frame, onPlacement = () => {}, captureHooks = {}) {
       if (!start || event.pointerId !== start.pointerId) return;
       const bounds = captureHooks.viewport?.() || { width: window.innerWidth, height: window.innerHeight };
       const minWidth = Math.min(MIN_WIDTH, Math.max(120, bounds.width - 16));
-      const minHeight = Math.min(MIN_HEIGHT, Math.max(100, bounds.height - 66));
+      const bottomInset = Math.max(8, Number(bounds.bottomInset || 8));
+      const minHeight = Math.min(MIN_HEIGHT, Math.max(100, bounds.height - 58 - bottomInset));
       const dx = event.clientX - start.x;
       const dy = event.clientY - start.y;
       let left = start.left;
@@ -1505,7 +1520,7 @@ function makeResizable(frame, onPlacement = () => {}, captureHooks = {}) {
         width = clamp(start.width - dx, minWidth, start.left + start.width - 8);
         left = start.left + start.width - width;
       }
-      if (start.edge.includes("bottom")) height = clamp(start.height + dy, minHeight, bounds.height - start.top - 8);
+      if (start.edge.includes("bottom")) height = clamp(start.height + dy, minHeight, bounds.height - start.top - bottomInset);
       Object.assign(frame.style, { left: `${left}px`, width: `${width}px`, height: `${height}px` });
       event.preventDefault?.();
     };

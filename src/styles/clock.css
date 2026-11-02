@@ -1,0 +1,67 @@
+@scope (.dindbos-host) to (.dindbos-host) {
+  .dos-window-content:has(> .clock-app) { padding: 0; overflow: hidden; container: app-pane / inline-size; }
+  .clock-app { --clock-accent: var(--accent); display: grid; grid-template-rows: auto minmax(0,1fr) auto auto; height: 100%; min-height: 0; background: var(--content-bg); color: var(--text); font: 13px/1.4 var(--font-ui); }
+  :scope[data-appearance='dark'] .clock-app { --clock-accent: color-mix(in srgb,var(--accent) 45%,white); }
+  .clock-app button, .clock-app select, .clock-app input { font: inherit; color: var(--text); box-shadow: none; border: 1px solid var(--line); background: var(--control-bg); border-radius: 7px; }
+  .clock-app button { cursor: default; }
+  .clock-app button:hover:not(:disabled) { background: var(--control-hover); }
+  .clock-toolbar { display: flex; justify-content: center; padding: 12px 18px; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); }
+  .clock-toolbar [role='tablist'] { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb,var(--text) 4%,transparent); }
+  .clock-toolbar button { padding: 5px 18px; border: 0; background: transparent; font-size: 12px; }
+  .clock-toolbar button[aria-selected='true'] { background: var(--content-bg); box-shadow: 0 1px 3px #0002; }
+  .clock-pane { min-height: 0; overflow: auto; padding: 24px 28px; }
+  .clock-world-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 22px; }
+  .clock-world-heading h1 { margin: 0; font-size: 23px; font-weight: 650; letter-spacing: -.5px; }
+  .clock-world-heading form { display: flex; gap: 6px; }
+  .clock-world-heading select { max-width: 142px; padding: 5px 8px; font-size: 12px; }
+  .clock-world-heading button { width: 30px; height: 30px; padding: 0; font-size: 22px; line-height: 1; }
+  .clock-world-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 24px 30px; }
+  .clock-city { text-align: center; min-width: 0; }
+  .clock-city-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 12px; }
+  .clock-city h2 { margin: 0; text-align: left; font-size: 14px; font-weight: 600; }
+  .clock-city-heading button { width: 22px; height: 22px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 17px; opacity: .55; }
+  .clock-city:hover .clock-city-heading button, .clock-city-heading button:focus-visible { opacity: 1; }
+  .clock-analog { display: block; width: min(135px,100%); margin: 0 auto 13px; fill: var(--control-bg); stroke: var(--line-strong); stroke-width: 1; }
+  .clock-analog path { stroke: var(--text); stroke-linecap: round; }
+  .clock-analog .clock-hand-hour { stroke-width: 3.5; }
+  .clock-analog .clock-hand-minute { stroke-width: 2; }
+  .clock-analog .clock-hand-second { stroke: #df6e3e; stroke-width: 1; }
+  .clock-analog .clock-center { fill: #df6e3e; stroke: none; }
+  .clock-city time { font-size: 21px; font-weight: 350; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+  .clock-city-date { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+  .clock-footer { padding: 7px 14px; border-top: 1px solid var(--line); color: var(--muted); text-align: center; font-size: 10px; }
+  .clock-announcement { margin: 0; min-height: 0; color: var(--clock-accent); text-align: center; font-weight: 600; }
+  .clock-announcement:not(:empty) { padding: 0 0 10px; }
+  .clock-stopwatch, .clock-timer { display: flex; align-items: center; flex-direction: column; min-height: 100%; }
+  .clock-stopwatch { padding-top: 14px; }
+  .clock-digits { font: 300 clamp(40px,9cqw,75px)/1.2 var(--font-ui); font-variant-numeric: tabular-nums; letter-spacing: -2px; white-space: nowrap; color: var(--text); }
+  .clock-actions { display: flex; width: min(290px,100%); justify-content: space-between; gap: 20px; margin: 24px 0; }
+  .clock-actions button { width: 75px; height: 42px; border-radius: 22px; background: var(--sidebar-bg); border-color: transparent; font-weight: 500; }
+  .clock-actions .clock-primary { background: var(--accent-soft); color: var(--clock-accent); }
+  .clock-actions .clock-primary.is-stopping { background: color-mix(in srgb,#df6e3e 13%,transparent); color: #cd6a44; }
+  .clock-app .clock-actions .clock-primary:hover:not(:disabled) { background: color-mix(in srgb,var(--clock-accent) 22%,transparent); }
+  .clock-app .clock-actions .clock-primary.is-stopping:hover:not(:disabled) { background: color-mix(in srgb,#df6e3e 22%,transparent); }
+  .clock-laps { margin: 0; padding: 0; list-style: none; width: min(380px,100%); }
+  .clock-laps li { display: flex; justify-content: space-between; padding: 10px 2px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .clock-laps time { font-size: 16px; font-weight: 400; }
+  .clock-timer-ring { --timer-progress: 100%; display: grid; place-items: center; width: min(235px,100%); aspect-ratio: 1; padding: 10px; border-radius: 50%; background: conic-gradient(var(--clock-accent) var(--timer-progress),var(--line) 0); position: relative; }
+  .clock-timer-ring::before { content: ''; position: absolute; inset: 5px; background: var(--content-bg); border-radius: inherit; }
+  .clock-timer-ring .clock-digits { position: relative; font-size: clamp(36px,8cqw,53px); letter-spacing: -1.5px; }
+  .clock-timer-ring.is-finished { background: #df6e3e; }
+  .clock-timer-inputs { display: flex; gap: 12px; margin-top: 20px; }
+  .clock-timer-inputs label { display: grid; justify-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+  .clock-timer-inputs input { width: 64px; padding: 5px 4px; text-align: center; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .clock-timer-validation { max-width: 300px; margin: 10px 0 0; color: #c25c3f; font-size: 11px; text-align: center; }
+  :scope[data-appearance='dark'] .clock-app .clock-primary.is-stopping,
+  :scope[data-appearance='dark'] .clock-timer-validation { color: #f0a284; }
+  .clock-visually-hidden { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+  @container app-pane (max-width: 480px) {
+    .clock-pane { padding: 20px 16px; }
+    .clock-toolbar { padding: 10px 8px; }
+    .clock-toolbar button { padding: 5px 12px; }
+    .clock-world-heading { flex-wrap: wrap; }
+    .clock-world-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 22px 18px; }
+    .clock-city time { font-size: 19px; }
+    .clock-world-heading h1 { font-size: 21px; }
+  }
+}

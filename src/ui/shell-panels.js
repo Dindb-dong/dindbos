@@ -33,18 +33,41 @@ export class ShellPanels {
     const task = this.shell.activeTask();
     const app = this.os.apps.list().find((entry) => entry.id === task?.appId);
     const available = (id) => this.os.apps.has(id);
+    const contextApp = this.shell.contextApp;
+    const appWindows = contextApp ? [...this.os.windows.windows.values()].filter((entry) => entry.appId === contextApp.id) : [];
+    const pinItem = contextApp && { label: contextApp.pinned ? "Remove from Dock" : "Keep in Dock", action: "context-pin", checked: Boolean(contextApp.pinned) };
     const editable = this.shell.editTarget?.isConnected && this.shell.root.contains?.(this.shell.editTarget);
     const items = {
       desktop: [
-        ...(this.shell.contextNode ? [
-          { label: "Open", action: "desktop-open" },
-          { label: "Show in Files", action: "desktop-reveal", disabled: !available("files") },
-          null,
-        ] : [{ label: "Open Files", action: "launch", app: "files", disabled: !available("files") }, null]),
+        { label: "New Folder", action: "desktop-new-folder" },
+        { label: "Open Files", action: "launch", app: "files", disabled: !available("files") },
+        null,
         { label: "Refresh Desktop", action: "refresh" },
         { label: "Change Wallpaper…", action: "controls" },
         null,
         { label: "System Settings…", action: "launch", app: "settings", disabled: !available("settings") },
+      ],
+      "desktop-item": [
+        { label: "Open", action: "desktop-open" },
+        { label: "Show in Files", action: "desktop-reveal", disabled: !available("files") },
+        null,
+        { label: "Copy Path", action: "context-copy-path", disabled: !globalThis.navigator?.clipboard?.writeText },
+      ],
+      "desktop-app": [
+        { label: "Open", action: "context-open-app" },
+        { label: "Show in Files", action: "context-reveal-app", disabled: !available("files") },
+        null,
+        pinItem,
+      ],
+      dock: [
+        ...appWindows.map((entry) => ({ label: `${entry.title || contextApp.name}${entry.minimized ? " — Minimized" : ""}`, action: "context-focus-window", window: entry.id, checked: entry.id === this.os.windows.activeWindowId })),
+        ...(appWindows.length ? [null] : []),
+        { label: appWindows.length ? "Show" : "Open", action: "context-open-app" },
+        ...(contextApp && !contextApp.singleton ? [{ label: "New Window", action: "context-new-window" }] : []),
+        null,
+        pinItem,
+        { label: "Show in Files", action: "context-reveal-app", disabled: !available("files") },
+        ...(appWindows.length ? [null, { label: "Quit", action: "context-quit" }] : []),
       ],
       system: [
         { label: `About ${this.os.session.product || "DindbOS"}`, action: "about" },
@@ -98,7 +121,7 @@ export class ShellPanels {
     const rootRect = this.shell.refs.shell.getBoundingClientRect?.();
     const triggerRect = trigger?.getBoundingClientRect?.();
     if (rootRect && triggerRect) menu.style.left = `${Math.max(6, Math.min(triggerRect.left - rootRect.left, rootRect.width - 248))}px`;
-    menu.querySelector?.("button:not(:disabled)")?.focus();
+    menu.querySelector?.("button:not(:disabled)")?.focus({ preventScroll: true });
   }
 
   renderLauncher() {
@@ -107,7 +130,7 @@ export class ShellPanels {
       <div class="dos-launcher-results" aria-label="Applications"></div>
       <footer class="dos-launcher-footer"><span>Applications</span><span>↑ ↓ to navigate <span aria-hidden="true">·</span> ↵ to open</span></footer>`, "dos-launcher", "Search applications");
     this.renderLauncherResults("");
-    panel.querySelector("input")?.focus();
+    panel.querySelector("input")?.focus({ preventScroll: true });
   }
 
   renderLauncherResults(query) {
@@ -135,7 +158,7 @@ export class ShellPanels {
       <section class="dos-control-section dos-dock-control"><label for="${this.os.instanceId}-dock-size">Dock size</label><input type="range" id="${this.os.instanceId}-dock-size" min="36" max="72" value="${Number(appearance.dockSize || 52)}" data-shell-dock-size><span aria-hidden="true">Small</span><span aria-hidden="true">Large</span></section>
       <button type="button" class="dos-panel-link" data-shell-action="launch" data-app="settings" ${this.os.apps.has("settings") ? "" : "disabled"}>Open System Settings <span aria-hidden="true">↗</span></button>`, "dos-control-center", "Control Center");
     if (this.shell.activePanel !== "controls") return;
-    panel.querySelector("button")?.focus();
+    panel.querySelector("button")?.focus({ preventScroll: true });
   }
 
   updateControls() {
@@ -158,7 +181,7 @@ export class ShellPanels {
       <div class="dos-calendar-month"><strong>${escapeHtml(date.toLocaleDateString(undefined, { month: "long", year: "numeric" }))}</strong><div><button type="button" data-shell-action="calendar-prev" aria-label="Previous month">‹</button><button type="button" data-shell-action="calendar-next" aria-label="Next month">›</button></div></div>
       <div class="dos-calendar-week" aria-hidden="true">${["M", "T", "W", "T", "F", "S", "S"].map((day) => `<span>${day}</span>`).join("")}</div>
       <div class="dos-calendar-grid" role="list" aria-label="Days in ${escapeHtml(date.toLocaleDateString(undefined, { month: "long", year: "numeric" }))}">${calendarCells(date).map((day) => day ? `<span role="listitem" ${sameDate(day, now) ? 'class="is-today" aria-current="date"' : ""}>${day.getDate()}</span>` : `<span aria-hidden="true"></span>`).join("")}</div>`, "dos-calendar", "Calendar");
-    panel.querySelector("button")?.focus();
+    panel.querySelector("button")?.focus({ preventScroll: true });
   }
 
   renderAbout() {
@@ -166,7 +189,7 @@ export class ShellPanels {
     const app = this.os.apps.list().find((entry) => entry.id === this.shell.activeTask()?.appId);
     const name = app?.name || this.os.session.product || "DindbOS";
     const panel = this.panel(`<button type="button" class="dos-panel-close" data-shell-action="dismiss" aria-label="Close About">×</button><div class="dos-about-mark" aria-hidden="true">D</div><h2>${escapeHtml(name)}</h2><p>A desktop for the web.</p><p class="dos-about-detail">${app ? "Running in DindbOS" : "Built with DindbOS"}</p><button type="button" class="dos-panel-link" data-shell-action="launcher">Explore applications</button>`, "dos-about", `About ${name}`);
-    panel.querySelector("button")?.focus();
+    panel.querySelector("button")?.focus({ preventScroll: true });
   }
 
   disposePanel() {
@@ -213,8 +236,25 @@ export class ShellPanels {
     }
     const editor = this.shell.editTarget;
     const contextNode = this.shell.contextNode;
+    const contextApp = this.shell.contextApp;
     this.shell.closePanel(false);
     if (action === "desktop-open" && contextNode) this.os.openNode(contextNode);
+    else if (action === "context-open-app" && contextApp) this.shell.launchApp(contextApp.id);
+    else if (action === "context-new-window" && contextApp) this.shell.launchApp(contextApp.id, {});
+    else if (action === "context-focus-window") this.os.windows.restore(data.window);
+    else if (action === "context-reveal-app" && contextApp) this.shell.launchApp("files", { path: "/usr/share/applications" });
+    else if (action === "context-pin" && contextApp) this.os.registerApp({ ...contextApp, pinned: !contextApp.pinned });
+    else if (action === "context-quit" && contextApp) return this.quitApp(contextApp.id);
+    else if (action === "context-copy-path" && contextNode) return globalThis.navigator.clipboard.writeText(contextNode.path);
+    else if (action === "desktop-new-folder") {
+      const desktopPath = this.os.session.desktopPath || this.os.fs.join(this.os.session.home, "Desktop");
+      let name = "Untitled Folder";
+      let suffix = 2;
+      while (this.os.fs.exists(this.os.fs.join(desktopPath, name))) name = `Untitled Folder ${suffix++}`;
+      this.os.fs.createDirectory(this.os.fs.join(desktopPath, name), "/", { owner: this.os.session.user, group: this.os.session.groups?.[0] || "users" });
+      this.shell.renderDesktop();
+      return this.os.flushPersistentFileSystem?.();
+    }
     else if (action === "desktop-reveal" && contextNode) this.shell.launchApp("files", { path: this.os.fs.dirname(contextNode.path) });
     else if (action === "launch") this.shell.launchApp(data.app);
     else if (action === "launch-new") this.shell.launchApp(data.app, {});
@@ -225,7 +265,7 @@ export class ShellPanels {
     else if (action === "show-desktop") [...this.os.windows.windows.values()].filter((window) => !window.minimized).forEach((window) => this.os.windows.minimize(window.id));
     else if (action === "refresh") this.shell.renderDesktop();
     else if (action.startsWith("edit-") && editor?.isConnected) {
-      editor.focus();
+      editor.focus({ preventScroll: true });
       const command = action.slice(5);
       if (command === "selectAll" && typeof editor.select === "function") editor.select();
       else if (command === "paste") this.pasteInto(editor);
@@ -233,11 +273,19 @@ export class ShellPanels {
     }
   }
 
+  async quitApp(appId) {
+    const windows = [...this.os.windows.windows.values()].filter((entry) => entry.appId === appId).reverse();
+    for (const entry of windows) {
+      if (await this.os.windows.close(entry.id) === false) return false;
+    }
+    return true;
+  }
+
   async pasteInto(editor) {
     try {
       const text = await globalThis.navigator?.clipboard?.readText?.();
       if (text === undefined || !editor.isConnected || !this.shell.root.contains(editor)) return;
-      editor.focus();
+      editor.focus({ preventScroll: true });
       if (typeof editor.setRangeText === "function") {
         editor.setRangeText(text, editor.selectionStart || 0, editor.selectionEnd || 0, "end");
         const EventType = this.shell.root.ownerDocument.defaultView.Event;

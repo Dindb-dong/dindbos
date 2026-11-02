@@ -46,6 +46,7 @@
     "docs/react-apps.md",
     "docs/agent-guide.md",
     "docs/first-app.md",
+    "docs/builtin-apps.md",
     "docs/assets"
   ],
   "sideEffects": [
@@ -122,9 +123,11 @@
     "smoke:dock-browser": "node scripts/smoke-dock-browser.js",
     "smoke:shell-browser": "node scripts/smoke-shell-browser.js",
     "capture:showcase": "node scripts/capture-showcase.js",
-    "verify:host-contracts": "npm run smoke:host-lifecycle && npm run smoke:host-apps && npm run smoke:desktop-ui && npm run smoke:shell-ui && npm run smoke:builtin-experience && npm run smoke:create-cli",
+    "verify:host-contracts": "npm run smoke:host-lifecycle && npm run smoke:host-apps && npm run smoke:desktop-ui && npm run smoke:shell-ui && npm run smoke:builtin-experience && npm run smoke:productivity && npm run smoke:clock && npm run smoke:create-cli",
     "verify:ui": "node scripts/verify-ui.js",
-    "smoke:editor-browser": "node scripts/smoke-editor-browser.js"
+    "smoke:editor-browser": "node scripts/smoke-editor-browser.js",
+    "smoke:productivity": "node scripts/smoke-productivity-apps.js",
+    "smoke:clock": "node scripts/smoke-clock.js"
   },
   "keywords": [
     "web-os",

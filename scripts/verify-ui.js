@@ -33,6 +33,9 @@ try {
     ["editor", "smoke-editor-browser.js"],
     ["browser", "smoke-browser-ui.js"],
     ["files", "smoke-files-ui-browser.js"],
+    ["productivity", "smoke-productivity-browser.js"],
+    ["media", "smoke-media-apps-browser.js"],
+    ["clock", "smoke-clock-browser.js"],
     ["embed", "smoke-embed-browser.js"],
   ]) {
     if (interrupted) break;

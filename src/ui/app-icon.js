@@ -7,6 +7,8 @@ const PALETTES = {
   files: ["#89d4ff", "#147be7"], folder: ["#8ed8ff", "#36a5e9"], directory: ["#8ed8ff", "#36a5e9"],
   browser: ["#77d9ff", "#0077ee"], calculator: ["#ffbd6c", "#ec7629"], terminal: ["#394453", "#111820"],
   activity: ["#334447", "#101c1e"], settings: ["#d4dbe1", "#8e9aa8"], portfolio: ["#66b88a", "#287451"],
+  notes: ["#ffdc77", "#edb540"], reminders: ["#fff", "#e7ecf1"], calendar: ["#fff", "#eef1f4"],
+  clock: ["#353e47", "#11171d"], photos: ["#fff", "#e8edf0"], music: ["#f8838c", "#db3b61"],
   text: ["#fff", "#e3e9ef"], file: ["#fff", "#e3e9ef"], pdf: ["#fff", "#e3e9ef"], image: ["#fff", "#e3e9ef"],
 };
 
@@ -52,6 +54,33 @@ export function AppIcon({ icon = "app" }) {
 function path(d, props = {}) { return h("path", { d, stroke: "currentColor", strokeWidth: "2.5", strokeLinecap: "round", strokeLinejoin: "round", ...props }); }
 function iconArtwork(type) {
   if (type === "folder" || type === "directory") return [];
+  if (type === "notes") return [h("g", { key: "notes" },
+    h("path", { d: "M10 20h44v29a5 5 0 0 1-5 5H15a5 5 0 0 1-5-5Z", fill: "#fffdf5" }),
+    h("path", { d: "M10 20h44", stroke: "#d5a22d", strokeWidth: "1.2", strokeDasharray: "2 2" }),
+    ...[29, 36, 43].map((y) => path(`M17 ${y}h30`, { key: y, stroke: "#d7d3c6", strokeWidth: "1.4" })))];
+  if (type === "reminders") return [h("g", { key: "reminders" },
+    ...[[20, "#4898ef"], [32, "#ed885b"], [44, "#65b681"]].map(([y, color]) => h("g", { key: y },
+      h("circle", { cx: "17", cy: y, r: "4", stroke: color, strokeWidth: "2" }),
+      h("circle", { cx: "17", cy: y, r: "1.5", fill: color }),
+      path(`M28 ${Number(y) - 2}h20M28 ${Number(y) + 3}h15`, { stroke: "#aeb8bf", strokeWidth: "1.6" }))))];
+  if (type === "calendar") return [h("g", { key: "calendar" },
+    h("path", { d: "M3 17V17A14 14 0 0 1 17 3h30a14 14 0 0 1 14 14v4H3Z", fill: "#df5b5c" }),
+    h("text", { x: "32", y: "16", textAnchor: "middle", fill: "#fff", fontSize: "9", fontWeight: "600", fontFamily: "system-ui, sans-serif" }, new Date().toLocaleDateString("en-US", { month: "short" }).toUpperCase()),
+    h("text", { x: "32", y: "49", textAnchor: "middle", fill: "#28323c", fontSize: "31", fontWeight: "350", fontFamily: "system-ui, sans-serif" }, new Date().getDate()))];
+  if (type === "clock") return [h("g", { key: "clock" },
+    h("circle", { cx: "32", cy: "32", r: "24", fill: "#f6f7f4" }),
+    ...Array.from({ length: 12 }, (_, i) => h("path", { key: i, d: "M32 11v3", stroke: "#313b43", strokeWidth: "1.5", transform: `rotate(${i * 30} 32 32)` })),
+    path("M32 20v12l12 7", { stroke: "#242c35", strokeWidth: "2.8" }),
+    path("M32 36V13", { stroke: "#e1744b", strokeWidth: "1.2" }), h("circle", { cx: "32", cy: "32", r: "2", fill: "#e1744b" }))];
+  if (type === "photos") return [h("g", { key: "photos" },
+    h("rect", { x: "11", y: "12", width: "37", height: "42", rx: "4", fill: "#c6d2e8", transform: "rotate(-11 29 33)" }),
+    h("rect", { x: "17", y: "12", width: "36", height: "42", rx: "4", fill: "#fff", stroke: "#ccd7db" }),
+    h("rect", { x: "21", y: "16", width: "28", height: "29", rx: "1", fill: "#a8d5df" }),
+    h("circle", { cx: "40", cy: "23", r: "4", fill: "#f7df91" }),
+    h("path", { d: "m21 40 10-15 11 15 4-6 3 6v5H21Z", fill: "#5c9b82" }),
+    h("path", { d: "m27 31 4-6 5 7-5-3Z", fill: "#f3f5eb" }))];
+  if (type === "music") return [h("g", { key: "music" },
+    h("path", { d: "M27 19v25c0 5-12 8-12 1 0-4 6-6 10-5V16l25-5v27c0 5-12 8-12 1 0-4 6-6 10-5V20Z", fill: "#fff9fc" }))];
   if (type === "welcome") return [h("text", { key: "brand", x: "32", y: "46", textAnchor: "middle", fill: "#fff", fontSize: "39", fontWeight: "500", fontFamily: "-apple-system, system-ui, sans-serif" }, "D")];
   if (type === "files") return [h("g", { key: "face" },
     h("path", { d: "M32 4h15a14 14 0 0 1 14 14v29a14 14 0 0 1-14 14H29l8-29h-9Z", fill: "#d5efff" }),

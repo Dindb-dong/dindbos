@@ -9,7 +9,7 @@
 
 포트폴리오, 인터랙티브 프로젝트, 웹사이트의 일부 페이지를 macOS풍 데스크톱으로 만드는 SDK입니다. React 컴포넌트나 JavaScript 함수를 앱으로 등록하고, 테마와 데스크톱 UI를 바꿀 수 있습니다. 창·포커스·파일·실행 상태는 런타임이 관리합니다.
 
-[개인 포트폴리오](https://dindb-dong.github.io/)에서도 실제로 사용합니다. Files·TextEdit·Viewer·Terminal·Calculator·Settings 같은 기본 앱을 선택해서 사용할 수 있습니다.
+[개인 포트폴리오](https://dindb-dong.github.io/)에서도 실제로 사용합니다. Files·Notes·Reminders·Calendar·Photos·Music·Clock·TextEdit·Viewer·Terminal·Calculator·Activity Monitor·Settings를 선택해서 사용할 수 있습니다. [기본 앱 기능과 저장 위치](docs/builtin-apps.md).
 
 > 이 문서는 현재 소스의 API를 설명합니다. 해당 소스가 npm에 게시되기 전에는 [INSTALL.md](INSTALL.md)의 로컬 tarball 설치를 사용하세요. 공개 데모는 이전 릴리스일 수 있습니다.
 

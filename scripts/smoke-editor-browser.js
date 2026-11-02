@@ -59,6 +59,12 @@ try {
   await expect(changes).toHaveCount(0);
   await expect(document).toHaveValue(draft);
   await expect(editor.getByRole("button", { name: "Close", exact: true })).toBeFocused();
+  await page.locator('[data-dock-app-id="text"]').click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Quit", exact: true }).click();
+  await expect(changes).toBeVisible();
+  await changes.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(document).toHaveValue(draft);
+  await expect(editor).toBeVisible();
   await close();
   await changes.getByRole("button", { name: "Don’t Save", exact: true }).click();
   await expect(editor).toHaveCount(0);

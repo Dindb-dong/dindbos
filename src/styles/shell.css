@@ -1,5 +1,6 @@
 @scope (.dindbos-host) to (.dindbos-host) {
 /* The menu bar and its transient surfaces share one instance-local coordinate space. */
+.dos-shell { overflow: clip; }
 .dos-menubar {
   position: absolute; inset: 0 0 auto; z-index: 1000; display: flex; align-items: center;
   justify-content: space-between; gap: 12px; height: 30px; padding: 0 10px;

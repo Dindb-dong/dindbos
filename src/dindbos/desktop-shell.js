@@ -66,15 +66,19 @@ export class DesktopShell {
 
   openDesktopContext(event) {
     const target = event.target;
+    const dockItem = target.closest?.(".dos-dock-item[data-dock-app-id]");
     const desktop = target.closest?.(".dos-desktop");
-    if (!desktop && target !== this.refs.shell && target !== this.root) return;
+    if (!dockItem && !desktop && target !== this.refs.shell && target !== this.root) return;
     event.preventDefault();
     const icon = target.closest?.("[data-desktop-path]");
-    this.contextNode = icon ? this.os.fs.stat(icon.dataset.desktopPath) : null;
-    this.openPanel("desktop", icon);
+    this.contextNode = icon ? this.os.fs.lstat(icon.dataset.desktopPath) : null;
+    const appId = dockItem?.dataset.dockAppId || icon?.dataset.desktopAppId;
+    this.contextApp = appId ? this.os.apps.list().find((app) => app.id === appId) : null;
+    const kind = dockItem ? "dock" : this.contextApp ? "desktop-app" : icon ? "desktop-item" : "desktop";
+    this.openPanel(kind, dockItem || icon);
     const menu = this.refs.overlays.firstElementChild;
     const bounds = this.refs.shell.getBoundingClientRect();
-    const anchor = icon?.getBoundingClientRect();
+    const anchor = (dockItem || icon)?.getBoundingClientRect();
     const x = event.clientX || anchor?.left || bounds.left;
     const y = event.clientY || anchor?.bottom || bounds.top + 34;
     menu.style.left = `${Math.max(6, Math.min(x - bounds.left, bounds.width - menu.offsetWidth - 8))}px`;
@@ -142,7 +146,7 @@ export class DesktopShell {
     const entries = this.os.fs.list(desktopPath).map((node) => {
       const resolved = this.os.fs.resolveNode(node);
       const app = resolved.appId && this.os.apps.list().find((item) => item.id === resolved.appId);
-      return { node, name: node.name, path: node.path, icon: app?.icon || resolved.icon || resolved.type };
+      return { node, name: node.name, path: node.path, appId: app?.id, kind: resolved.type, icon: app?.icon || resolved.icon || resolved.type };
     });
     this.renderSlot("desktop", { entries }, () => this.renderer.renderDesktop(entries));
   }
@@ -172,7 +176,7 @@ export class DesktopShell {
     }
     const action = event.target.closest?.("[data-shell-action]");
     if (action && !action.disabled) {
-      try { this.panels.runAction(action.dataset.shellAction, action.dataset); }
+      try { Promise.resolve(this.panels.runAction(action.dataset.shellAction, action.dataset)).catch((error) => this.notify(error.message || "The action could not be completed.")); }
       catch (error) { this.notify(error.message || "The action could not be completed."); }
     }
   }
@@ -197,7 +201,7 @@ export class DesktopShell {
       button.setAttribute("aria-expanded", "false");
       button.classList.remove("is-open");
     });
-    if (restoreFocus && this.returnFocus?.isConnected) this.returnFocus.focus();
+    if (restoreFocus && this.returnFocus?.isConnected) this.returnFocus.focus({ preventScroll: true });
     this.returnFocus = null;
   }
 
@@ -248,7 +252,7 @@ export class DesktopShell {
     const index = items.indexOf(active);
     const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowUp" ? items.length - 1 : 1)) % items.length;
     event.preventDefault();
-    items[next].focus();
+    items[next].focus({ preventScroll: true });
   }
 
   tickClock() {
