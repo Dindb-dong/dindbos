@@ -355,3 +355,25 @@
   .browser-toolbar button:hover, .browser-tabs button:hover { background: var(--control-hover); }
   .browser-tabs button[aria-selected='true'] { background: var(--content-bg); }
 }
+@scope (.dindbos-host) to (.dindbos-host) {
+  .files-app .files-toolbar button,
+  .files-app .files-toolbar select,
+  .files-app .files-toolbar input,
+  .files-app .files-more-actions summary,
+  .viewer-app .viewer-toolbar button {
+    background: var(--control-bg);
+    color: var(--text);
+    border-color: var(--line);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .files-app .files-toolbar button:hover,
+  .files-app .files-toolbar select:hover,
+  .files-app .files-more-actions summary:hover,
+  .viewer-app .viewer-toolbar button:hover {
+    background: var(--control-hover);
+    transform: none;
+  }
+  .files-app .files-toolbar input::placeholder { color: var(--muted); opacity: 1; }
+}
