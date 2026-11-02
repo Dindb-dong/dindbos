@@ -36,6 +36,11 @@ export class ShellPanels {
     const editable = this.shell.editTarget?.isConnected && this.shell.root.contains?.(this.shell.editTarget);
     const items = {
       desktop: [
+        ...(this.shell.contextNode ? [
+          { label: "Open", action: "desktop-open" },
+          { label: "Show in Files", action: "desktop-reveal", disabled: !available("files") },
+          null,
+        ] : [{ label: "Open Files", action: "launch", app: "files", disabled: !available("files") }, null]),
         { label: "Refresh Desktop", action: "refresh" },
         { label: "Change Wallpaper…", action: "controls" },
         null,
@@ -207,8 +212,11 @@ export class ShellPanels {
       return;
     }
     const editor = this.shell.editTarget;
+    const contextNode = this.shell.contextNode;
     this.shell.closePanel(false);
-    if (action === "launch") this.shell.launchApp(data.app);
+    if (action === "desktop-open" && contextNode) this.os.openNode(contextNode);
+    else if (action === "desktop-reveal" && contextNode) this.shell.launchApp("files", { path: this.os.fs.dirname(contextNode.path) });
+    else if (action === "launch") this.shell.launchApp(data.app);
     else if (action === "launch-new") this.shell.launchApp(data.app, {});
     else if (action === "close" && task) this.os.windows.close(task.id);
     else if (action === "minimize" && task) this.os.windows.minimize(task.id);

@@ -47,6 +47,9 @@ Use only these font, color, spacing and motion tokens for new UI. Existing alias
 - Legacy styles are under `@scope (.dindbos-host) to (.dindbos-host)`. New styles use the same scope boundary. Host tokens can inherit; selectors cannot escape to the page or a nested desktop.
 - Use container widths for desktop layout. A narrow desktop uses full-width app windows and compact navigation, even when the surrounding browser is wide.
 - Do not hide essential tools to make a screenshot fit. Overflow menus and horizontal scrolling are preferable to unreachable controls.
+- Files uses compact icon tools, a short folder title, view/sort menus and a quiet path bar. The current folder column stays visible after resize. Drag instructions appear during dragging rather than consuming a permanent row.
+- Browser gives the document priority: proportional address text, icon navigation and per-tab close controls. Connection diagnostics live behind Connection → Advanced; actionable failures remain visible. Closing a background tab preserves the active document and its input state.
+- Right-click works across the desktop background, its gutters, file rows and empty folder space. Menus stay inside the host, support keyboard access and restore focus on dismissal.
 
 ## Assets and composition
 

@@ -37,7 +37,7 @@ function sdkArtifactsPlugin() {
     name: "dindbos-sdk-artifacts",
     closeBundle() {
       mkdirSync("dist", { recursive: true });
-      const styles = ["dindbos", "theme", "shell", "windows", "dock", "apps"];
+      const styles = ["dindbos", "theme", "shell", "windows", "dock", "apps", "files", "browser"];
       writeFileSync("dist/styles.css", styles.map((name) => readFileSync(`src/styles/${name}.css`, "utf8")).join("\n"));
       cpSync("src/styles/wallpapers", "dist/wallpapers", { recursive: true });
       for (const name of Object.keys(entrypoints)) {

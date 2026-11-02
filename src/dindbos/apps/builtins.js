@@ -287,13 +287,24 @@ function renderFiles(os, content, path, windowApi) {
   let operationHistory = [];
   let selectedPaths = new Set([selectedPath]);
   let selectionAnchorPath = selectedPath;
+  const navigationHistory = [currentPath];
+  let navigationIndex = 0;
+  let dismissToolbarMenus = null;
+  let disconnectColumns = null;
 
   const draw = async (nextPath, nextSelectedPath = null, options = {}) => {
     contextMenuCleanups.get(content)?.();
+    dismissToolbarMenus?.();
+    disconnectColumns?.();
     if (disposed) return;
     const generation = ++drawGeneration;
     currentPath = os.fs.normalize(nextPath);
     if (!os.fs.resolve(currentPath)) currentPath = os.session.home || "/";
+    if (!options.skipHistory && navigationHistory[navigationIndex] !== currentPath) {
+      navigationHistory.splice(navigationIndex + 1);
+      navigationHistory.push(currentPath);
+      navigationIndex = navigationHistory.length - 1;
+    }
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.syncDirectory(currentPath);
     selectedPath = nextSelectedPath ? os.fs.normalize(nextSelectedPath) : currentPath;
     if (!options.preserveSelection) {
@@ -301,7 +312,7 @@ function renderFiles(os, content, path, windowApi) {
       selectionAnchorPath = selectedPath;
     }
     const currentStat = os.fs.stat(currentPath);
-    windowApi.setTitle(`Files - ${currentPath}`);
+    windowApi.setTitle(currentPath === (os.session.home || "/home/guest") ? "Home" : currentPath === "/" ? "DindbOS" : os.fs.basename(currentPath));
     const query = searchQuery.trim();
     const columns = query ? buildSearchColumns(os, currentPath, selectedPath, query, sortMode) : buildFileColumns(os, currentPath, selectedPath, sortMode);
     const visibleCount = columns.reduce((total, column) => total + column.entries.length, 0);
@@ -334,33 +345,39 @@ function renderFiles(os, content, path, windowApi) {
           `).join("")}
         </aside>
         <div class="files-main">
-          <div class="pathbar">
-            <button type="button" data-nav="${escapeAttr(os.fs.dirname(currentPath))}">Back</button>
-            <nav class="files-breadcrumb" aria-label="Current folder">
-              ${renderBreadcrumb(os, currentPath)}
-            </nav>
-            <button type="button" data-files-inspector aria-label="Toggle Inspector" aria-pressed="${inspectorOpen}" title="Show file information">ⓘ</button>
-          </div>
-          <div class="files-toolbar" role="toolbar" aria-label="File actions">
-            <button type="button" data-action="new-folder" title="Create a new folder">New Folder</button>
-            <button type="button" data-action="import">Import</button>
-            <details class="files-more-actions">
-              <summary aria-label="More file actions">•••</summary>
-              <div class="files-action-menu">
-                ${[["new-file", "New File"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["mount-local", "Mount Local Folder"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" data-action="${action}">${label}</button>`).join("")}
+          <div class="files-toolbar files-commandbar" role="toolbar" aria-label="File actions">
+            <div class="files-history">
+              <button type="button" data-files-back aria-label="Back" title="Back" ${navigationIndex === 0 ? "disabled" : ""}>${filesToolIcon("back")}</button>
+              <button type="button" data-files-forward aria-label="Forward" title="Forward" ${navigationIndex >= navigationHistory.length - 1 ? "disabled" : ""}>${filesToolIcon("forward")}</button>
+            </div>
+            <strong class="files-folder-title" title="${escapeAttr(currentPath)}">${escapeHtml(currentPath === (os.session.home || "/home/guest") ? "Home" : currentPath === "/" ? "DindbOS" : os.fs.basename(currentPath))}</strong>
+            <span class="files-toolbar-spacer"></span>
+            <details class="files-toolbar-menu files-view-menu">
+              <summary aria-label="File view" title="Change view">${filesToolIcon(viewMode === "list" ? "list" : "columns")}${filesToolIcon("chevron")}</summary>
+              <div class="files-action-menu" role="menu" aria-label="File view">
+                ${[["list", "as List"], ["columns", "as Columns"]].map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${viewMode === value}" data-files-view="${value}"><span>${filesToolIcon(value)}</span>${label}<span class="files-menu-check" aria-hidden="true">${viewMode === value ? "✓" : ""}</span></button>`).join("")}
               </div>
             </details>
-            <span class="files-toolbar-spacer"></span>
-            <select data-files-view-select aria-label="File view">
-              <option value="list" ${viewMode === "list" ? "selected" : ""}>List</option>
-              <option value="columns" ${viewMode === "columns" ? "selected" : ""}>Columns</option>
-            </select>
-            <select data-files-sort aria-label="Sort files">${filesSortOptions(sortMode)}</select>
-            <input type="search" data-files-search aria-label="Search files" placeholder="Search" value="${escapeAttr(searchQuery)}" />
+            <details class="files-toolbar-menu files-sort-menu">
+              <summary aria-label="Sort files" title="Sort files">${filesToolIcon("sort")}</summary>
+              <div class="files-action-menu" role="menu" aria-label="Sort files">
+                <span class="files-menu-heading">Sort by</span>
+                ${[["kind-name", "Kind"], ["name", "Name"], ["modified", "Date Modified"], ["size", "Size"]].map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${sortMode === value}" data-files-sort="${value}">${label}<span class="files-menu-check" aria-hidden="true">${sortMode === value ? "✓" : ""}</span></button>`).join("")}
+              </div>
+            </details>
+            <span class="files-tool-divider"></span>
+            <button type="button" data-action="new-folder" aria-label="New Folder" title="New Folder">${filesToolIcon("new-folder")}</button>
+            <button type="button" data-action="import" aria-label="Import" title="Import files">${filesToolIcon("import")}</button>
+            <details class="files-more-actions files-toolbar-menu">
+              <summary aria-label="More file actions" title="More actions">${filesToolIcon("more")}</summary>
+              <div class="files-action-menu" role="menu" aria-label="More file actions">
+                ${[["new-file", "New File"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["mount-local", "Mount Local Folder"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" role="menuitem" data-action="${action}">${label}</button>`).join("")}
+              </div>
+            </details>
+            <button type="button" data-files-inspector aria-label="Toggle Inspector" aria-pressed="${inspectorOpen}" title="Show file information">${filesToolIcon("info")}</button>
+            <label class="files-search-field">${filesToolIcon("search")}<input type="search" data-files-search aria-label="Search files" placeholder="Search" value="${escapeAttr(searchQuery)}" /></label>
           </div>
-          <div class="files-dropzone">
-            Drop files here to import into ${escapeHtml(currentPath)}. Drag rows to move them.
-          </div>
+          <div class="files-dropzone" aria-hidden="true">Drop to import into ${escapeHtml(os.fs.basename(currentPath) || "DindbOS")}</div>
           ${mountStatus ? renderMountStatusBanner(mountStatus) : ""}
           ${renderFilesOperation(visibleOperation)}
           <div class="files-column-view" role="tree" data-drop-target="true" data-drop-path="${escapeAttr(currentPath)}">
@@ -398,7 +415,7 @@ function renderFiles(os, content, path, windowApi) {
           </div>
           <div class="files-status">
             <span>${query ? `${visibleCount}${cappedSearch ? "+" : ""} matches` : currentColumn?.capped ? `${currentVisibleCount}/${currentTotalCount} visible` : `${currentTotalCount} items`} · ${selectedPath === currentPath ? 0 : selectedPaths.size} selected</span>
-            <span>${clipboard ? `Clipboard: ${escapeHtml(os.fs.basename(clipboard.path))}` : selectedPaths.size > 1 ? `${selectedPaths.size} selected` : escapeHtml(currentPath)}</span>
+            <nav class="files-breadcrumb" aria-label="Current folder">${renderBreadcrumb(os, currentPath)}</nav>
           </div>
         </div>
         <aside class="files-inspector" ${inspectorOpen ? "" : "hidden"}>
@@ -416,13 +433,54 @@ function renderFiles(os, content, path, windowApi) {
       inspectorOpen = !inspectorOpen;
       draw(currentPath, selectedPath, { preserveSelection: true });
     });
-    content.querySelector("[data-files-view-select]").addEventListener("change", (event) => {
-      viewMode = event.target.value;
+    content.querySelector("[data-files-back]").addEventListener("click", () => {
+      if (navigationIndex > 0) draw(navigationHistory[--navigationIndex], null, { skipHistory: true });
+    });
+    content.querySelector("[data-files-forward]").addEventListener("click", () => {
+      if (navigationIndex < navigationHistory.length - 1) draw(navigationHistory[++navigationIndex], null, { skipHistory: true });
+    });
+    content.querySelectorAll("button[data-files-view]").forEach((button) => button.addEventListener("click", () => {
+      viewMode = button.dataset.filesView;
       draw(currentPath, selectedPath, { preserveSelection: true });
+    }));
+    content.querySelectorAll("details.files-toolbar-menu").forEach((details) => {
+      details.addEventListener("toggle", () => {
+        if (details.open) content.querySelectorAll("details.files-toolbar-menu").forEach((other) => { if (other !== details) other.open = false; });
+      });
+    });
+    const dismissOutsideToolbar = (event) => {
+      content.querySelectorAll("details.files-toolbar-menu[open]").forEach((details) => { if (!details.contains(event.target)) details.open = false; });
+    };
+    document.addEventListener("pointerdown", dismissOutsideToolbar, true);
+    dismissToolbarMenus = () => document.removeEventListener("pointerdown", dismissOutsideToolbar, true);
+    appRoot.addEventListener("keydown", (event) => {
+      const details = event.target.closest("details.files-toolbar-menu");
+      if (!details) return;
+      const items = [...details.querySelectorAll("button:not(:disabled)")];
+      const index = items.indexOf(document.activeElement);
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        details.open = true;
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : index < 0 ? (event.key === "ArrowUp" ? items.length - 1 : 0) : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        details.open = false;
+        details.querySelector("summary")?.focus();
+      }
     });
     if (viewMode === "columns") {
       const columnView = content.querySelector(".files-column-view");
-      columnView.scrollLeft = columnView.scrollWidth;
+      const revealCurrentColumn = () => { columnView.scrollLeft = columnView.scrollWidth; };
+      revealCurrentColumn();
+      if (typeof ResizeObserver === "function") {
+        const observer = new ResizeObserver(revealCurrentColumn);
+        observer.observe(columnView);
+        disconnectColumns = () => observer.disconnect();
+      }
     }
     const searchInput = content.querySelector("[data-files-search]");
     searchInput.addEventListener("input", () => {
@@ -430,11 +488,10 @@ function renderFiles(os, content, path, windowApi) {
       window.clearTimeout(searchTimer);
       searchTimer = window.setTimeout(() => draw(currentPath, selectedPath, { focusSearch: true }), 120);
     });
-    const sortSelect = content.querySelector("[data-files-sort]");
-    sortSelect?.addEventListener("change", () => {
-      sortMode = sortSelect.value || "kind-name";
+    content.querySelectorAll("button[data-files-sort]").forEach((button) => button.addEventListener("click", () => {
+      sortMode = button.dataset.filesSort || "kind-name";
       draw(currentPath, selectedPath, { preserveSelection: true });
-    });
+    }));
     content.querySelectorAll("[data-path]").forEach((button) => {
       button.addEventListener("click", (event) => {
         clearTimeout(clickTimer);
@@ -467,13 +524,21 @@ function renderFiles(os, content, path, windowApi) {
       });
       button.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        if (!selectedPaths.has(button.dataset.path)) {
-          selectedPaths = new Set([button.dataset.path]);
-          selectionAnchorPath = button.dataset.path;
+        event.stopPropagation();
+        clearTimeout(clickTimer);
+        selectedPath = button.dataset.path;
+        if (!selectedPaths.has(selectedPath)) {
+          selectedPaths = new Set([selectedPath]);
+          selectionAnchorPath = selectedPath;
         }
-        draw(currentPath, button.dataset.path, { preserveSelection: true }).then(() => {
-          showFilesContextMenu(content, event, button.dataset.path, clipboard, runAction);
+        content.querySelectorAll(".files-row").forEach((row) => {
+          const selected = selectedPaths.has(row.dataset.path);
+          row.classList.toggle("is-selected", selected);
+          row.setAttribute("aria-selected", String(selected));
         });
+        const selectionStatus = content.querySelector(".files-status > span");
+        if (selectionStatus) selectionStatus.textContent = selectionStatus.textContent.replace(/ · \d+ selected$/, ` · ${selectedPaths.size} selected`);
+        showFilesContextMenu(content, event, selectedPath, clipboard, runAction);
       });
       button.addEventListener("dragstart", (event) => {
         event.dataTransfer.setData("application/x-dindbos-path", button.dataset.path);
@@ -505,7 +570,18 @@ function renderFiles(os, content, path, windowApi) {
       });
     });
     appRoot.addEventListener("keydown", async (event) => {
-      if (event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (event.defaultPrevented) return;
+      if (event.key === "Escape") {
+        content.querySelectorAll("details.files-toolbar-menu[open]").forEach((details) => { details.open = false; details.querySelector("summary")?.focus(); });
+      }
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+        event.preventDefault();
+        const row = [...content.querySelectorAll(".files-row")].find((item) => item.dataset.path === selectedPath);
+        const box = (row || appRoot).getBoundingClientRect();
+        showFilesContextMenu(content, { clientX: box.left + 24, clientY: box.top + 24 }, selectedPath, clipboard, runAction, selectedPath === currentPath);
+        return;
+      }
+      if (event.target.closest(".files-commandbar, input, textarea, select, [contenteditable='true']")) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
         event.preventDefault();
         await runAction("copy");
@@ -554,9 +630,10 @@ function renderFiles(os, content, path, windowApi) {
       }
     });
     appRoot.addEventListener("contextmenu", (event) => {
-      if (event.target.closest("[data-path]")) return;
+      if (event.target.closest("[data-path], input, textarea")) return;
       event.preventDefault();
-      showFilesContextMenu(content, event, currentPath, clipboard, runAction);
+      event.stopPropagation();
+      showFilesContextMenu(content, event, currentPath, clipboard, runAction, true);
     });
     const dropTarget = content.querySelector("[data-drop-target]");
     const dropzone = content.querySelector(".files-dropzone");
@@ -627,10 +704,28 @@ function renderFiles(os, content, path, windowApi) {
   return () => {
     disposed = true;
     contextMenuCleanups.get(content)?.();
+    dismissToolbarMenus?.();
+    disconnectColumns?.();
     drawGeneration += 1;
     window.clearTimeout(clickTimer);
     window.clearTimeout(searchTimer);
   };
+}
+
+function filesToolIcon(name) {
+  const paths = {
+    back: '<path d="m12 4-6 6 6 6"/>', forward: '<path d="m8 4 6 6-6 6"/>',
+    chevron: '<path d="m6 8 4 4 4-4"/>',
+    list: '<path d="M7 5h10M7 10h10M7 15h10M3 5h.1M3 10h.1M3 15h.1"/>',
+    columns: '<rect x="2" y="3" width="16" height="14" rx="2"/><path d="M8 3v14m5-14v14"/>',
+    sort: '<path d="M3 5h10M3 10h7M3 15h4m9-12v14m-3-3 3 3 3-3"/>',
+    'new-folder': '<path d="M2 5h5l2 2h9v10H2Z"/><path d="M10 9v6m-3-3h6"/>',
+    import: '<path d="M10 2v10m-4-4 4 4 4-4M3 13v5h14v-5"/>',
+    more: '<circle cx="4" cy="10" r=".9"/><circle cx="10" cy="10" r=".9"/><circle cx="16" cy="10" r=".9"/>',
+    info: '<circle cx="10" cy="10" r="7.5"/><path d="M10 9v5m0-8v.1"/>',
+    search: '<circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/>',
+  };
+  return `<svg class="files-tool-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.more}</svg>`;
 }
 
 function filesMiniIcon(type) {
@@ -700,15 +795,6 @@ export function limitFilesColumnEntries(entries = [], selectedPath = "", limit =
     capped: true,
     hidden: all.length - visible.length,
   };
-}
-
-function filesSortOptions(active = "kind-name") {
-  return [
-    ["kind-name", "Sort: Kind"],
-    ["name", "Sort: Name"],
-    ["modified", "Sort: Modified"],
-    ["size", "Sort: Size"],
-  ].map(([value, label]) => `<option value="${value}" ${active === value ? "selected" : ""}>${label}</option>`).join("");
 }
 
 export function sortFilesEntries(os, entries = [], mode = "kind-name") {
@@ -905,7 +991,7 @@ export function filesActionTargets(currentPath, selectedPath, selectedPaths = []
 function renderBreadcrumb(os, currentPath) {
   const normalized = os.fs.normalize(currentPath);
   const parts = normalized.split("/").filter(Boolean);
-  const crumbs = [{ label: "/", path: "/" }];
+  const crumbs = [{ label: "DindbOS", path: "/" }];
   let cursor = "/";
   parts.forEach((part) => {
     cursor = os.fs.join(cursor, part);
@@ -915,7 +1001,7 @@ function renderBreadcrumb(os, currentPath) {
     <button type="button" data-nav="${escapeAttr(crumb.path)}">
       ${escapeHtml(crumb.label)}
     </button>
-    ${index < crumbs.length - 1 ? "<span>/</span>" : ""}
+    ${index < crumbs.length - 1 ? '<span aria-hidden="true">›</span>' : ""}
   `).join("");
 }
 
@@ -1213,16 +1299,21 @@ function operationLabel(action) {
 
 const contextMenuCleanups = new WeakMap();
 
-function showFilesContextMenu(content, event, targetPath, clipboard, runAction) {
+function showFilesContextMenu(content, event, targetPath, clipboard, runAction, background = false) {
   contextMenuCleanups.get(content)?.();
   const menu = document.createElement("div");
   menu.className = "files-context-menu";
   menu.setAttribute("role", "menu");
-  menu.innerHTML = [["open", "Open"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", clipboard ? `Paste ${escapeHtml(clipboard.name)}` : "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" role="menuitem" data-context-action="${escapeAttr(action)}" ${action === "paste" && !clipboard ? "disabled" : ""}>${label}</button>`).join("");
+  const actions = background
+    ? [["new-folder", "New Folder"], ["new-file", "New File"], ["import", "Import Files…"], ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste"]]
+    : [["open", "Open"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste"], ["trash", "Move to Trash"], ["export", "Export…"]];
+  menu.setAttribute("aria-label", background ? "Folder actions" : "File actions");
+  menu.innerHTML = actions.map(([action, label]) => `<button type="button" role="menuitem" data-context-action="${escapeAttr(action)}" ${action === "paste" && !clipboard ? "disabled" : ""}>${escapeHtml(label)}${action === "copy" ? '<kbd>⌘C</kbd>' : action === "paste" ? '<kbd>⌘V</kbd>' : ""}</button>`).join("");
   content.appendChild(menu);
-  const bounds = menu.offsetParent?.getBoundingClientRect() || content.getBoundingClientRect();
+  const bounds = content.getBoundingClientRect();
   menu.style.left = `${Math.max(4, Math.min(event.clientX - bounds.left, bounds.width - menu.offsetWidth - 4))}px`;
   menu.style.top = `${Math.max(4, Math.min(event.clientY - bounds.top, bounds.height - menu.offsetHeight - 4))}px`;
+  menu.addEventListener("contextmenu", (nextEvent) => { nextEvent.preventDefault(); nextEvent.stopPropagation(); });
   const close = () => {
     menu.remove();
     document.removeEventListener("pointerdown", outside, true);
@@ -2075,29 +2166,39 @@ function renderBrowser(os, content, context = {}, windowApi) {
   const state = createBrowserSessionState({ ...context, companionUrl: providerUrl }, restoredState);
   content.innerHTML = `
     <section class="browser-app">
-      <div class="browser-tabs" data-browser-tabs>
-        ${browserTabsMarkup(state)}
-      </div>
-      <form class="browser-toolbar">
-        <button type="button" data-browser-action="back">Back</button>
-        <button type="button" data-browser-action="forward">Forward</button>
-        <button type="button" data-browser-action="reload">Reload</button>
-        <input name="address" autocomplete="off" spellcheck="false" value="${escapeAttr(state.address)}" />
-        <button type="submit">Go</button>
-        <button type="button" data-browser-action="connect">Connect</button>
+      <form class="browser-toolbar" aria-label="Browser navigation">
+        <div class="browser-navigation-controls">
+          <button type="button" data-browser-action="back" aria-label="Back" title="Back">${browserChromeIcon("back")}</button>
+          <button type="button" data-browser-action="forward" aria-label="Forward" title="Forward">${browserChromeIcon("forward")}</button>
+        </div>
+        <div class="browser-address-field">
+          <span class="browser-address-symbol" aria-hidden="true">${browserChromeIcon("globe")}</span>
+          <input name="address" aria-label="Address" placeholder="Enter a website or local file path" autocomplete="off" spellcheck="false" value="${escapeAttr(state.address)}" />
+          <button type="button" data-browser-action="reload" aria-label="Reload" title="Reload">${browserChromeIcon("reload")}</button>
+          <button class="browser-go" type="submit" aria-label="Go" title="Go">${browserChromeIcon("forward")}</button>
+        </div>
+        <details class="browser-connection">
+          <summary aria-label="Connection settings" title="Connection settings">${browserChromeIcon("connection")}</summary>
+          <div class="browser-connection-panel" role="group" aria-label="External browsing connection">
+            <h3>External Browsing</h3>
+            <p>Local HTML documents open directly. To visit websites, connect to your browser companion.</p>
+            <p data-browser-error role="alert" hidden></p>
+            <button type="button" data-browser-action="connect">Connect</button>
+            <div class="browser-status"><span data-browser-status>${escapeHtml(state.status)}</span></div>
+            <details class="browser-advanced"><summary>Advanced</summary>
+              <code class="browser-provider-address">${escapeHtml(state.companionUrl)}</code>
+              <div data-browser-diagnostics>${browserDiagnosticsMarkup(buildBrowserDiagnostics(state, { connected: client.connected }))}</div>
+            </details>
+          </div>
+        </details>
       </form>
-      <div class="browser-status">
-        <span data-browser-status>${escapeHtml(state.status)}</span>
-        <code>${escapeHtml(state.companionUrl)}</code>
-      </div>
-      <div data-browser-diagnostics>
-        ${browserDiagnosticsMarkup(buildBrowserDiagnostics(state, { connected: client.connected }))}
-      </div>
+      <div class="browser-tabs" data-browser-tabs>${browserTabsMarkup(state)}</div>
       <div class="browser-viewport" tabindex="0" data-browser-viewport>
         <div class="browser-placeholder">
-          <p class="dos-kicker">Local companion</p>
-          <h2>Start browserd to open real URLs.</h2>
-          <pre>npm run browserd</pre>
+          <span class="browser-start-icon" aria-hidden="true">${browserChromeIcon("globe")}</span>
+          <h2>Start Page</h2>
+          <p>Open an HTML document from Files, or enter a website above.</p>
+          <button type="button" data-browser-open-connection>Set Up External Browsing</button>
         </div>
         <img data-browser-frame alt="Remote browser frame" decoding="async" hidden />
         <iframe data-browser-local title="DindbOS HTML document" sandbox="${escapeAttr(BROWSER_LOCAL_HTML_SANDBOX)}" hidden></iframe>
@@ -2109,12 +2210,14 @@ function renderBrowser(os, content, context = {}, windowApi) {
     form: content.querySelector(".browser-toolbar"),
     address: content.querySelector("[name='address']"),
     status: content.querySelector("[data-browser-status]"),
+    error: content.querySelector("[data-browser-error]"),
     diagnostics: content.querySelector("[data-browser-diagnostics]"),
     viewport: content.querySelector("[data-browser-viewport]"),
     frame: content.querySelector("[data-browser-frame]"),
     local: content.querySelector("[data-browser-local]"),
     placeholder: content.querySelector(".browser-placeholder"),
     connect: content.querySelector("[data-browser-action='connect']"),
+    connection: content.querySelector(".browser-connection"),
   };
   let resizeTimer = null;
   let frameRaf = 0;
@@ -2137,6 +2240,20 @@ function renderBrowser(os, content, context = {}, windowApi) {
         persistState();
       });
     });
+    refs.tabs.querySelectorAll("[data-browser-close-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const tabId = button.dataset.browserCloseTab;
+        const closingActiveTab = state.activeTabId === tabId;
+        closeBrowserTab(state, tabId);
+        if (closingActiveTab) restoreBrowserView();
+        renderTabs();
+        persistState();
+      });
+    });
+    const tab = activeBrowserTab(state);
+    refs.form.querySelector('[data-browser-action="back"]').disabled = state.mode === "local" ? tab.historyIndex <= 0 : !client.connected;
+    refs.form.querySelector('[data-browser-action="forward"]').disabled = state.mode === "local" ? tab.historyIndex >= tab.history.length - 1 : !client.connected;
+    refs.form.querySelector('[data-browser-action="reload"]').disabled = !state.address;
     refs.tabs.querySelectorAll("[data-browser-tab-action]").forEach((button) => {
       button.addEventListener("click", () => {
         const action = button.dataset.browserTabAction;
@@ -2152,6 +2269,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
   };
   const setStatus = (status) => {
     if (disposed) return;
+    refs.error.hidden = true;
     const nextStatus = String(status || "");
     if (state.status === nextStatus) return;
     state.status = nextStatus;
@@ -2160,6 +2278,16 @@ function renderBrowser(os, content, context = {}, windowApi) {
     updateDiagnostics();
     persistState();
     os.processes.logSelf?.(`browser ${nextStatus}`);
+  };
+  const reportError = (error) => {
+    if (disposed) return;
+    const message = String(error?.message || error || "The page could not be opened.");
+    setStatus(message);
+    refs.error.textContent = isDindbPath(state.address)
+      ? `Could not open this document. ${message}`
+      : `Could not connect to external browsing. Check that your browser companion is running, then choose Connect. ${message}`;
+    refs.error.hidden = false;
+    refs.connection.open = true;
   };
   const updateDiagnostics = () => {
     refs.diagnostics.innerHTML = browserDiagnosticsMarkup(buildBrowserDiagnostics(state, { connected: client.connected }));
@@ -2202,7 +2330,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
       lastResize.height = height;
       lastResize.scale = scale;
       lastResize.mobile = mobile;
-      client.resize(width, height, scale, mobile).catch((error) => setStatus(error.message));
+      client.resize(width, height, scale, mobile).catch(reportError);
     }, 120);
   };
   client.on("status", (message) => {
@@ -2220,12 +2348,13 @@ function renderBrowser(os, content, context = {}, windowApi) {
     if (message.reconnect) refs.connect.textContent = "Reconnect";
     else if (message.status === "connected") refs.connect.textContent = "Connect";
     const status = [message.status, message.url].filter(Boolean).join(" ");
-    setStatus(message.message || status || "browserd connected");
+    if (message.status === "disconnected") reportError(message.message || "The browser companion disconnected.");
+    else setStatus(message.message || status || "browserd connected");
     persistState();
   });
   client.on("frame", (message) => {
     if (!isBrowserFrameSource(message.data)) {
-      setStatus("browserd frame missing image data");
+      reportError("The browser companion returned an unreadable page frame.");
       return;
     }
     if (message.url) {
@@ -2242,10 +2371,29 @@ function renderBrowser(os, content, context = {}, windowApi) {
     setStatus(message.url ? `ready ${message.url}` : "ready");
     queueFrame(message.data);
   });
-  client.on("error", (error) => setStatus(error.message));
+  client.on("error", reportError);
   refs.form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    await openAddress(refs.address.value);
+    try {
+      await openAddress(refs.address.value);
+    } catch (error) {
+      reportError(error);
+    }
+  });
+  content.querySelector("[data-browser-open-connection]").addEventListener("click", () => {
+    refs.connection.open = true;
+    refs.connect.focus();
+  });
+  content.addEventListener("click", (event) => {
+    if (!refs.connection.contains(event.target) && !event.target.closest("[data-browser-open-connection]")) refs.connection.open = false;
+  });
+  refs.connection.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      refs.connection.open = false;
+      refs.connection.querySelector("summary").focus();
+    }
   });
   renderTabs();
   refs.form.addEventListener("keydown", (event) => {
@@ -2267,21 +2415,30 @@ function renderBrowser(os, content, context = {}, windowApi) {
       const action = button.dataset.browserAction;
       try {
         if (action === "connect") await connectCompanion();
-        if (action === "back") await client.back();
-        if (action === "forward") await client.forward();
+        if (action === "back" || action === "forward") {
+          if (state.mode === "local") {
+            const tab = activeBrowserTab(state);
+            const index = tab.historyIndex + (action === "back" ? -1 : 1);
+            if (index >= 0 && index < tab.history.length) {
+              tab.historyIndex = index;
+              await openAddress(tab.history[index]);
+            }
+          } else if (action === "back") await client.back();
+          else await client.forward();
+        }
         if (action === "reload") {
           if (state.mode === "local") await openLocalPath(refs.address.value);
           else await client.reload();
         }
       } catch (error) {
-        setStatus(error.message);
+        reportError(error);
       }
     });
   });
   refs.viewport.addEventListener("click", (event) => {
     if (!client.connected || refs.frame.hidden) return;
     const point = browserViewportPoint(refs.frame, event);
-    client.click(point.x, point.y).catch((error) => setStatus(error.message));
+    client.click(point.x, point.y).catch(reportError);
     refs.viewport.focus();
   });
   refs.viewport.addEventListener("wheel", (event) => {
@@ -2298,7 +2455,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
       wheelDeltaX = 0;
       wheelDeltaY = 0;
       wheelTimer = null;
-      client.scroll(deltaX, deltaY, point.x, point.y).catch((error) => setStatus(error.message));
+      client.scroll(deltaX, deltaY, point.x, point.y).catch(reportError);
     }, 33);
   }, { passive: false });
   refs.viewport.addEventListener("keydown", async (event) => {
@@ -2319,14 +2476,14 @@ function renderBrowser(os, content, context = {}, windowApi) {
         );
         setStatus(result.pasted ? `pasted ${result.bytes} clipboard bytes` : "clipboard empty");
       } catch (error) {
-        setStatus(`paste blocked: ${error.message}`);
+        reportError(new Error(`Paste was blocked: ${error.message}`));
       }
       return;
     }
     const payload = browserKeyEventPayload(event);
     if (!payload) return;
     event.preventDefault();
-    client.key(payload).catch((error) => setStatus(error.message));
+    client.key(payload).catch(reportError);
   });
   const resizeObserver = new ResizeObserver(resizeRemote);
   resizeObserver.observe(refs.viewport);
@@ -2390,9 +2547,9 @@ function renderBrowser(os, content, context = {}, windowApi) {
   if (restoredState?.address) {
     persistState();
   } else if (context.node?.path && context.node.mime === "text/html") {
-    openLocalPath(context.node.path).catch((error) => setStatus(error.message));
+    openLocalPath(context.node.path).catch(reportError);
   } else if (state.address) {
-    openAddress(state.address).catch((error) => setStatus(error.message));
+    openAddress(state.address).catch(reportError);
   }
 
   function restoreBrowserView() {
@@ -2430,19 +2587,37 @@ function renderBrowser(os, content, context = {}, windowApi) {
 function browserTabsMarkup(state = {}) {
   const tabs = Array.isArray(state.tabs) && state.tabs.length ? state.tabs : [activeBrowserTab(state)];
   return `
-    <div class="browser-tab-list" role="tablist">
+    <div class="browser-tab-list" role="tablist" aria-label="Browser tabs">
       ${tabs.map((tab) => `
-        <button type="button" role="tab" data-browser-tab="${escapeAttr(tab.id)}" aria-selected="${tab.id === state.activeTabId ? "true" : "false"}">
-          ${escapeHtml(browserTabLabel(tab))}
-        </button>
+        <div class="browser-tab-item ${tab.id === state.activeTabId ? "is-active" : ""}">
+          <button type="button" role="tab" data-browser-tab="${escapeAttr(tab.id)}" aria-selected="${tab.id === state.activeTabId ? "true" : "false"}" title="${escapeAttr(browserTabLabel(tab))}">
+            <span class="browser-tab-symbol" aria-hidden="true">${browserChromeIcon(tab.mode === "local" ? "document" : "globe")}</span>
+            <span>${escapeHtml(browserTabLabel(tab))}</span>
+          </button>
+          <button class="browser-tab-close" type="button" data-browser-close-tab="${escapeAttr(tab.id)}" aria-label="Close ${escapeAttr(browserTabLabel(tab))}" title="Close tab">${browserChromeIcon("close")}</button>
+        </div>
       `).join("")}
     </div>
     <div class="browser-tab-actions">
-      <button type="button" data-browser-tab-action="new">New</button>
-      <button type="button" data-browser-tab-action="close">Close</button>
-      <button type="button" data-browser-tab-action="reopen" ${state.closedTabs?.length ? "" : "disabled"}>Reopen</button>
+      <button type="button" data-browser-tab-action="new" aria-label="New tab" title="New tab">${browserChromeIcon("plus")}</button>
+      <button type="button" data-browser-tab-action="reopen" aria-label="Reopen closed tab" title="Reopen closed tab" ${state.closedTabs?.length ? "" : "disabled"}>${browserChromeIcon("reopen")}</button>
     </div>
   `;
+}
+
+function browserChromeIcon(name) {
+  const paths = {
+    back: '<path d="m14 5-7 7 7 7"/>',
+    forward: '<path d="m10 5 7 7-7 7"/>',
+    reload: '<path d="M20 10a8 8 0 1 0-1 7M20 4v6h-6"/>',
+    globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c5 5 5 12 0 17-5-5-5-12 0-17Z"/>',
+    document: '<path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6"/>',
+    connection: '<path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-6 6v4m0-4a6 6 0 0 1-6-6"/>',
+    close: '<path d="m7 7 10 10M17 7 7 17"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    reopen: '<path d="M4 10a8 8 0 1 1 1 8M4 4v6h6M12 8v5l3 2"/>',
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.globe}</svg>`;
 }
 
 function browserTabLabel(tab = {}) {
@@ -2660,7 +2835,9 @@ export function closeBrowserTab(state = {}, tabId = state.activeTabId) {
   const [closed] = state.tabs.splice(index, 1);
   state.closedTabs = [closed, ...(state.closedTabs || [])].slice(0, BROWSER_CLOSED_TAB_LIMIT);
   if (!state.tabs.length) state.tabs.push(createBrowserTabState({}, nextBrowserTabId(state)));
-  state.activeTabId = state.tabs[Math.min(index, state.tabs.length - 1)].id;
+  if (state.activeTabId === tabId || !state.tabs.some((tab) => tab.id === state.activeTabId)) {
+    state.activeTabId = state.tabs[Math.min(index, state.tabs.length - 1)].id;
+  }
   return syncBrowserStateFromActiveTab(state);
 }
 

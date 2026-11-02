@@ -41,13 +41,7 @@ export class DesktopShell {
     this.listen(root, "keydown", (event) => { if (owns(event)) this.handleKeyDown(event); });
     this.listen(root, "contextmenu", (event) => {
       if (!owns(event)) return;
-      if (!event.target.closest?.(".dos-desktop")) return;
-      event.preventDefault();
-      this.openPanel("desktop", null);
-      const menu = this.refs.overlays.firstElementChild;
-      const bounds = this.refs.shell.getBoundingClientRect();
-      menu.style.left = `${Math.max(6, Math.min(event.clientX - bounds.left, bounds.width - 254))}px`;
-      menu.style.top = `${Math.max(34, Math.min(event.clientY - bounds.top, bounds.height - menu.offsetHeight - 8))}px`;
+      this.openDesktopContext(event);
     });
     this.listen(root, "input", (event) => { if (owns(event)) this.panels.handleInput(event); });
     this.listen(root, "change", (event) => { if (owns(event)) this.panels.handleChange(event); });
@@ -68,6 +62,23 @@ export class DesktopShell {
   listen(target, name, handler, options) {
     target?.addEventListener?.(name, handler, options);
     this.cleanups.push(() => target?.removeEventListener?.(name, handler, options));
+  }
+
+  openDesktopContext(event) {
+    const target = event.target;
+    const desktop = target.closest?.(".dos-desktop");
+    if (!desktop && target !== this.refs.shell && target !== this.root) return;
+    event.preventDefault();
+    const icon = target.closest?.("[data-desktop-path]");
+    this.contextNode = icon ? this.os.fs.stat(icon.dataset.desktopPath) : null;
+    this.openPanel("desktop", icon);
+    const menu = this.refs.overlays.firstElementChild;
+    const bounds = this.refs.shell.getBoundingClientRect();
+    const anchor = icon?.getBoundingClientRect();
+    const x = event.clientX || anchor?.left || bounds.left;
+    const y = event.clientY || anchor?.bottom || bounds.top + 34;
+    menu.style.left = `${Math.max(6, Math.min(x - bounds.left, bounds.width - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(34, Math.min(y - bounds.top, bounds.height - menu.offsetHeight - 8))}px`;
   }
 
   renderSlot(name, state, defaultRender) {
@@ -193,6 +204,10 @@ export class DesktopShell {
   handleKeyDown(event) {
     const closestHost = event.target?.closest?.(".dindbos-host");
     if (closestHost && closestHost !== this.os.root) return;
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      this.openDesktopContext(event);
+      if (event.defaultPrevented) return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       this.openPanel("launcher", this.refs.menubar.querySelector("[data-shell-panel='launcher']"));

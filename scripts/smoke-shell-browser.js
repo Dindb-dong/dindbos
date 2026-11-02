@@ -46,6 +46,24 @@ try {
   await page.locator(".dindbos-host").evaluate((element) => { element.style.width = "100%"; });
   await expect(page.locator(".dos-menu-label").first()).toBeVisible();
   await expect(page.locator(".dos-clock-date")).toBeVisible();
+  await page.locator('.dos-window[data-app-id="welcome"] button[aria-label="Close"]').click();
+  // The wallpaper includes shell gutters outside the icon grid.
+  for (const point of [{ x: 5, y: 400 }, { x: 600, y: 400 }, { x: 1436, y: 892 }]) {
+    await page.mouse.click(point.x, point.y, { button: "right" });
+    await expect(page.getByRole("menu", { name: "desktop menu", exact: true })).toBeVisible();
+    const box = await page.locator('.dos-shell-menu').boundingBox();
+    assert(box.x >= 0 && box.y >= 30 && box.x + box.width <= 1440 && box.y + box.height <= 900, "context menu is clamped inside its desktop");
+    await page.keyboard.press("Escape");
+  }
+  const readme = page.locator('.dos-icon[aria-label="Open README.md"]');
+  await readme.click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Open", exact: true })).toBeVisible();
+  if (output) await page.screenshot({ path: join(output, "desktop-context-menu.png") });
+  await page.keyboard.press("Escape");
+  await expect(readme).toBeFocused();
+  await readme.press("Shift+F10");
+  await page.getByRole("menuitem", { name: "Open", exact: true }).click();
+  await expect(page.locator('.dos-window[data-app-id="viewer"]')).toBeVisible();
   console.log("Shell browser smoke passed: mobile and embedded menu fit, compact menu access, focus restoration, control panel");
 } finally {
   await browser.close();

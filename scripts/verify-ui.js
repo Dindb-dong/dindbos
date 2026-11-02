@@ -31,6 +31,8 @@ try {
     ["dock", "smoke-dock-browser.js"],
     ["react", "smoke-react-apps.js"],
     ["editor", "smoke-editor-browser.js"],
+    ["browser", "smoke-browser-ui.js"],
+    ["files", "smoke-files-ui-browser.js"],
     ["embed", "smoke-embed-browser.js"],
   ]) {
     if (interrupted) break;

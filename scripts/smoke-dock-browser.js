@@ -26,7 +26,7 @@ try {
   await expect.poll(() => files.evaluate((el) => el.style.getPropertyValue("--dock-proximity"))).toBe("");
   await files.click();
   await expect(files).toHaveAttribute("aria-label", "Focus Files");
-  const fileWindow = page.locator('.dos-window').filter({ hasText: "Files - /home/guest" });
+  const fileWindow = page.locator('.dos-window[data-app-id="files"]');
   await expect.poll(() => fileWindow.evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
   if (output) await page.screenshot({ path: join(output, "dock-desktop.png") });
   await fileWindow.getByRole("button", { name: "Minimize", exact: true }).click();
