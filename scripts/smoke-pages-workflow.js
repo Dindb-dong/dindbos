@@ -21,11 +21,10 @@ assert(workflow.includes("run: npm run build"), "Pages workflow does not build t
 assert(workflow.includes("Check Pages Availability"), "Pages workflow does not preflight Pages availability");
 assert(workflow.includes("/repos/${GITHUB_REPOSITORY}/pages"), "Pages workflow does not check the repository Pages endpoint");
 assert(workflow.includes("steps.pages.outputs.enabled == 'true'"), "Pages workflow does not guard Pages-only deployment steps");
-assert(workflow.includes("path: dist"), "Pages workflow does not upload the built static demo");
-assert(index.includes("./src/main.js?v=20260504-runtime"), "index.html cache buster does not point at the latest runtime demo");
-assert(main.includes("./sdk/index.js"), "main.js SDK import is missing");
-assert(main.includes("./ui/boot-screen.js?v=20260506-real-boot"), "main.js boot screen import cache buster is stale");
-assert(main.includes("./demo/portfolio-demo.js?v=20260504-runtime"), "main.js demo import cache buster is stale");
+assert(workflow.includes("path: dist-demo"), "Pages must upload the demo independently of SDK output");
+assert(index.includes('src="./src/main.js"'), "Demo entry must use Vite's content-hashed build");
+assert(main.includes("./sdk/react.js"), "Demo must consume the public React SDK adapter");
+assert(main.includes("./demo/portfolio-demo.js"), "Demo filesystem seed import is missing");
 
 console.log("pages workflow smoke ok");
 

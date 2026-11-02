@@ -102,7 +102,7 @@ const troubleshooting = readFileSync("docs/troubleshooting.md", "utf8");
 
 [
   "npm install dindbos",
-  "npx create-dindbos my-web-os",
+  "npm exec --package=dindbos -- create-dindbos",
   "import \"dindbos/styles.css\"",
   "docs/troubleshooting.md",
 ].forEach((term) => {
@@ -110,7 +110,7 @@ const troubleshooting = readFileSync("docs/troubleshooting.md", "utf8");
 });
 
 [
-  "npx create-dindbos my-web-os",
+  "npm exec --package=dindbos -- create-dindbos",
   "createAndBootDindbOS",
   "dindbos.app.json",
 ].forEach((term) => {

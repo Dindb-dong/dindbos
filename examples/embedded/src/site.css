@@ -1,0 +1,28 @@
+body { margin: 0; background: #f4f1e9; color: #343a32; font-family: Georgia, serif; }
+.host-site { max-width: 1180px; margin: 0 auto; padding: 28px 48px 120px; }
+.host-header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 1px solid #aeb4a6; padding-bottom: 20px; font-size: 15px; }
+.host-site a { color: #2a6548; }
+.host-introduction { max-width: 760px; padding: 30px 0 24px; }
+.host-introduction h1 { font-size: 42px; font-weight: 400; line-height: 1.1; margin: 0 0 16px; }
+.host-introduction p, .host-after p { font-size: 17px; line-height: 1.6; }
+.host-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.host-toolbar input { padding: 8px 10px; font: 16px Georgia, serif; border: 1px solid #8b9588; background: #fffdf7; }
+.host-button { padding: 10px 16px; border: 2px solid #36583e; border-radius: 0; background: #d9e4ce; color: #213d28; font: 15px Georgia, serif; cursor: pointer; }
+.host-button:focus-visible { outline: 3px solid #a56526; outline-offset: 3px; }
+.desktop-examples { display: grid; grid-template-columns: minmax(0, 760px) minmax(0, 380px); align-items: start; gap: 24px; margin-bottom: 22px; }
+.desktop-example { min-width: 0; }
+.desktop-example > h2 { margin: 0 0 12px; font-size: 18px; font-weight: 400; }
+.first-container { height: 460px; }
+.second-container { height: 390px; }
+.embedded-desktop { width: 100%; height: 100%; border-radius: 12px; box-shadow: 0 5px 16px #243a2922; }
+.removed-desktop { padding: 32px; border: 1px dashed #8d9a8b; }
+.host-after { padding-top: 120px; min-height: 680px; max-width: 660px; }
+.host-after h2 { font-size: 32px; font-weight: 400; }
+.embedded-notebook { padding: 16px 22px; color: var(--text); font: 13px/1.5 var(--font-ui); }
+.embedded-notebook h2 { margin: 0 0 8px; font-size: 20px; }
+.embedded-notebook p { margin: 0 0 10px; color: var(--muted); }
+.embedded-notebook label { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.embedded-notebook input:not([type="checkbox"]) { display: block; margin: 10px 0; padding: 6px 8px; width: min(100%, 260px); background: var(--content-bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; }
+.embedded-notebook > button { padding: 5px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--content-bg); }
+.nested-example { width: 100%; height: 320px; margin-top: 14px; }
+@media (max-width: 900px) { .host-site { padding: 20px; } .desktop-examples { grid-template-columns: 1fr; } .first-container { height: 460px; } .second-container { max-width: 380px; } .host-header span { display: none; } }

@@ -360,7 +360,7 @@ Every quickstart must include a copyable command sequence and a screenshot or ex
 Add a project generator:
 
 ```bash
-npx create-dindbos my-web-os
+npm exec --package=dindbos -- create-dindbos my-web-os --template react --yes
 ```
 
 Generated project:

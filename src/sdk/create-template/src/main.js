@@ -1,18 +1,9 @@
 import { createAndBootDindbOS } from "dindbos";
 import "dindbos/styles.css";
-import { helloApp } from "./apps/hello.js";
+import "./host.css";
+import { apps } from "./apps/index.js";
 import config from "../dindbos.config.js";
 
-boot();
-
-async function boot() {
-  await createAndBootDindbOS({
-    root: "#app",
-    fileSystem: config.fileSystem,
-    apps: [helloApp],
-    builtins: { includePortfolio: false },
-    launch: ["hello", "files", "terminal"],
-    storage: config.storage,
-    isolation: config.isolation,
-  });
-}
+const desktop = createAndBootDindbOS({ ...config, root: "#app", apps, launch: ["hello"] });
+desktop.catch(console.error);
+if (import.meta.hot) import.meta.hot.dispose(() => { desktop.then((os) => os.destroy()).catch(console.error); });

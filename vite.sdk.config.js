@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, copyFileSync } from "node:fs";
+import { cpSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
@@ -37,11 +37,14 @@ function sdkArtifactsPlugin() {
     name: "dindbos-sdk-artifacts",
     closeBundle() {
       mkdirSync("dist", { recursive: true });
-      copyFileSync("src/styles/dindbos.css", "dist/styles.css");
+      const styles = ["dindbos", "theme", "shell", "windows", "dock", "apps"];
+      writeFileSync("dist/styles.css", styles.map((name) => readFileSync(`src/styles/${name}.css`, "utf8")).join("\n"));
+      cpSync("src/styles/wallpapers", "dist/wallpapers", { recursive: true });
       for (const name of Object.keys(entrypoints)) {
         copyFileSync(`src/sdk/${name}.d.ts`, `dist/${name}.d.ts`);
       }
       cpSync("src/sdk/create-template", "dist/create-template", { recursive: true });
+      if (existsSync("src/sdk/create-templates")) cpSync("src/sdk/create-templates", "dist/create-templates", { recursive: true });
     },
   };
 }

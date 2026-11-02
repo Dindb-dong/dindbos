@@ -2,12 +2,15 @@
   "name": "__PROJECT_NAME__",
   "private": true,
   "type": "module",
+  "dindbos": {
+    "template": "vanilla"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build"
   },
   "dependencies": {
-    "dindbos": "^0.1.0"
+    "dindbos": "^__DINDBOS_VERSION__"
   },
   "devDependencies": {
     "vite": "^5.4.21"

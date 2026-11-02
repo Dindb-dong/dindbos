@@ -1,37 +1,37 @@
-import { bootDindbOS, createDindbOS } from "./sdk/index.js";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js?v=20260504-runtime";
-import { mountBootScreen } from "./ui/boot-screen.js?v=20260506-real-boot";
+import React, { useState } from "react";
+import { createRoot } from "react-dom/client";
+import { DindbOSDesktop, DindbOSApp, useDindbOSApp } from "./sdk/react.js";
+import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js";
 
-boot();
+const h = React.createElement;
+const launch = new URLSearchParams(window.location.search).get("qa") === "fresh" ? ["welcome", "files"] : ["welcome"];
 
-async function boot() {
-  const bootScreen = mountBootScreen({ target: document.body });
-  const os = await createDindbOS({
-    root: "#dindbos-root",
-    fileSystem: demoFileSystem,
-    session: {
-      user: "guest",
-      product: "DindbOS.js",
-    },
-  });
-
-  bootScreen.updatePhase({
-    id: "kernel-constructor",
-    label: "Kernel constructor",
-    status: "complete",
-    detail: "runtime managers allocated",
-  });
-  os.bus.on("boot:phase", (phase) => bootScreen.updatePhase(phase));
-
-  await bootDindbOS(os, {
-    builtins: { portfolioData },
-    serviceWorker: { enabled: true },
-  });
-
-  await bootScreen.complete();
-
-  if (new URLSearchParams(window.location.search).get("qa") === "fresh") {
-    os.launch("portfolio");
-    os.launch("files", { path: os.session.home || "/" });
-  }
+function Counter() {
+  const [count, setCount] = useState(0);
+  const { window: appWindow } = useDindbOSApp();
+  return h("section", { className: "demo-counter" },
+    h("h1", null, "Your component. Its own window."),
+    h("p", null, "This is a React component running inside DindbOS. Its state stays with the window when you minimize it."),
+    h("output", { "aria-label": "Count" }, count),
+    h("div", { className: "demo-counter-actions" },
+      h("button", { onClick: () => setCount((value) => value - 1), "aria-label": "Decrease count" }, "−"),
+      h("button", { onClick: () => setCount((value) => value + 1), "aria-label": "Increase count" }, "+"),
+      h("button", { onClick: () => appWindow.minimize() }, "Minimize")),
+    h("pre", null, `<DindbOSApp id="counter" name="My App">\n  <YourComponent />\n</DindbOSApp>`));
 }
+
+createRoot(document.querySelector("#dindbos-root")).render(
+  h(DindbOSDesktop, {
+    style: { width: "100%", height: "100%" },
+    fileSystem: demoFileSystem,
+    session: { user: "guest", product: "DindbOS" },
+    storage: { name: "dindbos-showcase" },
+    builtins: { portfolioData, includeWelcome: true },
+    installApps(os) {
+      const pinned = new Set(["files", "terminal", "browser", "calculator", "settings"]);
+      for (const app of os.apps.list()) os.registerApp({ ...app, desktop: false, pinned: pinned.has(app.id) });
+    },
+    serviceWorker: false,
+    launch,
+  }, h(DindbOSApp, { id: "counter", name: "My App", icon: "app", pinned: true, desktop: true, singleton: true, width: 540, height: 440 }, h(Counter))),
+);

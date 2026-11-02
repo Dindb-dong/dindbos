@@ -1,99 +1,79 @@
-# Build Your First DindbOS App
+# Build your first app
 
-This guide builds a small package app that installs from `dindbos.app.json`, creates a launcher, and runs through the DindbOS package/runtime path.
+Choose React for a component-based host, or `defineApp` for an imperative function or class. Both paths register apps in the same runtime.
 
-For a host app that embeds DindbOS through npm, start with:
+## React
 
-```bash
-npm install dindbos
-```
-
-```js
-import { createAndBootDindbOS } from "dindbos";
+```jsx
+import React from "react";
+import { DindbOSDesktop, DindbOSApp } from "dindbos/react";
 import "dindbos/styles.css";
 
-await createAndBootDindbOS({
-  root: "#app",
-  apps: [helloHostApp],
-  builtins: { includePortfolio: false },
-});
-```
-
-For a generated host project, run `npx create-dindbos my-web-os`. The rest of this guide focuses on packages installed inside a running DindbOS runtime.
-
-## 1. Create The Package Directory
-
-In Terminal.app:
-
-```text
-mkdir -p /home/guest/Documents/hello-app
-cd /home/guest/Documents/hello-app
-```
-
-## 2. Write `dindbos.app.json`
-
-Create this file with TextEdit.app or by importing it through Files.app:
-
-```json
-{
-  "id": "hello-app",
-  "name": "Hello App",
-  "version": "0.1.0",
-  "description": "A first DindbOS package app.",
-  "app": {
-    "id": "hello-app",
-    "name": "Hello App",
-    "title": "Hello App.app",
-    "icon": "app",
-    "width": 520,
-    "height": 320,
-    "entry": "app.js"
-  },
-  "permissions": {
-    "capabilities": [],
-    "fileSystem": {
-      "read": ["/opt/hello-app"],
-      "write": []
-    }
-  },
-  "files": [
-    {
-      "path": "app.js",
-      "mime": "text/javascript",
-      "content": "export function mount({ content, pkg }) { content.innerHTML = `<section class=\"package-app\"><p class=\"dos-kicker\">Package ${pkg.version}</p><h2>${pkg.name}</h2><p>Hello from a DindbOS package app.</p></section>`; }"
-    }
-  ]
+export default function Desktop() {
+  return <DindbOSDesktop style={{ height: 600 }} launch={["hello"]}>
+    <DindbOSApp id="hello" name="Hello" pinned desktop>
+      <main><h1>Hello from my site</h1></main>
+    </DindbOSApp>
+  </DindbOSDesktop>;
 }
 ```
 
-The package manager writes the inline `files[0].content` value to `/opt/hello-app/app.js` during install.
+[React app context and lifecycle](react-apps.md).
 
-## 3. Install And Launch
+## JavaScript function
 
-```text
-pkg install /home/guest/Documents/hello-app/dindbos.app.json
-pkg info hello-app
-open "/usr/share/applications/Hello App.app"
+```js
+import { createAndBootDindbOS, defineApp } from "dindbos";
+import "dindbos/styles.css";
+
+const hello = defineApp({ id: "hello", name: "Hello", pinned: true }, ({ content, window }) => {
+  const button = document.createElement("button");
+  button.textContent = "Close Hello";
+  button.onclick = () => window.close();
+  content.replaceChildren(button);
+  return () => { button.onclick = null; };
+});
+const desktop = createAndBootDindbOS({ root: "#desktop", apps: [hello], launch: ["hello"] });
+// In route cleanup: desktop.then((os) => os.destroy());
 ```
 
-Installed package files are copied under `/opt/hello-app`, the package record is written under `/var/lib/dindbos/packages`, and the launcher appears under `/usr/share/applications`.
+`render` receives `{ os, content, window, context }`. Its optional returned cleanup runs when the app window is closed or the runtime is destroyed. Minimize keeps the app alive.
 
-## 4. Verify
+## JavaScript class
 
-From the repo root outside DindbOS:
+```js
+import { defineApp } from "dindbos";
 
-```bash
-npm run smoke:packages
-npm run smoke
+class GreetingApp {
+  id = "greeting";
+  name = "Greeting";
+  pinned = true;
+  greeting = "Hello from a class";
+  render({ content }) {
+    const heading = document.createElement("h1");
+    heading.textContent = this.greeting;
+    content.replaceChildren(heading);
+  }
+}
+const greeting = defineApp(new GreetingApp());
 ```
 
-`npm run smoke:packages` verifies package install rollback and remove cleanup. `npm run smoke` runs the broad runtime confidence gate.
+Normalization binds prototype methods to the instance. Register `greeting` in the host's `apps` array. Keep resource cleanup per rendered window when multiple windows are allowed.
 
-## Next Steps
+## Protect unsaved work
 
-- Add `accepts` to make a file viewer app.
-- Add `dependencies.npm` and use `imports.npm("package-name")` in `mount()`.
-- Add scoped file permissions instead of broad filesystem access.
-- Inspect `/opt/dindbos/packages/paint-sample/dindbos.app.json` for a packaged canvas tool.
-- Inspect `/opt/dindbos/packages/pdf-viewer-sample/dindbos.app.json` for a packaged file viewer that declares `application/pdf`.
-- Inspect `/opt/dindbos/packages/api-lab/dindbos.app.json` for a fuller sample that writes a report, reads package metadata, reads its current process, and records a process log through sandboxed runtime APIs.
+Inside a Vanilla render callback, register `window.setBeforeClose(() => boolean | Promise<boolean>)` and return its unregister function with your other cleanup. In React, obtain the same window from `useDindbOSApp()`. Returning `false` keeps the window open; concurrent close requests share one pending decision. Forced runtime teardown and removal of an app declaration bypass this guard and still release resources. TextEdit uses this API for its Save / Don’t Save / Cancel sheet.
+
+## Add an app with the CLI
+
+In a generated project:
+
+```sh
+npm exec --package=dindbos -- create-dindbos add app notes --yes --json
+```
+
+This writes one app source and adds it to `src/apps/index.js`. It stops if the app already exists or registry markers are missing. Edit the generated app, run the build, then launch it from the desktop.
+
+## Installed package apps
+
+An installed package app declares `dindbos.app.json` and uses the runtime's package/manifest path rather than host JSX. See [app manifests](app-manifest.md), [app APIs](app-apis.md), and [package isolation](isolation.md). Keep its file and capability permissions narrow. Host component registration does not grant privileges to installed packages.

@@ -1,6 +1,12 @@
 # DindbOS.js Roadmap
 
-Last updated: 2026-05-15
+Last updated: 2026-11-03
+
+## 0.2 source revision — unreleased
+
+The embeddable desktop now includes isolated lifecycle and appearance, React portal apps, function/class app definitions, UI replacement slots, a responsive desktop shell and Dock, and refreshed built-in apps. React/Vanilla starters, CLI app generation and diagnostics, agent guidance, and real browser verification are included. See [the README](../README.md) for the current product surface and [INSTALL.md](../INSTALL.md) for local tarball installation. Publication and deployment are separate release steps.
+
+Remaining compatibility work includes hands-on Safari/Firefox verification and broader assistive-technology review. Browser-only storage, network, and native file access retain their documented platform constraints. The following sections preserve the runtime roadmap and its earlier completion history.
 
 DindbOS.js is a browser-native OS runtime, not an OS-themed website. The UI exists to prove reusable runtime primitives: files, processes, packages, permissions, shell execution, browser/device brokers, app containers, and diagnostics that other apps can depend on.
 
@@ -79,7 +85,7 @@ Current cycle: PR 10, User Docs And Launch Polish.
 
 Done in this cycle:
 
-- Reworked README around `npm install dindbos`, `npx create-dindbos`, framework examples, expected runtime result, and first-line troubleshooting.
+- Reworked README around `npm install dindbos`, `npm exec --package=dindbos -- create-dindbos`, framework examples, expected runtime result, and first-line troubleshooting.
 - Added SDK troubleshooting coverage for blank mount, missing CSS, storage denial, Service Worker scope, origin isolation, and npm tarball install issues.
 - Updated first-app and conformance docs so host app onboarding and release evidence references match the SDK packaging surface.
 

@@ -15,11 +15,13 @@ const expected = {
     "BOOT_PHASES",
     "DindbOS",
     "applyDindbOSHostConfig",
+    "applyDindbOSTheme",
     "bootDindbOS",
     "compatibilitySnapshot",
     "conformanceReport",
     "createAndBootDindbOS",
     "createDindbOS",
+    "defineApp",
     "installBuiltinApps",
     "installDindbOSBuiltins",
     "isolationSnapshot",
@@ -44,13 +46,19 @@ const expected = {
     "createHeadlessDindbOS",
   ],
   react: [
+    "DindbOSApp",
     "DindbOSDesktop",
     "DindbOSProvider",
+    "defineApp",
     "useDindbOS",
+    "useDindbOSApp",
   ],
   create: [
+    "addDindbOSApp",
     "createDindbOSProject",
+    "doctorDindbOSProject",
     "normalizeProjectName",
+    "runDindbOSCLI",
   ],
 };
 
