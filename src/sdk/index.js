@@ -6,6 +6,9 @@ import {
 } from "./host-config.js";
 import { installDindbOSBuiltins } from "./builtins.js";
 
+export { defineApp } from "./app-definition.js";
+export { applyDindbOSTheme } from "./host-config.js";
+
 export { DindbOS, BOOT_PHASES } from "../dindbos/index.js";
 export { compatibilitySnapshot, conformanceReport, isolationSnapshot } from "../dindbos/compat.js";
 export { installDindbOSBuiltins, installBuiltinApps } from "./builtins.js";
@@ -13,35 +16,54 @@ export { applyDindbOSHostConfig, normalizeDindbOSHostConfig, publicHostConfig } 
 
 export async function createDindbOS(options = {}) {
   const config = normalizeDindbOSHostConfig(options);
+  throwIfAborted(options.signal);
   const os = new DindbOS(runtimeOptions(config, options));
+  if (options.signal) {
+    const cancel = () => { os.destroy().catch(() => {}); };
+    options.signal.addEventListener("abort", cancel, { once: true });
+    os.lifecycleCleanups.push(() => options.signal.removeEventListener("abort", cancel));
+    if (options.signal.aborted) cancel();
+  }
   os.sdkHostConfig = publicHostConfig(config);
-  if (typeof config.configure === "function") await config.configure(os, config);
-  return os;
+  try {
+    if (typeof config.configure === "function") await abortable(Promise.resolve().then(() => config.configure(os, config)), options.signal);
+    throwIfAborted(options.signal, os);
+    return os;
+  } catch (error) {
+    await os.destroy?.();
+    throw error;
+  }
 }
 
 export async function bootDindbOS(os, options = {}) {
   if (!os) throw new Error("bootDindbOS: os is required");
   const config = normalizeDindbOSHostConfig(options);
   os.sdkHostConfig = publicHostConfig(config);
-  await os.loadPersistentFileSystem(options.storage || {});
+  throwIfAborted(options.signal, os);
+  await abortable(os.loadPersistentFileSystem(options.storage || {}), options.signal);
+  throwIfAborted(options.signal, os);
   if (config.bootstrapPackages !== false) {
     await os.runBootPhase("package-registry-load", () => os.packages.bootstrap());
   }
+  throwIfAborted(options.signal, os);
   await os.runBootPhase("app-registry-load", async () => {
     await prepareDindbOSHost(os, config);
     return appRegistryBootDetail(os);
   });
+  throwIfAborted(options.signal, os);
   os.boot();
   if (config.serviceWorker.enabled) {
     await os.registerServiceWorkerBoot(config.serviceWorker.scriptUrl);
   }
+  throwIfAborted(options.signal, os);
   launchInitialApps(os, config.launch);
   return os;
 }
 
 export async function createAndBootDindbOS(options = {}) {
   const os = await createDindbOS(options);
-  return bootDindbOS(os, options);
+  try { return await bootDindbOS(os, options); }
+  catch (error) { await os.destroy?.(); throw error; }
 }
 
 export async function prepareDindbOSHost(os, options = {}) {
@@ -57,6 +79,7 @@ export async function prepareDindbOSHost(os, options = {}) {
 function runtimeOptions(config, originalOptions = {}) {
   return {
     root: config.root,
+    uiOptions: config.ui,
     fileSystem: config.fileSystem,
     session: config.session,
     storage: config.storage.adapter || undefined,
@@ -88,4 +111,25 @@ function appRegistryBootDetail(os) {
   const packageAppCount = apps.filter((app) => app.packageId).length;
   const packageText = packageAppCount ? `, ${packageAppCount} package apps` : "";
   return `${apps.length} apps registered, ${pinnedCount} pinned${packageText}`;
+}
+
+function throwIfAborted(signal, os) {
+  if (!signal?.aborted && !os?.destroyed) return;
+  const error = new Error("DindbOS mount was cancelled");
+  error.name = "AbortError";
+  throw error;
+}
+
+function abortable(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      const error = new Error("DindbOS mount was cancelled");
+      error.name = "AbortError";
+      reject(error);
+    };
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }

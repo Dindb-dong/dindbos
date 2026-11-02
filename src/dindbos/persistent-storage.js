@@ -1,4 +1,4 @@
-import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js?v=20260422-browserd";
+import { fileContentByteLength, parseFileContentRecord, serializeFileContentRecord } from "./file-data.js";
 
 const STORAGE_VERSION = 2;
 const STORE_NAME = "kv";
@@ -9,9 +9,9 @@ export class PersistentStorage {
   constructor(options = {}) {
     this.key = options.key || "dindbos:vfs";
     this.dbName = options.dbName || "dindbos";
-    this.adapter = options.adapter || safeLocalStorage();
-    this.indexedDB = options.indexedDB || safeIndexedDB();
-    this.opfsProvider = options.opfsProvider || (options.opfsRoot ? async () => options.opfsRoot : safeOpfsProvider());
+    this.adapter = options.memoryOnly ? null : options.adapter || safeLocalStorage();
+    this.indexedDB = options.memoryOnly ? null : options.indexedDB || safeIndexedDB();
+    this.opfsProvider = options.memoryOnly ? null : options.opfsProvider || (options.opfsRoot ? async () => options.opfsRoot : safeOpfsProvider());
     this.quotaBytes = Math.max(0, Number(options.quotaBytes || 0));
     this.storageClassQuotas = normalizeStorageClassQuotas(options.storageClassQuotas || {});
     this.storageClassUsage = new Map();

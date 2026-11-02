@@ -1,4 +1,4 @@
-import { canUseCapability } from "./app-manifest.js?v=20260422-browserd";
+import { canUseCapability } from "./app-manifest.js";
 
 const MIN_WIDTH = 340;
 const MIN_HEIGHT = 240;
@@ -55,20 +55,26 @@ export class WindowManager {
       cleaned: 0,
       lastCleanup: null,
     };
+    this.destroyed = false;
+    this.mounted = false;
+    this.closingFrames = new Set();
     this.boundKeepWindowsInViewport = () => this.keepWindowsInViewport();
-    this.boundHandleGlobalKeyDown = (event) => this.handleGlobalKeyDown(event);
-    this.boundHandleGlobalPointerDown = (event) => this.routeInputEvent("pointerdown", event);
-    this.boundHandleContextMenu = (event) => this.handleBrowserDefaultEvent("contextmenu", event);
-    this.boundHandleSelectStart = (event) => this.handleBrowserDefaultEvent("selectstart", event);
-    this.boundHandleCompositionStart = (event) => this.routeInputEvent("compositionstart", event);
-    this.boundHandleCompositionUpdate = (event) => this.routeInputEvent("compositionupdate", event);
-    this.boundHandleCompositionEnd = (event) => this.routeInputEvent("compositionend", event);
-    this.boundHandleDragStart = (event) => this.handleBrowserDefaultEvent("dragstart", event);
-    this.boundHandleDragOver = (event) => this.handleBrowserDefaultEvent("dragover", event);
-    this.boundHandleDrop = (event) => this.handleBrowserDefaultEvent("drop", event);
+    this.boundHandleGlobalKeyDown = (event) => { if (this.ownsEvent(event)) this.handleGlobalKeyDown(event); };
+    this.boundHandleGlobalPointerDown = (event) => { if (this.ownsEvent(event)) this.routeInputEvent("pointerdown", event); };
+    this.boundHandleContextMenu = (event) => { if (this.ownsEvent(event)) this.handleBrowserDefaultEvent("contextmenu", event); };
+    this.boundHandleSelectStart = (event) => { if (this.ownsEvent(event)) this.handleBrowserDefaultEvent("selectstart", event); };
+    this.boundHandleCompositionStart = (event) => { if (this.ownsEvent(event)) this.routeInputEvent("compositionstart", event); };
+    this.boundHandleCompositionUpdate = (event) => { if (this.ownsEvent(event)) this.routeInputEvent("compositionupdate", event); };
+    this.boundHandleCompositionEnd = (event) => { if (this.ownsEvent(event)) this.routeInputEvent("compositionend", event); };
+    this.boundHandleDragStart = (event) => { if (this.ownsEvent(event)) this.handleBrowserDefaultEvent("dragstart", event); };
+    this.boundHandleDragOver = (event) => { if (this.ownsEvent(event)) this.handleBrowserDefaultEvent("dragover", event); };
+    this.boundHandleDrop = (event) => { if (this.ownsEvent(event)) this.handleBrowserDefaultEvent("drop", event); };
   }
 
   mount(layer, taskStrip) {
+    if (this.mounted) return;
+    this.destroyed = false;
+    this.mounted = true;
     this.layer = layer;
     this.taskStrip = taskStrip;
     globalThis.window?.addEventListener?.("resize", this.boundKeepWindowsInViewport);
@@ -82,8 +88,55 @@ export class WindowManager {
     globalThis.window?.addEventListener?.("dragstart", this.boundHandleDragStart, { capture: true });
     globalThis.window?.addEventListener?.("dragover", this.boundHandleDragOver, { capture: true });
     globalThis.window?.addEventListener?.("drop", this.boundHandleDrop, { capture: true });
+    if (typeof globalThis.ResizeObserver === "function" && this.os.root) {
+      this.resizeObserver = new ResizeObserver(this.boundKeepWindowsInViewport);
+      this.resizeObserver.observe(this.os.root);
+    }
     this.ensureTrustedSurfacesOnTop();
     this.writeCompositorProcfs("mount");
+  }
+
+  ownsEvent(event = {}) {
+    const root = this.os.root;
+    if (this.destroyed) return false;
+    if (!root?.contains) return true;
+    const closestHost = event.target?.closest?.(".dindbos-host");
+    if (closestHost && closestHost !== root) return false;
+    return Boolean(event.target && root.contains(event.target));
+  }
+
+  viewport() {
+    const root = this.os.root;
+    const rect = root?.getBoundingClientRect?.();
+    return {
+      width: root ? Math.max(1, root.clientWidth || rect?.width || 1) : globalThis.window?.innerWidth || 1024,
+      height: root ? Math.max(1, root.clientHeight || rect?.height || 1) : globalThis.window?.innerHeight || 768,
+      left: Number(rect?.left || 0),
+      top: Number(rect?.top || 0),
+    };
+  }
+
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    const handlers = {
+      resize: this.boundKeepWindowsInViewport, keydown: this.boundHandleGlobalKeyDown,
+      pointerdown: this.boundHandleGlobalPointerDown, contextmenu: this.boundHandleContextMenu,
+      selectstart: this.boundHandleSelectStart, compositionstart: this.boundHandleCompositionStart,
+      compositionupdate: this.boundHandleCompositionUpdate, compositionend: this.boundHandleCompositionEnd,
+      dragstart: this.boundHandleDragStart, dragover: this.boundHandleDragOver, drop: this.boundHandleDrop,
+    };
+    for (const [type, handler] of Object.entries(handlers)) {
+      globalThis.window?.removeEventListener?.(type, handler, ["contextmenu", "selectstart", "dragstart", "dragover", "drop"].includes(type));
+    }
+    this.resizeObserver?.disconnect();
+    for (const id of [...this.windows.keys()]) this.close(id, { immediate: true });
+    for (const surface of [...this.trustedSurfaces.values()]) this.closeTrustedPrompt(surface.id, "destroy");
+    for (const entry of this.closingFrames) { clearTimeout(entry.timer); entry.frame.remove(); }
+    this.closingFrames.clear();
+    this.mounted = false;
+    this.layer = null;
+    this.taskStrip = null;
   }
 
   has(id) {
@@ -99,6 +152,7 @@ export class WindowManager {
   }
 
   open(config) {
+    if (this.destroyed) throw new Error("Cannot open a window after desktop destruction");
     const existing = this.windows.get(config.id);
     if (existing) {
       this.restore(config.id);
@@ -110,6 +164,9 @@ export class WindowManager {
     frame.className = "dos-window";
     frame.dataset.windowId = config.id;
     frame.dataset.appId = config.appId;
+    frame.tabIndex = -1;
+    frame.setAttribute?.("role", "group");
+    frame.setAttribute?.("aria-label", config.title || config.appId || "App window");
     const placement = this.initialPlacement(config);
     Object.assign(frame.style, {
       width: `${placement.width}px`,
@@ -121,14 +178,18 @@ export class WindowManager {
 
     const titlebar = document.createElement("header");
     titlebar.className = "dos-window-titlebar";
-    titlebar.innerHTML = `
-      <strong>${escapeHtml(config.title)}</strong>
-      <div class="dos-window-controls">
-        <button type="button" data-window-minimize aria-label="Minimize">-</button>
-        <button type="button" data-window-maximize aria-label="Maximize">+</button>
-        <button type="button" data-window-close aria-label="Close">x</button>
-      </div>
-    `;
+    const defaultRender = () => {
+      titlebar.innerHTML = `
+        <div class="dos-window-controls" role="group" aria-label="Window controls">
+          <button type="button" data-window-close aria-label="Close"><span aria-hidden="true">×</span></button>
+          <button type="button" data-window-minimize aria-label="Minimize"><span aria-hidden="true">−</span></button>
+          <button type="button" data-window-maximize aria-label="Maximize"><span aria-hidden="true">↗</span></button>
+        </div>
+        <strong>${escapeHtml(config.title)}</strong>
+        <span class="dos-window-titlebar-spacer" aria-hidden="true"></span>
+      `;
+    };
+    defaultRender();
 
     const content = document.createElement("div");
     content.className = "dos-window-content";
@@ -139,13 +200,18 @@ export class WindowManager {
       id: config.id,
       close: () => this.close(config.id),
       focus: () => this.focus(config.id),
+      minimize: () => this.minimize(config.id),
+      maximize: () => this.maximize(config.id),
+      restore: () => this.restore(config.id),
       getState: (key) => cloneState(key ? task.state[key] : task.state),
       setState: (key, value) => {
         task.state[key] = cloneState(value);
         return cloneState(task.state[key]);
       },
       setTitle: (title) => {
-        titlebar.querySelector("strong").textContent = title;
+        const titleElement = titlebar.querySelector("strong");
+        if (titleElement) titleElement.textContent = title;
+        frame.setAttribute?.("aria-label", title);
         task.title = title;
         this.syncWindowObject(task);
         this.renderTasks();
@@ -158,10 +224,21 @@ export class WindowManager {
     const task = { ...config, frame, titlebar, content, api, state: {}, accessibilityTree: null, minimized: false, maximized: Boolean(placement.maximized), objectId: "", handleId: "" };
     this.windows.set(config.id, task);
     this.registerWindowObject(task);
+    task.returnFocus = globalThis.document?.activeElement;
+    const chromeRenderer = this.os.uiOptions?.slots?.windowChrome;
+    if (typeof chromeRenderer === "function") {
+      try {
+        const result = chromeRenderer({ element: titlebar, state: task, actions: api, defaultRender });
+        if (typeof result === "function") task.chromeCleanup = result;
+      } catch (error) {
+        this.close(config.id, { immediate: true });
+        throw error;
+      }
+    }
 
-    titlebar.querySelector("[data-window-minimize]").addEventListener("click", () => this.minimize(config.id));
-    titlebar.querySelector("[data-window-maximize]").addEventListener("click", () => this.maximize(config.id));
-    titlebar.querySelector("[data-window-close]").addEventListener("click", () => this.close(config.id));
+    titlebar.querySelector("[data-window-minimize]")?.addEventListener("click", () => this.minimize(config.id));
+    titlebar.querySelector("[data-window-maximize]")?.addEventListener("click", () => this.maximize(config.id));
+    titlebar.querySelector("[data-window-close]")?.addEventListener("click", () => this.close(config.id));
     titlebar.addEventListener("dblclick", (event) => {
       if (event.target.closest("button")) return;
       this.maximize(config.id);
@@ -172,18 +249,34 @@ export class WindowManager {
       this.focus(config.id);
       this.routeInputEvent("pointerdown", event, { targetWindowId: config.id });
     });
-    makeDraggable(frame, titlebar, () => this.saveWindowPlacement(config.id), {
-      onCapture: (capture) => this.recordPointerCapture(config.id, task.pid, "drag", capture),
+    task.dragCleanup = makeDraggable(frame, titlebar, () => this.saveWindowPlacement(config.id), {
+      viewport: () => this.viewport(),
+      onCapture: (capture) => { this.focus(config.id); frame.focus?.({ preventScroll: true }); this.recordPointerCapture(config.id, task.pid, "drag", capture); },
       onRelease: (capture) => this.releasePointerCapture(config.id, capture.pointerId, "drag-end"),
     });
-    makeResizable(frame, () => this.saveWindowPlacement(config.id), {
-      onCapture: (capture) => this.recordPointerCapture(config.id, task.pid, "resize", capture),
+    task.resizeCleanup = makeResizable(frame, () => this.saveWindowPlacement(config.id), {
+      viewport: () => this.viewport(),
+      onCapture: (capture) => { this.focus(config.id); frame.focus?.({ preventScroll: true }); this.recordPointerCapture(config.id, task.pid, "resize", capture); },
       onRelease: (capture) => this.releasePointerCapture(config.id, capture.pointerId, "resize-end"),
     });
 
-    config.render(content, api);
+    try {
+      const cleanup = config.render(content, api);
+      const dispose = typeof cleanup === "function" ? cleanup : typeof cleanup?.dispose === "function" ? () => cleanup.dispose() : null;
+      if (this.windows.has(config.id)) task.cleanup = dispose;
+      else { dispose?.(); return api; }
+    } catch (error) {
+      this.close(config.id, { immediate: true });
+      throw error;
+    }
+    if (typeof frame.animate === "function" && !prefersReducedMotion()) {
+      task.openAnimation = frame.animate([
+        { opacity: 0, transform: "translateY(9px) scale(.975)" },
+        { opacity: 1, transform: "translateY(0) scale(1)" },
+      ], { duration: 230, easing: "cubic-bezier(.16,1,.3,1)" });
+    }
     this.os.processes.markReady?.(config.pid);
-    this.focus(config.id);
+    this.focus(config.id, { preserveWindowAnimation: true });
     this.renderTasks();
     this.writeCompositorProcfs("open");
     return api;
@@ -213,18 +306,21 @@ export class WindowManager {
     task.minimized = true;
     task.frame.hidden = false;
     this.renderTasks();
-    startMinimizeAnimation(task, () => this.minimizeTargetRect(task));
+    if (!prefersReducedMotion()) startMinimizeAnimation(task, () => this.minimizeTargetRect(task));
     task.minimizeTimer = setTimeout(() => {
       task.minimizeTimer = null;
       if (!task.minimized) return;
       task.frame.hidden = true;
       task.frame.classList.remove("is-minimizing");
-    }, MINIMIZE_ANIMATION_MS);
+    }, prefersReducedMotion() ? 0 : MINIMIZE_ANIMATION_MS);
     this.os.processes.updateWindowState?.(task.pid, "minimized", { windowId: id });
     this.syncWindowObject(task);
     if (this.activeWindowId === id) {
       this.activeWindowId = newestVisibleWindowId(this.windows, id);
       this.windows.forEach((item) => item.frame.classList.toggle("is-active", item.id === this.activeWindowId));
+      const next = this.windows.get(this.activeWindowId);
+      if (next) next.frame.focus?.({ preventScroll: true });
+      else this.os.shell?.refs?.dock?.querySelector?.(`[data-dock-app-id="${cssEscape(task.appId)}"]`)?.focus?.({ preventScroll: true });
     }
     this.renderTasks();
     this.writeCompositorProcfs("minimize");
@@ -238,7 +334,7 @@ export class WindowManager {
     cancelWindowAnimation(task);
     task.minimized = false;
     task.frame.hidden = false;
-    if (wasMinimized) startRestoreAnimation(task, targetRect);
+    if (wasMinimized && !prefersReducedMotion()) startRestoreAnimation(task, targetRect);
     this.os.processes.updateWindowState?.(task.pid, "restored", { windowId: id });
     this.focus(id, { preserveWindowAnimation: wasMinimized });
     this.writeCompositorProcfs("restore");
@@ -247,29 +343,64 @@ export class WindowManager {
   maximize(id) {
     const task = this.windows.get(id);
     if (!task) return;
+    const before = elementRect(task.frame);
+    cancelWindowAnimation(task);
     task.maximized = !task.maximized;
     task.frame.classList.toggle("is-maximized", task.maximized);
+    task.titlebar?.querySelector?.("[data-window-maximize]")?.setAttribute?.("aria-label", task.maximized ? "Restore window size" : "Maximize");
+    if (before && typeof task.frame.animate === "function" && !prefersReducedMotion()) {
+      const after = elementRect(task.frame);
+      task.geometryAnimation?.cancel?.();
+      if (after) task.geometryAnimation = task.frame.animate([
+        { transform: `translate(${before.left - after.left}px, ${before.top - after.top}px) scale(${before.width / after.width}, ${before.height / after.height})`, transformOrigin: "top left" },
+        { transform: "none", transformOrigin: "top left" },
+      ], { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" });
+    }
     this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, task.maximized ? "maximized" : "restored", { windowId: id });
     this.syncWindowObject(task);
-    this.focus(id);
+    this.focus(id, { preserveWindowAnimation: true });
     this.writeCompositorProcfs(task.maximized ? "maximize" : "restore");
   }
 
   close(id, options = {}) {
     const task = this.windows.get(id);
-    if (!task) return;
+    if (!task || task.closing) return;
+    task.closing = true;
     cancelWindowAnimation(task);
     this.releasePointerLock(id, "window-close");
     this.releaseWindowCapture(id, "window-close");
     this.saveWindowPlacement(id);
     this.os.processes.updateWindowState?.(task.pid, "closing", { windowId: id });
     this.revokeWindowObject(task, "window-close");
-    task.frame.remove();
+    const cleanup = task.cleanup;
+    task.cleanup = null;
+    for (const dispose of [cleanup, task.chromeCleanup, task.dragCleanup, task.resizeCleanup]) {
+      try { dispose?.(); } catch (error) { this.os.bus?.emit?.("app:cleanup-error", { id, error }); }
+    }
+    task.chromeCleanup = null;
+    task.dragCleanup = null;
+    task.resizeCleanup = null;
+    if (!options.immediate && !this.destroyed && !prefersReducedMotion() && typeof task.frame.animate === "function" && !task.frame.hidden) {
+      task.frame.style.pointerEvents = "none";
+      task.frame.setAttribute?.("aria-hidden", "true");
+      task.frame.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.965) translateY(5px)" }], { duration: 140, easing: "ease-out", fill: "forwards" });
+      const entry = { frame: task.frame, timer: null };
+      entry.timer = setTimeout(() => { task.frame.remove(); this.closingFrames.delete(entry); }, 150);
+      this.closingFrames.add(entry);
+    } else task.frame.remove();
     this.windows.delete(id);
-    if (this.activeWindowId === id) this.activeWindowId = newestWindowId(this.windows);
+    if (this.activeWindowId === id) {
+      this.activeWindowId = newestVisibleWindowId(this.windows);
+      const next = this.windows.get(this.activeWindowId);
+      if (next) { this.focus(next.id); next.frame.focus?.({ preventScroll: true }); }
+      else if (task.returnFocus?.isConnected && this.os.root?.contains?.(task.returnFocus)) task.returnFocus.focus?.({ preventScroll: true });
+      else this.os.root?.focus?.({ preventScroll: true });
+    }
     this.recordSurfaceCleanup(task, "window-close");
-    if (!options.skipOnClose) task.onClose?.();
+    if (!options.skipOnClose) {
+      try { task.onClose?.(); } catch (error) { this.os.bus?.emit?.("app:cleanup-error", { id, error }); }
+    }
     this.renderTasks();
     this.writeCompositorProcfs("close");
   }
@@ -315,6 +446,7 @@ export class WindowManager {
       });
     }
     this.os.shell?.renderDock?.();
+    this.os.shell?.updateMenubar?.();
   }
 
   minimizedWindows() {
@@ -385,10 +517,11 @@ export class WindowManager {
     const dockRoot = this.os.shell?.refs?.dock;
     const dockItem = dockRoot?.querySelector?.(windowSelector)
       || dockRoot?.querySelector?.(appSelector)
-      || globalThis.document?.querySelector?.(windowSelector)
-      || globalThis.document?.querySelector?.(appSelector);
-    const dock = this.os.shell?.refs?.dock || globalThis.document?.querySelector?.(".dos-dock");
-    return elementRect(dockItem) || elementCenterRect(dock) || viewportBottomCenterRect();
+      || this.os.root?.querySelector?.(windowSelector)
+      || this.os.root?.querySelector?.(appSelector);
+    const dock = this.os.shell?.refs?.dock || this.os.root?.querySelector?.(".dos-dock");
+    const viewport = this.viewport();
+    return elementRect(dockItem) || elementCenterRect(dock) || { left: viewport.left + viewport.width / 2 - 26, top: viewport.top + viewport.height - 66, width: 52, height: 52 };
   }
 
   openTrustedPrompt(prompt = {}, options = {}) {
@@ -494,10 +627,7 @@ export class WindowManager {
   }
 
   keepWindowsInViewport() {
-    const viewport = {
-      width: globalThis.window?.innerWidth || 1024,
-      height: globalThis.window?.innerHeight || 768,
-    };
+    const viewport = this.viewport();
     this.windows.forEach((task) => {
       if (task.maximized) return;
       const rect = {
@@ -719,8 +849,8 @@ export class WindowManager {
       pixelDataAvailable: false,
       browserBoundary: "DOM-backed captures expose OS surface metadata and bounded text only; pixel screenshots require browser Screen Capture or a permissioned renderer.",
       viewport: {
-        width: globalThis.window?.innerWidth || 0,
-        height: globalThis.window?.innerHeight || 0,
+        width: this.viewport().width,
+        height: this.viewport().height,
       },
       surfaces: scope === "desktop"
         ? [...this.windows.values()].map((task) => captureSurfaceForTask(task, this.activeWindowId))
@@ -997,8 +1127,8 @@ export class WindowManager {
       } : null,
       paintMode: "dom",
       viewport: {
-        width: globalThis.window?.innerWidth || 0,
-        height: globalThis.window?.innerHeight || 0,
+        width: this.viewport().width,
+        height: this.viewport().height,
       },
       lastInputEvent: this.lastInputEvent ? { ...this.lastInputEvent } : null,
       inputRouter: {
@@ -1065,23 +1195,20 @@ export class WindowManager {
   nextPosition(width, height) {
     const offset = (this.cascade++ % 7) * 28;
     return {
-      x: Math.max(12, Math.min(180 + offset, window.innerWidth - Number(width || 0) - 12)),
-      y: Math.max(72, Math.min(96 + offset, window.innerHeight - Number(height || 0) - 16)),
+      x: Math.max(12, Math.min(180 + offset, this.viewport().width - Number(width || 0) - 12)),
+      y: Math.max(72, Math.min(96 + offset, this.viewport().height - Number(height || 0) - 16)),
     };
   }
 
   initialPlacement(config) {
     const saved = this.readWindowPlacements()[placementKey(config)] || null;
-    const viewport = {
-      width: globalThis.window?.innerWidth || 1024,
-      height: globalThis.window?.innerHeight || 768,
-    };
+    const viewport = this.viewport();
     if (isMobileWindowViewport(viewport)) return mobileWindowPlacement(viewport);
     const preferred = preferredWindowSize(config, viewport);
     const position = this.nextPosition(preferred.width, preferred.height);
     const fallback = {
-      left: position.x,
-      top: position.y,
+      left: this.windows.size === 0 ? Math.max(8, Math.round((viewport.width - preferred.width) / 2)) : position.x,
+      top: this.windows.size === 0 ? Math.max(42, Math.round((viewport.height - preferred.height - 70) / 2)) : position.y,
       width: preferred.width,
       height: preferred.height,
       maximized: preferred.maximized,
@@ -1251,61 +1378,48 @@ function createResizeHandles() {
 
 function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {}) {
   let drag = null;
+  const viewport = () => captureHooks.viewport?.() || { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 };
   const move = (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
-    const viewport = { width: window.innerWidth, height: window.innerHeight };
-    const next = constrainWindowRect(
-      {
-        left: drag.left + event.clientX - drag.x,
-        top: drag.top + event.clientY - drag.y,
-        width: drag.width,
-        height: drag.height,
-      },
-      viewport,
-    );
+    const next = constrainWindowRect({ left: drag.left + event.clientX - drag.x, top: drag.top + event.clientY - drag.y, width: drag.width, height: drag.height }, viewport());
     frame.style.left = `${next.left}px`;
     frame.style.top = `${next.top}px`;
     event.preventDefault?.();
   };
   const end = (event = {}) => {
-    if (!drag || (event.pointerId && event.pointerId !== drag.pointerId)) return;
+    if (!drag || (event.pointerId !== undefined && event.pointerId !== drag.pointerId)) return;
     const endedDrag = drag;
     drag = null;
     frame.classList.remove("is-dragging");
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", end);
     window.removeEventListener("pointercancel", end);
-    if (event.type !== "pointercancel") {
-      const viewport = { width: window.innerWidth, height: window.innerHeight };
-      const zone = snapZoneForPoint({ x: event.clientX, y: event.clientY }, viewport);
-      const snapped = snapWindowRect(zone, viewport);
-      if (snapped) {
-        Object.assign(frame.style, {
-          left: `${snapped.left}px`,
-          top: `${snapped.top}px`,
-          width: `${snapped.width}px`,
-          height: `${snapped.height}px`,
-        });
-      }
+    if (event.type === "pointerup" && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+      const bounds = viewport();
+      const zone = snapZoneForPoint({ x: event.clientX - (bounds.left || 0), y: event.clientY - (bounds.top || 0) }, bounds);
+      const snapped = snapWindowRect(zone, bounds);
+      if (snapped) Object.assign(frame.style, { left: `${snapped.left}px`, top: `${snapped.top}px`, width: `${snapped.width}px`, height: `${snapped.height}px` });
     }
     if (titlebar.hasPointerCapture?.(endedDrag.pointerId)) titlebar.releasePointerCapture(endedDrag.pointerId);
     onPlacement();
     captureHooks.onRelease?.({ pointerId: endedDrag.pointerId, target: titlebar });
     event.preventDefault?.();
   };
-  titlebar.addEventListener("pointerdown", (event) => {
-    if (event.button > 0 || event.target.closest("button") || frame.classList.contains("is-maximized")) return;
+  const begin = (event) => {
+    if (event.button > 0 || event.target.closest?.("button, input, select, textarea, a, [contenteditable='true'], [data-no-drag]") || frame.classList.contains("is-maximized")) return;
     const rect = windowLocalRect(frame);
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     frame.classList.add("is-dragging");
-    titlebar.setPointerCapture(event.pointerId);
+    titlebar.setPointerCapture?.(event.pointerId);
     captureHooks.onCapture?.({ pointerId: event.pointerId, target: titlebar });
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", end);
     window.addEventListener("pointercancel", end);
     event.preventDefault?.();
     event.stopPropagation?.();
-  });
+  };
+  titlebar.addEventListener("pointerdown", begin);
+  return () => { end({ type: "pointercancel" }); titlebar.removeEventListener?.("pointerdown", begin); };
 }
 
 function windowLocalRect(frame) {
@@ -1324,45 +1438,57 @@ function windowLocalRect(frame) {
 }
 
 function makeResizable(frame, onPlacement = () => {}, captureHooks = {}) {
+  const cleanups = [];
   frame.querySelectorAll("[data-resize]").forEach((handle) => {
     let start = null;
     const move = (event) => {
-      if (!start) return;
+      if (!start || event.pointerId !== start.pointerId) return;
+      const bounds = captureHooks.viewport?.() || { width: window.innerWidth, height: window.innerHeight };
+      const minWidth = Math.min(MIN_WIDTH, Math.max(120, bounds.width - 16));
+      const minHeight = Math.min(MIN_HEIGHT, Math.max(100, bounds.height - 66));
       const dx = event.clientX - start.x;
       const dy = event.clientY - start.y;
       let left = start.left;
       let width = start.width;
       let height = start.height;
-      if (start.edge.includes("right")) width = clamp(start.width + dx, MIN_WIDTH, window.innerWidth - start.left - 8);
+      if (start.edge.includes("right")) width = clamp(start.width + dx, minWidth, bounds.width - start.left - 8);
       if (start.edge.includes("left")) {
-        width = clamp(start.width - dx, MIN_WIDTH, start.left + start.width - 8);
+        width = clamp(start.width - dx, minWidth, start.left + start.width - 8);
         left = start.left + start.width - width;
       }
-      if (start.edge.includes("bottom")) height = clamp(start.height + dy, MIN_HEIGHT, window.innerHeight - start.top - 8);
+      if (start.edge.includes("bottom")) height = clamp(start.height + dy, minHeight, bounds.height - start.top - 8);
       Object.assign(frame.style, { left: `${left}px`, width: `${width}px`, height: `${height}px` });
+      event.preventDefault?.();
     };
-    const end = () => {
-      const pointerId = start?.pointerId || 0;
+    const end = (event = {}) => {
+      if (!start || (event.pointerId !== undefined && event.pointerId !== start.pointerId)) return;
+      const pointerId = start.pointerId;
       start = null;
-      onPlacement();
-      captureHooks.onRelease?.({ pointerId, target: handle });
+      frame.classList.remove("is-resizing");
+      if (handle.hasPointerCapture?.(pointerId)) handle.releasePointerCapture(pointerId);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       window.removeEventListener("pointercancel", end);
+      onPlacement();
+      captureHooks.onRelease?.({ pointerId, target: handle });
     };
-    handle.addEventListener("pointerdown", (event) => {
-      if (frame.classList.contains("is-maximized")) return;
-      const rect = frame.getBoundingClientRect();
+    const begin = (event) => {
+      if (event.button > 0 || frame.classList.contains("is-maximized")) return;
+      const rect = windowLocalRect(frame);
       start = { edge: handle.dataset.resize, pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      frame.classList.add("is-resizing");
       handle.setPointerCapture?.(event.pointerId);
       captureHooks.onCapture?.({ pointerId: event.pointerId, target: handle });
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
-      event.preventDefault();
-      event.stopPropagation();
-    });
+      event.preventDefault?.();
+      event.stopPropagation?.();
+    };
+    handle.addEventListener("pointerdown", begin);
+    cleanups.push(() => { end({ type: "pointercancel" }); handle.removeEventListener?.("pointerdown", begin); });
   });
+  return () => cleanups.forEach((cleanup) => cleanup());
 }
 
 function clamp(value, min, max) {
@@ -1687,6 +1813,10 @@ function isTextEntryEventTarget(target) {
 }
 
 function cancelWindowAnimation(task) {
+  task.geometryAnimation?.cancel?.();
+  task.geometryAnimation = null;
+  task.openAnimation?.cancel?.();
+  task.openAnimation = null;
   clearTimeout(task.minimizeTimer);
   clearTimeout(task.restoreTimer);
   cancelAnimationFrameCompat(task.minimizeFrame);
@@ -1833,3 +1963,5 @@ function ensureDirectory(os, path, principal) {
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
+
+function prefersReducedMotion() { return Boolean(globalThis.window?.matchMedia?.("(prefers-reduced-motion: reduce)").matches); }

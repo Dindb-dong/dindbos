@@ -1,3 +1,5 @@
+import { defineApp } from "./app-definition.js";
+
 const VALID_EVIDENCE_STATUSES = new Set(["pass", "fail", "degraded", "blocked"]);
 
 export function normalizeDindbOSHostConfig(options = {}) {
@@ -29,6 +31,7 @@ export function normalizeDindbOSHostConfig(options = {}) {
     isolation,
     diagnostics,
     theme: normalizeTheme(options.theme || {}),
+    ui: normalizeUI(options.ui || {}),
     configure: typeof options.configure === "function" ? options.configure : null,
     installApps: typeof options.installApps === "function" ? options.installApps : null,
   };
@@ -51,6 +54,7 @@ export function publicHostConfig(config = {}) {
       hasConformanceHook: typeof config.diagnostics?.onConformanceEvidence === "function",
     },
     theme: config.theme,
+    ui: { slots: Object.keys(config.ui?.slots || {}) },
   };
 }
 
@@ -60,24 +64,19 @@ export async function applyDindbOSHostConfig(os, config = {}) {
   for (const app of config.apps || []) os.registerApp(app);
   applyPackageConfig(os, config.packages || {});
   applyDiagnostics(os, config.diagnostics || {});
-  applyTheme(os, config.theme || {});
+  applyDindbOSTheme(os, config.theme || {});
   return os;
 }
 
 function normalizeHostApps(apps) {
   if (!Array.isArray(apps)) throw new Error("DindbOS host config: apps must be an array");
-  return apps.map((app, index) => {
-    if (!app || typeof app !== "object") throw new Error(`DindbOS host config: apps[${index}] must be an object`);
-    const id = String(app.id || "").trim();
-    if (!id) throw new Error(`DindbOS host config: apps[${index}].id is required`);
-    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id)) throw new Error(`DindbOS host config: invalid app id: ${id}`);
-    if (typeof app.render !== "function") throw new Error(`DindbOS host config: app ${id} render function is required`);
-    return {
-      ...app,
-      id,
-      name: String(app.name || id),
-    };
-  });
+  const normalized = apps.map((app) => defineApp(app));
+  const ids = new Set();
+  for (const app of normalized) {
+    if (ids.has(app.id)) throw new Error(`DindbOS host config: duplicate app id: ${app.id}`);
+    ids.add(app.id);
+  }
+  return normalized;
 }
 
 function normalizeFileSystemSeed(seed) {
@@ -156,6 +155,7 @@ function normalizeStorage(storage) {
   return {
     adapter: null,
     runtimeOptions: {
+      storageBackend: backend,
       storageKey: storage.key || `dindbos:vfs:${name}`,
       cacheName: storage.cacheName || `dindbos-runtime-cache-${name}`,
     },
@@ -260,9 +260,19 @@ function normalizeEvidence(record, index) {
   };
 }
 
+function normalizeUI(value) {
+  if (!value || typeof value !== "object") throw new TypeError("DindbOS ui must be an object");
+  const slots = { ...(value.slots || {}) };
+  for (const [name, render] of Object.entries(slots)) {
+    if (!["desktop", "menubar", "dock", "windowChrome"].includes(name) || typeof render !== "function") throw new TypeError(`Invalid DindbOS UI slot: ${name}`);
+  }
+  return { ...value, slots };
+}
+
 function normalizeTheme(value) {
   if (!value || typeof value !== "object") throw new Error("DindbOS host config: theme must be an object");
   return {
+    ...value,
     className: String(value.className || ""),
     variables: value.variables && typeof value.variables === "object" ? { ...value.variables } : {},
   };
@@ -289,8 +299,15 @@ function applyDiagnostics(os, diagnostics) {
   }
 }
 
-function applyTheme(os, theme) {
+export function applyDindbOSTheme(os, theme = {}) {
   if (!os.root) return;
+  if (typeof os.setAppearance === "function") os.setAppearance(theme);
+  else {
+    if (theme.mode) os.root.dataset.appearance = theme.mode;
+    if (theme.accent) os.root.style?.setProperty?.("--accent", String(theme.accent));
+    if (theme.wallpaper) os.root.style?.setProperty?.("--wallpaper", String(theme.wallpaper));
+    if (theme.dockSize) os.root.style?.setProperty?.("--dock-size", `${Number(theme.dockSize)}px`);
+  }
   if (theme.className) os.root.classList?.add?.(theme.className);
   for (const [name, value] of Object.entries(theme.variables || {})) {
     os.root.style?.setProperty?.(name, String(value));

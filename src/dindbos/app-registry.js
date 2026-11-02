@@ -1,4 +1,5 @@
-import { manifestToText, normalizeAppManifest } from "./app-manifest.js?v=20260422-browserd";
+import { defineApp } from "../sdk/app-definition.js";
+import { manifestToText, normalizeAppManifest } from "./app-manifest.js";
 
 export class AppRegistry {
   constructor(os) {
@@ -8,7 +9,7 @@ export class AppRegistry {
   }
 
   register(app) {
-    if (!app?.id) throw new Error("App must define an id.");
+    app = defineApp(app);
     const manifest = normalizeAppManifest(app);
     const previous = this.apps.get(app.id) || null;
     const beforeRoot = this.os.fs.snapshot();
@@ -40,6 +41,10 @@ export class AppRegistry {
       if (this.os.fs.exists(applicationPath)) this.os.fs.remove(applicationPath, "/", {}, system);
       const desktopPath = this.desktopApplicationPathFor(app, app.manifest);
       if (desktopPath && this.os.fs.exists(desktopPath)) this.os.fs.remove(desktopPath, "/", {}, system);
+      for (const [id, task] of this.os.windows?.windows || []) {
+        if (task.appId === appId) this.os.windows.close(id);
+      }
+      if (this.os.shell?.renderer) this.os.shell.renderDesktop();
       return true;
     } catch (error) {
       this.os.fs.root = beforeRoot;
@@ -63,14 +68,16 @@ export class AppRegistry {
     const windowId = app.singleton ? app.id : `${app.id}-${Date.now()}-${++this.launchSeq}`;
     if (app.singleton && this.os.windows.has(windowId)) return this.os.windows.activate(windowId);
     const launchContext = resolveLaunchContext(app, context, this.os);
+    const title = typeof app.title === "function" ? app.title(launchContext) : app.title || app.name;
     const process = this.os.processes.spawn(app, launchContext);
     const sandbox = this.os.createSandbox(process);
     this.os.processes.attachWindow(process.pid, windowId);
     return this.os.windows.open({
       id: windowId,
       appId: app.id,
+      context: launchContext,
       pid: process.pid,
-      title: typeof app.title === "function" ? app.title(context) : app.title || app.name,
+      title,
       icon: app.icon || "app",
       width: app.width,
       height: app.height,
@@ -79,7 +86,11 @@ export class AppRegistry {
       shortcuts: app.manifest?.shortcuts || [],
       render: (content, windowApi) => {
         try {
-          return app.render({ os: sandbox, content, window: windowApi, context: launchContext });
+          const cleanup = app.render({ os: sandbox, content, window: windowApi, context: launchContext });
+          return typeof cleanup === "function" || typeof app.dispose === "function" ? () => {
+            try { if (typeof cleanup === "function") cleanup(); }
+            finally { app.dispose?.({ os: sandbox, content, window: windowApi, context: launchContext }); }
+          } : cleanup;
         } catch (error) {
           this.os.processes.crash(process.pid, error);
           content.innerHTML = `
@@ -147,7 +158,7 @@ export class AppRegistry {
     this.os.fs.createApp(
       this.applicationPathFor(app, manifest),
       manifest.id,
-      app.icon || "app",
+      typeof app.icon === "string" ? app.icon : "app",
       "/",
       { owner: "root", group: "root", permissions: "-rwxr-xr-x" },
       system,
@@ -161,7 +172,7 @@ export class AppRegistry {
     this.os.fs.createApp(
       desktopPath,
       manifest.id,
-      app.icon || "app",
+      typeof app.icon === "string" ? app.icon : "app",
       "/",
       { owner: this.os.session?.user || "guest", group: this.os.session?.groups?.[0] || "users", permissions: "-rwxr-xr-x" },
       system,

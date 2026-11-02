@@ -1,29 +1,32 @@
-import { AppRegistry } from "./app-registry.js?v=20260422-browserd";
-import { AppSandbox } from "./app-sandbox.js?v=20260422-browserd";
-import { compatibilitySnapshot, conformanceReport, isolationSnapshot } from "./compat.js?v=20260422-browserd";
-import { DescriptorManager } from "./descriptors.js?v=20260422-browserd";
-import { RuntimeCacheStore } from "./cache-store.js?v=20260422-browserd";
-import { DesktopShell } from "./desktop-shell.js?v=20260422-browserd";
-import { EventBus } from "./event-bus.js?v=20260422-browserd";
-import { KeychainManager } from "./keychain.js?v=20260422-browserd";
-import { KernelObjectRegistry } from "./kernel-objects.js?v=20260422-browserd";
-import { LocalFolderMountManager } from "./local-folder-mount.js?v=20260422-browserd";
-import { NetworkBroker } from "./network-broker.js?v=20260422-browserd";
-import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
-import { NpmInstaller } from "./npm-installer.js?v=20260422-browserd";
-import { PackageManager } from "./package-manager.js?v=20260422-browserd";
-import { PermissionPolicy } from "./permission-policy.js?v=20260422-browserd";
-import { PersistentStorage } from "./persistent-storage.js?v=20260422-browserd";
-import { ProcessExecutor } from "./process-executor.js?v=20260422-browserd";
-import { ProcessManager } from "./process-manager.js?v=20260422-browserd";
-import { ServiceManager } from "./service-manager.js?v=20260422-browserd";
-import { StorageTransactionManager } from "./storage-transaction-manager.js?v=20260422-browserd";
-import { SyscallDispatcher } from "./syscalls.js?v=20260422-browserd";
-import { TimerManager } from "./timer-manager.js?v=20260422-browserd";
-import { TrustedPromptManager } from "./trusted-prompt-manager.js?v=20260422-browserd";
-import { VirtualFileSystem } from "./vfs.js?v=20260422-browserd";
-import { WasmRunner } from "./wasm-runner.js?v=20260422-browserd";
-import { WindowManager } from "./window-manager.js?v=20260422-browserd";
+import { AppRegistry } from "./app-registry.js";
+import { AppSandbox } from "./app-sandbox.js";
+import { compatibilitySnapshot, conformanceReport, isolationSnapshot } from "./compat.js";
+import { DescriptorManager } from "./descriptors.js";
+import { RuntimeCacheStore } from "./cache-store.js";
+import { DesktopShell } from "./desktop-shell.js";
+import { EventBus } from "./event-bus.js";
+import { KeychainManager } from "./keychain.js";
+import { KernelObjectRegistry } from "./kernel-objects.js";
+import { LocalFolderMountManager } from "./local-folder-mount.js";
+import { NetworkBroker } from "./network-broker.js";
+import { NodeCompat } from "./node-compat.js";
+import { NpmInstaller } from "./npm-installer.js";
+import { PackageManager } from "./package-manager.js";
+import { PermissionPolicy } from "./permission-policy.js";
+import { PersistentStorage } from "./persistent-storage.js";
+import { ProcessExecutor } from "./process-executor.js";
+import { ProcessManager } from "./process-manager.js";
+import { ServiceManager } from "./service-manager.js";
+import { StorageTransactionManager } from "./storage-transaction-manager.js";
+import { SyscallDispatcher } from "./syscalls.js";
+import { TimerManager } from "./timer-manager.js";
+import { TrustedPromptManager } from "./trusted-prompt-manager.js";
+import { VirtualFileSystem } from "./vfs.js";
+import { WasmRunner } from "./wasm-runner.js";
+import { WindowManager } from "./window-manager.js";
+import { DEFAULT_APPEARANCE, normalizeAppearance, applyAppearance } from "./appearance.js";
+
+const runtimeHosts = new WeakMap();
 
 export const BOOT_PHASES = [
   { id: "storage-load", label: "Storage load" },
@@ -93,7 +96,33 @@ const BROWSER_CAPABILITY_PROBES = [
 export class DindbOS {
   constructor(options = {}) {
     this.root = typeof options.root === "string" ? document.querySelector(options.root) : options.root;
+    this.destroyed = false;
+    this.destroyPromise = null;
+    this.lifecycleCleanups = [];
+    this.memoryOnly = options.storageBackend === "memory";
+    this.operationLocks = new Map();
+    this.uiOptions = options.uiOptions || {};
+    if (this.root) {
+      this.root.classList?.add("dindbos-host");
+      runtimeHosts.set(this.root, this);
+    }
+    this.appearanceStorageKey = `${options.storageKey || options.storage?.key || "dindbos:vfs"}:appearance`;
+    let savedAppearance = {};
+    try { if (!this.memoryOnly) savedAppearance = JSON.parse(globalThis.localStorage?.getItem(this.appearanceStorageKey) || "{}"); } catch { /* Browser storage can be unavailable. */ }
+    try { this.appearance = normalizeAppearance(savedAppearance); } catch { this.appearance = { ...DEFAULT_APPEARANCE }; }
+    this.appearanceMedia = globalThis.window?.matchMedia?.("(prefers-color-scheme: dark)");
+    const updateSystemAppearance = () => {
+      applyAppearance(this.root, this.appearance, this.appearanceMedia?.matches);
+      this.bus?.emit("appearance:change", { ...this.appearance });
+    };
+    this.appearanceMedia?.addEventListener?.("change", updateSystemAppearance);
+    this.lifecycleCleanups.push(() => this.appearanceMedia?.removeEventListener?.("change", updateSystemAppearance));
+    applyAppearance(this.root, this.appearance, this.appearanceMedia?.matches);
     this.instanceId = String(options.instanceId || `runtime-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+    const storageNamespace = options.storageKey || options.storage?.key || "dindbos:vfs";
+    this.coordinationNamespace = this.memoryOnly ? `${storageNamespace}:${this.instanceId}` : storageNamespace;
+    this.coordinationSuffix = this.coordinationNamespace === "dindbos:vfs" ? "" : `:${encodeURIComponent(this.coordinationNamespace)}`;
+    this.sessionLockStorageKey = `${SESSION_LOCK_STORAGE_KEY}${this.coordinationSuffix}`;
     this.session = normalizeSession(options.session || {});
     this.sessionId = String(options.sessionId || this.session.sessionId || `${this.session.user}:${this.instanceId}`);
     this.sessionLockTtlMs = Number(options.sessionLockTtlMs || 30_000);
@@ -118,7 +147,7 @@ export class DindbOS {
       lastLoginAt: this.session.locked ? "" : new Date().toISOString(),
     };
     this.bus = new EventBus();
-    this.sessionChannelName = options.sessionChannelName || "dindbos:session-events";
+    this.sessionChannelName = options.sessionChannelName || `dindbos:session-events${this.coordinationSuffix}`;
     this.sessionChannel = null;
     this.sessionMessages = [];
     this.sessionChannelStatus = {
@@ -237,7 +266,16 @@ export class DindbOS {
     this.browserBrokerRequests = [];
     this.browserGrantRevocations = new Map();
     this.permissions = new PermissionPolicy({ defaultUser: this.session.user, defaultGroups: this.session.groups });
-    this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs" });
+    this.storage = options.storage || new PersistentStorage({ key: options.storageKey || "dindbos:vfs", memoryOnly: options.storageBackend === "memory" });
+    if (typeof this.storage.status !== "function") {
+      this.storage = new Proxy(this.storage, {
+        get(target, key) {
+          if (key === "status") return () => ({ backend: "custom", enabled: true });
+          const value = Reflect.get(target, key, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    }
     this.cache = options.cache || new RuntimeCacheStore({ name: options.cacheName || "dindbos-runtime-cache-v1", user: this.session.user });
     this.cache.setUser?.(this.session.user);
     this.clipboard = options.clipboard || createRuntimeClipboard(options.clipboardText || "");
@@ -315,6 +353,7 @@ export class DindbOS {
       home: this.session.home,
       policy: this.permissions,
       onChange: (event) => {
+        if (this.destroyed) return;
         if (this.shouldPersistFileChange(event.path)) this.schedulePersistFileSystem(event);
         const message = this.publishSessionEvent("file-change", event);
         this.recordSessionFileChange(this.instanceId, event, message?.at);
@@ -827,6 +866,7 @@ export class DindbOS {
   }
 
   boot() {
+    if (this.destroyed) throw new DOMException("Runtime was destroyed", "AbortError");
     if (!this.root) throw new Error("DindbOS root element was not found.");
     this.runBootPhaseSync("process-init", () => {
       this.processes.syncProcfs();
@@ -2859,7 +2899,7 @@ export class DindbOS {
         expiresAtMs: now + this.sessionLockTtlMs,
         staleRecovered: Boolean(existing && expired && !ownsLock),
       };
-      this.storage.writeValue?.(SESSION_LOCK_STORAGE_KEY, JSON.stringify(record));
+      this.storage.writeValue?.(this.sessionLockStorageKey, JSON.stringify(record));
       this.sessionCoordination = {
         instanceId: this.instanceId,
         role: "primary",
@@ -2886,7 +2926,7 @@ export class DindbOS {
   }
 
   async readSessionLock() {
-    const raw = await this.storage.readValue?.(SESSION_LOCK_STORAGE_KEY);
+    const raw = await this.storage.readValue?.(this.sessionLockStorageKey);
     if (!raw) return null;
     try {
       const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -2942,7 +2982,8 @@ export class DindbOS {
 
   readRuntimeOperationLock(name) {
     const key = this.operationLockKey(name);
-    const raw = this.storage.readValueSync?.(key) ?? globalThis.localStorage?.getItem?.(key) ?? null;
+    let raw = this.memoryOnly ? this.operationLocks.get(key) : this.storage.readValueSync?.(key);
+    try { if (!this.memoryOnly && !raw) raw = globalThis.localStorage?.getItem?.(key); } catch { /* Use adapter storage when browser storage is denied. */ }
     if (!raw) return null;
     try {
       const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -2954,6 +2995,7 @@ export class DindbOS {
 
   writeRuntimeOperationLock(key, record) {
     const payload = JSON.stringify(record);
+    if (this.memoryOnly) { this.operationLocks.set(key, payload); return; }
     this.storage.writeValue?.(key, payload);
     try {
       globalThis.localStorage?.setItem?.(key, payload);
@@ -2961,6 +3003,7 @@ export class DindbOS {
   }
 
   removeRuntimeOperationLock(key) {
+    if (this.memoryOnly) { this.operationLocks.delete(key); return; }
     this.storage.removeValue?.(key);
     try {
       globalThis.localStorage?.removeItem?.(key);
@@ -2968,7 +3011,7 @@ export class DindbOS {
   }
 
   operationLockKey(name) {
-    return `${OPERATION_LOCK_PREFIX}${String(name || "runtime")}`;
+    return `${OPERATION_LOCK_PREFIX}${String(name || "runtime")}${this.coordinationSuffix}`;
   }
 
   lockSession(reason = "manual") {
@@ -4016,13 +4059,17 @@ export class DindbOS {
   }
 
   registerApp(app) {
-    this.apps.register(app);
+    if (this.destroyed) throw new Error("Cannot register an app after runtime destruction");
+    const registered = this.apps.register(app);
     if (this.shell.refs.dock) this.shell.renderDock();
+    if (this.shell.refs.desktop) this.shell.renderDesktop();
+    return registered;
   }
 
   unregisterApp(appId) {
     const removed = this.apps.unregister(appId);
     if (removed && this.shell.refs.dock) this.shell.renderDock();
+    if (removed && this.shell.refs.desktop) this.shell.renderDesktop();
     return removed;
   }
 
@@ -4179,6 +4226,7 @@ export class DindbOS {
   }
 
   schedulePersistFileSystem(event = {}) {
+    if (this.destroyed) return;
     this.persistPending = true;
     this.persistenceStats.scheduled += 1;
     this.persistenceStats.lastAction = event.action || "";
@@ -4449,9 +4497,9 @@ export class DindbOS {
       if (event) event.returnValue = message;
       return message;
     };
-    globalThis.window.addEventListener("pagehide", flush);
-    globalThis.window.addEventListener("beforeunload", flushBeforeUnload);
-    globalThis.document?.addEventListener?.("visibilitychange", () => {
+    this.listenLifecycle(globalThis.window, "pagehide", flush);
+    this.listenLifecycle(globalThis.window, "beforeunload", flushBeforeUnload);
+    this.listenLifecycle(globalThis.document, "visibilitychange", () => {
       if (globalThis.document.visibilityState === "hidden") flush();
     });
   }
@@ -4507,19 +4555,80 @@ export class DindbOS {
         this.writeStorageKernelProcfs("service-lifecycle-resume");
       }
     };
-    globalThis.window.addEventListener("pagehide", () => suspend("pagehide"));
-    globalThis.window.addEventListener("pageshow", () => resume("pageshow"));
-    globalThis.window.addEventListener("beforeunload", () => {
+    this.listenLifecycle(globalThis.window, "pagehide", () => suspend("pagehide"));
+    this.listenLifecycle(globalThis.window, "pageshow", () => resume("pageshow"));
+    this.listenLifecycle(globalThis.window, "beforeunload", () => {
       this.transitionLifecycle("shutting-down", "beforeunload");
       this.writeRecoveryRecord("beforeunload");
     });
-    globalThis.document?.addEventListener?.("visibilitychange", () => {
+    this.listenLifecycle(globalThis.document, "visibilitychange", () => {
       if (globalThis.document.visibilityState === "hidden") {
         suspend("visibility-hidden");
         return;
       }
       if (globalThis.document.visibilityState === "visible") resume("visibility-visible");
     });
+  }
+
+  listenLifecycle(target, type, listener) {
+    target?.addEventListener?.(type, listener);
+    this.lifecycleCleanups.push(() => target?.removeEventListener?.(type, listener));
+  }
+
+  setAppearance(patch = {}) {
+    if (this.destroyed) return { ...this.appearance };
+    this.appearance = normalizeAppearance(patch, this.appearance);
+    applyAppearance(this.root, this.appearance, this.appearanceMedia?.matches);
+    try { if (!this.memoryOnly) globalThis.localStorage?.setItem(this.appearanceStorageKey, JSON.stringify(this.appearance)); } catch { /* Keep the in-memory preference if storage is denied. */ }
+    this.bus.emit("appearance:change", { ...this.appearance });
+    return { ...this.appearance };
+  }
+
+  destroy() {
+    if (this.destroyPromise) return this.destroyPromise;
+    this.destroyed = true;
+    const errors = [];
+    const clean = (action) => { try { action(); } catch (error) { errors.push(error); } };
+    for (const cleanup of this.lifecycleCleanups.splice(0)) clean(cleanup);
+    for (const record of this.services?.list?.() || []) {
+      if (record.pid) clean(() => this.services.stop(record.id));
+    }
+    for (const process of this.processes?.list?.() || []) {
+      if (this.processes.get(process.pid)) clean(() => this.processes.kill(process.pid, "runtime-destroyed"));
+    }
+    clean(() => this.windows?.destroy?.());
+    clean(() => this.shell?.destroy?.());
+    for (const session of this.network?.webSocketSessions?.values?.() || []) clean(() => session.socket?.close?.(1000, "Runtime destroyed"));
+    for (const session of this.network?.dataChannelSessions?.values?.() || []) {
+      clean(() => session.channel?.close?.());
+      clean(() => session.peerConnection?.close?.());
+    }
+    for (const session of this.network?.rawSocketSessions?.values?.() || []) clean(() => session.companion?.closeRaw?.(session.record.companionSessionId, "runtime-destroyed"));
+    clean(() => this.sessionChannel?.close?.());
+    this.sessionChannel = null;
+    this.sessionChannelStatus.connected = false;
+    if (this.persistTimer) globalThis.clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    if (this.root && runtimeHosts.get(this.root) === this) {
+      this.root.replaceChildren?.();
+      runtimeHosts.delete(this.root);
+    }
+    this.destroyPromise = (async () => {
+      try {
+        if (this.persistPending || this.persisting) await this.flushPersistentFileSystem();
+        else await this.storage?.flush?.();
+      } catch (error) { errors.push(error); }
+      try {
+        const lock = await this.readSessionLock();
+        if (lock?.owner === this.instanceId) {
+          await this.storage.removeValue?.(this.sessionLockStorageKey);
+          await this.storage.flush?.();
+        }
+      } catch (error) { errors.push(error); }
+      this.bus.listeners.clear();
+      if (errors.length) throw new AggregateError(errors, "DindbOS cleanup failed");
+    })();
+    return this.destroyPromise;
   }
 
   openPath(path, context = {}) {

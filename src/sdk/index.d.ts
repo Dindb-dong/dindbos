@@ -9,17 +9,112 @@ export interface DindbOSFileSeed {
   [path: string]: string | Uint8Array | ArrayBuffer | DindbOSFileSeed;
 }
 
-export interface DindbOSHostApp {
+export interface DindbOSFileNode {
+  name: string;
+  path: string;
+  type: "file" | "directory" | "symlink";
+  mime?: string;
+  content?: string | Uint8Array;
+  children?: DindbOSFileNode[];
+  [key: string]: unknown;
+}
+
+export interface DindbOSFileSystem {
+  exists(path: string, cwd?: string): boolean;
+  list(path?: string, cwd?: string): DindbOSFileNode[];
+  resolve(path: string, cwd?: string): DindbOSFileNode;
+  readFile(path: string, cwd?: string): string;
+  readFileBytes(path: string, cwd?: string): Uint8Array;
+  writeFile(path: string, content: string, cwd?: string): unknown;
+  writeOrCreateFile(path: string, content: string, cwd?: string, options?: Record<string, unknown>): unknown;
+  createDirectory(path: string, cwd?: string, options?: Record<string, unknown>): unknown;
+  remove(path: string, cwd?: string, options?: Record<string, unknown>): unknown;
+  stat(path: string, cwd?: string): Record<string, unknown>;
+  normalize(path: string, cwd?: string): string;
+  join(base: string, name: string): string;
+  dirname(path: string): string;
+  basename(path: string): string;
+}
+
+export interface DindbOSWindowAPI {
+  id: string;
+  close(): void;
+  focus(): void;
+  minimize(): void;
+  maximize(): void;
+  restore(): void;
+  getState<T = unknown>(key?: string): T;
+  setState<T>(key: string, value: T): T;
+  setTitle(title: string): void;
+  setAccessibilityTree(tree: unknown): unknown;
+  getAccessibilityTree(): unknown;
+  captureSurface(options?: Record<string, unknown>): unknown;
+  captureDesktop(options?: Record<string, unknown>): unknown;
+}
+
+export interface DindbOSAppManifest {
+  capabilities?: string[];
+  fileSystem?: { read?: string[]; write?: string[] };
+  shortcuts?: Array<string | { key: string; command?: string; scope?: string }>;
+  [key: string]: unknown;
+}
+
+/** The existing permission-checked app facade, never the host's runtime. */
+export interface DindbOSAppSandbox {
+  session: Readonly<DindbOSSessionOptions>;
+  fs: DindbOSFileSystem;
+  launch(appId: string, context?: Record<string, unknown>): DindbOSWindowAPI;
+  openPath(path: string, context?: Record<string, unknown>): unknown;
+  apps: { list(): DindbOSAppSummary[]; getManifest(id: string): DindbOSAppManifest | null };
+  state: { get<T = unknown>(key: string, fallback?: T): T; set<T>(key: string, value: T): T };
+  syscall<T = unknown>(name: string, args?: Record<string, unknown>): T;
+  syscallAsync<T = unknown>(name: string, args?: Record<string, unknown>): Promise<T>;
+}
+
+export interface DindbOSAppContext<Context = Record<string, unknown>> {
+  os: DindbOSAppSandbox;
+  content: HTMLElement;
+  window: DindbOSWindowAPI;
+  context: Context;
+}
+
+export interface DindbOSAppSummary {
+  id: string;
+  name: string;
+  icon?: unknown;
+  pinned?: boolean;
+  singleton?: boolean;
+}
+
+export interface DindbOSHostApp<Context = Record<string, unknown>> {
   id: string;
   name?: string;
-  title?: string | ((context: Record<string, unknown>) => string);
-  icon?: string;
+  title?: string | ((context: Context) => string);
+  icon?: unknown;
   pinned?: boolean;
+  desktop?: boolean;
   singleton?: boolean;
   width?: number;
   height?: number;
-  manifest?: Record<string, unknown>;
-  render: (context: Record<string, unknown>) => unknown;
+  accepts?: string[];
+  manifest?: DindbOSAppManifest;
+  render(context: DindbOSAppContext<Context>): void | (() => void);
+  dispose?(context: DindbOSAppContext<Context>): void;
+}
+
+export type AppDefinition<Context = Record<string, unknown>> = DindbOSHostApp<Context>;
+export function defineApp<Context = Record<string, unknown>>(definition: DindbOSHostApp<Context>): DindbOSHostApp<Context>;
+export function defineApp<Context = Record<string, unknown>>(definition: Omit<DindbOSHostApp<Context>, "render">, render: DindbOSHostApp<Context>["render"]): DindbOSHostApp<Context>;
+
+export interface DindbOSSlotContext {
+  element: HTMLElement;
+  state: Record<string, unknown>;
+  actions: Record<string, (...args: any[]) => unknown>;
+  defaultRender(): void;
+}
+export type DindbOSSlotRenderer = (context: DindbOSSlotContext) => void | (() => void);
+export interface DindbOSUIOptions {
+  slots?: Partial<Record<"desktop" | "menubar" | "dock" | "windowChrome", DindbOSSlotRenderer>>;
 }
 
 export interface DindbOSStorageAdapter {
@@ -78,12 +173,18 @@ export interface DindbOSDiagnosticsConfig {
 }
 
 export interface DindbOSThemeConfig {
+  mode?: "light" | "dark" | "system";
+  accent?: string;
+  wallpaper?: "meadow" | "coast" | "dusk" | string;
+  dockSize?: number;
   className?: string;
   variables?: Record<string, string | number>;
 }
 
 export interface CreateDindbOSOptions {
   root?: string | HTMLElement | null;
+  signal?: AbortSignal;
+  ui?: DindbOSUIOptions;
   fileSystem?: DindbOSFileSeed;
   files?: DindbOSFileSeed;
   session?: DindbOSSessionOptions;
@@ -117,15 +218,29 @@ export interface DindbOSHostConfig extends Omit<CreateDindbOSOptions, "storage" 
 export class DindbOS {
   constructor(options?: Record<string, unknown>);
   sdkHostConfig?: Record<string, unknown>;
-  session: Record<string, unknown>;
-  fs: unknown;
-  apps: unknown;
-  packages: unknown;
+  session: DindbOSSessionOptions & { user: string; home: string; groups: string[]; product: string };
+  destroyed: boolean;
+  root: HTMLElement | null;
+  fs: DindbOSFileSystem;
+  apps: {
+    has(id: string): boolean;
+    list(): DindbOSHostApp[];
+    getManifest(id: string): DindbOSAppManifest | null;
+    register(app: DindbOSHostApp): DindbOSAppManifest;
+    unregister(id: string): boolean;
+  };
+  packages: { list(): Array<Record<string, unknown>>; info(id: string): Record<string, unknown> };
+  windows: { has(id: string): boolean; close(id: string): void; focus(id: string): void; minimize(id: string): void; maximize(id: string): void; restore(id: string): void };
+  destroy(): Promise<void>;
+  registerApp(app: DindbOSHostApp): void;
+  unregisterApp(id: string): boolean;
+  setAppearance(theme: DindbOSThemeConfig): unknown;
+  appearance: DindbOSThemeConfig;
   boot(): void;
   loadPersistentFileSystem(options?: Record<string, unknown>): Promise<void>;
   runBootPhase<T>(id: string, action: () => T | Promise<T>): Promise<T>;
   registerServiceWorkerBoot(scriptUrl?: string): Promise<unknown>;
-  launch(appId: string, context?: Record<string, unknown>): unknown;
+  launch(appId: string, context?: Record<string, unknown>): DindbOSWindowAPI;
   addConformanceEvidence(record: DindbOSDiagnosticsEvidence): DindbOSDiagnosticsEvidence;
   conformanceEvidenceRecords(): DindbOSDiagnosticsEvidence[];
 }
@@ -144,3 +259,5 @@ export function installBuiltinApps(os: DindbOS, options?: Record<string, unknown
 export function compatibilitySnapshot(runtime?: Record<string, unknown>): Record<string, unknown>;
 export function conformanceReport(runtime?: Record<string, unknown>): Record<string, unknown>;
 export function isolationSnapshot(browser?: Record<string, unknown>): Record<string, unknown>;
+
+export function applyDindbOSTheme(os: DindbOS, theme?: DindbOSThemeConfig): void;

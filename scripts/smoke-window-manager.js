@@ -347,6 +347,7 @@ async function runLiveWindowStateSmoke() {
     const layer = new FakeElement("div");
     const taskStrip = new FakeElement("nav");
     liveManager.mount(layer, taskStrip);
+    let disposedApps = 0;
     const api = liveManager.open({
       id: "browser",
       appId: "browser",
@@ -359,6 +360,7 @@ async function runLiveWindowStateSmoke() {
         _content.textContent = "Browser surface body";
         windowApi.setState("browser", { address: "https://example.com", title: "Example Domain", status: "ready" });
         windowApi.setTitle("Example Domain - Browser");
+        return () => { disposedApps += 1; };
       },
     });
     liveManager.minimize("browser");
@@ -610,6 +612,8 @@ async function runLiveWindowStateSmoke() {
       target: { closest: () => null },
     });
     liveManager.close("browser");
+    liveManager.close("browser");
+    assert(disposedApps === 1, "closing a window did not dispose its mounted app exactly once");
     assert(liveOs.objects.get(task.objectId).status === "revoked", "window close did not revoke window object");
     assert(liveOs.objects.getHandle(task.handleId).status === "revoked", "window close did not revoke window handle");
     assert(globalThis.document.exitedPointerLock === true, "window close did not exit active pointer lock");
@@ -631,6 +635,36 @@ async function runLiveWindowStateSmoke() {
     });
     liveManager.activate("browser");
     assert(api.getState("browser").title === "Example Domain", "window API state was not preserved after activate");
+    liveManager.close("browser");
+    liveOs.root = {
+      clientWidth: 580, clientHeight: 460,
+      contains: (element) => element?.inside === true,
+      getBoundingClientRect: () => ({ left: 300, top: 200, width: 580, height: 460 }),
+    };
+    let chromeDisposed = 0;
+    liveOs.uiOptions = { slots: { windowChrome: ({ element, defaultRender }) => {
+      assert(element, "windowChrome was not passed its host element");
+      defaultRender();
+      return () => { chromeDisposed += 1; };
+    } } };
+    liveManager.open({ id: "embedded", appId: "embedded", pid: 44, title: "Embedded", width: 900, height: 700, manifest: { capabilities: [] }, render: () => () => { disposedApps += 1; } });
+    const embedded = liveManager.windows.get("embedded");
+    assert(Number.parseFloat(embedded.frame.style.width) <= 564, "embedded window width used browser viewport instead of host");
+    assert(Number.parseFloat(embedded.frame.style.height) <= 394, "embedded window height used browser viewport instead of host");
+    let hostKeyPrevented = false;
+    globalThis.window.dispatchTestEvent("keydown", { key: "w", ctrlKey: true, target: { inside: false }, preventDefault: () => { hostKeyPrevented = true; } });
+    assert(!hostKeyPrevented && liveManager.has("embedded"), "desktop consumed a host-page shortcut");
+    if (embedded.maximized) liveManager.maximize("embedded");
+    embedded.titlebar.listeners.pointerdown({ pointerId: 91, button: 0, clientX: 340, clientY: 280, target: { closest: () => null }, preventDefault() {}, stopPropagation() {} });
+    assert(embedded.titlebar.capturedPointerIds.has(91), "embedded drag did not begin");
+    liveManager.destroy();
+    liveManager.destroy();
+    assert(disposedApps === 2 && chromeDisposed === 1, "destroy did not dispose app and custom chrome exactly once");
+    assert(embedded.titlebar.releasedPointerIds.includes(91), "destroy left a live pointer gesture");
+    assert(liveManager.windows.size === 0 && liveManager.layer === null, "destroy retained compositor surfaces");
+    globalThis.window.dispatchTestEvent("keydown", { key: "w", ctrlKey: true, target: { inside: true }, preventDefault: () => { hostKeyPrevented = true; } });
+    assert(!hostKeyPrevented, "destroy left global shortcut listeners attached");
+
   } finally {
     globalThis.document = previousDocument;
     globalThis.window = previousWindow;
