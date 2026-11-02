@@ -1,4 +1,4 @@
-import { compatibilitySnapshot, conformanceReport } from "./compat.js?v=20260422-browserd";
+import { compatibilitySnapshot, conformanceReport } from "./compat.js";
 
 const SHELL_HISTORY_DIR = "/var/lib/dindbos/shell-history";
 const MAX_SHELL_HISTORY = 200;

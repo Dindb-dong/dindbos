@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { DesktopShell } from "../src/dindbos/desktop-shell.js";
+import { calendarCells, filterApplications } from "../src/ui/shell-panels.js";
+
+const february = calendarCells(new Date(2024, 1, 15));
+assert.equal(february.length % 7, 0);
+assert.equal(february.filter(Boolean).length, 29, "leap-day calendar must show 29 days");
+assert.equal(february[3].getDate(), 1, "Thursday must occupy Monday-based fourth column");
+assert.equal(february.filter(Boolean).at(-1).getDate(), 29);
+const mondayMonth = calendarCells(new Date(2026, 5, 1));
+assert.equal(mondayMonth[0].getDate(), 1, "month starting Monday must have no leading blanks");
+const sundayMonth = calendarCells(new Date(2026, 1, 1));
+assert.equal(sundayMonth[6].getDate(), 1, "Sunday must be seventh column");
+const apps = [{ id: "files", name: "Files" }, { id: "terminal", name: "Terminal" }, { id: "my-editor", name: "Notes" }];
+assert.deepEqual(filterApplications(apps, " EDITOR ").map((app) => app.id), ["my-editor"]);
+assert.deepEqual(filterApplications(apps, "fi").map((app) => app.id), ["files"]);
+assert.equal(filterApplications(apps, "missing").length, 0);
+assert.deepEqual(apps.map((app) => app.id), ["files", "terminal", "my-editor"], "search must not mutate registry order");
+const shell = new DesktopShell({});
+const cleaned = [];
+shell.cleanups.push(() => { cleaned.push("listener"); throw new Error("listener failed"); });
+shell.slotCleanups.set("desktop", () => { cleaned.push("desktop"); throw new Error("slot failed"); });
+shell.slotCleanups.set("dock", () => cleaned.push("dock"));
+shell.renderer = { unmount() { cleaned.push("renderer"); } };
+assert.throws(() => shell.destroy(), AggregateError);
+assert.deepEqual(cleaned, ["listener", "desktop", "dock", "renderer"], "cleanup failure must not skip other resources");
+assert.equal(shell.slotCleanups.size, 0);
+assert.equal(shell.renderer, null);
+assert.doesNotThrow(() => shell.destroy(), "destroy must remain safe after cleanup failure");
+console.log("shell UI smoke ok calendar, search, and fault-tolerant disposal");

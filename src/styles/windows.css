@@ -1,0 +1,152 @@
+/* Window material and controls are shared by built-in and host applications. */
+@scope (.dindbos-host) {
+  .dos-window-layer { inset: 0; isolation: isolate; }
+
+  .dos-window {
+    grid-template-rows: 46px minmax(0, 1fr);
+    min-width: min(340px, calc(100% - 16px));
+    min-height: min(240px, calc(100% - 66px));
+    border: 1px solid rgb(255 255 255 / .62);
+    border-radius: 14px;
+    background: var(--window-surface, #f6f6f6);
+    box-shadow: 0 0 0 .5px rgb(0 0 0 / .12), 0 8px 24px rgb(16 35 31 / .12), 0 26px 70px -12px rgb(13 31 29 / .24);
+    backdrop-filter: blur(30px) saturate(1.35);
+    -webkit-backdrop-filter: blur(30px) saturate(1.35);
+    transition: transform 260ms cubic-bezier(.22,.8,.25,1), opacity 200ms ease, box-shadow 180ms ease;
+    transform-origin: center;
+    container-type: inline-size;
+    outline: none;
+  }
+
+  .dos-window:not(.is-active) {
+    box-shadow: 0 0 0 .5px rgb(0 0 0 / .1), 0 4px 16px rgb(16 35 31 / .09), 0 14px 40px -12px rgb(13 31 29 / .17);
+  }
+
+  .dos-window.is-active {
+    border-color: rgb(255 255 255 / .72);
+    box-shadow: 0 0 0 .5px rgb(0 0 0 / .18), 0 8px 24px rgb(16 35 31 / .15), 0 28px 76px -10px rgb(13 31 29 / .29);
+  }
+
+  .dos-window.is-maximized {
+    inset: 38px 8px 82px !important;
+    width: auto !important;
+    height: auto !important;
+    border-radius: 12px;
+  }
+
+  .dos-window-titlebar {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) 72px;
+    align-items: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 14px;
+    border-bottom: 1px solid rgb(0 0 0 / .065);
+    background: var(--window-titlebar, rgb(244 247 246 / .92));
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .dos-window-titlebar strong {
+    width: 100%;
+    overflow: hidden;
+    color: var(--text, #212725);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.12px;
+    line-height: 1.2;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dos-window:not(.is-active) .dos-window-titlebar strong { color: var(--muted, #737b77); }
+  .dos-window-titlebar-spacer { width: 72px; pointer-events: none; }
+
+  .dos-window-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    order: 0;
+    gap: 8px;
+    width: 64px;
+  }
+
+  .dos-window-controls button {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: 0 0 12px;
+    width: 12px;
+    height: 12px;
+    min-width: 12px;
+    min-height: 12px;
+    padding: 0;
+    overflow: visible;
+    border: .5px solid rgb(0 0 0 / .14);
+    border-radius: 50%;
+    color: rgb(65 40 20 / .8);
+    font: 600 11px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    box-shadow: inset 0 .5px 0 rgb(255 255 255 / .2);
+    cursor: default;
+    transition: background 100ms, filter 100ms;
+  }
+
+  .dos-window-controls button::before { position: absolute; inset: -5px -3px; content: ""; }
+  .dos-window-controls button span { opacity: 0; pointer-events: none; transition: opacity 100ms; }
+  .dos-window-controls:hover button span,
+  .dos-window-controls:focus-within button span { opacity: 1; }
+  .dos-window-controls [data-window-close] { background: #ff5f57; }
+  .dos-window-controls [data-window-minimize] { background: #febc2e; }
+  .dos-window-controls [data-window-maximize] { background: #28c840; }
+  .dos-window:not(.is-active) .dos-window-controls button { background: #c8cdca; border-color: rgb(0 0 0 / .1); }
+  .dos-window:not(.is-active) .dos-window-controls:hover [data-window-close] { background: #ff5f57; }
+  .dos-window:not(.is-active) .dos-window-controls:hover [data-window-minimize] { background: #febc2e; }
+  .dos-window:not(.is-active) .dos-window-controls:hover [data-window-maximize] { background: #28c840; }
+  .dos-window-controls button:active { filter: brightness(.8); transform: none; }
+  .dos-window-controls button:focus-visible { outline: 2px solid var(--accent, #26785d); outline-offset: 4px; }
+
+  .dos-window-content {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    padding: 14px;
+    background: var(--window-content, #fafbfa);
+    overscroll-behavior: contain;
+  }
+
+  .dos-window.is-minimizing,
+  .dos-window.is-restoring {
+    opacity: .05;
+    filter: none;
+    transform: translate3d(var(--minimize-x, 0), var(--minimize-y, 18px), 0) scale(var(--minimize-scale-x, .12), var(--minimize-scale-y, .12));
+    pointer-events: none;
+  }
+
+  .dos-window.is-dragging,
+  .dos-window.is-resizing { transition: none; will-change: left, top, width, height; }
+  .dos-window.is-dragging .dos-window-titlebar { cursor: grabbing; }
+  .dos-window[hidden] { display: none !important; }
+  .dos-resize { z-index: 4; touch-action: none; }
+  .dos-resize-left, .dos-resize-right { width: 6px; }
+  .dos-resize-bottom-left, .dos-resize-bottom-right { width: 16px; height: 16px; }
+
+  :scope[data-appearance="dark"] .dos-window,
+  :scope[data-theme="dark"] .dos-window {
+    --window-surface: #242b28;
+    --window-titlebar: rgb(48 56 52 / .96);
+    --window-content: #242b28;
+    border-color: rgb(255 255 255 / .16);
+  }
+  :scope[data-appearance="dark"] .dos-window:not(.is-active) .dos-window-controls button,
+  :scope[data-theme="dark"] .dos-window:not(.is-active) .dos-window-controls button { background: #59625c; }
+
+  @container (max-width: 540px) {
+    .dos-window-titlebar { grid-template-columns: 64px minmax(0, 1fr) 64px; padding-inline: 11px; }
+    .dos-window-titlebar-spacer { width: 64px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dos-window, .dos-window-controls button, .dos-window-controls button span { animation: none !important; transition: none !important; }
+  }
+}

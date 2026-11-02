@@ -1,0 +1,242 @@
+/* Desktop and Dock share original icons, while their interaction targets differ. */
+.dindbos-host .dos-desktop {
+  width: auto;
+  max-width: none;
+  inset: 42px 14px 100px;
+  grid-template-columns: none;
+  grid-template-rows: repeat(auto-fill, 104px);
+  grid-auto-flow: column;
+  grid-auto-columns: 96px;
+  direction: rtl;
+  gap: 8px 12px;
+  align-content: start;
+  justify-content: start;
+  overflow: auto;
+  scrollbar-width: none;
+}
+.dindbos-host .dos-icon {
+  direction: ltr;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 64px minmax(0, auto);
+  justify-items: center;
+  align-content: start;
+  width: 96px;
+  height: 104px;
+  min-height: 0;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  transform: none;
+  transition: background 130ms ease;
+  user-select: none;
+}
+.dindbos-host .dos-icon:hover { background: rgb(255 255 255 / .12); border-color: transparent; transform: none; }
+.dindbos-host .dos-icon:active { transform: none; }
+.dindbos-host .dos-icon.is-selected { background: rgb(255 255 255 / .18); border-color: rgb(255 255 255 / .22); }
+.dindbos-host .dos-icon:focus-visible { outline: 2px solid rgb(255 255 255 / .9); outline-offset: 1px; box-shadow: 0 0 0 4px rgb(29 97 169 / .45); }
+.dindbos-host .dos-icon-art {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  color: white;
+  box-shadow: none;
+  overflow: visible;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / .16));
+}
+.dindbos-host .dos-icon-art svg,
+.dindbos-host .dos-icon-art img { width: 64px; height: 64px; }
+.dindbos-host .dos-icon-label {
+  display: -webkit-box;
+  max-width: 92px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  color: var(--desktop-label, #fff);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: center;
+  text-shadow: 0 1px 3px rgb(0 0 0 / .8), 0 0 1px rgb(0 0 0 / .5);
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: keep-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dindbos-host .dos-icon.is-selected .dos-icon-label { background: var(--accent); color: white; text-shadow: none; }
+.dindbos-host .dos-app-icon { display: block; width: 100%; height: 100%; overflow: visible; }
+.dindbos-host .dos-image-icon { object-fit: contain; border-radius: 22%; }
+.dindbos-host .dos-custom-icon { display: grid; width: 100%; height: 100%; place-items: center; }
+.dindbos-host .dos-custom-icon > * { max-width: 100%; max-height: 100%; }
+
+.dindbos-host .dos-dock {
+  position: absolute;
+  z-index: 70;
+  top: auto;
+  right: auto;
+  bottom: 9px;
+  left: 50%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 5px;
+  width: max-content;
+  max-width: calc(100% - 28px);
+  height: auto;
+  min-height: 0;
+  padding: 5px 7px 9px;
+  border: 1px solid rgb(255 255 255 / .6);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgb(255 255 255 / .42), rgb(255 255 255 / .23));
+  box-shadow: 0 1px 1px rgb(255 255 255 / .25) inset, 0 2px 6px rgb(0 0 0 / .08), 0 8px 24px rgb(0 0 0 / .15);
+  backdrop-filter: blur(28px) saturate(1.45);
+  -webkit-backdrop-filter: blur(28px) saturate(1.45);
+  transform: translateX(-50%);
+  overflow: visible;
+  isolation: isolate;
+}
+.dindbos-host .dos-dock-item {
+  --dock-proximity: 0;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 0 1 calc(var(--dock-size, 52px) * (1 + var(--dock-proximity) * .42));
+  align-items: end;
+  justify-items: center;
+  width: calc(var(--dock-size, 52px) * (1 + var(--dock-proximity) * .42));
+  min-width: 24px;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 1;
+  gap: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  cursor: default;
+  transform: none;
+  transform-origin: center bottom;
+  transition: width 150ms cubic-bezier(.2,.8,.2,1), flex-basis 150ms cubic-bezier(.2,.8,.2,1);
+  -webkit-tap-highlight-color: transparent;
+}
+.dindbos-host .dos-dock-item::before,
+.dindbos-host .dos-dock-item::after { display: none; }
+.dindbos-host .dos-dock-item:hover,
+.dindbos-host .dos-dock-item:active { background: transparent; box-shadow: none; transform: none; }
+.dindbos-host .dos-dock-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; box-shadow: 0 0 0 2px rgb(255 255 255 / .8); }
+.dindbos-host .dos-dock-glyph {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: inherit;
+  filter: drop-shadow(0 2px 1px rgb(0 0 0 / .15));
+  transform-origin: center bottom;
+  transition: filter 120ms ease;
+}
+.dindbos-host .dos-dock-glyph svg,
+.dindbos-host .dos-dock-glyph img { width: 100%; height: 100%; }
+.dindbos-host .dos-dock-item:active .dos-dock-glyph { filter: brightness(.78) drop-shadow(0 1px 1px rgb(0 0 0 / .2)); }
+.dindbos-host .dos-dock-item.is-running .dos-dock-glyph::after,
+.dindbos-host .dos-dock-item.is-minimized .dos-dock-glyph::after {
+  display: block;
+  position: absolute;
+  top: auto;
+  right: auto;
+  bottom: -5px;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--dock-marker, #26373b);
+  box-shadow: none;
+  transform: translateX(-50%);
+  content: "";
+}
+.dindbos-host .dos-dock-item.is-minimized .dos-dock-glyph { opacity: .82; }
+.dindbos-host .dos-dock-item.is-launching .dos-dock-glyph { animation: dos-dock-launch 620ms cubic-bezier(.2,.65,.3,1); }
+.dindbos-host .dos-dock-separator {
+  display: block;
+  flex: 0 0 1px;
+  align-self: center;
+  width: 1px;
+  height: calc(var(--dock-size, 52px) * .65);
+  min-height: 18px;
+  margin: 0 4px;
+  background: rgb(48 68 71 / .22);
+}
+.dindbos-host .dos-dock-item > .dos-dock-tooltip {
+  position: absolute;
+  bottom: calc(100% + 16px);
+  left: 50%;
+  z-index: 5;
+  display: block;
+  width: max-content;
+  max-width: 180px;
+  padding: 5px 10px;
+  border: 1px solid rgb(255 255 255 / .45);
+  border-radius: 7px;
+  background: var(--dock-tooltip-bg, rgb(239 245 242 / .95));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 17px;
+  text-shadow: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 3px 10px rgb(0 0 0 / .16);
+  transform: translate(-50%, 3px);
+  transition: opacity 100ms ease, transform 100ms ease;
+}
+.dindbos-host .dos-dock-item:hover > .dos-dock-tooltip,
+.dindbos-host .dos-dock-item:focus-visible > .dos-dock-tooltip { opacity: 1; transform: translate(-50%, 0); }
+/* Custom React icon wrappers must not inherit the legacy tooltip selector. */
+.dindbos-host .dos-dock-glyph .dos-custom-icon {
+  position: static;
+  width: 100%; height: 100%; max-width: none;
+  padding: 0; border: 0; border-radius: 0;
+  background: none; color: inherit; opacity: 1;
+  transform: none; box-shadow: none; overflow: visible;
+}
+.dindbos-host[data-appearance="dark"] .dos-dock {
+  --dock-marker: #e3ede7;
+  --dock-tooltip-bg: rgb(42 49 48 / .97);
+  background: linear-gradient(180deg, rgb(119 140 130 / .26), rgb(40 52 47 / .46));
+  border-color: rgb(255 255 255 / .28);
+  box-shadow: 0 1px 0 rgb(255 255 255 / .12) inset, 0 8px 24px rgb(0 0 0 / .3);
+}
+@keyframes dos-dock-launch {
+  0%, 100% { transform: translateY(0); }
+  28% { transform: translateY(-17px); }
+  52% { transform: translateY(0); }
+  73% { transform: translateY(-7px); }
+}
+@container (max-width: 500px) {
+  .dindbos-host .dos-desktop { inset: 43px 8px 84px; grid-template-columns: repeat(auto-fill, 82px); grid-auto-rows: 94px; gap: 4px; }
+  .dindbos-host .dos-icon { width: 82px; height: 94px; grid-template-rows: 58px auto; }
+  .dindbos-host .dos-icon-art, .dindbos-host .dos-icon-art svg, .dindbos-host .dos-icon-art img { width: 58px; height: 58px; }
+  .dindbos-host .dos-dock { max-width: calc(100% - 16px); bottom: max(6px, env(safe-area-inset-bottom)); gap: 3px; padding: 4px 5px 8px; border-radius: 18px; }
+  .dindbos-host .dos-dock-item { flex-basis: min(var(--dock-size, 52px), 44px); width: min(var(--dock-size, 52px), 44px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dindbos-host .dos-dock-item, .dindbos-host .dos-dock-tooltip { transition: none; }
+  .dindbos-host .dos-dock-item.is-launching .dos-dock-glyph { animation: none; }
+}

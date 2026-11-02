@@ -1,4 +1,4 @@
-import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
+import { NodeCompat } from "./node-compat.js";
 
 const DEFAULT_REGISTRY = "https://registry.npmjs.org";
 const MAX_METADATA_BYTES = 4 * 1024 * 1024;

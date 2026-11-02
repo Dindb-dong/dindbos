@@ -18,12 +18,7 @@ export async function createDindbOS(options = {}) {
   const config = normalizeDindbOSHostConfig(options);
   throwIfAborted(options.signal);
   const os = new DindbOS(runtimeOptions(config, options));
-  if (options.signal) {
-    const cancel = () => { os.destroy().catch(() => {}); };
-    options.signal.addEventListener("abort", cancel, { once: true });
-    os.lifecycleCleanups.push(() => options.signal.removeEventListener("abort", cancel));
-    if (options.signal.aborted) cancel();
-  }
+  watchAbort(os, options.signal);
   os.sdkHostConfig = publicHostConfig(config);
   try {
     if (typeof config.configure === "function") await abortable(Promise.resolve().then(() => config.configure(os, config)), options.signal);
@@ -38,22 +33,23 @@ export async function createDindbOS(options = {}) {
 export async function bootDindbOS(os, options = {}) {
   if (!os) throw new Error("bootDindbOS: os is required");
   const config = normalizeDindbOSHostConfig(options);
+  watchAbort(os, options.signal);
   os.sdkHostConfig = publicHostConfig(config);
   throwIfAborted(options.signal, os);
   await abortable(os.loadPersistentFileSystem(options.storage || {}), options.signal);
   throwIfAborted(options.signal, os);
   if (config.bootstrapPackages !== false) {
-    await os.runBootPhase("package-registry-load", () => os.packages.bootstrap());
+    await abortable(os.runBootPhase("package-registry-load", () => os.packages.bootstrap()), options.signal);
   }
   throwIfAborted(options.signal, os);
-  await os.runBootPhase("app-registry-load", async () => {
+  await abortable(os.runBootPhase("app-registry-load", async () => {
     await prepareDindbOSHost(os, config);
     return appRegistryBootDetail(os);
-  });
+  }), options.signal);
   throwIfAborted(options.signal, os);
   os.boot();
   if (config.serviceWorker.enabled) {
-    await os.registerServiceWorkerBoot(config.serviceWorker.scriptUrl);
+    await abortable(os.registerServiceWorkerBoot(config.serviceWorker.scriptUrl), options.signal);
   }
   throwIfAborted(options.signal, os);
   launchInitialApps(os, config.launch);
@@ -128,8 +124,17 @@ function abortable(promise, signal) {
       error.name = "AbortError";
       reject(error);
     };
-    if (signal.aborted) { abort(); return; }
+    if (signal.aborted) { Promise.resolve(promise).catch(() => {}); abort(); return; }
     signal.addEventListener("abort", abort, { once: true });
     Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
   });
+}
+
+function watchAbort(os, signal) {
+  if (!signal || os.mountSignal === signal) return;
+  os.mountSignal = signal;
+  const cancel = () => { os.destroy().catch(() => {}); };
+  signal.addEventListener("abort", cancel, { once: true });
+  os.lifecycleCleanups.push(() => signal.removeEventListener("abort", cancel));
+  if (signal.aborted) cancel();
 }

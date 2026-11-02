@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1600" viewBox="0 0 2400 1600">
+<defs>
+<linearGradient id="sky" x2="0" y2="1"><stop stop-color="#dce8df"/><stop offset=".56" stop-color="#b9cebf"/><stop offset="1" stop-color="#769a8b"/></linearGradient>
+<linearGradient id="sun" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f6f0d7" stop-opacity=".65"/><stop offset=".7" stop-color="#e1e8d3" stop-opacity="0"/></linearGradient>
+<linearGradient id="ridge" x2=".8" y2="1"><stop stop-color="#93ac99"/><stop offset="1" stop-color="#557d6d"/></linearGradient>
+<linearGradient id="near" x2=".7" y2="1"><stop stop-color="#486d5e"/><stop offset="1" stop-color="#244c3e"/></linearGradient>
+<linearGradient id="water" x2="0" y2="1"><stop stop-color="#93b9aa"/><stop offset=".24" stop-color="#a7c3b4"/><stop offset="1" stop-color="#4e8272"/></linearGradient>
+<linearGradient id="shore" x2="1" y2="1"><stop stop-color="#345b43"/><stop offset="1" stop-color="#102f27"/></linearGradient>
+<filter id="mist"><feGaussianBlur stdDeviation="26"/></filter>
+</defs>
+<rect width="2400" height="1600" fill="url(#sky)"/>
+<rect width="2400" height="1400" fill="url(#sun)"/>
+<path d="M0 650 170 550 260 573 442 390 530 412 657 304 750 366 895 511 1038 485 1200 594 1325 545 1536 359 1670 432 1790 330 1900 402 2070 287 2200 390 2400 300V1200H0Z" fill="#a2b7a7"/>
+<path d="m442 390 88 22 127-108 93 62 145 145-181-114-57-36-74 114-61-8-115 142Z" fill="#e5eade" opacity=".65"/>
+<path d="m1536 359 134 73 120-102 110 72 170-115 130 103-150-46-139 123-139-57-101 85Z" fill="#e1e8dc" opacity=".55"/>
+<path d="M0 830 140 694 330 723 555 611 700 675 830 581 1000 738 1190 656 1400 809 1590 699 1710 714 1900 541 2070 611 2270 478 2400 544V1310H0Z" fill="url(#ridge)"/>
+<path d="M0 975 194 915 370 1005 620 864 850 1030 1055 957 1270 1057 1460 927 1610 1021 1770 870 1960 1045 2190 882 2400 910V1600H0Z" fill="url(#near)"/>
+<path d="M0 1170Q450 1092 815 1168t585 39q270-68 1000-5v398H0Z" fill="url(#water)"/>
+<path d="M0 1160q300-22 536 27t626 27q350-53 724-10t514-1" fill="none" stroke="#c7d9cb" stroke-width="8" opacity=".33"/>
+<path d="M0 1310q339-42 658-10m270 62q267 18 490-7m-126 105q349-16 710 11m-2000-62q271-18 493 5m441 87q388 7 722-12" fill="none" stroke="#c1d8c8" stroke-width="3" opacity=".22"/>
+<path d="M2400 1050q-180 87-319 135t-222 169q154-53 281-4t260 73Z" fill="#3c6950"/>
+<path d="M0 1266q197 47 270 138t202 77q193-22 426 119H0Z" fill="url(#shore)"/>
+<path d="M2400 1326q-191-26-305 69t-366 205h671Z" fill="url(#shore)"/>
+<path d="M-100 1100q550-140 1020-30t900-53 700 36" fill="none" stroke="#d8e3d4" stroke-width="75" opacity=".16" filter="url(#mist)"/>
+</svg>

@@ -1,0 +1,157 @@
+@scope (.dindbos-host) to (.dindbos-host) {
+/* The menu bar and its transient surfaces share one instance-local coordinate space. */
+.dos-menubar {
+  position: absolute; inset: 0 0 auto; z-index: 1000; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; height: 30px; padding: 0 10px;
+  border: 0; border-bottom: 1px solid rgb(255 255 255 / 18%); border-radius: 0;
+  color: var(--text); background: var(--chrome-bg, rgb(248 250 248 / 64%));
+  box-shadow: none; backdrop-filter: blur(28px) saturate(160%); font-size: 13px; line-height: 1;
+  user-select: none;
+}
+.dos-menubar::before { display: none; }
+.dos-app-menus, .dos-menu-status { display: flex; align-items: center; height: 100%; gap: 1px; min-width: 0; }
+.dos-menubar button {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  height: 26px; min-width: 28px; padding: 0 9px; border: 0; border-radius: 5px;
+  background: transparent; box-shadow: none; color: inherit; font: inherit; cursor: default;
+  transition: background var(--motion-fast, 130ms) var(--ease-out, ease);
+}
+.dos-menubar button:hover, .dos-menubar button.is-open { background: rgb(127 137 132 / 18%); }
+.dos-menubar .dos-system-menu { padding: 0 8px; }
+.dos-system-menu svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+.dos-menubar .dos-active-app { font-weight: 650; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; justify-content: flex-start; }
+.dos-status-button svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.7; fill: none; }
+.dos-clock { display: inline-flex; align-items: center; gap: 6px; color: inherit; padding: 0; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.dos-taskstrip[hidden] { display: none !important; }
+.dos-shell-overlays { position: absolute; inset: 0; z-index: 1100; pointer-events: none; }
+.dos-shell-overlays > * { pointer-events: auto; }
+.dos-shell-panel, .dos-shell-menu {
+  position: absolute; color: var(--text); border: 1px solid var(--glass-border, rgb(255 255 255 / 50%));
+  border-radius: 12px; background: var(--chrome-bg, rgb(246 249 247 / 88%));
+  box-shadow: 0 18px 44px rgb(10 25 17 / 20%), 0 2px 8px rgb(10 25 17 / 10%), inset 0 1px 0 rgb(255 255 255 / 18%);
+  backdrop-filter: blur(34px) saturate(150%); max-height: calc(100% - 48px); overflow: auto;
+  animation: dos-shell-panel-in 150ms var(--ease-out, ease) both; font-size: 13px;
+}
+.dos-shell-menu { top: 34px; left: 6px; width: 248px; padding: 5px; border-radius: 9px; }
+.dos-shell-menu button {
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 4px;
+  width: 100%; height: 27px; padding: 0 7px; border: 0; border-radius: 5px; text-align: left;
+  background: transparent; color: inherit; font: inherit; box-shadow: none;
+}
+.dos-shell-menu button > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dos-shell-menu button:not(:disabled):hover, .dos-shell-menu button:focus-visible { background: var(--accent); color: white; outline: 0; }
+.dos-shell-menu button:disabled { opacity: .38; }
+.dos-shell-menu kbd { padding-left: 12px; font: inherit; font-size: 12px; opacity: .65; }
+.dos-shell-menu button.dos-compact-menu-item { display: none; }
+.dos-menu-check { text-align: center; font-size: 12px; }
+.dos-menu-divider { height: 1px; margin: 5px 8px; background: var(--line, rgb(80 95 87 / 16%)); }
+.dos-shell-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.dos-shell-panel h2 { margin: 0; color: inherit; font-size: 17px; font-weight: 650; letter-spacing: 0; line-height: 1.3; }
+.dos-shell-panel h3 { margin: 0 0 11px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.dos-panel-close { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: rgb(120 135 125 / 13%); color: var(--muted); font-size: 19px; line-height: 1; }
+.dos-panel-close:hover { background: rgb(120 135 125 / 23%); }
+.dos-control-center { right: 10px; top: 38px; width: 300px; padding: 18px; }
+.dos-control-section { padding: 0 0 17px; margin: 0 0 15px; border-bottom: 1px solid var(--line); }
+.dos-appearance-options, .dos-wallpaper-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dos-appearance-options button, .dos-wallpaper-options button {
+  display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 5px;
+  background: transparent; border: 1px solid transparent; border-radius: 8px; color: inherit; font-size: 11px;
+}
+.dos-appearance-options button[aria-pressed="true"], .dos-wallpaper-options button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.dos-mode-preview { display: block; width: 100%; height: 40px; border-radius: 5px; border: 1px solid rgb(80 95 87 / 18%); background: #edf2ee; position: relative; overflow: hidden; }
+.dos-mode-preview::before { content: ""; position: absolute; inset: 10px 8px -3px; border-radius: 4px 4px 0 0; background: white; box-shadow: 0 1px 6px rgb(0 0 0 / 16%); }
+.dos-mode-preview::after { content: ""; position: absolute; top: 16px; left: 14px; width: 17px; height: 3px; background: #c6d1c8; box-shadow: 0 6px 0 #e0e6e1; border-radius: 1px; }
+.dos-mode-dark { background: #25322e; }
+.dos-mode-dark::before { background: #3b4842; }
+.dos-mode-dark::after { background: #7d9386; box-shadow: 0 6px 0 #586c5d; }
+.dos-mode-system { background: linear-gradient(90deg, #edf2ee 50%, #25322e 50%); }
+.dos-mode-system::before { background: linear-gradient(90deg, white 50%, #3b4842 50%); }
+.dos-accent-options { display: flex; justify-content: space-between; gap: 10px; padding: 2px; }
+.dos-accent-options button { width: 25px; height: 25px; flex: 0 0 25px; padding: 0; border: 3px solid transparent; border-radius: 50%; background: var(--swatch); background-clip: padding-box; box-shadow: 0 0 0 1px rgb(85 95 90 / 14%); }
+.dos-accent-options button[aria-pressed="true"] { border-color: var(--content-bg, #fff); box-shadow: 0 0 0 2px var(--swatch); }
+.dos-wallpaper-preview { display: block; width: 100%; height: 38px; border-radius: 5px; border: 1px solid rgb(80 95 87 / 15%); background: #789782; }
+.dos-wallpaper-meadow { background: linear-gradient(160deg, #b5cfc2 35%, #6d967c 35% 55%, #35644c 55%); }
+.dos-wallpaper-coast { background: linear-gradient(160deg, #c1d6e1 35%, #789eae 35% 55%, #456e83 55%); }
+.dos-wallpaper-dusk { background: linear-gradient(160deg, #9594a8 35%, #626d89 35% 55%, #343e5b 55%); }
+.dos-dock-control { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dos-dock-control label { grid-column: 1 / -1; font-size: 12px; color: var(--muted); font-weight: 600; }
+.dos-dock-control input { grid-column: 1 / -1; width: 100%; margin: 2px 0; accent-color: var(--accent); }
+.dos-dock-control > span { font-size: 11px; color: var(--muted); }
+.dos-dock-control > span:last-child { text-align: right; }
+.dos-panel-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; width: 100%; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; text-align: left; box-shadow: none; }
+.dos-panel-link:hover { text-decoration: underline; }
+.dos-panel-link:disabled { opacity: .45; }
+.dos-calendar { right: 10px; top: 38px; width: 290px; padding: 20px; }
+.dos-calendar header { align-items: flex-start; }
+.dos-calendar-today { margin: 0 0 2px; color: var(--muted); font-size: 12px; }
+.dos-calendar header h2 { font-size: 26px; font-weight: 400; }
+.dos-calendar-today-action { padding: 4px 8px; border: 0; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
+.dos-calendar-month { display: flex; align-items: center; justify-content: space-between; margin: 20px 0 12px; font-size: 12px; }
+.dos-calendar-month > div { display: flex; gap: 4px; }
+.dos-calendar-month button { width: 23px; height: 23px; border: 0; border-radius: 5px; padding: 0; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; }
+.dos-calendar-month button:hover { background: var(--glass-bg-hover); }
+.dos-calendar-grid, .dos-calendar-week { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; gap: 3px; }
+.dos-calendar-week { margin-bottom: 8px; font-size: 10px; color: var(--muted); }
+.dos-calendar-grid span { display: grid; place-items: center; width: 30px; height: 30px; justify-self: center; border-radius: 50%; font-size: 12px; }
+.dos-calendar-grid .is-today { background: var(--accent); color: white; font-weight: 650; }
+.dos-launcher { left: 50%; top: min(18%, 150px); transform: translateX(-50%); width: min(560px, calc(100% - 32px)); padding: 0; overflow: hidden; border-radius: 16px; }
+.dos-launcher-search { display: flex; align-items: center; gap: 13px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.dos-launcher-search svg { width: 24px; height: 24px; fill: none; stroke: var(--muted); stroke-width: 1.6; flex: 0 0 auto; }
+.dos-launcher-search input { width: 100%; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text); box-shadow: none; outline: 0; font-size: 21px; font-weight: 400; }
+.dos-launcher-search input::placeholder { color: var(--muted); opacity: .75; }
+.dos-launcher-search kbd { color: var(--muted); font: inherit; font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; }
+.dos-launcher-results { padding: 8px; overflow-y: auto; max-height: min(340px, 40cqh); }
+.dos-launcher-results button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 12px; border: 0; border-radius: 9px; text-align: left; background: transparent; color: inherit; box-shadow: none; }
+.dos-launcher-results button:hover, .dos-launcher-results button:focus-visible { background: var(--accent-soft); outline: 0; }
+.dos-launcher-symbol { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 9px; background: var(--content-bg); color: var(--accent); font-size: 19px; font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 5%); }
+.dos-launcher-results strong { display: block; color: var(--text); font-size: 13px; font-weight: 600; }
+.dos-launcher-results small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.dos-launcher-open { margin-left: auto; opacity: 0; color: var(--muted); }
+.dos-launcher-results button:hover .dos-launcher-open, .dos-launcher-results button:focus-visible .dos-launcher-open { opacity: 1; }
+.dos-launcher-footer { display: flex; justify-content: space-between; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+.dos-shell-empty { margin: 24px 12px; text-align: center; color: var(--muted); font-size: 13px; }
+.dos-about { top: 22%; left: 50%; transform: translateX(-50%); width: min(320px, calc(100% - 32px)); padding: 28px; text-align: center; }
+.dos-about > .dos-panel-close { position: absolute; top: 12px; left: 12px; }
+.dos-about-mark { display: grid; place-items: center; width: 64px; height: 64px; margin: 8px auto 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--content-bg); color: var(--accent); font-size: 36px; font-weight: 700; box-shadow: 0 5px 12px rgb(20 40 30 / 10%); }
+.dos-about p { margin: 10px 0; font-size: 13px; }
+.dos-about .dos-about-detail { color: var(--muted); font-size: 11px; }
+.dos-about .dos-panel-link { justify-content: center; margin-top: 16px; }
+.dos-shell-toast { position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%); z-index: 1200; max-width: min(460px, calc(100% - 32px)); padding: 12px 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--content-bg); color: var(--text); box-shadow: 0 6px 24px rgb(0 0 0 / 15%); font-size: 13px; }
+@keyframes dos-shell-panel-in { from { opacity: 0; translate: 0 -5px; scale: .985; } to { opacity: 1; translate: 0 0; scale: 1; } }
+@media (max-width: 760px) {
+  .dos-menubar .dos-menu-label { display: none; }
+  .dos-menubar { padding-inline: 6px; gap: 4px; }
+  .dos-menubar .dos-active-app { max-width: 110px; }
+  .dos-clock { font-size: 11px; }
+  .dos-clock-date { display: none; }
+  .dos-shell-menu button.dos-compact-menu-item { display: grid; }
+  .dos-clock-button { max-width: 160px; overflow: hidden; }
+  .dos-control-center, .dos-calendar { right: 8px; max-width: calc(100% - 16px); }
+}
+@container (max-width: 760px) {
+  .dos-menubar .dos-menu-label { display: none; }
+  .dos-menubar .dos-active-app { max-width: 110px; }
+  .dos-clock { font-size: 11px; }
+  .dos-clock-date { display: none; }
+  .dos-shell-menu button.dos-compact-menu-item { display: grid; }
+  .dos-clock-button { max-width: 160px; overflow: hidden; }
+}
+@container (max-width: 340px) {
+  .dos-menubar { gap: 2px; padding-inline: 4px; }
+  .dos-menubar button { padding-inline: 5px; }
+  .dos-menubar .dos-active-app { max-width: 80px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dos-shell-panel, .dos-shell-menu { animation: none; }
+  .dos-menubar button { transition: none; }
+}
+
+:scope[data-appearance="dark"] .dos-panel-link,
+:scope[data-appearance="dark"] .dos-calendar-today-action {
+  color: color-mix(in srgb, var(--accent) 46%, var(--text));
+}
+}
+@scope (.dindbos-host) to (.dindbos-host) {
+  .dos-launcher-symbol { border: 0; background: transparent; box-shadow: none; }
+  .dos-launcher-symbol > .dos-app-icon { width: 36px; height: 36px; }
+}

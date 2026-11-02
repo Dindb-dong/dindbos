@@ -1,12 +1,15 @@
-import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js?v=20260422-browserd";
+import { mountAppIcon } from "../../ui/app-icon.js";
+import { renderDocumentEditor } from "./document-editor.js";
+import { appearanceMarkup, wireAppearanceControls, welcomeMarkup } from "./appearance.js";
+import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js";
 import {
   BROWSERD_FRAME_ENCODING,
   BROWSERD_FRAME_TRANSPORT,
   BrowserCompanionClient,
   browserProviderHealthUrl,
   pasteClipboardText,
-} from "../browser-client.js?v=20260422-browserd";
-import { ShellSession } from "../shell.js?v=20260422-browserd";
+} from "../browser-client.js";
+import { ShellSession } from "../shell.js";
 
 const FILES_OPERATION_HISTORY_LIMIT = 12;
 const FILES_OPERATION_YIELD_INTERVAL_MS = 12;
@@ -28,6 +31,16 @@ const DEFAULT_PORTFOLIO_DATA = {
 };
 
 export function installBuiltinApps(os, options = {}) {
+  const include = options.include ? new Set(options.include) : null;
+  const exclude = new Set(options.exclude || []);
+  const register = (app) => {
+    if ((!include || include.has(app.id)) && !exclude.has(app.id)) os.registerApp(app);
+  };
+  const appearance = {
+    get: () => os.appearance || {},
+    set: (patch) => os.setAppearance?.(patch),
+    subscribe: (listener) => os.bus?.on?.("appearance:change", listener) || (() => {}),
+  };
   const portfolioData = options.portfolioData || DEFAULT_PORTFOLIO_DATA;
   const includePortfolio = options.includePortfolio !== false;
   const userHome = os.session.home || "/home/guest";
@@ -35,7 +48,7 @@ export function installBuiltinApps(os, options = {}) {
   const userDocumentWriteRoots = documentWriteRoots(userHome);
 
   if (includePortfolio) {
-    os.registerApp({
+    register({
       id: "portfolio",
       name: "Portfolio",
       title: "Portfolio.app",
@@ -52,17 +65,17 @@ export function installBuiltinApps(os, options = {}) {
     });
   }
 
-  os.registerApp({
+  register({
     id: "files",
     name: "Files",
     title: ({ path = "/" }) => `Files - ${path}`,
-    icon: "folder",
+    icon: "files",
     pinned: true,
     width: 760,
     height: 520,
     accepts: ["inode/directory"],
     manifest: {
-      capabilities: ["app.launch", "storage.manage", "localMount.read", "localMount.manage"],
+      capabilities: ["app.launch", "storage.read", "storage.manage", "localMount.read", "localMount.manage"],
       fileSystem: { read: ["/"], write: userDocumentWriteRoots },
     },
     render: ({ os: runtime, content, context, window }) => (
@@ -70,7 +83,7 @@ export function installBuiltinApps(os, options = {}) {
     ),
   });
 
-  os.registerApp({
+  register({
     id: "terminal",
     name: "Terminal",
     title: "Terminal.app",
@@ -98,7 +111,7 @@ export function installBuiltinApps(os, options = {}) {
     render: ({ os: runtime, content }) => renderTerminal(runtime, content),
   });
 
-  os.registerApp({
+  register({
     id: "activity-monitor",
     name: "Activity Monitor",
     title: "Activity Monitor.app",
@@ -114,7 +127,7 @@ export function installBuiltinApps(os, options = {}) {
     render: ({ os: runtime, content }) => renderActivityMonitor(runtime, content),
   });
 
-  os.registerApp({
+  register({
     id: "text",
     name: "TextEdit",
     title: ({ node }) => node?.name || "TextEdit",
@@ -123,13 +136,13 @@ export function installBuiltinApps(os, options = {}) {
     width: 720,
     height: 520,
     manifest: {
-      capabilities: ["storage.manage", "localMount.read", "localMount.manage"],
+      capabilities: ["storage.read", "storage.manage", "localMount.read", "localMount.manage"],
       fileSystem: { read: userDocumentReadRoots, write: userDocumentWriteRoots },
     },
     render: ({ os: runtime, content, context, window }) => renderText(runtime, content, context.node, window),
   });
 
-  os.registerApp({
+  register({
     id: "browser",
     name: "Browser",
     title: ({ node, url }) => node?.name || url || "Browser.app",
@@ -146,7 +159,7 @@ export function installBuiltinApps(os, options = {}) {
     render: ({ os: runtime, content, context, window }) => renderBrowser(runtime, content, context, window),
   });
 
-  os.registerApp({
+  register({
     id: "viewer",
     name: "Viewer",
     title: ({ node }) => node?.name || "Viewer",
@@ -162,7 +175,7 @@ export function installBuiltinApps(os, options = {}) {
     render: ({ os: runtime, content, context }) => renderViewer(runtime, content, context.node),
   });
 
-  os.registerApp({
+  register({
     id: "calculator",
     name: "Calculator",
     title: "Calculator.app",
@@ -177,7 +190,7 @@ export function installBuiltinApps(os, options = {}) {
     render: ({ content }) => renderCalculator(content),
   });
 
-  os.registerApp({
+  register({
     id: "settings",
     name: "Settings",
     title: "Settings.app",
@@ -190,8 +203,25 @@ export function installBuiltinApps(os, options = {}) {
       capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read", "browser.read"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
     },
-    render: ({ content, os: runtime }) => renderSettings(runtime, content),
+    render: ({ content, os: runtime }) => renderSettings(runtime, content, appearance),
   });
+  if (options.includeWelcome) {
+    register({
+      id: "welcome", name: "Welcome", title: "Welcome to DindbOS", icon: "welcome",
+      singleton: true, pinned: true, width: 880, height: 640,
+      manifest: { capabilities: ["app.launch"], fileSystem: { read: [], write: [] } },
+      render: ({ content, os: runtime }) => {
+        content.innerHTML = welcomeMarkup(appearance.get());
+        const cleanup = wireAppearanceControls(content, appearance);
+        const iconCleanups = [...content.querySelectorAll("[data-welcome-icon]")].map((element) => mountAppIcon(element, element.dataset.welcomeIcon));
+        content.querySelectorAll("[data-welcome-launch]").forEach((button) => {
+          button.disabled = !os.apps.has(button.dataset.welcomeLaunch);
+          button.addEventListener("click", () => runtime.launch(button.dataset.welcomeLaunch));
+        });
+        return () => { cleanup(); iconCleanups.forEach((dispose) => dispose()); };
+      },
+    });
+  }
 }
 
 function documentReadRoots(userHome) {
@@ -229,9 +259,9 @@ function renderFiles(os, content, path, windowApi) {
   const sidebar = [
     { section: "Favorites", items: [
       { label: "Home", path: os.session.home || "/home/guest", icon: "home" },
-      { label: "Desktop", path: os.fs.join(os.session.home || "/home/guest", "Desktop"), icon: "folder" },
-      { label: "Documents", path: os.fs.join(os.session.home || "/home/guest", "Documents"), icon: "folder" },
-      { label: "Downloads", path: os.fs.join(os.session.home || "/home/guest", "Downloads"), icon: "folder" },
+      { label: "Desktop", path: os.fs.join(os.session.home || "/home/guest", "Desktop"), icon: "desktop" },
+      { label: "Documents", path: os.fs.join(os.session.home || "/home/guest", "Documents"), icon: "document" },
+      { label: "Downloads", path: os.fs.join(os.session.home || "/home/guest", "Downloads"), icon: "download" },
       { label: "Trash", path: os.fs.join(os.session.home || "/home/guest", ".Trash"), icon: "trash" },
       { label: "Applications", path: "/usr/share/applications", icon: "app" },
     ] },
@@ -249,12 +279,19 @@ function renderFiles(os, content, path, windowApi) {
   let searchQuery = "";
   let searchTimer = null;
   let sortMode = "kind-name";
+  let viewMode = "list";
+  let inspectorOpen = false;
+  let disposed = false;
+  let drawGeneration = 0;
   let fileOperation = null;
   let operationHistory = [];
   let selectedPaths = new Set([selectedPath]);
   let selectionAnchorPath = selectedPath;
 
   const draw = async (nextPath, nextSelectedPath = null, options = {}) => {
+    contextMenuCleanups.get(content)?.();
+    if (disposed) return;
+    const generation = ++drawGeneration;
     currentPath = os.fs.normalize(nextPath);
     if (!os.fs.resolve(currentPath)) currentPath = os.session.home || "/";
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.syncDirectory(currentPath);
@@ -279,15 +316,17 @@ function renderFiles(os, content, path, windowApi) {
       ? latestMountOperation
       : fileOperation || latestMountOperation;
     const diagnostics = buildFilesDiagnostics(os, currentPath, [...selectedPaths], operationHistory, visibleOperation, mountStatus);
+    if (disposed || generation !== drawGeneration) return;
+    const visibleColumns = viewMode === "list" ? [currentColumn] : columns;
     content.innerHTML = `
-      <section class="files-app" tabindex="0">
+      <section class="files-app${inspectorOpen ? " has-inspector" : ""}" tabindex="0" data-files-view="${viewMode}">
         <aside class="files-sidebar">
           ${sidebar.map((group) => `
             <section>
               <h3>${escapeHtml(group.section)}</h3>
               ${group.items.map((item) => `
                 <button type="button" data-nav="${escapeAttr(item.path)}" data-icon="${escapeAttr(item.icon)}" class="${isWithinPath(currentPath, item.path) ? "is-active" : ""}">
-                  <span class="dos-mini-icon"></span>
+                  <span class="dos-mini-icon">${filesMiniIcon(item.icon)}</span>
                   ${escapeHtml(item.label)}
                 </button>
               `).join("")}
@@ -300,24 +339,24 @@ function renderFiles(os, content, path, windowApi) {
             <nav class="files-breadcrumb" aria-label="Current folder">
               ${renderBreadcrumb(os, currentPath)}
             </nav>
-            <span>${escapeHtml(currentStat?.permissions || "")}</span>
+            <button type="button" data-files-inspector aria-label="Toggle Inspector" aria-pressed="${inspectorOpen}" title="Show file information">ⓘ</button>
           </div>
-          <div class="files-toolbar">
-            <button type="button" data-action="new-folder">New Folder</button>
-            <button type="button" data-action="new-file">New File</button>
-            <button type="button" data-action="rename">Rename</button>
-            <button type="button" data-action="duplicate">Duplicate</button>
-            <button type="button" data-action="copy">Copy</button>
-            <button type="button" data-action="paste">Paste</button>
-            <button type="button" data-action="trash">Trash</button>
+          <div class="files-toolbar" role="toolbar" aria-label="File actions">
+            <button type="button" data-action="new-folder" title="Create a new folder">New Folder</button>
             <button type="button" data-action="import">Import</button>
-            <button type="button" data-action="export">Export</button>
-            <button type="button" data-action="mount-local">Mount Local</button>
-            <button type="button" data-action="delete">Delete</button>
-            <select data-files-sort aria-label="Sort files">
-              ${filesSortOptions(sortMode)}
+            <details class="files-more-actions">
+              <summary aria-label="More file actions">•••</summary>
+              <div class="files-action-menu">
+                ${[["new-file", "New File"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["mount-local", "Mount Local Folder"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" data-action="${action}">${label}</button>`).join("")}
+              </div>
+            </details>
+            <span class="files-toolbar-spacer"></span>
+            <select data-files-view-select aria-label="File view">
+              <option value="list" ${viewMode === "list" ? "selected" : ""}>List</option>
+              <option value="columns" ${viewMode === "columns" ? "selected" : ""}>Columns</option>
             </select>
-            <input type="search" data-files-search placeholder="Search" value="${escapeAttr(searchQuery)}" />
+            <select data-files-sort aria-label="Sort files">${filesSortOptions(sortMode)}</select>
+            <input type="search" data-files-search aria-label="Search files" placeholder="Search" value="${escapeAttr(searchQuery)}" />
           </div>
           <div class="files-dropzone">
             Drop files here to import into ${escapeHtml(currentPath)}. Drag rows to move them.
@@ -325,7 +364,7 @@ function renderFiles(os, content, path, windowApi) {
           ${mountStatus ? renderMountStatusBanner(mountStatus) : ""}
           ${renderFilesOperation(visibleOperation)}
           <div class="files-column-view" role="tree" data-drop-target="true" data-drop-path="${escapeAttr(currentPath)}">
-            ${columns.map((column) => `
+            ${visibleColumns.filter(Boolean).map((column) => `
               <div class="files-column" data-column="${escapeAttr(column.path)}">
                 ${column.entries.map((entry) => {
                   const stat = os.fs.lstat(entry.path) || os.fs.stat(entry.path);
@@ -342,12 +381,13 @@ function renderFiles(os, content, path, windowApi) {
                       data-icon="${escapeAttr(entry.icon || resolved.icon || resolved.type)}"
                       draggable="true"
                     >
-                      <span class="dos-mini-icon"></span>
+                      <span class="dos-mini-icon">${filesMiniIcon(entry.icon || resolved.icon || resolved.type)}</span>
                       <span>${escapeHtml(entry.name)}</span>
                       <small>${escapeHtml(rowKind(os, entry, stat))}</small>
                     </button>
                   `;
                 }).join("")}
+                ${!column.entries.length ? `<div class="files-empty"><strong>This folder is empty</strong><span>Add a file or create a folder to get started.</span></div>` : ""}
                 ${column.capped ? `
                   <div class="files-column-limit" data-files-column-limit>
                     Showing ${escapeHtml(`${column.entries.length} of ${column.totalEntries}${query ? "+" : ""}`)}. Use search or sorting to narrow this folder.
@@ -357,11 +397,11 @@ function renderFiles(os, content, path, windowApi) {
             `).join("")}
           </div>
           <div class="files-status">
-            <span>${query ? `${visibleCount}${cappedSearch ? "+" : ""} matches` : currentColumn?.capped ? `${currentVisibleCount}/${currentTotalCount} visible` : `${currentTotalCount} items`} · ${selectedPaths.size} selected</span>
+            <span>${query ? `${visibleCount}${cappedSearch ? "+" : ""} matches` : currentColumn?.capped ? `${currentVisibleCount}/${currentTotalCount} visible` : `${currentTotalCount} items`} · ${selectedPath === currentPath ? 0 : selectedPaths.size} selected</span>
             <span>${clipboard ? `Clipboard: ${escapeHtml(os.fs.basename(clipboard.path))}` : selectedPaths.size > 1 ? `${selectedPaths.size} selected` : escapeHtml(currentPath)}</span>
           </div>
         </div>
-        <aside class="files-inspector">
+        <aside class="files-inspector" ${inspectorOpen ? "" : "hidden"}>
           ${selected ? renderInspector(selected) : "<p>No selection</p>"}
           ${renderFilesDiagnostics(diagnostics)}
           ${renderFilesOperationHistory(operationHistory)}
@@ -372,6 +412,18 @@ function renderFiles(os, content, path, windowApi) {
     content.querySelectorAll("[data-nav]").forEach((button) => {
       button.addEventListener("click", () => draw(button.dataset.nav));
     });
+    content.querySelector("[data-files-inspector]").addEventListener("click", () => {
+      inspectorOpen = !inspectorOpen;
+      draw(currentPath, selectedPath, { preserveSelection: true });
+    });
+    content.querySelector("[data-files-view-select]").addEventListener("change", (event) => {
+      viewMode = event.target.value;
+      draw(currentPath, selectedPath, { preserveSelection: true });
+    });
+    if (viewMode === "columns") {
+      const columnView = content.querySelector(".files-column-view");
+      columnView.scrollLeft = columnView.scrollWidth;
+    }
     const searchInput = content.querySelector("[data-files-search]");
     searchInput.addEventListener("input", () => {
       searchQuery = searchInput.value;
@@ -544,6 +596,8 @@ function renderFiles(os, content, path, windowApi) {
     os.openPath(selectedPath);
   };
   const runAction = async (action, actionPath = selectedPath) => {
+    if (disposed) return;
+    content.querySelector(".files-more-actions")?.removeAttribute("open");
     const reporter = createFilesOperationReporter(content, operationLabel(action));
     try {
       const result = await handleFileAction(os, currentPath, actionPath, action, {
@@ -553,7 +607,7 @@ function renderFiles(os, content, path, windowApi) {
         selectedPaths: [...selectedPaths],
       });
       if (Object.hasOwn(result, "clipboard")) clipboard = result.clipboard;
-      await os.storage?.flush?.();
+      await syncAppStorage(os);
       if (reporter.started) {
         fileOperation = reporter.complete("Complete");
         operationHistory = recordFilesOperationHistory(operationHistory, fileOperation);
@@ -569,7 +623,30 @@ function renderFiles(os, content, path, windowApi) {
       updateFilesOperation(content, fileOperation);
     }
   };
-  draw(path);
+  draw(path).catch((error) => { if (!disposed) windowApi.setTitle(`Files - ${error.message}`); });
+  return () => {
+    disposed = true;
+    contextMenuCleanups.get(content)?.();
+    drawGeneration += 1;
+    window.clearTimeout(clickTimer);
+    window.clearTimeout(searchTimer);
+  };
+}
+
+function filesMiniIcon(type) {
+  const paths = {
+    folder: '<path d="M2 5h5l2 2h9v11H2Z"/>',
+    directory: '<path d="M2 5h5l2 2h9v11H2Z"/>',
+    home: '<path d="m2 9 8-7 8 7v9h-6v-6H8v6H2Z"/>',
+    desktop: '<rect x="2" y="3" width="16" height="11" rx="1.5"/><path d="M7 18h6m-3-4v4"/>',
+    document: '<path d="M5 2h7l4 4v12H5Zm7 0v5h4M8 10h5m-5 3h5"/>',
+    download: '<path d="M10 2v11m-4-4 4 4 4-4M3 14v4h14v-4"/>',
+    trash: '<path d="M3 5h14M7 5V2h6v3M5 5l1 13h8l1-13M8 8v7m4-7v7"/>',
+    app: '<rect x="2" y="2" width="6" height="6" rx="1"/><rect x="12" y="2" width="6" height="6" rx="1"/><rect x="2" y="12" width="6" height="6" rx="1"/><rect x="12" y="12" width="6" height="6" rx="1"/>',
+    device: '<rect x="3" y="2" width="14" height="16" rx="2"/><path d="M6 14h8m0-3h.1"/>',
+    settings: '<circle cx="10" cy="10" r="6"/><circle cx="10" cy="10" r="2"/><path d="M10 1v3m0 12v3M1 10h3m12 0h3"/>',
+  };
+  return `<svg class="files-mini-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${paths[type] || paths.document}</svg>`;
 }
 
 function buildFileColumns(os, currentPath, selectedPath, sortMode = "kind-name") {
@@ -1134,40 +1211,34 @@ function operationLabel(action) {
   })[action] || action;
 }
 
+const contextMenuCleanups = new WeakMap();
+
 function showFilesContextMenu(content, event, targetPath, clipboard, runAction) {
-  content.querySelector(".files-context-menu")?.remove();
+  contextMenuCleanups.get(content)?.();
   const menu = document.createElement("div");
   menu.className = "files-context-menu";
-  menu.style.left = `${event.clientX}px`;
-  menu.style.top = `${event.clientY}px`;
-  menu.innerHTML = [
-    ["open", "Open"],
-    ["rename", "Rename"],
-    ["duplicate", "Duplicate"],
-    ["copy", "Copy"],
-    ["paste", clipboard ? `Paste ${escapeHtml(clipboard.name)}` : "Paste"],
-    ["trash", "Move to Trash"],
-    ["export", "Export"],
-    ["delete", "Delete Permanently"],
-  ].map(([action, label]) => `
-    <button type="button" data-context-action="${escapeAttr(action)}" ${action === "paste" && !clipboard ? "disabled" : ""}>
-      ${label}
-    </button>
-  `).join("");
+  menu.setAttribute("role", "menu");
+  menu.innerHTML = [["open", "Open"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", clipboard ? `Paste ${escapeHtml(clipboard.name)}` : "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" role="menuitem" data-context-action="${escapeAttr(action)}" ${action === "paste" && !clipboard ? "disabled" : ""}>${label}</button>`).join("");
   content.appendChild(menu);
-  menu.querySelectorAll("[data-context-action]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      menu.remove();
-      await runAction(button.dataset.contextAction, targetPath);
-    });
+  const bounds = menu.offsetParent?.getBoundingClientRect() || content.getBoundingClientRect();
+  menu.style.left = `${Math.max(4, Math.min(event.clientX - bounds.left, bounds.width - menu.offsetWidth - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(event.clientY - bounds.top, bounds.height - menu.offsetHeight - 4))}px`;
+  const close = () => {
+    menu.remove();
+    document.removeEventListener("pointerdown", outside, true);
+    contextMenuCleanups.delete(content);
+  };
+  const outside = (nextEvent) => { if (!menu.contains(nextEvent.target)) close(); };
+  contextMenuCleanups.set(content, close);
+  document.addEventListener("pointerdown", outside, true);
+  menu.querySelectorAll("[data-context-action]").forEach((button) => button.addEventListener("click", async () => { close(); await runAction(button.dataset.contextAction, targetPath); }));
+  menu.addEventListener("keydown", (keyEvent) => {
+    const items = [...menu.querySelectorAll("button:not(:disabled)")];
+    const index = items.indexOf(document.activeElement);
+    if (keyEvent.key === "Escape") { keyEvent.preventDefault(); close(); content.querySelector(".files-app")?.focus(); }
+    if (["ArrowDown", "ArrowUp"].includes(keyEvent.key)) { keyEvent.preventDefault(); items[(index + (keyEvent.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus(); }
   });
-  window.setTimeout(() => {
-    const close = () => {
-      menu.remove();
-      document.removeEventListener("click", close);
-    };
-    document.addEventListener("click", close);
-  }, 0);
+  menu.querySelector("button:not(:disabled)")?.focus();
 }
 
 async function handleFilesDrop(os, event, destinationPath, draw, windowApi, content, onHistory = null) {
@@ -1975,65 +2046,7 @@ function uniquePath(os, directory, name) {
 }
 
 function renderText(os, content, node, windowApi) {
-  content.innerHTML = `
-    <section class="text-app">
-      <textarea spellcheck="false" disabled>Loading...</textarea>
-      <footer>
-        <span>${escapeHtml(node?.path || "")}</span>
-        <button type="button" disabled>Save</button>
-      </footer>
-    </section>
-  `;
-  renderTextEditor(os, content, node, windowApi).catch((error) => {
-    content.innerHTML = `
-      <section class="text-app">
-        <textarea spellcheck="false" disabled>${escapeHtml(error.message)}</textarea>
-        <footer><span>${escapeHtml(error.message)}</span></footer>
-      </section>
-    `;
-    windowApi.setTitle(`${node?.name || "TextEdit"} - load failed`);
-  });
-}
-
-async function renderTextEditor(os, content, node, windowApi) {
-  const isLocal = Boolean(node?.path && os.localMounts?.isMountedPath(node.path));
-  const stat = isLocal ? await os.localMounts.stat(node.path) : os.fs.stat(node.path);
-  const initialContent = node?.path
-    ? (isLocal ? await os.localMounts.readFile(node.path) : os.fs.readFile(node.path))
-    : node?.content || "";
-  content.innerHTML = `
-    <section class="text-app">
-      <textarea spellcheck="false">${escapeHtml(initialContent)}</textarea>
-      <footer>
-        <span>${escapeHtml(node?.path || "")} · ${escapeHtml(stat?.permissions || "")}</span>
-        <button type="button">Save</button>
-      </footer>
-    </section>
-  `;
-  const textarea = content.querySelector("textarea");
-  const footer = content.querySelector("footer span");
-  const save = async () => {
-    try {
-      if (isLocal) {
-        await saveTextDocument(os, node, textarea.value, { local: true });
-      } else {
-        await saveTextDocument(os, node, textarea.value);
-      }
-      const nextStat = isLocal ? await os.localMounts.stat(node.path) : os.fs.stat(node.path);
-      footer.textContent = `${node.path} · ${nextStat?.permissions || ""} · saved ${shortTime(nextStat?.modified)}`;
-      windowApi.setTitle(`${node.name} - saved`);
-    } catch (error) {
-      footer.textContent = error.message;
-      windowApi.setTitle(`${node.name} - save failed`);
-    }
-  };
-  content.querySelector("button").addEventListener("click", save);
-  textarea.addEventListener("keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-      event.preventDefault();
-      save();
-    }
-  });
+  return renderDocumentEditor(os, content, node, windowApi, saveTextDocument);
 }
 
 export async function saveTextDocument(os, node, content, options = {}) {
@@ -2045,13 +2058,19 @@ export async function saveTextDocument(os, node, content, options = {}) {
   }
   os.fs.atomicWriteFile(node.path, content, "/", options.atomic || {});
   node.content = os.fs.readFile(node.path);
-  await os.storage?.flush?.();
+  await syncAppStorage(os);
   return node;
+}
+
+async function syncAppStorage(os) {
+  if (typeof os.storage?.sync === "function") return os.storage.sync();
+  return os.storage?.flush?.();
 }
 
 function renderBrowser(os, content, context = {}, windowApi) {
   const providerUrl = browserProviderUrl(os, context);
   const client = new BrowserCompanionClient(providerUrl);
+  let disposed = false;
   const restoredState = windowApi?.getState?.("browser");
   const state = createBrowserSessionState({ ...context, companionUrl: providerUrl }, restoredState);
   content.innerHTML = `
@@ -2106,7 +2125,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
   let wheelPoint = { x: 0, y: 0 };
   let remoteFrameObjectUrl = state.frame.startsWith("blob:") ? state.frame : "";
   const lastResize = { width: 0, height: 0, scale: 0, mobile: false };
-  const persistState = () => windowApi?.setState?.("browser", browserSessionSnapshot(state));
+  const persistState = () => { if (!disposed) windowApi?.setState?.("browser", browserSessionSnapshot(state)); };
   const renderTabs = () => {
     refs.tabs.innerHTML = browserTabsMarkup(state);
     refs.tabs.querySelectorAll("[data-browser-tab]").forEach((button) => {
@@ -2132,6 +2151,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     });
   };
   const setStatus = (status) => {
+    if (disposed) return;
     const nextStatus = String(status || "");
     if (state.status === nextStatus) return;
     state.status = nextStatus;
@@ -2145,6 +2165,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
     refs.diagnostics.innerHTML = browserDiagnosticsMarkup(buildBrowserDiagnostics(state, { connected: client.connected }));
   };
   const showFrame = (src) => {
+    if (disposed) return;
     if (remoteFrameObjectUrl && remoteFrameObjectUrl !== src) URL.revokeObjectURL(remoteFrameObjectUrl);
     remoteFrameObjectUrl = src.startsWith("blob:") ? src : "";
     state.mode = "companion";
@@ -2307,7 +2328,8 @@ function renderBrowser(os, content, context = {}, windowApi) {
     event.preventDefault();
     client.key(payload).catch((error) => setStatus(error.message));
   });
-  new ResizeObserver(resizeRemote).observe(refs.viewport);
+  const resizeObserver = new ResizeObserver(resizeRemote);
+  resizeObserver.observe(refs.viewport);
 
   async function connectCompanion() {
     if (!client.connected) {
@@ -2374,6 +2396,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
   }
 
   function restoreBrowserView() {
+    if (disposed) return;
     syncBrowserStateFromActiveTab(state);
     refs.status.textContent = state.status;
     refs.address.value = state.address;
@@ -2393,6 +2416,15 @@ function renderBrowser(os, content, context = {}, windowApi) {
       refs.local.hidden = true;
     }
   }
+  return () => {
+    disposed = true;
+    resizeObserver.disconnect();
+    clearTimeout(resizeTimer);
+    clearTimeout(wheelTimer);
+    if (frameRaf) cancelAnimationFrame(frameRaf);
+    if (remoteFrameObjectUrl) URL.revokeObjectURL(remoteFrameObjectUrl);
+    client.close();
+  };
 }
 
 function browserTabsMarkup(state = {}) {
@@ -2751,6 +2783,7 @@ export function browserViewportMetrics(rect = {}, deviceScaleFactor = 1, navigat
 }
 
 function renderViewer(os, content, node) {
+  let disposed = false;
   content.innerHTML = `
     <section class="viewer-app">
       <p class="dos-kicker">${escapeHtml(node?.mime || "document")}</p>
@@ -2758,7 +2791,8 @@ function renderViewer(os, content, node) {
       <pre>Loading preview...</pre>
     </section>
   `;
-  renderViewerBytes(os, content, node).catch((error) => {
+  renderViewerBytes(os, content, node, () => disposed).catch((error) => {
+    if (disposed) return;
     content.innerHTML = `
       <section class="viewer-app">
         <p class="dos-kicker">Preview error</p>
@@ -2767,13 +2801,15 @@ function renderViewer(os, content, node) {
       </section>
     `;
   });
+  return () => { disposed = true; cleanupViewerObjectUrl(content); };
 }
 
 const VIEWER_TEXT_PREVIEW_LIMIT = 256 * 1024;
 
-async function renderViewerBytes(os, content, node) {
+async function renderViewerBytes(os, content, node, isDisposed = () => false) {
   const mime = node?.mime || "application/octet-stream";
   const bytes = node?.path ? await readViewerPreviewBytes(os, node, mime) : null;
+  if (isDisposed()) return;
   cleanupViewerObjectUrl(content);
   const usesObjectUrl = bytes && (mime.startsWith("image/") || mime === "application/pdf");
   const url = usesObjectUrl ? URL.createObjectURL(new Blob([bytes], { type: mime })) : "";
@@ -2824,7 +2860,6 @@ export function viewerMarkup({ mime, name, path = "", preview, url, status = "",
     <section class="viewer-app">
       <header class="viewer-header">
         <div>
-          <p class="dos-kicker">${escapeHtml(mime)}</p>
           <h2>${escapeHtml(name || "Document")}</h2>
         </div>
         <div class="viewer-toolbar" role="toolbar" aria-label="Viewer controls">
@@ -2840,7 +2875,7 @@ export function viewerMarkup({ mime, name, path = "", preview, url, status = "",
         </div>
       </header>
       <p class="viewer-status" data-viewer-status>${escapeHtml(statusText)}</p>
-      ${diagnostics ? renderViewerDiagnostics(diagnostics) : ""}
+      ${diagnostics ? `<details class="viewer-info"><summary>Document information</summary>${renderViewerDiagnostics(diagnostics)}</details>` : ""}
       <div class="viewer-preview" data-viewer-preview style="--viewer-zoom: 1">
         ${mime.startsWith("image/") && url ? `<img data-viewer-object src="${escapeAttr(url)}" alt="${escapeAttr(name || "Image")}" />` : ""}
         ${mime === "application/pdf" && url ? `<canvas class="viewer-pdf-canvas" data-viewer-pdf-canvas hidden></canvas><iframe data-viewer-object src="${escapeAttr(url)}" title="${escapeAttr(name || "PDF")}"></iframe>` : ""}
@@ -3342,6 +3377,7 @@ function renderActivityMonitor(os, content) {
   };
   draw();
   refreshTimer = window.setInterval(draw, 1000);
+  return () => window.clearInterval(refreshTimer);
 }
 
 export function filterAndSortActivityProcesses(processes = [], options = {}) {
@@ -3547,38 +3583,63 @@ function formatActivityScore(value) {
 }
 
 function renderCalculator(content) {
+  const keys = [["clear", "AC"], ["sign", "±"], ["percent", "%"], ["/", "÷"], ["7", "7"], ["8", "8"], ["9", "9"], ["*", "×"], ["4", "4"], ["5", "5"], ["6", "6"], ["-", "−"], ["1", "1"], ["2", "2"], ["3", "3"], ["+", "+"], ["0", "0"], [".", "."], ["=", "="]];
   content.innerHTML = `
-    <section class="calculator-app">
-      <output>0</output>
-      <div>
-        ${["7", "8", "9", "/", "4", "5", "6", "*", "1", "2", "3", "-", "0", ".", "=", "+"].map((key) => `
-          <button type="button" data-key="${key}">${key}</button>
-        `).join("")}
+    <section class="calculator-app" tabindex="0" aria-label="Calculator">
+      <div class="calculator-display"><span data-expression aria-hidden="true"></span><output aria-label="Result">0</output></div>
+      <div class="calculator-keys">
+        ${keys.map(([key, label]) => `<button type="button" data-key="${key}" ${key === "clear" ? "data-clear" : ""} class="${["/", "*", "-", "+", "="].includes(key) ? "is-operator" : ["clear", "sign", "percent"].includes(key) ? "is-function" : ""}${key === "0" ? " is-zero" : ""}" aria-label="${({clear: "Clear", sign: "Change sign", percent: "Percent", "/": "Divide", "*": "Multiply", "-": "Subtract", "+": "Add", "=": "Equals"})[key] || label}">${label}</button>`).join("")}
       </div>
-      <button type="button" data-clear>Clear</button>
-    </section>
-  `;
+    </section>`;
   let expression = "";
+  let completed = false;
   const output = content.querySelector("output");
-  content.querySelectorAll("[data-key]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const key = button.dataset.key;
-      if (key === "=") {
-        expression = safeCalculate(expression);
-      } else {
-        expression += key;
-      }
-      output.textContent = expression || "0";
-    });
+  const history = content.querySelector("[data-expression]");
+  const enter = (key) => {
+    if (key === "clear") { expression = ""; history.textContent = ""; completed = false; }
+    else if (key === "backspace") { expression = expression === "Error" ? "" : expression.slice(0, -1); completed = false; }
+    else if (key === "=") {
+      if (!expression || expression === "Error") return;
+      history.textContent = expression.replaceAll("*", "×").replaceAll("/", "÷") + " =";
+      expression = safeCalculate(expression);
+      completed = true;
+    } else if (key === "sign" || key === "percent") {
+      const value = safeCalculate(expression || "0");
+      expression = value === "Error" ? "Error" : safeCalculate(key === "sign" ? `-(${value})` : `(${value})/100`);
+      completed = true;
+    } else if (/[+*/-]/.test(key)) {
+      if (expression === "Error") expression = "";
+      if (!expression && key !== "-") expression = "0";
+      expression = expression.replace(/[+*/-]$/, "") + key;
+      completed = false;
+    } else {
+      if (completed || expression === "Error") { expression = ""; history.textContent = ""; }
+      completed = false;
+      const currentNumber = expression.split(/[+*/-]/).at(-1);
+      if (key === "." && currentNumber.includes(".")) return;
+      if (key === "." && !currentNumber) expression += "0";
+      if (expression.length < 80) expression += key;
+    }
+    output.textContent = expression.replaceAll("*", "×").replaceAll("/", "÷") || "0";
+    output.dataset.length = String(output.textContent.length);
+  };
+  content.querySelectorAll("[data-key]").forEach((button) => button.addEventListener("click", () => enter(button.dataset.key)));
+  const root = content.querySelector(".calculator-app");
+  root.addEventListener("keydown", (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const key = event.key === "Enter" || event.key === "=" ? "=" : event.key === "Escape" || event.key.toLowerCase() === "c" ? "clear" : event.key === "Backspace" ? "backspace" : event.key === "%" ? "percent" : event.key;
+    if (/^[0-9.+*/-]$/.test(key) || ["=", "clear", "backspace", "percent"].includes(key)) {
+      event.preventDefault();
+      event.stopPropagation();
+      enter(key);
+    }
   });
-  content.querySelector("[data-clear]").addEventListener("click", () => {
-    expression = "";
-    output.textContent = "0";
-  });
+  root.focus({ preventScroll: true });
 }
 
 const SETTINGS_SECTIONS = [
-  { id: "overview", label: "General", detail: "Runtime overview", icon: "general" },
+  { id: "appearance", label: "Appearance", detail: "Make it your desktop", icon: "appearance" },
+  { id: "overview", label: "Advanced", detail: "Runtime and diagnostics", icon: "general" },
   { id: "storage", label: "Storage", detail: "Save engine and recovery", icon: "storage" },
   { id: "services", label: "Services", detail: "Runtime daemons", icon: "services" },
   { id: "sync", label: "Sync", detail: "Remote checkpoints", icon: "sync" },
@@ -3587,7 +3648,14 @@ const SETTINGS_SECTIONS = [
   { id: "folders", label: "Local Folders", detail: "Mounted directories", icon: "folders" },
 ];
 
-function renderSettings(os, content) {
+const settingsCleanups = new WeakMap();
+
+function renderSettings(os, content, appearance = null) {
+  const initialSection = content.querySelector(".settings-app")?.dataset.settingsActive || "appearance";
+  settingsCleanups.get(content)?.();
+  let disposed = false;
+  let unsubscribe = () => {};
+  settingsCleanups.set(content, () => { disposed = true; unsubscribe(); });
   content.innerHTML = `
     <section class="settings-app">
       <p class="dos-kicker">System</p>
@@ -3595,7 +3663,10 @@ function renderSettings(os, content) {
       <p class="settings-muted">Loading runtime status...</p>
     </section>
   `;
-  renderSettingsContent(os, content).catch((error) => {
+  renderSettingsContent(os, content, appearance, () => disposed, initialSection).then(() => {
+    if (!disposed && appearance) unsubscribe = wireAppearanceControls(content, appearance);
+  }).catch((error) => {
+    if (disposed) return;
     content.innerHTML = `
       <section class="settings-app">
         <p class="dos-kicker">System</p>
@@ -3604,11 +3675,14 @@ function renderSettings(os, content) {
       </section>
     `;
   });
+  return () => { settingsCleanups.get(content)?.(); settingsCleanups.delete(content); };
 }
 
-async function renderSettingsContent(os, content) {
+async function renderSettingsContent(os, content, appearance, isDisposed = () => false, initialSection = "appearance") {
   const snapshot = await settingsRuntimeSnapshot(os);
-  content.innerHTML = settingsRuntimeMarkup(snapshot);
+  if (isDisposed()) return;
+  const sectionPrefix = content.dataset.settingsPrefix ||= `settings-${Math.random().toString(36).slice(2, 9)}`;
+  content.innerHTML = settingsRuntimeMarkup(snapshot, appearance?.get(), sectionPrefix);
   const settingsApp = content.querySelector(".settings-app");
   const sectionButtons = [...content.querySelectorAll("[data-settings-section-button]")];
   const sections = [...content.querySelectorAll("[data-settings-section]")];
@@ -3617,6 +3691,11 @@ async function renderSettingsContent(os, content) {
     if (!nextSection) return;
     const nextId = nextSection.dataset.settingsSection;
     settingsApp.dataset.settingsActive = nextId;
+    const definition = SETTINGS_SECTIONS.find((section) => section.id === nextId);
+    const heading = content.querySelector(".settings-detail-header h2");
+    const description = content.querySelector(".settings-detail-header p");
+    if (heading) heading.textContent = definition?.label || "Settings";
+    if (description) description.textContent = definition?.detail || "";
     sections.forEach((section) => {
       const active = section === nextSection;
       section.classList.toggle("is-active", active);
@@ -3632,7 +3711,15 @@ async function renderSettingsContent(os, content) {
   sectionButtons.forEach((button) => {
     button.addEventListener("click", () => selectSettingsSection(button.dataset.settingsSectionButton));
   });
-  selectSettingsSection(settingsApp?.dataset.settingsActive || "overview");
+  content.querySelector(".settings-nav")?.addEventListener("keydown", (event) => {
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const current = sectionButtons.indexOf(event.target.closest("[data-settings-section-button]"));
+    const index = event.key === "Home" ? 0 : event.key === "End" ? sectionButtons.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + sectionButtons.length) % sectionButtons.length;
+    selectSettingsSection(sectionButtons[index].dataset.settingsSectionButton);
+    sectionButtons[index].focus();
+  });
+  selectSettingsSection(initialSection);
   content.querySelectorAll("[data-settings-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -3650,7 +3737,7 @@ async function renderSettingsContent(os, content) {
           await os.resolveRemoteSyncConflict(button.dataset.conflictPath, { action: button.dataset.syncAction });
         }
       } finally {
-        renderSettings(os, content);
+        renderSettings(os, content, appearance);
       }
     });
   });
@@ -3698,9 +3785,9 @@ export async function settingsRuntimeSnapshot(os) {
   };
 }
 
-export function settingsRuntimeMarkup(snapshot) {
+export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "settings") {
   return `
-    <section class="settings-app" data-settings-active="overview">
+    <section class="settings-app" data-settings-active="appearance">
       <aside class="settings-sidebar" aria-label="Settings categories">
         <div class="settings-profile">
           <span class="settings-profile-avatar" aria-hidden="true">${escapeHtml((snapshot.user || "guest").slice(0, 1).toUpperCase())}</span>
@@ -3713,10 +3800,10 @@ export function settingsRuntimeMarkup(snapshot) {
           ${SETTINGS_SECTIONS.map((section) => `
             <button
               type="button"
-              class="settings-nav-item${section.id === "overview" ? " is-active" : ""}"
+              class="settings-nav-item${section.id === "appearance" ? " is-active" : ""}"
               role="tab"
-              aria-controls="settings-section-${escapeAttr(section.id)}"
-              aria-selected="${section.id === "overview"}"
+              aria-controls="${escapeAttr(prefix)}-section-${escapeAttr(section.id)}"
+              aria-selected="${section.id === "appearance"}"
               data-settings-section-button="${escapeAttr(section.id)}"
             >
               <span class="settings-nav-icon" data-settings-icon="${escapeAttr(section.icon)}" aria-hidden="true"></span>
@@ -3730,11 +3817,13 @@ export function settingsRuntimeMarkup(snapshot) {
       </aside>
       <main class="settings-detail">
         <header class="settings-detail-header">
-          <p class="dos-kicker">System</p>
-          <h2>DindbOS.js Runtime</h2>
-          <p>${escapeHtml(formatSettingsHeadline(snapshot))}</p>
+          <h2>System Settings</h2>
+          <p>Personalize your desktop and manage your environment.</p>
         </header>
-        <section class="settings-section is-active" id="settings-section-overview" data-settings-section="overview" role="tabpanel">
+        <section class="settings-section is-active" id="${escapeAttr(prefix)}-section-appearance" data-settings-section="appearance" role="tabpanel">
+          ${appearanceMarkup(appearance)}
+        </section>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-overview" data-settings-section="overview" role="tabpanel" hidden>
           <section class="settings-panel settings-overview-panel">
             <header>
               <h3>Overview</h3>
@@ -3768,7 +3857,7 @@ export function settingsRuntimeMarkup(snapshot) {
             ${renderSettingsSessionCoordination(snapshot.coordination)}
           </section>
         </section>
-        <section class="settings-section" id="settings-section-storage" data-settings-section="storage" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-storage" data-settings-section="storage" role="tabpanel" hidden>
           <section class="settings-panel">
             <header>
               <h3>Save Engine</h3>
@@ -3786,7 +3875,7 @@ export function settingsRuntimeMarkup(snapshot) {
             ${renderSettingsStorageKernel(snapshot.storageKernel)}
           </section>
         </section>
-        <section class="settings-section" id="settings-section-services" data-settings-section="services" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-services" data-settings-section="services" role="tabpanel" hidden>
           <section class="settings-panel">
             <header>
               <h3>Services</h3>
@@ -3794,7 +3883,7 @@ export function settingsRuntimeMarkup(snapshot) {
             ${renderSettingsServices(snapshot.services)}
           </section>
         </section>
-        <section class="settings-section" id="settings-section-sync" data-settings-section="sync" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-sync" data-settings-section="sync" role="tabpanel" hidden>
           <section class="settings-panel">
             <header>
               <h3>Remote Sync</h3>
@@ -3802,7 +3891,7 @@ export function settingsRuntimeMarkup(snapshot) {
             ${renderSettingsRemoteSync(snapshot.sync, snapshot.syncConflicts)}
           </section>
         </section>
-        <section class="settings-section" id="settings-section-security" data-settings-section="security" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-security" data-settings-section="security" role="tabpanel" hidden>
           <section class="settings-panel">
             <header>
               <h3>Keychain</h3>
@@ -3816,7 +3905,7 @@ export function settingsRuntimeMarkup(snapshot) {
             ${renderSettingsContainerSecurity(snapshot.containerEvents)}
           </section>
         </section>
-        <section class="settings-section" id="settings-section-browser" data-settings-section="browser" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-browser" data-settings-section="browser" role="tabpanel" hidden>
           <section class="settings-panel">
             <header>
               <h3>Browser Permissions</h3>
@@ -3824,7 +3913,7 @@ export function settingsRuntimeMarkup(snapshot) {
             ${renderSettingsBrowserPermissions(snapshot.browser)}
           </section>
         </section>
-        <section class="settings-section" id="settings-section-folders" data-settings-section="folders" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-folders" data-settings-section="folders" role="tabpanel" hidden>
           <section class="settings-panel">
             <header>
               <h3>Local Folders</h3>
@@ -4205,13 +4294,47 @@ async function safeReadAsync(reader, fallback) {
   }
 }
 
-function safeCalculate(expression) {
-  if (!/^[\d+\-*/. ()]+$/.test(expression)) return "Error";
+export function safeCalculate(expression) {
+  const source = String(expression).replace(/\s+/g, "");
+  if (!source || source.length > 200 || !/^[\deE+\-*/.()]+$/.test(source)) return "Error";
+  let index = 0;
+  const number = () => {
+    if (source[index] === "+") { index += 1; return number(); }
+    if (source[index] === "-") { index += 1; return -number(); }
+    if (source[index] === "(") {
+      index += 1;
+      const value = sum();
+      if (source[index++] !== ")") throw new Error("Unclosed expression");
+      return value;
+    }
+    const match = source.slice(index).match(/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/);
+    if (!match) throw new Error("Expected number");
+    index += match[0].length;
+    return Number(match[0]);
+  };
+  const product = () => {
+    let value = number();
+    while (source[index] === "*" || source[index] === "/") {
+      const operator = source[index++];
+      const right = number();
+      value = operator === "*" ? value * right : value / right;
+    }
+    return value;
+  };
+  const sum = () => {
+    let value = product();
+    while (source[index] === "+" || source[index] === "-") {
+      const operator = source[index++];
+      const right = product();
+      value = operator === "+" ? value + right : value - right;
+    }
+    return value;
+  };
   try {
-    return String(Function(`"use strict"; return (${expression})`)());
-  } catch {
-    return "Error";
-  }
+    const value = sum();
+    if (index !== source.length || !Number.isFinite(value)) return "Error";
+    return String(Number(value.toPrecision(15)));
+  } catch { return "Error"; }
 }
 
 function escapeHtml(value) {

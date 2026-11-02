@@ -1,0 +1,160 @@
+/* Shared appearance. Loaded after the scoped legacy stylesheet. */
+@scope (.dindbos-host) to (.dindbos-host) {
+  :scope {
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+    --wallpaper-alpine: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%222400%22%20height%3D%221600%22%20viewBox%3D%220%200%202400%201600%22%3E%0A%3Cdefs%3E%0A%3ClinearGradient%20id%3D%22sky%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23dce8df%22%2F%3E%3Cstop%20offset%3D%22.56%22%20stop-color%3D%22%23b9cebf%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23769a8b%22%2F%3E%3C%2FlinearGradient%3E%0A%3ClinearGradient%20id%3D%22sun%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23f6f0d7%22%20stop-opacity%3D%22.65%22%2F%3E%3Cstop%20offset%3D%22.7%22%20stop-color%3D%22%23e1e8d3%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%0A%3ClinearGradient%20id%3D%22ridge%22%20x2%3D%22.8%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%2393ac99%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23557d6d%22%2F%3E%3C%2FlinearGradient%3E%0A%3ClinearGradient%20id%3D%22near%22%20x2%3D%22.7%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23486d5e%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23244c3e%22%2F%3E%3C%2FlinearGradient%3E%0A%3ClinearGradient%20id%3D%22water%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%2393b9aa%22%2F%3E%3Cstop%20offset%3D%22.24%22%20stop-color%3D%22%23a7c3b4%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%234e8272%22%2F%3E%3C%2FlinearGradient%3E%0A%3ClinearGradient%20id%3D%22shore%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20stop-color%3D%22%23345b43%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23102f27%22%2F%3E%3C%2FlinearGradient%3E%0A%3Cfilter%20id%3D%22mist%22%3E%3CfeGaussianBlur%20stdDeviation%3D%2226%22%2F%3E%3C%2Ffilter%3E%0A%3C%2Fdefs%3E%0A%3Crect%20width%3D%222400%22%20height%3D%221600%22%20fill%3D%22url%28%23sky%29%22%2F%3E%0A%3Crect%20width%3D%222400%22%20height%3D%221400%22%20fill%3D%22url%28%23sun%29%22%2F%3E%0A%3Cpath%20d%3D%22M0%20650%20170%20550%20260%20573%20442%20390%20530%20412%20657%20304%20750%20366%20895%20511%201038%20485%201200%20594%201325%20545%201536%20359%201670%20432%201790%20330%201900%20402%202070%20287%202200%20390%202400%20300V1200H0Z%22%20fill%3D%22%23a2b7a7%22%2F%3E%0A%3Cpath%20d%3D%22m442%20390%2088%2022%20127-108%2093%2062%20145%20145-181-114-57-36-74%20114-61-8-115%20142Z%22%20fill%3D%22%23e5eade%22%20opacity%3D%22.65%22%2F%3E%0A%3Cpath%20d%3D%22m1536%20359%20134%2073%20120-102%20110%2072%20170-115%20130%20103-150-46-139%20123-139-57-101%2085Z%22%20fill%3D%22%23e1e8dc%22%20opacity%3D%22.55%22%2F%3E%0A%3Cpath%20d%3D%22M0%20830%20140%20694%20330%20723%20555%20611%20700%20675%20830%20581%201000%20738%201190%20656%201400%20809%201590%20699%201710%20714%201900%20541%202070%20611%202270%20478%202400%20544V1310H0Z%22%20fill%3D%22url%28%23ridge%29%22%2F%3E%0A%3Cpath%20d%3D%22M0%20975%20194%20915%20370%201005%20620%20864%20850%201030%201055%20957%201270%201057%201460%20927%201610%201021%201770%20870%201960%201045%202190%20882%202400%20910V1600H0Z%22%20fill%3D%22url%28%23near%29%22%2F%3E%0A%3Cpath%20d%3D%22M0%201170Q450%201092%20815%201168t585%2039q270-68%201000-5v398H0Z%22%20fill%3D%22url%28%23water%29%22%2F%3E%0A%3Cpath%20d%3D%22M0%201160q300-22%20536%2027t626%2027q350-53%20724-10t514-1%22%20fill%3D%22none%22%20stroke%3D%22%23c7d9cb%22%20stroke-width%3D%228%22%20opacity%3D%22.33%22%2F%3E%0A%3Cpath%20d%3D%22M0%201310q339-42%20658-10m270%2062q267%2018%20490-7m-126%20105q349-16%20710%2011m-2000-62q271-18%20493%205m441%2087q388%207%20722-12%22%20fill%3D%22none%22%20stroke%3D%22%23c1d8c8%22%20stroke-width%3D%223%22%20opacity%3D%22.22%22%2F%3E%0A%3Cpath%20d%3D%22M2400%201050q-180%2087-319%20135t-222%20169q154-53%20281-4t260%2073Z%22%20fill%3D%22%233c6950%22%2F%3E%0A%3Cpath%20d%3D%22M0%201266q197%2047%20270%20138t202%2077q193-22%20426%20119H0Z%22%20fill%3D%22url%28%23shore%29%22%2F%3E%0A%3Cpath%20d%3D%22M2400%201326q-191-26-305%2069t-366%20205h671Z%22%20fill%3D%22url%28%23shore%29%22%2F%3E%0A%3Cpath%20d%3D%22M-100%201100q550-140%201020-30t900-53%20700%2036%22%20fill%3D%22none%22%20stroke%3D%22%23d8e3d4%22%20stroke-width%3D%2275%22%20opacity%3D%22.16%22%20filter%3D%22url%28%23mist%29%22%2F%3E%0A%3C%2Fsvg%3E");
+    --wallpaper-meadow: url("./wallpapers/meadow.jpg");
+    --wallpaper: var(--wallpaper-meadow);
+    --bg: #dce7e0;
+    --bg-deep: #9cb6a9;
+    --text: #202622;
+    --ink: #151b17;
+    --muted: #68716b;
+    --muted-strong: #4c574f;
+    --accent: #287a58;
+    --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+    --accent-strong: color-mix(in srgb, var(--accent) 86%, #0a2618);
+    --content-bg: #fafbf9;
+    --chrome-bg: rgba(247, 249, 246, .86);
+    --sidebar-bg: rgba(232, 237, 231, .8);
+    --control-bg: rgba(255, 255, 255, .84);
+    --control-hover: rgba(255, 255, 255, .98);
+    --control-pressed: rgba(210, 219, 211, .78);
+    --surface: var(--chrome-bg);
+    --surface-strong: var(--content-bg);
+    --surface-muted: var(--sidebar-bg);
+    --line: rgba(38, 52, 42, .13);
+    --line-strong: rgba(38, 52, 42, .22);
+    --glass-bg: var(--chrome-bg);
+    --glass-bg-hover: var(--control-hover);
+    --glass-bg-active: var(--control-pressed);
+    --glass-bg-strong: var(--content-bg);
+    --glass-bg-subtle: rgba(255, 255, 255, .25);
+    --glass-bg-muted: var(--sidebar-bg);
+    --glass-border: rgba(255, 255, 255, .55);
+    --glass-border-strong: rgba(255, 255, 255, .8);
+    --glass-stroke: var(--line);
+    --glass-stroke-strong: var(--line-strong);
+    --glass-edge-light: rgba(255, 255, 255, .82);
+    --glass-highlight: rgba(255, 255, 255, .65);
+    --glass-highlight-soft: rgba(255, 255, 255, .3);
+    --radius: 14px;
+    --radius-sm: 6px;
+    --radius-md: 12px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
+    --window-radius: 14px;
+    --menubar-height: 30px;
+    --titlebar-height: 40px;
+    --dock-icon-size: 48px;
+    --dock-size: 48px;
+    --glass-blur: 24px;
+    --glass-blur-strong: 36px;
+    --window-shadow: 0 24px 64px rgba(16, 34, 24, .22), 0 3px 10px rgba(16, 34, 24, .15), 0 0 0 1px rgba(24, 39, 29, .16);
+    --menu-shadow: 0 12px 36px rgba(16, 34, 24, .2), 0 2px 6px rgba(16, 34, 24, .12);
+    --shadow: var(--window-shadow);
+    --shadow-soft: 0 8px 24px rgba(16, 34, 24, .12), inset 0 1px 0 rgba(255, 255, 255, .6);
+    --shadow-lift: var(--window-shadow);
+    --motion-fast: 130ms;
+    --motion-normal: 220ms;
+    --motion-slow: 380ms;
+    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --transition-fast: var(--motion-fast) var(--ease-out);
+    --transition: var(--motion-normal) var(--ease-out);
+    --transition-slow: var(--motion-slow) var(--ease-out);
+    --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent), 0 0 0 1px var(--accent);
+    color-scheme: light;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    color: var(--text);
+    letter-spacing: 0;
+    text-rendering: optimizeLegibility;
+  }
+
+  :scope[data-appearance="dark"] {
+    --accent: #75bf99;
+    --bg: #182a25;
+    --bg-deep: #0e1c18;
+    --text: #ecefeb;
+    --ink: #f6f8f4;
+    --muted: #a5afa6;
+    --muted-strong: #c4ccc3;
+    --content-bg: #202722;
+    --chrome-bg: rgba(41, 49, 43, .9);
+    --sidebar-bg: rgba(31, 42, 34, .86);
+    --control-bg: rgba(255, 255, 255, .1);
+    --control-hover: rgba(255, 255, 255, .16);
+    --control-pressed: rgba(255, 255, 255, .22);
+    --line: rgba(233, 244, 232, .12);
+    --line-strong: rgba(233, 244, 232, .22);
+    --glass-border: rgba(255, 255, 255, .14);
+    --glass-border-strong: rgba(255, 255, 255, .23);
+    --glass-edge-light: rgba(255, 255, 255, .2);
+    --glass-highlight: rgba(255, 255, 255, .12);
+    --glass-highlight-soft: rgba(255, 255, 255, .07);
+    --window-shadow: 0 26px 72px rgba(0, 0, 0, .46), 0 3px 10px rgba(0, 0, 0, .3), 0 0 0 1px rgba(0, 0, 0, .55);
+    --menu-shadow: 0 16px 40px rgba(0, 0, 0, .4), 0 0 0 1px rgba(255, 255, 255, .1);
+    color-scheme: dark;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  button, input, select, textarea { font: inherit; }
+  button { -webkit-tap-highlight-color: transparent; }
+  button:disabled, input:disabled, select:disabled { cursor: default; opacity: .45; }
+  :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  :is(button, a, input, select, textarea, [tabindex]):focus:not(:focus-visible) { outline: none; }
+  ::selection { background: var(--accent-soft); }
+  img, svg { max-width: 100%; }
+  .dos-shell {
+    background-image: var(--wallpaper);
+    background-color: var(--bg);
+    background-size: cover;
+    background-position: center;
+  }
+  .dos-shell::before, .dos-shell::after { background: none; }
+  .dos-window-content { color: var(--text); }
+  .trusted-ui-dialog {
+    max-width: 100%;
+    background: var(--chrome-bg);
+    color: var(--text);
+    border-color: var(--line);
+    box-shadow: var(--window-shadow);
+    backdrop-filter: blur(var(--glass-blur));
+  }
+  .trusted-ui-dialog button[data-primary="true"] { background: var(--accent); border-color: transparent; color: #fff; }
+  .trusted-ui-dialog header span, .trusted-ui-body small { color: var(--muted); border-color: var(--line); }
+  .trusted-ui-dialog button { background: var(--control-bg); color: var(--text); border-color: var(--line); border-radius: var(--radius-sm); }
+  .dos-boot-screen { position: absolute; background: var(--content-bg); color: var(--text); }
+  .dos-boot-panel { width: min(360px, calc(100cqw - 40px)); padding: 24px; gap: 18px; background: var(--chrome-bg); border-color: var(--line); box-shadow: var(--shadow-soft); }
+  .dos-boot-header span { color: var(--ink); font-size: 20px; }
+  .dos-boot-header strong { color: var(--muted); font-size: 12px; font-weight: 400; }
+  .dos-boot-panel progress { width: 100%; height: 5px; border: 0; border-radius: 3px; overflow: hidden; accent-color: var(--accent); }
+  .dos-boot-panel progress::-webkit-progress-bar { background: var(--line); border-radius: 3px; }
+  .dos-boot-panel progress::-webkit-progress-value { background: var(--accent); border-radius: 3px; }
+  .dos-boot-log[hidden] { display: none; }
+  :is(.pathbar, .files-toolbar, .activity-controls, .browser-toolbar, .viewer-toolbar, .text-app, .settings-panel) :is(input, select, button),
+  .glass-input {
+    color: var(--text);
+    background-color: var(--control-bg);
+    border-color: var(--line);
+  }
+  .glass-card, .portfolio-grid article, .file-tile, .settings-panel, .settings-mount-card {
+    background-color: var(--content-bg);
+    color: var(--text);
+    border-color: var(--line);
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    :scope { --chrome-bg: var(--content-bg); --sidebar-bg: var(--content-bg); }
+    * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :scope { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; }
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  }
+}

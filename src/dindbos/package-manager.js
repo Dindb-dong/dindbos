@@ -1,7 +1,7 @@
-import { removeAppState } from "./app-sandbox.js?v=20260422-browserd";
-import { apiRequirementForManifest, compatibilityRequirementForManifest, isolationSnapshot } from "./compat.js?v=20260422-browserd";
-import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
-import { createDindbOSSDK } from "./sdk.js?v=20260422-browserd";
+import { removeAppState } from "./app-sandbox.js";
+import { apiRequirementForManifest, compatibilityRequirementForManifest, isolationSnapshot } from "./compat.js";
+import { NodeCompat } from "./node-compat.js";
+import { createDindbOSSDK } from "./sdk.js";
 
 const APPLICATION_DIR = "/usr/share/applications";
 const PACKAGE_DB_DIR = "/var/lib/dindbos/packages";

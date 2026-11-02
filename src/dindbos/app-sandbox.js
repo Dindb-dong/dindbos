@@ -1,5 +1,5 @@
-import { canAccessFileSystem, canUseCapability } from "./app-manifest.js?v=20260422-browserd";
-import { NodeCompat } from "./node-compat.js?v=20260422-browserd";
+import { canAccessFileSystem, canUseCapability } from "./app-manifest.js";
+import { NodeCompat } from "./node-compat.js";
 
 const APP_STATE_DIR = "/var/lib/dindbos/app-state";
 const MAX_APP_STATE_VALUE_BYTES = 64 * 1024;

@@ -636,6 +636,7 @@ async function runLiveWindowStateSmoke() {
     liveManager.activate("browser");
     assert(api.getState("browser").title === "Example Domain", "window API state was not preserved after activate");
     liveManager.close("browser");
+    await runCloseGuardSmoke(liveManager, liveOs);
     liveOs.root = {
       clientWidth: 580, clientHeight: 460,
       contains: (element) => element?.inside === true,
@@ -657,6 +658,7 @@ async function runLiveWindowStateSmoke() {
     if (embedded.maximized) liveManager.maximize("embedded");
     embedded.titlebar.listeners.pointerdown({ pointerId: 91, button: 0, clientX: 340, clientY: 280, target: { closest: () => null }, preventDefault() {}, stopPropagation() {} });
     assert(embedded.titlebar.capturedPointerIds.has(91), "embedded drag did not begin");
+    embedded.api.setBeforeClose(() => false);
     liveManager.destroy();
     liveManager.destroy();
     assert(disposedApps === 2 && chromeDisposed === 1, "destroy did not dispose app and custom chrome exactly once");
@@ -669,6 +671,95 @@ async function runLiveWindowStateSmoke() {
     globalThis.document = previousDocument;
     globalThis.window = previousWindow;
   }
+}
+
+async function runCloseGuardSmoke(manager, os) {
+  const errors = [];
+  os.bus = { emit: (name, value) => { if (name === "window:close-error") errors.push(value); } };
+  const open = (id, render = () => {}) => manager.open({ id, appId: id, pid: 44, title: id, width: 400, height: 300, manifest: { capabilities: [] }, render });
+  let failedRenderTask;
+  let renderFailure;
+  try {
+    open("guard-render-failure", (_element, api) => {
+      api.setBeforeClose(() => false);
+      failedRenderTask = manager.windows.get("guard-render-failure");
+      throw new Error("render failed after guard registration");
+    });
+  } catch (error) { renderFailure = error; }
+  assert(renderFailure?.message === "render failed after guard registration", "render failure did not reach its caller");
+  assert(!manager.has("guard-render-failure") && failedRenderTask.frame.removed, "render failure left a guarded orphan window");
+  assert(os.objects.get(failedRenderTask.objectId).status === "revoked", "render failure retained a live window kernel object");
+
+  const previousUiOptions = os.uiOptions;
+  let failedChromeTask;
+  let chromeFailure;
+  let appRendered = false;
+  try {
+    os.uiOptions = { slots: { windowChrome: ({ state, actions }) => {
+      actions.setBeforeClose(() => false);
+      failedChromeTask = state;
+      throw new Error("chrome failed after guard registration");
+    } } };
+    open("guard-chrome-failure", () => { appRendered = true; });
+  } catch (error) { chromeFailure = error; }
+  finally { os.uiOptions = previousUiOptions; }
+  assert(chromeFailure?.message === "chrome failed after guard registration", "custom chrome failure did not reach its caller");
+  assert(!appRendered && !manager.has("guard-chrome-failure") && failedChromeTask.frame.removed, "custom chrome failure left a guarded orphan window");
+  assert(os.objects.get(failedChromeTask.objectId).status === "revoked", "custom chrome failure retained a live window kernel object");
+  let calls = 0;
+  const sync = open("guard-sync");
+  const unregisterOld = sync.setBeforeClose(() => { calls += 1; return false; });
+  assert(sync.close() === false && manager.has("guard-sync") && calls === 1, "a declined sync guard closed the draft");
+  const unregisterCurrent = sync.setBeforeClose(() => false);
+  unregisterOld();
+  assert(sync.close() === false && manager.has("guard-sync"), "stale guard unregister removed a newer guard");
+  unregisterCurrent();
+  sync.setBeforeClose(() => true);
+  sync.close();
+  assert(!manager.has("guard-sync"), "an approved sync guard did not close");
+
+  let resolveDecision;
+  let pendingCalls = 0;
+  const pending = open("guard-pending");
+  pending.setBeforeClose(() => { pendingCalls += 1; return new Promise((resolve) => { resolveDecision = resolve; }); });
+  const first = pending.close();
+  const repeated = pending.close();
+  assert(first === repeated && pendingCalls === 1 && manager.has("guard-pending"), "repeated closes did not share one pending guard");
+  resolveDecision(false);
+  assert(await first === false && manager.has("guard-pending"), "async cancellation closed the draft");
+  const approved = pending.close();
+  resolveDecision(true);
+  assert(await approved === true && !manager.has("guard-pending") && pendingCalls === 2, "async approval repeated the guard or failed to close");
+
+  const rejection = open("guard-error");
+  rejection.setBeforeClose(() => Promise.reject(new Error("save unavailable")));
+  assert(await rejection.close() === false && manager.has("guard-error") && errors.length === 1, "a rejected close guard did not retain draft/report its error");
+  rejection.setBeforeClose(() => { throw new Error("sync save unavailable"); });
+  assert(rejection.close() === false && manager.has("guard-error") && errors.length === 2, "a throwing close guard did not retain draft/report its error");
+  manager.close("guard-error", { force: true });
+  assert(!manager.has("guard-error"), "forced close did not bypass guard");
+
+  const killed = open("guard-killed");
+  killed.setBeforeClose(() => false);
+  manager.close("guard-killed", { skipOnClose: true });
+  assert(!manager.has("guard-killed"), "process termination did not bypass guard");
+
+  const stale = open("guard-stale");
+  stale.setBeforeClose(() => new Promise((resolve) => { resolveDecision = resolve; }));
+  const staleRequest = stale.close();
+  manager.close("guard-stale", { force: true });
+  const replacement = open("guard-stale");
+  resolveDecision(true);
+  await staleRequest;
+  assert(manager.has("guard-stale"), "late async approval closed a replacement window with the same id");
+  replacement.close();
+
+  const destroyed = open("guard-destroyed");
+  destroyed.setBeforeClose(() => false);
+  os.destroyed = true;
+  destroyed.close();
+  os.destroyed = false;
+  assert(!manager.has("guard-destroyed"), "runtime destruction did not bypass guard");
 }
 
 function assert(condition, message) {

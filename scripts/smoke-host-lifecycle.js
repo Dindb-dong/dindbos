@@ -44,6 +44,11 @@ try {
   await custom.loadPersistentFileSystem();
   assert.equal(custom.storage.status().backend, "custom");
   custom.fs.writeOrCreateFile("/home/guest/custom.txt", "saved");
+  const liveApp = { id: "live", name: "Live App", pinned: true, desktop: true, render() {} };
+  custom.registerApp(liveApp);
+  assert.equal(custom.fs.exists("/home/guest/Desktop/Live App.app"), true);
+  custom.registerApp({ ...liveApp, pinned: false, desktop: false });
+  assert.equal(custom.fs.exists("/home/guest/Desktop/Live App.app"), false, "live desktop:false must remove its launcher without renaming the app");
   await custom.destroy();
   console.log("host lifecycle smoke ok memory isolation immediate abort idempotent destroy optional custom-adapter status");
 } finally {

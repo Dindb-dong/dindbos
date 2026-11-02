@@ -46,6 +46,7 @@ export interface DindbOSWindowAPI {
   getState<T = unknown>(key?: string): T;
   setState<T>(key: string, value: T): T;
   setTitle(title: string): void;
+  setBeforeClose(handler: () => boolean | Promise<boolean>): () => void;
   setAccessibilityTree(tree: unknown): unknown;
   getAccessibilityTree(): unknown;
   captureSurface(options?: Record<string, unknown>): unknown;

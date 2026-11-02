@@ -199,6 +199,17 @@ export class WindowManager {
     const api = {
       id: config.id,
       close: () => this.close(config.id),
+      setBeforeClose: (handler) => {
+        if (typeof handler !== "function") throw new TypeError("setBeforeClose requires a function");
+        const registration = {};
+        task.closeGuardRegistration = registration;
+        task.beforeClose = handler;
+        return () => {
+          if (task.closeGuardRegistration !== registration) return;
+          task.beforeClose = null;
+          task.closeGuardRegistration = null;
+        };
+      },
       focus: () => this.focus(config.id),
       minimize: () => this.minimize(config.id),
       maximize: () => this.maximize(config.id),
@@ -231,7 +242,7 @@ export class WindowManager {
         const result = chromeRenderer({ element: titlebar, state: task, actions: api, defaultRender });
         if (typeof result === "function") task.chromeCleanup = result;
       } catch (error) {
-        this.close(config.id, { immediate: true });
+        this.close(config.id, { immediate: true, force: true });
         throw error;
       }
     }
@@ -266,7 +277,7 @@ export class WindowManager {
       if (this.windows.has(config.id)) task.cleanup = dispose;
       else { dispose?.(); return api; }
     } catch (error) {
-      this.close(config.id, { immediate: true });
+      this.close(config.id, { immediate: true, force: true });
       throw error;
     }
     if (typeof frame.animate === "function" && !prefersReducedMotion()) {
@@ -366,7 +377,40 @@ export class WindowManager {
   close(id, options = {}) {
     const task = this.windows.get(id);
     if (!task || task.closing) return;
+    const force = options.force || options.skipOnClose || this.destroyed || this.os.destroyed;
+    if (!force && task.beforeClose) {
+      if (task.closeRequest) return task.closeRequest;
+      if (task.checkingClose) return false;
+      let decision;
+      task.checkingClose = true;
+      try {
+        decision = task.beforeClose();
+        if (decision && typeof decision.then === "function") {
+          const request = Promise.resolve(decision).then((approved) => {
+            if (approved !== true || this.windows.get(id) !== task || task.closing) return false;
+            this.close(id, { ...options, force: true });
+            return true;
+          }, (error) => {
+            this.reportCloseError(id, error);
+            return false;
+          }).finally(() => {
+            if (task.closeRequest === request) task.closeRequest = null;
+          });
+          task.closeRequest = request;
+          return request;
+        }
+      } catch (error) {
+        this.reportCloseError(id, error);
+        return false;
+      } finally {
+        task.checkingClose = false;
+      }
+      if (decision !== true) return false;
+      if (this.windows.get(id) !== task || task.closing) return;
+    }
     task.closing = true;
+    task.beforeClose = null;
+    task.closeGuardRegistration = null;
     cancelWindowAnimation(task);
     this.releasePointerLock(id, "window-close");
     this.releaseWindowCapture(id, "window-close");
@@ -403,6 +447,11 @@ export class WindowManager {
     }
     this.renderTasks();
     this.writeCompositorProcfs("close");
+  }
+
+  reportCloseError(id, error) {
+    // A failing observer must not turn a rejected close decision into an unhandled rejection.
+    try { this.os.bus?.emit?.("window:close-error", { id, error }); } catch { /* Keep the draft open. */ }
   }
 
   handleGlobalKeyDown(event) {
@@ -1238,8 +1287,8 @@ export function constrainWindowRect(rect, viewport) {
   const width = Math.min(Math.max(Number(rect.width || MIN_WIDTH), 160), maxWidth);
   const height = Math.min(Math.max(Number(rect.height || MIN_HEIGHT), 160), maxHeight);
   return {
-    left: Math.round(clamp(Number(rect.left || 0), 8, viewportWidth - Math.min(120, width))),
-    top: Math.round(clamp(Number(rect.top || 0), 58, viewportHeight - 80)),
+    left: Math.round(clamp(Number(rect.left || 0), 8, Math.max(8, viewportWidth - width - 8))),
+    top: Math.round(clamp(Number(rect.top || 0), 58, Math.max(58, viewportHeight - height - 8))),
     width: Math.round(width),
     height: Math.round(height),
   };

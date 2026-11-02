@@ -1,38 +1,32 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { AppIcon } from "./app-icon.js";
 
 const h = React.createElement;
 
 export function createDesktopRenderer(options = {}) {
   if (!isReactRootTarget(options.desktopElement) || !isReactRootTarget(options.dockElement)) {
-    return createStaticDesktopRenderer();
+    return { renderDesktop() {}, renderDock() {}, unmount() {} };
   }
-
   const desktopRoot = createRoot(options.desktopElement);
   const dockRoot = createRoot(options.dockElement);
-  const openNode = options.onOpenNode || (() => {});
-  const launchApp = options.onLaunchApp || (() => {});
-  const isMobile = options.isMobile || (() => false);
-
+  let unmounted = false;
   return {
     renderDesktop(entries = []) {
-      desktopRoot.render(h(DesktopGrid, { entries, isMobile, openNode }));
+      if (!unmounted) desktopRoot.render(h(DesktopGrid, { entries, isMobile: options.isMobile || (() => false), openNode: options.onOpenNode || (() => {}), onSelectNode: options.onSelectNode }));
     },
     renderDock(apps = [], dockApps = [], appStates = {}) {
-      dockRoot.render(h(DockList, { apps, dockApps, appStates, launchApp }));
+      if (!unmounted) dockRoot.render(h(DockList, { apps, dockApps, appStates, element: options.dockElement, launchApp: options.onLaunchApp || (() => {}) }));
     },
     unmount() {
-      desktopRoot.unmount();
-      dockRoot.unmount();
+      if (unmounted) return;
+      unmounted = true;
+      const errors = [];
+      for (const root of [desktopRoot, dockRoot]) {
+        try { root.unmount(); } catch (error) { errors.push(error); }
+      }
+      if (errors.length) throw new AggregateError(errors, "Desktop renderers failed to unmount");
     },
-  };
-}
-
-function createStaticDesktopRenderer() {
-  return {
-    renderDesktop() {},
-    renderDock() {},
-    unmount() {},
   };
 }
 
@@ -40,106 +34,95 @@ function isReactRootTarget(element) {
   return element?.nodeType === 1 || element?.nodeType === 9 || element?.nodeType === 11;
 }
 
-function DesktopGrid({ entries, isMobile, openNode }) {
-  return entries.map((entry) => h(
-    "button",
-    {
-      key: entry.path || entry.name,
-      className: "dos-icon",
-      type: "button",
-      "data-icon": entry.icon,
-      "aria-label": `Open ${entry.name}`,
-      onClick: () => {
-        if (isMobile()) openNode(entry.node);
-      },
-      onDoubleClick: () => openNode(entry.node),
+function DesktopGrid({ entries, isMobile, openNode, onSelectNode }) {
+  const [selected, setSelected] = useState(null);
+  const select = (entry) => { setSelected(entry.path || entry.name); onSelectNode?.(entry.node); };
+  return entries.map((entry, index) => h("button", {
+    key: entry.path || entry.name,
+    className: `dos-icon${selected === (entry.path || entry.name) ? " is-selected" : ""}`,
+    type: "button", "data-icon": typeof entry.icon === "string" ? entry.icon : "custom",
+    "aria-label": `Open ${entry.name}`, "aria-pressed": selected === (entry.path || entry.name),
+    onPointerDown: () => select(entry),
+    onClick: (event) => {
+      select(entry);
+      // Keyboard-generated clicks have detail=0; pointer desktop clicks select.
+      if (event.detail === 0 || event.nativeEvent.pointerType === "touch" || isMobile()) openNode(entry.node);
     },
-    h("span", { className: "dos-icon-art", "aria-hidden": "true" }, h(IconForType, { type: entry.icon })),
-    h("span", { className: "dos-icon-label" }, entry.name),
-  ));
+    onDoubleClick: () => { if (!isMobile()) openNode(entry.node); },
+    onKeyDown: (event) => {
+      if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const delta = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1;
+      const next = event.key === "Home" ? 0 : event.key === "End" ? entries.length - 1 : Math.max(0, Math.min(entries.length - 1, index + delta));
+      event.currentTarget.parentElement?.querySelectorAll(".dos-icon")[next]?.focus();
+      select(entries[next]);
+    },
+  }, h("span", { className: "dos-icon-art", "aria-hidden": true }, h(AppIcon, { icon: entry.icon })), h("span", { className: "dos-icon-label" }, entry.name)));
 }
 
-function DockList({ apps, dockApps, appStates, launchApp }) {
-  const pinnedItems = apps.map((app) => h(
-    "button",
-    {
-      key: app.id,
-      className: dockItemClass(appStates[app.id]),
-      type: "button",
-      "data-icon": app.icon || "app",
-      "data-dock-app-id": app.id,
-      "aria-label": `Launch ${app.name}`,
-      onClick: () => launchApp(app.id),
-    },
-    h("span", { className: "dos-dock-glyph", "aria-hidden": "true" }, h(IconForType, { type: app.icon || "app" })),
-    h("span", null, app.name),
-  ));
-  const transientItems = dockApps.map((app) => h(
-    "button",
-    {
-      key: `dock-app:${app.id}`,
-      className: dockItemClass(app),
-      type: "button",
-      "data-icon": app.icon || "app",
-      "data-dock-app-id": app.id,
-      "data-minimized-window-id": app.windowId || undefined,
-      "aria-label": app.minimized ? `Restore ${app.title || app.name}` : `Focus ${app.title || app.name}`,
-      onClick: () => launchApp(app.id),
-    },
-    h("span", { className: "dos-dock-glyph", "aria-hidden": "true" }, h(IconForType, { type: app.icon || "app" })),
-    h("span", null, app.title || app.name),
-  ));
-  if (!transientItems.length) return pinnedItems;
+export function dockMagnification(distance, radius = 140) {
+  const normalized = Math.min(1, Math.max(0, Math.abs(distance) / radius));
+  return (1 + Math.cos(normalized * Math.PI)) / 2;
+}
+
+function DockList({ apps, dockApps, appStates, launchApp, element }) {
+  useEffect(() => {
+    let frame = null;
+    let pointerX = null;
+    const reset = () => {
+      pointerX = null;
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      element.querySelectorAll(".dos-dock-item").forEach((item) => item.style.removeProperty("--dock-proximity"));
+    };
+    const move = (event) => {
+      if (event.pointerType === "touch" || element.closest(".dindbos-host")?.clientWidth <= 500 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return reset();
+      pointerX = event.clientX;
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        if (pointerX === null) return;
+        for (const item of element.querySelectorAll(".dos-dock-item")) {
+          const rect = item.getBoundingClientRect();
+          item.style.setProperty("--dock-proximity", dockMagnification(pointerX - (rect.left + rect.width / 2)).toFixed(3));
+        }
+      });
+    };
+    const keyboard = (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      const items = [...element.querySelectorAll(".dos-dock-item")];
+      const index = items.indexOf(document.activeElement);
+      if (index < 0) return;
+      event.preventDefault();
+      const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + items.length) % items.length;
+      items[next]?.focus();
+    };
+    element.addEventListener("pointermove", move);
+    element.addEventListener("pointerleave", reset);
+    element.addEventListener("keydown", keyboard);
+    return () => { reset(); element.removeEventListener("pointermove", move); element.removeEventListener("pointerleave", reset); element.removeEventListener("keydown", keyboard); };
+  }, [element]);
   return [
-    ...pinnedItems,
-    h("span", { key: "dock-app-separator", className: "dos-dock-separator", "aria-hidden": "true" }),
-    ...transientItems,
+    ...apps.map((app) => h(DockItem, { key: app.id, app, state: appStates[app.id] || {}, launchApp })),
+    ...(dockApps.length ? [h("span", { key: "separator", className: "dos-dock-separator", "aria-hidden": true })] : []),
+    ...dockApps.map((app) => h(DockItem, { key: `window:${app.windowId || app.id}`, app, state: app, launchApp, transient: true })),
   ];
 }
 
-function dockItemClass(state = {}) {
-  return [
-    "dos-dock-item",
-    state.running ? "is-running" : "",
-    state.minimized ? "is-minimized" : "",
-    state.windowId ? "dos-dock-window" : "",
-  ].filter(Boolean).join(" ");
-}
-
-function IconForType({ type }) {
-  const paths = ICON_PATHS[type] || ICON_PATHS.monitor;
-  return h(
-    "svg",
-    {
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      strokeWidth: "1.8",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      focusable: "false",
-      "aria-hidden": "true",
+function DockItem({ app, state, launchApp, transient = false }) {
+  const [launching, setLaunching] = useState(false);
+  const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const name = (typeof app.title === "string" && app.title) || app.name || app.id;
+  return h("button", {
+    type: "button",
+    className: ["dos-dock-item", state.running && "is-running", state.minimized && "is-minimized", state.active && "is-active", transient && "dos-dock-window", launching && "is-launching"].filter(Boolean).join(" "),
+    "data-icon": typeof app.icon === "string" ? app.icon : "custom", "data-dock-app-id": app.id,
+    "data-minimized-window-id": transient ? app.windowId : undefined,
+    "aria-label": state.minimized ? `Restore ${name}` : state.running ? `Focus ${name}` : `Launch ${app.name || app.id}`,
+    onClick: () => {
+      if (!state.running) { setLaunching(true); clearTimeout(timer.current); timer.current = setTimeout(() => setLaunching(false), 650); }
+      launchApp(app.id);
     },
-    paths.map((path, index) => h("path", { key: index, d: path })),
-  );
+  }, h("span", { className: "dos-dock-glyph", "aria-hidden": true }, h(AppIcon, { icon: app.icon || "app" })), h("span", { className: "dos-dock-tooltip", "aria-hidden": true }, app.name || name));
 }
-
-const ICON_PATHS = {
-  activity: ["M22 12h-4l-3 8L9 4l-3 8H2"],
-  app: ["M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z", "M8 7h8", "M8 12h3", "M8 16h5"],
-  browser: ["M4 5h16v14H4z", "M4 9h16", "M8 7h.01", "M12 7h.01"],
-  calculator: ["M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M8 7h8", "M8 12h.01", "M12 12h.01", "M16 12h.01", "M8 16h.01", "M12 16h.01", "M16 16h.01"],
-  device: ["M4 5h16v11H4z", "M8 21h8", "M12 16v5"],
-  directory: ["M3 6h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
-  file: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", "M14 2v6h6"],
-  folder: ["M3 6h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
-  home: ["M3 11 12 3l9 8", "M5 10v10h14V10", "M9 20v-6h6v6"],
-  image: ["M4 5h16v14H4z", "M8 13l2.5-2.5L16 16", "M14 10h.01"],
-  monitor: ["M4 5h16v11H4z", "M8 21h8", "M12 16v5"],
-  pdf: ["M14 2H6a2 2 0 0 0-2 2v16h16V8z", "M14 2v6h6", "M8 15h8", "M8 18h5"],
-  portfolio: ["M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1", "M4 7h16v12H4z", "M4 12h16"],
-  settings: ["M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M19.4 15a1.7 1.7 0 0 0 .34 1.88l.03.03-1.8 3.12-.05-.02a1.7 1.7 0 0 0-1.86-.34 1.7 1.7 0 0 0-1.06 1.58V21h-3v-.06a1.7 1.7 0 0 0-1.06-1.58 1.7 1.7 0 0 0-1.86.34l-.05.02-1.8-3.12.03-.03A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 13.94H3v-3h.06A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.03-.03 1.8-3.12.05.02a1.7 1.7 0 0 0 1.86.34A1.7 1.7 0 0 0 9 2.75V3h6v-.25a1.7 1.7 0 0 0 1.06 1.58 1.7 1.7 0 0 0 1.86-.34l.05-.02 1.8 3.12-.03.03A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1.94h.06v3H21a1.7 1.7 0 0 0-1.6 1.06z"],
-  terminal: ["M4 5h16v14H4z", "M8 9l3 3-3 3", "M13 15h4"],
-  text: ["M14 2H6a2 2 0 0 0-2 2v16h16V8z", "M14 2v6h6", "M8 13h8", "M8 17h6"],
-  trash: ["M3 6h18", "M8 6V4h8v2", "M6 6l1 15h10l1-15"],
-};

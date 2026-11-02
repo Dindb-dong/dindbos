@@ -42,7 +42,7 @@ export class AppRegistry {
       const desktopPath = this.desktopApplicationPathFor(app, app.manifest);
       if (desktopPath && this.os.fs.exists(desktopPath)) this.os.fs.remove(desktopPath, "/", {}, system);
       for (const [id, task] of this.os.windows?.windows || []) {
-        if (task.appId === appId) this.os.windows.close(id);
+        if (task.appId === appId) this.os.windows.close(id, { force: true });
       }
       if (this.os.shell?.renderer) this.os.shell.renderDesktop();
       return true;
@@ -183,8 +183,9 @@ export class AppRegistry {
     if (!previous || !this.os.fs.exists("/usr/share/applications")) return;
     const previousPath = this.applicationPathFor(previous, previous.manifest);
     const nextPath = this.applicationPathFor(app, manifest);
-    if (previousPath === nextPath || !this.os.fs.exists(previousPath)) return;
-    this.os.fs.remove(previousPath, "/", {}, this.os.permissions.systemPrincipal());
+    if (previousPath !== nextPath && this.os.fs.exists(previousPath)) {
+      this.os.fs.remove(previousPath, "/", {}, this.os.permissions.systemPrincipal());
+    }
     const previousDesktopPath = this.desktopApplicationPathFor(previous, previous.manifest);
     const nextDesktopPath = this.desktopApplicationPathFor(app, manifest);
     if (previousDesktopPath && previousDesktopPath !== nextDesktopPath && this.os.fs.exists(previousDesktopPath)) {
