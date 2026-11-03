@@ -36,6 +36,8 @@ try {
     ["editor", "smoke-editor-browser.js"],
     ["browser", "smoke-browser-ui.js"],
     ["files", "smoke-files-ui-browser.js"],
+    ["files-tabs", "smoke-files-tabs-browser.js"],
+    ["app-menus", "smoke-app-menus-browser.js"],
     ["applications", "smoke-applications-browser.js"],
     ["liquid-glass", "smoke-liquid-glass-browser.js"],
     ["liquid-glass-integrated", "smoke-liquid-glass-integrated-browser.js"],

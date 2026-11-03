@@ -88,6 +88,18 @@ export interface DindbOSAppSummary {
   singleton?: boolean;
 }
 
+export interface DindbOSAppMenuItem<Context = Record<string, unknown>> {
+  label: string;
+  /** Optional display label; accelerator supplies keyboard handling. */
+  shortcut?: string;
+  /** Root-scoped chord such as Mod+Shift+K; Mod accepts Command or Control. */
+  accelerator?: string;
+  checked?: boolean;
+  enabled?: boolean | ((context: DindbOSAppContext<Context>) => boolean);
+  run(context: DindbOSAppContext<Context>): void | Promise<void>;
+}
+export type DindbOSAppMenus<Context = Record<string, unknown>> = Partial<Record<"file" | "edit" | "view" | "help", Array<DindbOSAppMenuItem<Context> | null>>>;
+
 export interface DindbOSHostApp<Context = Record<string, unknown>> {
   id: string;
   name?: string;
@@ -105,6 +117,7 @@ export interface DindbOSHostApp<Context = Record<string, unknown>> {
   minHeight?: number;
   accepts?: string[];
   manifest?: DindbOSAppManifest;
+  menus?: DindbOSAppMenus<Context> | ((context: DindbOSAppContext<Context>) => DindbOSAppMenus<Context>);
   render(context: DindbOSAppContext<Context>): void | (() => void);
   dispose?(context: DindbOSAppContext<Context>): void;
 }

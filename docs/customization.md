@@ -90,3 +90,30 @@ The host container controls the desktop's size. Your existing page and sibling d
 ## Refractive glass
 
 Floating shell surfaces use the instance-owned [Liquid Glass adapter](liquid-glass.md). Set `ui.liquidGlass` to `false` to retain the ordinary theme material, or configure `{ strength: 1, blur: 0.6, maxSurfaces: 18 }`. Mark custom chrome with `data-glass-surface` to opt in. The adapter follows desktop cleanup and honors reduced transparency; desktop Chromium provides refraction and Safari/Firefox use a frosted fallback.
+
+## Menus for your app
+
+Declare `menus` on `defineApp`, `DindbOSApp`, a class app, or React `DindbOSApp`. Its optional `file`, `edit`, `view`, and `help` arrays replace the corresponding menu for the active app; use `null` as a separator and `[]` to hide a menu. Omitted menus keep the built-in defaults. Unknown apps receive a neutral File → Close Window fallback.
+
+```js
+const editor = defineApp({
+  id: "studio-editor",
+  name: "Studio Editor",
+  menus: ({ content }) => ({
+    file: [{
+      label: "Save Draft",
+      accelerator: "Mod+Shift+S",
+      enabled: () => Boolean(content.querySelector("textarea")?.value),
+      run: async ({ content, os }) => {
+        await os.fs.writeFile("/home/guest/draft.txt", content.querySelector("textarea").value);
+      },
+    }],
+    view: [],
+  }),
+  render: ({ content }) => { content.innerHTML = "<textarea aria-label='Draft'></textarea>"; },
+});
+```
+
+A factory and each command receive the same app context as `render`, including its sandboxed `os`, content element, window API, and launch context. Factories and `enabled` callbacks must be synchronous; `run` may return a promise. Commands opened for one window stay attached to that window even if focus changes. Closing the window invalidates its commands. Menu callbacks that fail report an error without taking down the desktop.
+
+`accelerator` installs an instance-scoped keyboard command (`Mod` means Command or Control). `shortcut` is an optional display label only; it does not install a listener. Accelerators pause while a shell panel or a modal belonging to that desktop is open. `checked` displays a checkmark and `enabled: false` disables an item. Browser and operating-system reserved shortcuts may take precedence. Menus are host SDK metadata and are not serialized into installable app manifests.

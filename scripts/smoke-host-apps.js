@@ -13,6 +13,7 @@ class Notes {
   closed = 0;
   get width() { return 640; }
   title() { return this.prefix; }
+  menus() { return { file: [{ label: this.prefix, run: () => {} }] }; }
   render({ content }) {
     content.innerHTML = this.prefix;
     return () => { this.closed += 1; };
@@ -23,6 +24,7 @@ class Notes {
 const notes = new Notes();
 const app = defineApp(notes);
 assert.equal(app.title({}), "class instance");
+assert.equal(app.menus({}).file[0].label, "class instance", "class menu factories retain their instance binding");
 assert.equal(app.width, 640, "class getters remain part of the app contract");
 assert.equal(defineApp({ id: "function-app" }, () => {}).id, "function-app");
 assert.throws(() => defineApp({ id: "invalid id", render() {} }), /invalid id/);

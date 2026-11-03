@@ -6,7 +6,7 @@ export function defineApp(definition, render) {
   const mount = render || definition.render;
   if (typeof mount !== "function") throw new TypeError(`DindbOS app ${id} requires a render function`);
   const app = { ...definition, id, name: String(definition.name || id), render: mount.bind(definition) };
-  for (const key of ["title", "icon", "pinned", "desktop", "singleton", "width", "height", "chrome", "sidebarWidth", "minWidth", "minHeight", "accepts", "manifest", "dispose"]) {
+  for (const key of ["title", "icon", "pinned", "desktop", "singleton", "width", "height", "chrome", "sidebarWidth", "minWidth", "minHeight", "accepts", "menus", "manifest", "dispose"]) {
     if (key in definition) app[key] = definition[key];
     if (typeof definition[key] === "function") app[key] = definition[key].bind(definition);
   }

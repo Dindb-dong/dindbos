@@ -1,6 +1,7 @@
 import { createDesktopRenderer } from "../ui/desktop-view.js";
 import { ShellPanels } from "../ui/shell-panels.js";
 import { attachLiquidGlass } from "../ui/liquid-glass.js";
+import { APP_MENU_NAMES, applicationMenuItems, customAppMenus, menuItemEnabled, matchesAccelerator } from "../ui/app-menus.js";
 
 export class DesktopShell {
   constructor(os) {
@@ -147,6 +148,10 @@ export class DesktopShell {
     const app = task && this.os.apps?.list?.().find((item) => item.id === task.appId);
     const button = this.refs.menubar?.querySelector?.(".dos-active-app");
     if (button) button.textContent = app?.name || task?.appId || "Desktop";
+    for (const name of APP_MENU_NAMES) {
+      const trigger = this.refs.menubar?.querySelector?.(`[data-shell-panel="${name}"]`);
+      if (trigger) trigger.hidden = !applicationMenuItems(this, name, task, app, Boolean(this.editTarget?.isConnected)).length;
+    }
   }
 
   renderDesktop() {
@@ -233,6 +238,19 @@ export class DesktopShell {
   handleKeyDown(event) {
     const closestHost = event.target?.closest?.(".dindbos-host");
     if (closestHost && closestHost !== this.os.root) return;
+    if (!event.defaultPrevented && !this.activePanel && !this.os.windows?.hasVisibleTrustedSurface?.()) {
+      const modal = [...this.root.querySelectorAll('[aria-modal="true"]')].some(element => element.closest('.dindbos-host') === this.root && !element.hidden && element.getClientRects().length);
+      const task = this.activeTask();
+      const app = task && this.os.apps.list().find(entry => entry.id === task.appId);
+      const custom = !modal && customAppMenus(this, task, app);
+      const item = custom && APP_MENU_NAMES.flatMap(name => Array.isArray(custom.menus[name]) ? custom.menus[name] : []).find(item => item && matchesAccelerator(event, item.accelerator));
+      if (item && typeof item.run === "function" && menuItemEnabled(this, app, item, custom.context)) {
+        event.preventDefault(); event.stopPropagation();
+        try { Promise.resolve(item.run(custom.context)).catch(error => this.notify(error.message || "The menu command failed.")); }
+        catch (error) { this.notify(error.message || "The menu command failed."); }
+        return;
+      }
+    }
     if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
       this.openDesktopContext(event);
       if (event.defaultPrevented) return;

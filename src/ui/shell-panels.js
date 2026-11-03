@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { AppIcon } from "./app-icon.js";
+import { APP_MENU_NAMES, applicationMenuItems } from "./app-menus.js";
 
 export class ShellPanels {
   constructor(shell) {
@@ -31,7 +32,7 @@ export class ShellPanels {
     const appWindows = contextApp ? [...this.os.windows.windows.values()].filter((entry) => entry.appId === contextApp.id) : [];
     const pinItem = contextApp && { label: contextApp.pinned ? "Remove from Dock" : "Keep in Dock", action: "context-pin", checked: Boolean(contextApp.pinned) };
     const editable = this.shell.editTarget?.isConnected && this.shell.root.contains?.(this.shell.editTarget) && this.shell.editTarget.closest?.(".dos-window")?.classList.contains("is-active");
-    const items = {
+    const defaults = {
       desktop: [
         { label: "New Folder", action: "desktop-new-folder" },
         { label: "Open Files", action: "launch", app: "files", disabled: !available("files") },
@@ -64,7 +65,7 @@ export class ShellPanels {
         ...(appWindows.length ? [null, { label: "Quit", action: "context-quit" }] : []),
       ],
       system: [
-        { label: `About ${this.os.session.product || "DindbOS"}`, icon: "desktop", action: "about" },
+        { label: `About ${this.os.session.product || "DindbOS"}`, icon: "desktop", action: "about-system" },
         null,
         { label: "System Settings…", icon: "settings", action: "settings", disabled: !available("settings") },
         { label: "Applications…", icon: "apps", action: "launch", app: "applications", disabled: !available("applications") },
@@ -75,27 +76,7 @@ export class ShellPanels {
         { label: `About ${app?.name || "Desktop"}`, action: "about" },
         null,
         { label: `Close ${app?.name || "Window"}`, action: "close", shortcut: "⌘ W", disabled: !task },
-        ...["File", "Edit", "View", "Window", "Help"].map((label) => ({ label: `${label}…`, action: "open-menu", menu: label.toLowerCase(), compact: true })),
-      ],
-      file: [
-        { label: "New Files Window", action: "launch-new", app: "files", disabled: !available("files") },
-        { label: "New Text Document", action: "launch-new", app: "text", disabled: !available("text") },
-        null,
-        { label: "Close Window", action: "close", shortcut: "⌘ W", disabled: !task },
-      ],
-      edit: [
-        { label: "Undo", action: "edit-undo", shortcut: "⌘ Z", disabled: !editable },
-        { label: "Redo", action: "edit-redo", shortcut: "⇧ ⌘ Z", disabled: !editable },
-        null,
-        { label: "Cut", action: "edit-cut", shortcut: "⌘ X", disabled: !editable },
-        { label: "Copy", action: "edit-copy", shortcut: "⌘ C", disabled: !editable },
-        { label: "Paste", action: "edit-paste", shortcut: "⌘ V", disabled: !editable || !globalThis.navigator?.clipboard?.readText },
-        { label: "Select All", action: "edit-selectAll", shortcut: "⌘ A", disabled: !editable },
-      ],
-      view: [
-        { label: "Appearance…", action: "settings", section: "appearance", disabled: !available("settings") },
-        { label: "Show Desktop", action: "show-desktop", disabled: !this.os.windows.windows.size },
-        { label: "Refresh Desktop", action: "refresh" },
+        ...["File", "Edit", "View", "Window", "Help"].filter(label => !APP_MENU_NAMES.includes(label.toLowerCase()) || applicationMenuItems(this.shell, label.toLowerCase(), task, app, editable).length).map((label) => ({ label: `${label}…`, action: "open-menu", menu: label.toLowerCase(), compact: true })),
       ],
       window: [
         { label: "Minimize", action: "minimize", shortcut: "⌘ M", disabled: !task },
@@ -103,14 +84,23 @@ export class ShellPanels {
         null,
         ...[...this.os.windows.windows.values()].map((entry) => ({ label: entry.title || entry.appId, action: "focus-window", window: entry.id, checked: entry.id === task?.id })),
       ],
-      help: [
-        { label: "Explore Applications…", action: "launcher" },
-        { label: "Getting Started", action: "launch", app: "welcome", disabled: !available("welcome") },
-        { label: "About DindbOS", action: "about" },
-      ],
     }[name] || [];
+    const items = APP_MENU_NAMES.includes(name) ? applicationMenuItems(this.shell, name, task, app, editable) : defaults;
     this.disposePanel();
-    this.shell.refs.overlays.innerHTML = `<div class="dos-shell-menu" role="menu" aria-label="${escapeHtml(name)} menu">${items.map((item) => item ? `<button type="button" role="menuitem" ${item.compact ? 'class="dos-compact-menu-item"' : ""} data-shell-action="${item.action}" ${item.section ? `data-section="${item.section}"` : ""} ${item.menu ? `data-menu="${item.menu}"` : ""} ${item.app ? `data-app="${escapeHtml(item.app)}"` : ""} ${item.window ? `data-window="${escapeHtml(item.window)}"` : ""} ${item.disabled ? "disabled" : ""}><span class="dos-menu-check" aria-hidden="true">${item.icon ? controlIcon(item.icon) : item.checked ? "✓" : ""}</span><span>${escapeHtml(item.label)}</span><kbd>${item.shortcut || ""}</kbd></button>` : `<div class="dos-menu-divider" role="separator"></div>`).join("")}</div>`;
+    this.menuTask = task;
+    this.menuEditor = editable ? this.shell.editTarget : null;
+    this.menuActions = new Map();
+    items.forEach((item, index) => {
+      if (typeof item?.run !== "function") return;
+      const callback = item.run;
+      this.menuActions.set(String(index), () => {
+        if (task && this.os.windows.windows.get(task.id) !== task) return;
+        return callback();
+      });
+      item.action = "application-command";
+      item.command = String(index);
+    });
+    this.shell.refs.overlays.innerHTML = `<div class="dos-shell-menu" role="menu" aria-label="${escapeHtml(name)} menu">${items.map((item) => item ? `<button type="button" role="menuitem" ${item.compact ? 'class="dos-compact-menu-item"' : ""} data-shell-action="${item.action}" ${item.command !== undefined ? `data-command="${item.command}"` : ""} ${item.section ? `data-section="${item.section}"` : ""} ${item.menu ? `data-menu="${item.menu}"` : ""} ${item.app ? `data-app="${escapeHtml(item.app)}"` : ""} ${item.window ? `data-window="${escapeHtml(item.window)}"` : ""} ${item.disabled ? "disabled" : ""}><span class="dos-menu-check" aria-hidden="true">${item.icon ? controlIcon(item.icon) : item.checked ? "✓" : ""}</span><span>${escapeHtml(item.label)}</span><kbd>${escapeHtml(item.shortcut || "")}</kbd></button>` : `<div class="dos-menu-divider" role="separator"></div>`).join("")}</div>`;
     const menu = this.shell.refs.overlays.firstElementChild;
     const rootRect = this.shell.refs.shell.getBoundingClientRect?.();
     const triggerRect = trigger?.getBoundingClientRect?.();
@@ -234,15 +224,18 @@ export class ShellPanels {
     panel.querySelector("button")?.focus({ preventScroll: true });
   }
 
-  renderAbout() {
+  renderAbout(task = this.shell.activeTask(), system = false) {
     this.shell.activePanel = "about";
-    const app = this.os.apps.list().find((entry) => entry.id === this.shell.activeTask()?.appId);
-    const name = app?.name || this.os.session.product || "DindbOS";
-    const panel = this.panel(`<button type="button" class="dos-panel-close" data-shell-action="dismiss" aria-label="Close About">×</button><div class="dos-about-mark" aria-hidden="true">D</div><h2>${escapeHtml(name)}</h2><p>A desktop for the web.</p><p class="dos-about-detail">${app ? "Running in DindbOS" : "Built with DindbOS"}</p><button type="button" class="dos-panel-link" data-shell-action="launcher">Explore applications</button>`, "dos-about", `About ${name}`);
+    const app = this.os.apps.list().find((entry) => entry.id === task?.appId);
+    const name = (!system && app?.name) || this.os.session.product || "DindbOS";
+    const panel = this.panel(`<button type="button" class="dos-panel-close" data-shell-action="dismiss" aria-label="Close About">×</button><div class="dos-about-mark" aria-hidden="true">D</div><h2>${escapeHtml(name)}</h2><p>A desktop for the web.</p><p class="dos-about-detail">${!system && app ? "Running in DindbOS" : "Built with DindbOS"}</p><button type="button" class="dos-panel-link" data-shell-action="launcher">Explore applications</button>`, "dos-about", `About ${name}`);
     panel.querySelector("button")?.focus({ preventScroll: true });
   }
 
   disposePanel() {
+    this.menuTask = null;
+    this.menuEditor = null;
+    this.menuActions?.clear();
     this.controlsCleanup?.();
     this.controlsCleanup = null;
     this.launcherRoot?.unmount();
@@ -267,7 +260,13 @@ export class ShellPanels {
   }
 
   runAction(action, data = {}) {
-    const task = this.shell.activeTask();
+    const capturedTask = this.menuTask;
+    const task = capturedTask ? this.os.windows.windows.get(capturedTask.id) === capturedTask ? capturedTask : null : this.shell.activeTask();
+    if (action === "application-command") {
+      const callback = this.menuActions?.get(data.command);
+      this.shell.closePanel(false);
+      return callback?.();
+    }
     if (action.startsWith("control-media-")) {
       if (action === "control-media-open") { this.shell.closePanel(false); this.shell.launchApp("music"); return; }
       const name = action.slice("control-media-".length);
@@ -300,16 +299,16 @@ export class ShellPanels {
       this.renderCalendar();
       return;
     }
-    if (["about", "launcher", "controls"].includes(action)) {
+    if (["about", "about-system", "launcher", "controls"].includes(action)) {
       const trigger = this.shell.returnFocus;
       this.shell.closePanel(false);
       this.shell.returnFocus = trigger;
       this.shell.activePanel = action;
-      if (action === "about") this.renderAbout();
+      if (action === "about" || action === "about-system") this.renderAbout(task, action === "about-system");
       else this.open(action);
       return;
     }
-    const editor = this.shell.editTarget;
+    const editor = capturedTask ? this.menuEditor : this.shell.editTarget;
     const contextNode = this.shell.contextNode;
     const contextApp = this.shell.contextApp;
     this.shell.closePanel(false);
@@ -340,7 +339,8 @@ export class ShellPanels {
     else if (action === "focus-window") this.os.windows.activate(data.window);
     else if (action === "show-desktop") [...this.os.windows.windows.values()].filter((window) => !window.minimized).forEach((window) => this.os.windows.minimize(window.id));
     else if (action === "refresh") this.shell.renderDesktop();
-    else if (action.startsWith("edit-") && editor?.isConnected) {
+    else if (action.startsWith("edit-") && editor?.isConnected && (!capturedTask || task)) {
+      if (task) this.os.windows.focus(task.id);
       editor.focus({ preventScroll: true });
       const command = action.slice(5);
       if (command === "selectAll" && typeof editor.select === "function") editor.select();

@@ -23,7 +23,8 @@ try {
   await page.locator(".dos-active-app").click();
   await expect(page.getByRole("menuitem", { name: "File…", exact: true })).toBeVisible();
   await page.getByRole("menuitem", { name: "File…", exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: "New Files Window", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Close Window/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "New Files Window", exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(page.locator(".dos-active-app")).toBeFocused();
   await page.getByRole("button", { name: "Control Center", exact: true }).click();

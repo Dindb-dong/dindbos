@@ -157,3 +157,5 @@
   .dos-launcher-symbol { border: 0; background: transparent; box-shadow: none; }
   .dos-launcher-symbol > .dos-app-icon { width: 36px; height: 36px; }
 }
+
+.dindbos-host .dos-menubar button[hidden] { display: none !important; }
