@@ -288,6 +288,7 @@ export class DindbOS {
     this.persistTimer = null;
     this.persistPending = false;
     this.persisting = false;
+    this.persistFlushPromise = null;
     this.persistRequestedDuringFlush = false;
     this.persistenceHooksInstalled = false;
     this.serviceLifecycleHooksInstalled = false;
@@ -1859,7 +1860,7 @@ export class DindbOS {
     };
   }
 
-  async registerServiceWorkerBoot(scriptURL = "/dindbos-sw.js") {
+  async registerServiceWorkerBoot(scriptURL = "/dindbos-sw.js", options = {}) {
     const serviceWorker = globalThis.navigator?.serviceWorker;
     if (!serviceWorker?.register) {
       const status = this.serviceWorkerBootStatus("register-unavailable");
@@ -1868,7 +1869,7 @@ export class DindbOS {
       return status;
     }
     try {
-      const registration = await serviceWorker.register(scriptURL, { scope: "/" });
+      const registration = await serviceWorker.register(scriptURL, { scope: options.scope || "/" });
       this.lastServiceWorkerBoot = {
         ...this.serviceWorkerBootStatus("registered"),
         registration: {
@@ -4237,7 +4238,7 @@ export class DindbOS {
       return;
     }
     if (this.persistDelayMs <= 0) {
-      this.flushPersistentFileSystem();
+      this.flushPersistentFileSystem().catch(() => {}); // Error status is published; dirty data remains retryable.
       return;
     }
     if (this.persistTimer) {
@@ -4246,20 +4247,28 @@ export class DindbOS {
     }
     this.persistTimer = globalThis.setTimeout(() => {
       this.persistTimer = null;
-      this.flushPersistentFileSystem();
+      this.flushPersistentFileSystem().catch(() => {}); // Error status is published; dirty data remains retryable.
     }, this.persistDelayMs);
   }
 
-  async flushPersistentFileSystem() {
+  flushPersistentFileSystem() {
     if (this.persistTimer) {
       globalThis.clearTimeout(this.persistTimer);
       this.persistTimer = null;
     }
     if (this.persisting) {
       this.persistRequestedDuringFlush = true;
-      await this.storage.flush?.();
-      return this.persistenceStatus();
+      return this.persistFlushPromise;
     }
+    // Publish the shared promise before start listeners can request another flush.
+    let resolveFlush, rejectFlush;
+    const pending = new Promise((resolve, reject) => { resolveFlush = resolve; rejectFlush = reject; });
+    this.persistFlushPromise = pending;
+    this.performPersistentFileSystemFlush().then(resolveFlush, rejectFlush);
+    return pending;
+  }
+
+  async performPersistentFileSystemFlush() {
     this.persisting = true;
     const startedAt = Date.now();
     const group = this.storageTransactions?.beginGroup?.("writeback-flush", {
@@ -4299,6 +4308,7 @@ export class DindbOS {
       } while (this.persistRequestedDuringFlush || this.persistPending);
     } catch (error) {
       failure = error;
+      this.persistPending = true;
       if (transaction?.id) this.storageTransactions?.fail?.(transaction.id, error, {
         metadata: {
           flushed: this.persistenceStats.flushed,
@@ -4486,7 +4496,7 @@ export class DindbOS {
     if (this.persistenceHooksInstalled || typeof globalThis.window === "undefined") return;
     this.persistenceHooksInstalled = true;
     const flush = () => {
-      this.flushPersistentFileSystem();
+      this.flushPersistentFileSystem().catch(() => {}); // Preserve dirty data and the published flush error for retry.
     };
     const flushBeforeUnload = (event) => {
       const pending = this.hasPendingPersistenceWork();

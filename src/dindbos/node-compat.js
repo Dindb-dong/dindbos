@@ -71,6 +71,7 @@ export class NodeCompat {
     this.system = os.permissions.systemPrincipal();
     this.fsRoot = options.fsRoot ? os.fs.normalize(options.fsRoot) : "";
     this.fsScopes = options.fileSystem ? normalizeFileSystemScopes(os, options.fileSystem) : null;
+    this.assertFileSystem = typeof options.assertFileSystem === "function" ? options.assertFileSystem : null;
     this.allowedPackages = Array.isArray(options.allowedPackages) ? new Set(options.allowedPackages) : null;
   }
 
@@ -220,8 +221,9 @@ export class NodeCompat {
     }
   }
 
-  resolveFsPath(path, cwd = this.os.session.home || "/", access = "read") {
+  resolveFsPath(path, cwd = this.os.session.home || "/", access = "read", options = {}) {
     const normalized = this.os.fs.normalize(path, cwd);
+    this.assertFileSystem?.(normalized, access, options);
     if (this.fsScopes && isScopedPath(normalized, access === "write" ? this.fsScopes.write : this.fsScopes.read)) return normalized;
     if (this.fsScopes) throw new Error(`NodeCompat filesystem sandbox denied: ${normalized}`);
     if (!this.fsRoot || normalized === this.fsRoot || normalized.startsWith(`${this.fsRoot}/`)) return normalized;
@@ -546,7 +548,7 @@ class CommonJsRuntime {
         return resolved;
       },
       statSync: (path) => createStats(this.os.fs.stat(this.node.resolveFsPath(path, this.processContext.cwd, "read"), "/")),
-      lstatSync: (path) => createStats(this.os.fs.lstat(this.node.resolveFsPath(path, this.processContext.cwd, "read"), "/")),
+      lstatSync: (path) => createStats(this.os.fs.lstat(this.node.resolveFsPath(path, this.processContext.cwd, "read", { followFinal: false }), "/")),
       readdirSync: (path = ".", options = {}) => {
         const entries = this.os.fs.list(this.node.resolveFsPath(path, this.processContext.cwd, "read"), "/", this.node.system);
         if (options?.withFileTypes) return entries.map((entry) => createDirent(entry));
@@ -559,9 +561,9 @@ class CommonJsRuntime {
         return this.os.fs.createDirectory(resolved, "/", {}, this.node.system);
       },
       mkdtempSync: (prefix) => createTempDirectory(this.os, this.node.resolveFsPath(prefix, this.processContext.cwd, "write"), this.node.system),
-      rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd, "write"), "/", options, this.node.system),
-      unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd, "write"), "/", {}, this.node.system),
-      renameSync: (oldPath, newPath) => this.os.fs.move(this.node.resolveFsPath(oldPath, this.processContext.cwd, "write"), this.node.resolveFsPath(newPath, this.processContext.cwd, "write"), "/", this.node.system),
+      rmSync: (path, options = {}) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd, "write", { followFinal: false }), "/", options, this.node.system),
+      unlinkSync: (path) => this.os.fs.remove(this.node.resolveFsPath(path, this.processContext.cwd, "write", { followFinal: false }), "/", {}, this.node.system),
+      renameSync: (oldPath, newPath) => this.os.fs.move(this.node.resolveFsPath(oldPath, this.processContext.cwd, "write", { followFinal: false }), this.node.resolveFsPath(newPath, this.processContext.cwd, "write"), "/", this.node.system),
       copyFileSync: (source, destination, mode = 0) => {
         const resolvedSource = this.node.resolveFsPath(source, this.processContext.cwd, "read");
         const resolvedDestination = this.node.resolveFsPath(destination, this.processContext.cwd, "write");

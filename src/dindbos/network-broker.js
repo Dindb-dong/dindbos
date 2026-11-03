@@ -8,6 +8,7 @@ export class NetworkBroker {
     this.rtcPeerConnectionAdapter = options.rtcPeerConnection || null;
     this.rawSocketCompanion = options.rawSocketCompanion || null;
     this.requests = new Map();
+    this.pendingRequests = new Map();
     this.webSocketSessions = new Map();
     this.webSocketHistory = [];
     this.dataChannelSessions = new Map();
@@ -23,6 +24,44 @@ export class NetworkBroker {
     this.bytesSent = 0;
   }
 
+  beginRequest(id, context, signal) {
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
+    const record = { ownerPid: Number(context.process?.pid || 0), controller };
+    this.pendingRequests.set(id, record);
+    return {
+      signal: controller.signal,
+      release: () => { signal?.removeEventListener("abort", abort); this.pendingRequests.delete(id); },
+    };
+  }
+
+  cleanupOwner(pid, reason = "process-exit") {
+    const ownerPid = Number(pid);
+    if (!Number.isInteger(ownerPid) || ownerPid <= 0) return;
+    // Internal teardown deliberately does not require the soon-to-be-revoked app handle.
+    for (const request of this.pendingRequests.values()) if (request.ownerPid === ownerPid) request.controller.abort(reason);
+    for (const [id, session] of this.webSocketSessions) if (session.record.ownerPid === ownerPid) {
+      try { session.socket.close?.(1000, "Process exited"); }
+      catch (error) { session.record.closeError = error.message || String(error); }
+      finally { this.finishWebSocket(id, 1000, reason); }
+    }
+    for (const [id, session] of this.dataChannelSessions) if (session.record.ownerPid === ownerPid) {
+      try { session.channel.close?.(); }
+      catch (error) { session.record.closeError = error.message || String(error); }
+      try { session.peerConnection.close?.(); }
+      catch (error) { session.record.closeError = error.message || String(error); }
+      finally { this.finishDataChannel(id, reason); }
+    }
+    for (const [id, session] of this.rawSocketSessions) if (session.record.ownerPid === ownerPid) {
+      try { session.companion.closeRaw?.(session.record.companionSessionId, reason); }
+      catch (error) { session.record.closeError = error.message || String(error); }
+      finally { this.finishRawSocket(id, reason); }
+    }
+    for (const [id, service] of this.loopbackServices) if (service.ownerPid === ownerPid) this.unregisterLoopbackService(id, reason);
+  }
+
   registerLoopbackService(service = {}, context = {}) {
     const id = normalizeServiceId(service.id || service.name);
     const host = normalizeHost(service.host || `${id}.loopback.dindbos`);
@@ -35,6 +74,7 @@ export class NetworkBroker {
       title: String(service.title || service.name || id),
       packageId: String(service.packageId || context.process?.manifest?.namespace?.packageId || ""),
       requester: requesterId(context),
+      ownerPid: Number(context.process?.pid || 0),
       registeredAt: now,
       updatedAt: now,
       requests: 0,
@@ -452,13 +492,12 @@ export class NetworkBroker {
       durationMs: 0,
       bytesReceived: 0,
     };
+    const scope = this.beginRequest(id, context, options.signal);
     this.requests.set(id, request);
     this.writeProcfs();
     try {
-      const response = await adapter(target.toString(), {
-        ...options,
-      });
-      const text = await responseText(response);
+      const response = await abortableRequest(this.fetchWithRedirectPolicy(adapter, target, { ...options, signal: scope.signal }, context), scope.signal);
+      const text = await abortableRequest(responseText(response), scope.signal);
       request.status = "completed";
       request.finishedAt = new Date().toISOString();
       request.durationMs = Date.parse(request.finishedAt) - Date.parse(startedAt);
@@ -476,12 +515,74 @@ export class NetworkBroker {
         bytes: request.bytesReceived,
       };
     } catch (error) {
-      request.status = isAbortError(error) || options.signal?.aborted ? "cancelled" : "error";
+      request.status = isAbortError(error) || scope.signal.aborted ? "cancelled" : "error";
       request.finishedAt = new Date().toISOString();
       request.durationMs = Date.parse(request.finishedAt) - Date.parse(startedAt);
       request.error = error.message || String(error);
       this.completeRequest(id, request);
       throw new Error(`net: ${target.hostname}: ${request.status === "cancelled" ? "request cancelled" : request.error}`);
+    } finally { scope.release(); }
+  }
+
+  async fetchWithRedirectPolicy(adapter, target, options, context) {
+    const redirectMode = options.redirect || "follow";
+    if (!["follow", "manual", "error"].includes(redirectMode)) throw new TypeError("invalid fetch redirect mode");
+    let current = target;
+    let requestOptions = { ...options, redirect: "manual" };
+    for (let redirects = 0; ; redirects += 1) {
+      if (options.signal?.aborted) {
+        const error = new Error("request cancelled");
+        error.name = "AbortError";
+        throw error;
+      }
+      // Fetch must not contact the next host before its capability check. Browser
+      // manual redirects are opaque, so those cannot be safely followed here.
+      const response = await adapter(current.toString(), requestOptions);
+      if (response?.type === "opaqueredirect") {
+        await discardResponseBody(response);
+        throw new Error("redirect blocked: this browser hides the redirect destination; request the final permitted URL directly");
+      }
+      if (response?.redirected) {
+        await discardResponseBody(response);
+        throw new Error("fetch adapter followed a redirect despite manual redirect policy");
+      }
+      const status = Number(response?.status);
+      if (![301, 302, 303, 307, 308].includes(status)) return response;
+      const location = Object.entries(headersObject(response.headers)).find(([name]) => name.toLowerCase() === "location")?.[1];
+      if (redirectMode === "error") {
+        await discardResponseBody(response);
+        throw new Error("redirect blocked by request redirect policy");
+      }
+      if (redirectMode === "manual" || !location) return response;
+      if (redirects >= 20) {
+        await discardResponseBody(response);
+        throw new Error("too many redirects");
+      }
+      let destination;
+      try {
+        destination = normalizeUrl(new URL(location, current).toString());
+        if (!["http:", "https:"].includes(destination.protocol)) throw new Error("redirect destination must use HTTP or HTTPS");
+        this.assertAllowed(destination, "net.fetch", context);
+      } catch (error) {
+        await discardResponseBody(response);
+        throw error;
+      }
+      const headers = new Headers(requestOptions.headers || {});
+      if (current.origin !== destination.origin) {
+        for (const name of ["authorization", "proxy-authorization", "cookie", "cookie2"]) headers.delete(name);
+      }
+      const method = String(requestOptions.method || "GET").toUpperCase();
+      const rewriteToGet = (status === 301 || status === 302) && method === "POST" || status === 303 && method !== "GET" && method !== "HEAD";
+      if (rewriteToGet) {
+        requestOptions = { ...requestOptions, method: "GET", body: undefined };
+        for (const name of ["content-encoding", "content-language", "content-location", "content-type", "content-length"]) headers.delete(name);
+      } else if (requestOptions.body && (typeof requestOptions.body.getReader === "function" || typeof requestOptions.body[Symbol.asyncIterator] === "function")) {
+        await discardResponseBody(response);
+        throw new Error("cannot replay a streaming request body across a redirect");
+      }
+      requestOptions = { ...requestOptions, headers };
+      await discardResponseBody(response);
+      current = destination;
     }
   }
 
@@ -503,10 +604,11 @@ export class NetworkBroker {
       bytesReceived: 0,
       loopback: true,
     };
+    const scope = this.beginRequest(id, context, options.signal);
     this.requests.set(id, request);
     this.writeProcfs();
     try {
-      const response = await service.handler({
+      const response = await abortableRequest(Promise.resolve().then(() => service.handler({
         id,
         url: target.toString(),
         path: target.pathname || "/",
@@ -514,8 +616,9 @@ export class NetworkBroker {
         headers: options.headers || {},
         body: options.body || "",
         requester: request.requester,
-      });
-      const text = await responseText(response);
+        signal: scope.signal,
+      })), scope.signal);
+      const text = await abortableRequest(responseText(response), scope.signal);
       request.status = "completed";
       request.finishedAt = new Date().toISOString();
       request.durationMs = Date.parse(request.finishedAt) - Date.parse(startedAt);
@@ -538,13 +641,13 @@ export class NetworkBroker {
         serviceId: service.id,
       };
     } catch (error) {
-      request.status = "error";
+      request.status = isAbortError(error) || scope.signal.aborted ? "cancelled" : "error";
       request.finishedAt = new Date().toISOString();
       request.durationMs = Date.parse(request.finishedAt) - Date.parse(startedAt);
       request.error = error.message || String(error);
       this.completeRequest(id, request);
       throw new Error(`net: ${service.host}: ${request.error}`);
-    }
+    } finally { scope.release(); }
   }
 
   policyProbe(url, context = {}, capability = "net.fetch") {
@@ -628,6 +731,7 @@ export class NetworkBroker {
   }
 
   assertHostAllowed(host, capability, context = {}, url = host) {
+    if (context.process?.endedAt) throw new Error("net: process has exited");
     if (isShellOrSystem(context)) return true;
     if (typeof context.assertCapability === "function") context.assertCapability(capability);
     const hosts = allowedHosts(context);
@@ -672,7 +776,9 @@ export class NetworkBroker {
   }
 
   registerSocketKernelObject(record, kind, context = {}) {
-    if (!record || !this.os.objects) return null;
+    if (!record) return null;
+    record.ownerPid = Number(context.process?.pid || 0);
+    if (!this.os.objects) return null;
     const rights = socketRights(record, kind);
     const object = this.os.objects.register("socket", {
       ref: socketRef(record, kind),
@@ -893,6 +999,10 @@ async function responseText(response) {
   return "";
 }
 
+async function discardResponseBody(response) {
+  try { await response?.body?.cancel?.(); } catch { /* Preserve the policy or fetch error. */ }
+}
+
 function headersObject(headers) {
   if (!headers) return {};
   if (typeof headers.entries === "function") return Object.fromEntries(headers.entries());
@@ -905,6 +1015,15 @@ function isAbortError(error) {
 
 function isShellOrSystem(context = {}) {
   return Boolean(context.principal?.system || context.system || requesterId(context) === "shell");
+}
+
+function abortableRequest(promise, signal) {
+  return new Promise((resolve, reject) => {
+    const abort = () => { signal.removeEventListener("abort", abort); const error = new Error("request cancelled"); error.name = "AbortError"; reject(error); };
+    if (signal.aborted) { Promise.resolve(promise).catch(() => {}); abort(); return; }
+    signal.addEventListener("abort", abort, { once: true });
+    Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }
 
 function requesterId(context = {}) {

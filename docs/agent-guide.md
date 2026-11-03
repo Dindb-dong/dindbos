@@ -28,6 +28,12 @@ The commands return JSON on stdout with `--json`; command errors include `ok: fa
 - Return cleanup from imperative app renderers and UI slots. Use React effects for React-owned resources.
 - Use `useDindbOSApp` for app operations; use host `useDindbOS` only when host integration needs it.
 
+## Network redirects
+
+Brokered fetch checks the app's `networkHosts` policy before each HTTP redirect request. Redirects are fetched manually so an unapproved destination is never contacted first. Inspectable redirects can follow up to 20 hops; cross-origin hops remove authorization and cookie headers. Host-provided fetch adapters must honor the standard `redirect: "manual"` option.
+
+Browsers expose manual redirects as opaque responses without their destination. The broker rejects those responses, including same-host redirects, with an explanation; use the final permitted URL directly. Explicit `redirect: "manual"` can return inspectable redirect metadata, and `redirect: "error"` rejects redirects. This is separate from CORS, which the browser still enforces.
+
 ## Completion evidence
 
 Check source/version, exported imports, host build, initial app registration, keyboard launch, close/reopen, minimize/restore state, route unmount, and appearance changes. For storage changes, also save a file and reopen it. For layout changes, inspect desktop and a narrow container. State which browsers and flows you actually checked; a passing build does not verify interaction or animation.

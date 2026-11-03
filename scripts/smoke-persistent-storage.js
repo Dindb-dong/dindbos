@@ -16,6 +16,9 @@ await verifyInodeContentMismatchDiagnostics();
 await verifyQuotaReservationDeniesBeforeMutation();
 await verifyOpfsFailureFallsBackToSnapshot();
 await verifyLifecyclePendingWriteFlushes();
+await verifyFailedSnapshotRetry();
+await verifyFailedAsyncFlushRetry();
+await verifyConcurrentFlushFailure();
 await verifyRuntimeStorageTransactionHandles();
 await verifyStorageClassQuotaArbitration();
 
@@ -368,6 +371,66 @@ async function verifyLifecyclePendingWriteFlushes() {
     globalThis.window = originalWindow;
     globalThis.document = originalDocument;
   }
+}
+
+async function verifyFailedSnapshotRetry() {
+  const storage = createRuntimeStorage();
+  let saved = null;
+  storage.saveFileSystem = (snapshot) => {
+    storage.saved += 1;
+    if (storage.saved === 1) throw new Error("snapshot temporarily unavailable");
+    saved = snapshot;
+  };
+  const os = new DindbOS({ root: {}, storage, persistDelayMs: 10000 });
+  os.fs = bootVfs();
+  os.fs.writeOrCreateFile(binaryPath, "retry snapshot");
+  os.schedulePersistFileSystem({ action: "write", path: binaryPath });
+  try { await os.flushPersistentFileSystem(); throw new Error("failure was not propagated"); }
+  catch (error) { assert(error.message === "snapshot temporarily unavailable", "snapshot failure was hidden"); }
+  assert(os.persistPending, "failed snapshot lost its dirty state");
+  await os.flushPersistentFileSystem();
+  assert(storage.saved === 2, "retry did not save a new snapshot");
+  assert(new VirtualFileSystem(saved).readFile(binaryPath) === "retry snapshot", "retry lost file contents");
+  assert(!os.persistPending && !os.persisting, "successful retry did not settle persistence");
+}
+
+async function verifyFailedAsyncFlushRetry() {
+  const storage = createRuntimeStorage();
+  let attempts = 0;
+  storage.flush = async () => { if (++attempts === 1) throw new Error("disk temporarily unavailable"); };
+  const os = new DindbOS({ root: {}, storage, persistDelayMs: 10000 });
+  os.schedulePersistFileSystem({ action: "write", path: binaryPath });
+  try { await os.flushPersistentFileSystem(); throw new Error("failure was not propagated"); }
+  catch (error) { assert(error.message === "disk temporarily unavailable", "async flush failure was hidden"); }
+  assert(os.persistPending, "failed asynchronous flush lost its dirty state");
+  await os.flushPersistentFileSystem();
+  assert(storage.saved === 2 && attempts === 2, "async failure was not retried");
+  assert(!os.persistenceStats.lastFlushError && !os.persistPending, "successful retry retained a stale error");
+}
+
+async function verifyConcurrentFlushFailure() {
+  const storage = createRuntimeStorage();
+  let rejectFlush;
+  storage.flush = () => new Promise((resolve, reject) => { rejectFlush = reject; });
+  const os = new DindbOS({ root: {}, storage, persistDelayMs: 10000 });
+  let listenerFlush;
+  const publish = os.publishSessionStorageFlush.bind(os);
+  os.publishSessionStorageFlush = (phase, extra) => {
+    if (phase === "start") listenerFlush = os.flushPersistentFileSystem();
+    return publish(phase, extra);
+  };
+  os.schedulePersistFileSystem({ action: "write", path: binaryPath });
+  const first = os.flushPersistentFileSystem();
+  const second = os.flushPersistentFileSystem();
+  assert(listenerFlush === first, "start listeners must join the same flush before its snapshot is queued");
+  assert(first === second, "concurrent callers must await the same durable flush");
+  rejectFlush(new Error("in-flight save failed"));
+  const outcomes = await Promise.allSettled([first, second]);
+  assert(outcomes.every(result => result.status === "rejected"), "a concurrent caller reported success for a failed write");
+  assert(os.persistPending, "shared flush failure lost dirty state");
+  storage.flush = async () => {};
+  await os.flushPersistentFileSystem();
+  assert(storage.saved === 2 && !os.persistPending, "shared failure could not be retried");
 }
 
 function bootVfs() {

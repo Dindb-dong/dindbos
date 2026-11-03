@@ -1,5 +1,6 @@
 import { canAccessFileSystem, canUseCapability } from "./app-manifest.js";
 import { NodeCompat } from "./node-compat.js";
+import { fileContentToBytes, normalizeFileContentAsync } from "./file-data.js";
 
 const APP_STATE_DIR = "/var/lib/dindbos/app-state";
 const MAX_APP_STATE_VALUE_BYTES = 64 * 1024;
@@ -46,13 +47,14 @@ export class AppSandbox {
     this.assertCapability("app.launch");
     const normalized = this.os.fs.normalize(path, this.process.cwd);
     this.assertFileSystem(normalized, "read");
+    this.os.fs.assertTraversalAccess(normalized, "/", this.principal);
+    const node = this.os.fs.resolve(normalized);
+    if (node) this.os.fs.assertAccess(node, "read", this.principal, node.path);
     return this.os.openPath(normalized, { ...context, parentPid: this.process.pid });
   }
 
   openNode(node, context = {}) {
-    this.assertCapability("app.launch");
-    this.assertFileSystem(node.path || "/", "read");
-    return this.os.openNode(node, { ...context, parentPid: this.process.pid });
+    return this.openPath(node.path || "/", context);
   }
 
   assertCapability(capability) {
@@ -60,11 +62,55 @@ export class AppSandbox {
     throw new Error(`${this.process.appId}: capability denied: ${capability}`);
   }
 
-  assertFileSystem(path, access) {
+  assertFileSystem(path, access, { followFinal = true } = {}) {
     const effectiveAccess = access === "list" ? "read" : access;
-    this.os.packages?.assertDependencyPathAllowed?.(this.process.manifest.namespace || {}, path, access);
-    if (canAccessFileSystem(this.process.manifest, path, effectiveAccess)) return;
-    throw new Error(`${this.process.appId}: ${effectiveAccess}: ${path}: sandbox denied`);
+    const normalized = this.os.fs.normalize(path, this.process.cwd);
+    const check = (candidate) => {
+      this.os.packages?.assertDependencyPathAllowed?.(this.process.manifest.namespace || {}, candidate, access);
+      if (!canAccessFileSystem(this.process.manifest, candidate, effectiveAccess)) {
+        throw new Error(`${this.process.appId}: ${effectiveAccess}: ${candidate}: sandbox denied`);
+      }
+    };
+    check(normalized);
+    const resolved = this.resolveFileSystemPath(normalized, followFinal, check);
+    check(resolved);
+    // Ordinary writes update every VFS hard-link alias, so every affected name
+    // must be inside the write grant. Removing/moving a name does not do this.
+    if (effectiveAccess === "write" && followFinal) {
+      const node = this.os.fs.resolve(resolved);
+      if (node?.linkId) {
+        const visit = (entry, parent) => {
+          const name = parent === null ? "/" : this.os.fs.join(parent, entry.name);
+          if (entry.type === "file" && entry.linkId === node.linkId) check(name);
+          for (const child of entry.children || []) visit(child, name);
+        };
+        visit(this.os.fs.root, null);
+      }
+    }
+    return resolved;
+  }
+
+  resolveFileSystemPath(path, followFinal, check) {
+    let pending = path.split("/").filter(Boolean);
+    let resolved = "/";
+    const seen = new Set();
+    while (pending.length) {
+      const candidate = this.os.fs.join(resolved, pending.shift());
+      const entry = this.os.fs.lstat(candidate);
+      if (this.os.fs.isLink(entry) && (followFinal || pending.length)) {
+        if (seen.has(candidate)) throw new Error(`Too many symbolic links: ${candidate}`);
+        seen.add(candidate);
+        const target = this.os.fs.normalize(entry.target, this.os.fs.dirname(candidate));
+        // Check the full effective path, rather than requiring a grant on an
+        // ancestor directory when the manifest grants only a particular file.
+        check(pending.length ? this.os.fs.join(target, pending.join("/")) : target);
+        pending = target.split("/").filter(Boolean).concat(pending);
+        resolved = "/";
+      } else {
+        resolved = candidate;
+      }
+    }
+    return resolved;
   }
 
   filterDependencyList(path, entries) {
@@ -72,7 +118,7 @@ export class AppSandbox {
   }
 
   createFileSystemFacade() {
-    return {
+    const facade = {
       list: (path = "/", cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "list");
@@ -82,9 +128,19 @@ export class AppSandbox {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
         this.os.fs.assertTraversalAccess(normalized, "/", this.principal);
-        return this.os.fs.resolve(normalized);
+        const resolvedNode = this.os.fs.resolve(normalized);
+        if (resolvedNode) this.os.fs.assertAccess(resolvedNode, "read", this.principal, resolvedNode.path);
+        return resolvedNode;
       },
-      resolveNode: (node) => this.os.fs.resolveNode(node),
+      resolveNode: (node) => {
+        if (!node) return null;
+        const normalized = this.os.fs.normalize(node.path || "/", this.process.cwd);
+        this.assertFileSystem(normalized, "read");
+        this.os.fs.assertTraversalAccess(normalized, "/", this.principal);
+        const resolvedNode = this.os.fs.resolve(normalized);
+        if (resolvedNode) this.os.fs.assertAccess(resolvedNode, "read", this.principal, resolvedNode.path);
+        return resolvedNode;
+      },
       readFile: (path, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
         this.assertFileSystem(normalized, "read");
@@ -120,16 +176,9 @@ export class AppSandbox {
         return this.os.fs.writeFileBytes(normalized, bytes, "/", options, this.principal);
       },
       writeFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
-        const normalized = this.os.fs.normalize(path, cwd);
-        this.assertFileSystem(normalized, "write");
-        reserveStorageBytes(this.os, contentByteLength(blob), {
-          scope: "app-write",
-          appId: this.process.appId,
-          pid: this.process.pid,
-          path: normalized,
-          operation: "writeFileBlob",
-        });
-        return this.os.fs.writeFileBlob(normalized, blob, "/", options, this.principal);
+        const content = await normalizeFileContentAsync(blob, options);
+        // Authorize after awaiting the payload, immediately before the sync write.
+        return this.fs.writeFileBytes(path, fileContentToBytes(content), cwd, { ...options, mime: options.mime || content?.mime });
       },
       atomicWriteFile: (path, content, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
@@ -156,16 +205,9 @@ export class AppSandbox {
         return this.os.fs.atomicWriteFileBytes(normalized, bytes, "/", options, this.principal);
       },
       atomicWriteFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
-        const normalized = this.os.fs.normalize(path, cwd);
-        this.assertFileSystem(normalized, "write");
-        reserveStorageBytes(this.os, contentByteLength(blob), {
-          scope: "app-write",
-          appId: this.process.appId,
-          pid: this.process.pid,
-          path: normalized,
-          operation: "atomicWriteFileBlob",
-        });
-        return this.os.fs.atomicWriteFileBlob(normalized, blob, "/", options, this.principal);
+        const content = await normalizeFileContentAsync(blob, options);
+        // Authorize after awaiting the payload, immediately before the sync write.
+        return this.fs.atomicWriteFileBytes(path, fileContentToBytes(content), cwd, { ...options, mime: options.mime || content?.mime });
       },
       appendFile: (path, content, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
@@ -204,16 +246,9 @@ export class AppSandbox {
         return this.os.fs.writeOrCreateFileBytes(normalized, bytes, "/", options, this.principal);
       },
       writeOrCreateFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
-        const normalized = this.os.fs.normalize(path, cwd);
-        this.assertFileSystem(normalized, "write");
-        reserveStorageBytes(this.os, contentByteLength(blob), {
-          scope: "app-write",
-          appId: this.process.appId,
-          pid: this.process.pid,
-          path: normalized,
-          operation: "writeOrCreateFileBlob",
-        });
-        return this.os.fs.writeOrCreateFileBlob(normalized, blob, "/", options, this.principal);
+        const content = await normalizeFileContentAsync(blob, options);
+        // Authorize after awaiting the payload, immediately before the sync write.
+        return this.fs.writeOrCreateFileBytes(path, fileContentToBytes(content), cwd, { ...options, mime: options.mime || content?.mime });
       },
       atomicWriteOrCreateFile: (path, content, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
@@ -240,16 +275,9 @@ export class AppSandbox {
         return this.os.fs.atomicWriteOrCreateFileBytes(normalized, bytes, "/", options, this.principal);
       },
       atomicWriteOrCreateFileBlob: async (path, blob, cwd = this.process.cwd, options = {}) => {
-        const normalized = this.os.fs.normalize(path, cwd);
-        this.assertFileSystem(normalized, "write");
-        reserveStorageBytes(this.os, contentByteLength(blob), {
-          scope: "app-write",
-          appId: this.process.appId,
-          pid: this.process.pid,
-          path: normalized,
-          operation: "atomicWriteOrCreateFileBlob",
-        });
-        return this.os.fs.atomicWriteOrCreateFileBlob(normalized, blob, "/", options, this.principal);
+        const content = await normalizeFileContentAsync(blob, options);
+        // Authorize after awaiting the payload, immediately before the sync write.
+        return this.fs.atomicWriteOrCreateFileBytes(path, fileContentToBytes(content), cwd, { ...options, mime: options.mime || content?.mime });
       },
       createFile: (path, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
@@ -263,7 +291,7 @@ export class AppSandbox {
       },
       remove: (path, cwd = this.process.cwd, options = {}) => {
         const normalized = this.os.fs.normalize(path, cwd);
-        this.assertFileSystem(normalized, "write");
+        this.assertFileSystem(normalized, "write", { followFinal: false });
         return this.os.fs.remove(normalized, "/", options, this.principal);
       },
       copy: (sourcePath, destinationPath, cwd = this.process.cwd, options = {}) => {
@@ -276,7 +304,7 @@ export class AppSandbox {
       move: (sourcePath, destinationPath, cwd = this.process.cwd) => {
         const source = this.os.fs.normalize(sourcePath, cwd);
         const destination = this.os.fs.normalize(destinationPath, cwd);
-        this.assertFileSystem(source, "write");
+        this.assertFileSystem(source, "write", { followFinal: false });
         this.assertFileSystem(destination, "write");
         return this.os.fs.move(source, destination, "/", this.principal);
       },
@@ -302,7 +330,7 @@ export class AppSandbox {
       },
       lstat: (path, cwd = this.process.cwd) => {
         const normalized = this.os.fs.normalize(path, cwd);
-        this.assertFileSystem(normalized, "read");
+        this.assertFileSystem(normalized, "read", { followFinal: false });
         return this.os.fs.lstat(normalized, "/", this.principal);
       },
       exists: (path, cwd = this.process.cwd) => {
@@ -316,6 +344,27 @@ export class AppSandbox {
       dirname: (path) => this.os.fs.dirname(path),
       basename: (path) => this.os.fs.basename(path),
     };
+    const metadata = (node) => {
+      const { content, children, ...properties } = node;
+      return properties;
+    };
+    const snapshot = (value, method) => {
+      if (value && typeof value === "object" && typeof value.type === "string" && typeof value.path === "string") {
+        const result = metadata(value);
+        if (method === "resolve" || method === "resolveNode") {
+          if (Object.hasOwn(value, "content")) result.content = value.content;
+          if (value.children) result.children = this.filterDependencyList(value.path, this.os.fs.list(value.path, "/", this.principal)).map(metadata);
+        }
+        return structuredClone(result);
+      }
+      if (method === "list") return structuredClone(value.map(metadata));
+      return structuredClone(value);
+    };
+    // Host components receive detached snapshots, never mutable VFS records.
+    return Object.fromEntries(Object.entries(facade).map(([name, method]) => [name, (...args) => {
+      const result = method(...args);
+      return result && typeof result.then === "function" ? result.then(value => snapshot(value, name)) : snapshot(result, name);
+    }]));
   }
 
   createAppFacade() {
@@ -493,6 +542,7 @@ export class AppSandbox {
   createNodeFacade() {
     const node = new NodeCompat(this.os, {
       fileSystem: this.process.manifest.fileSystem,
+      assertFileSystem: (path, access, options) => this.assertFileSystem(path, access, options),
       allowedPackages: this.process.manifest.namespace?.dependencyAllowlist,
     });
     return {

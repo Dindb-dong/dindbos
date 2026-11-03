@@ -2,6 +2,7 @@
 import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { ShellSession } from "../src/dindbos/shell.js";
 import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
+import { createServer } from "node:http";
 
 const fetchCalls = [];
 const sockets = [];
@@ -278,7 +279,68 @@ assert(netStatus.companion.approved === true && netStatus.companion.rawTcpUdp ==
 assert(netStatus.totals.bytesReceived > 0, "/proc/net status missing bandwidth estimate");
 assert(fetchCalls.some((call) => call.url.includes("api.example.test")), "network fetch adapter was not called for allowed host");
 
-console.log("network smoke ok broker fetch websocket webrtc raw policy procfs syscalls shell package cancellation");
+await verifyRedirectPolicy();
+console.log("network smoke ok broker fetch websocket webrtc raw policy procfs syscalls shell package cancellation and preflight redirect policy");
+
+async function verifyRedirectPolicy() {
+  const calls = [];
+  const redirectRuntime = createDindbOSTestRuntime(null, {
+    networkFetch: async (url, options) => {
+      calls.push({ url, options });
+      const target = new URL(url);
+      const location = target.pathname === "/blocked" ? "https://blocked.example.test/private"
+        : target.pathname === "/allowed" ? "https://other.example.test/final"
+        : target.pathname === "/relative" || target.pathname === "/preserve" ? "/final"
+        : target.pathname === "/loop" ? "/loop" : "";
+      if (target.pathname === "/opaque") return { status: 0, type: "opaqueredirect" };
+      return location ? { status: target.pathname === "/preserve" ? 307 : 302, headers: { Location: location }, text: async () => "redirect" }
+        : { status: 200, headers: {}, text: async () => "final" };
+    },
+  });
+  const sandbox = new AppSandbox(redirectRuntime, processFor("redirect-app", ["net.fetch"], { networkHosts: ["api.example.test", "other.example.test"] }));
+  await assertRejects(() => sandbox.net.fetch("https://api.example.test/blocked", { redirect: "follow" }), "host denied");
+  assert(calls.length === 1 && calls[0].options.redirect === "manual", "redirect must be intercepted before a disallowed host is contacted");
+  const followed = await sandbox.net.fetch("https://api.example.test/allowed", { method: "POST", body: "hello", headers: { Authorization: "test-only", Cookie: "test-only", "Content-Type": "text/plain" } });
+  assert(followed.text === "final", "inspectable redirects to allowed hosts still resolve");
+  const redirected = calls.at(-1).options;
+  assert(redirected.method === "GET" && redirected.body === undefined, "302 POST follows standard GET rewrite");
+  assert(!redirected.headers.has("authorization") && !redirected.headers.has("cookie") && !redirected.headers.has("content-type"), "redirected request must not forward cross-origin credentials or stale body headers");
+  const relative = await sandbox.net.fetch("https://api.example.test/relative");
+  assert(relative.text === "final" && calls.at(-1).url === "https://api.example.test/final", "relative redirect resolves against the current URL");
+  await sandbox.net.fetch("https://api.example.test/preserve", { method: "POST", body: "kept", headers: { Authorization: "test-only", "Content-Type": "text/plain" } });
+  assert(calls.at(-1).options.method === "POST" && calls.at(-1).options.body === "kept" && calls.at(-1).options.headers.has("authorization"), "same-origin 307 preserves method, replayable body and credentials");
+  const beforeManual = calls.length;
+  const manual = await sandbox.net.fetch("https://api.example.test/blocked", { redirect: "manual" });
+  assert(manual.status === 302 && calls.length === beforeManual + 1, "explicit manual mode never follows");
+  await assertRejects(() => sandbox.net.fetch("https://api.example.test/relative", { redirect: "error" }), "redirect blocked");
+  await assertRejects(() => sandbox.net.fetch("https://api.example.test/opaque"), "browser hides the redirect destination");
+  const beforeLoop = calls.length;
+  await assertRejects(() => sandbox.net.fetch("https://api.example.test/loop"), "too many redirects");
+  assert(calls.length - beforeLoop === 21, "redirect loop is bounded to twenty followed hops");
+
+  // Real loopback-only HTTP requests prove the forbidden target receives no
+  // request, rather than merely checking a response URL after automatic fetch.
+  let forbiddenHits = 0;
+  let finalHits = 0;
+  const server = createServer((request, response) => {
+    if (request.url === "/redirect") { response.writeHead(302, { Location: `http://localhost:${server.address().port}/forbidden` }); response.end(); }
+    else if (request.url === "/same-host") { response.writeHead(307, { Location: "/final" }); response.end(); }
+    else { if (request.url === "/forbidden") forbiddenHits += 1; if (request.url === "/final") finalHits += 1; response.end("local final"); }
+  });
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "::", resolve); });
+  try {
+    const realRuntime = createDindbOSTestRuntime(null, { networkFetch: globalThis.fetch });
+    const realSandbox = new AppSandbox(realRuntime, processFor("real-redirect-app", ["net.fetch"], { networkHosts: ["127.0.0.1"] }));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    await assertRejects(() => realSandbox.net.fetch(`${base}/redirect`), "host denied");
+    assert(forbiddenHits === 0, "cross-host redirect denial must happen before the forbidden HTTP handler receives a request");
+    const result = await realSandbox.net.fetch(`${base}/same-host`);
+    assert(result.text === "local final" && finalHits === 1, "real same-host inspectable redirect is preserved");
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+}
 
 function processFor(appId, capabilities, namespace = {}) {
   return {

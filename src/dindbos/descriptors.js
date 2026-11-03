@@ -123,7 +123,7 @@ export class DescriptorManager {
     if (!active) this.pipes.delete(id);
   }
 
-  read(process, args = {}) {
+  read(process, args = {}, context = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (!descriptor.readable) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor is not readable`);
     if (descriptor.rights && !descriptor.rights.read) throw descriptorError("EBADF", `fd.read: ${descriptor.fd}: descriptor lacks read rights`);
@@ -132,6 +132,7 @@ export class DescriptorManager {
     let data = "";
     if (descriptor.kind === "file") {
       this.assertFileHandle(process, descriptor, ["read"]);
+      assertFileSystem(descriptor.path, "read", context);
       data = this.readFileDescriptor(descriptor, length);
     }
     else if (descriptor.kind === "stream") data = readBufferedDescriptor(descriptor, length);
@@ -179,11 +180,14 @@ export class DescriptorManager {
     return { fd: descriptor.fd, bytes, offset: descriptor.offset || 0 };
   }
 
-  seek(process, args = {}) {
+  seek(process, args = {}, context = {}) {
     const descriptor = this.descriptorFor(process.pid, args.fd);
     if (!["file", "stream"].includes(descriptor.kind)) throw descriptorError("ESPIPE", `fd.seek: ${descriptor.fd}: descriptor is not seekable`);
     this.assertDescriptorHandle(process, descriptor, ["seek"]);
-    if (descriptor.kind === "file") this.assertFileHandle(process, descriptor, ["seek"]);
+    if (descriptor.kind === "file") {
+      this.assertFileHandle(process, descriptor, ["seek"]);
+      assertFileSystem(descriptor.path, "read", context);
+    }
     const offset = numberArg(args.offset, "offset");
     const whence = String(args.whence || "set");
     const size = descriptor.kind === "file" ? byteLength(safeRead(() => this.os.fs.readFile(descriptor.path, "/", descriptor.principal), "")) : byteLength(descriptor.buffer || "");

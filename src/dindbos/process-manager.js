@@ -325,6 +325,7 @@ export class ProcessManager {
     this.os.windows?.releaseProcessCapture?.(process.pid, "process-crash");
     this.os.trustedPrompts?.cleanupByPid?.(process.pid, "process-crash");
     this.os.timers?.cleanupByPid?.(process.pid, "process-crash");
+    this.os.network?.cleanupOwner?.(process.pid, "process-crash");
     this.os.descriptors?.closeProcess?.(process.pid, "process-crash");
     this.os.unregisterIpcEndpointsForPid?.(process.pid, "process-crash");
     this.revokeProcessObjects(process, "process-crash");
@@ -378,6 +379,7 @@ export class ProcessManager {
     this.processes.delete(process.pid);
     this.os.trustedPrompts?.cleanupByPid?.(process.pid, reason);
     this.os.timers?.cleanupByPid?.(process.pid, reason);
+    this.os.network?.cleanupOwner?.(process.pid, reason);
     this.os.descriptors?.closeProcess?.(process.pid, reason);
     this.os.unregisterIpcEndpointsForPid?.(process.pid, reason);
     this.revokeProcessObjects(process, reason);
