@@ -218,6 +218,9 @@ export function renderCalendar(os, content, context, windowApi) {
     trapSheet(backdrop, finish); content.append(backdrop); backdrop.querySelector("input").focus();
   };
   const draw = () => {
+    const focused = content.ownerDocument.activeElement;
+    const focusAttribute = content.contains(focused) && ["data-month", "data-calendar-today", "data-calendar-day", "data-mini-day", "data-calendar-visible", "data-calendar-add", "data-event-delete"].find(attribute => focused.hasAttribute(attribute));
+    const focusValue = focusAttribute ? focused.getAttribute(focusAttribute) : null;
     app.beginRender();
     const label = month.toLocaleDateString(undefined, { month: "long", year: "numeric" });
     const first = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -235,6 +238,10 @@ export function renderCalendar(os, content, context, windowApi) {
     content.querySelectorAll("[data-mini-day]").forEach(button=>app.listen(button,"click",()=>{selected=button.dataset.miniDay;draw();}));
     app.listen(content.querySelector("[data-calendar-add]"), "click", openEvent);
     content.querySelectorAll("[data-event-delete]").forEach((button) => app.listen(button, "click", () => confirmRemoval(content, "Delete this event?", app.signal, () => { app.store.set(app.store.items.filter((event) => event.id !== button.dataset.eventDelete)); draw(); })));
+    if (focusAttribute) {
+      const replacement = [...content.querySelectorAll(`[${focusAttribute}]`)].find(element => element.getAttribute(focusAttribute) === focusValue);
+      (replacement || content.querySelector("[data-calendar-add]"))?.focus({ preventScroll: true });
+    }
   };
   draw(); return app.cleanup;
 }

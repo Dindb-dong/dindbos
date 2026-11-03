@@ -82,6 +82,13 @@ export function renderClock(os, content, context = {}, windowApi) {
     }
   };
   const draw = () => {
+    const focused = content.ownerDocument.activeElement;
+    const ownedFocus = content.contains(focused);
+    const focusAttribute = ownedFocus && ["data-clock-mode", "data-clock-add", "data-dismiss-alarm", "data-close-clock-add", "data-remove-city", "data-toggle-alarm", "data-delete-alarm", "data-clock-start", "data-clock-lap", "data-clock-reset"].find(attribute => focused.hasAttribute(attribute));
+    const focusValue = focusAttribute ? focused.getAttribute(focusAttribute) : null;
+    const inputLabel = ownedFocus && focused.matches("[data-timer-input]") ? focused.getAttribute("aria-label") : null;
+    const fieldName = ownedFocus ? focused.getAttribute("name") : null;
+    const wasAddControl = ownedFocus && focused.closest(".clock-add-popover");
     controller.abort();
     controller = new AbortController();
     lastSecond = -1;
@@ -157,6 +164,14 @@ export function renderClock(os, content, context = {}, windowApi) {
       listen(content.querySelector('[data-clock-reset]'), "click", () => { countdown.reset(); finished = false; draw(); });
     }
     tick();
+    if (ownedFocus) {
+      const replacement = focusAttribute ? [...content.querySelectorAll(`[${focusAttribute}]`)].find(element => element.getAttribute(focusAttribute) === focusValue)
+        : inputLabel ? [...content.querySelectorAll("[data-timer-input]")].find(element => element.getAttribute("aria-label") === inputLabel)
+        : fieldName ? [...content.querySelectorAll("[name]")].find(element => element.getAttribute("name") === fieldName) : null;
+      const fallback = wasAddControl || focusAttribute === "data-remove-city" || focusAttribute === "data-delete-alarm" ? content.querySelector("[data-clock-add]")
+        : focusAttribute === "data-dismiss-alarm" ? content.querySelector(`[data-clock-mode="${mode}"]`) : null;
+      if (!replacement?.disabled) (replacement || fallback)?.focus({ preventScroll: true });
+    }
   };
   draw();
   const interval = setInterval(tick, 100);

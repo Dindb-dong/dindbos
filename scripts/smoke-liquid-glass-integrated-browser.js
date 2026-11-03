@@ -18,8 +18,11 @@ try {
   await page.locator('.dos-boot-screen').waitFor({ state: 'detached' });
   await page.locator('[data-dock-app-id="applications"]').click();
   const header = page.locator('.applications-header');
-  await expect(header).toHaveAttribute('data-liquid-glass-mode', 'refraction');
-  const title = page.locator('.dos-window[data-app-id="applications"] .dos-window-titlebar');
+  await expect(header).toBeVisible();
+  // Integrated app chrome keeps its content material; refraction is opt-in.
+  assert.equal(await header.getAttribute('data-glass-surface'), null);
+  assert.equal(await header.getAttribute('data-liquid-glass-mode'), null);
+  const title = header;
   const bounds = await title.boundingBox();
   await page.mouse.move(bounds.x + bounds.width * .6, bounds.y + 20); await page.mouse.down();
   await page.mouse.move(1110, 60, { steps: 15 }); await page.mouse.up();
@@ -84,7 +87,7 @@ try {
   await panel.getByRole('button', { name: /System Settings/ }).click();
   await expect(page.locator('.dos-window[data-app-id="settings"]')).toBeVisible();
   assert.deepEqual(errors, []);
-  const result = { url: base, panelPixels, dockPixels, surfaces, errors, checks: ['ABBA pixel stability', 'live real desktop', 'Applications header', 'Dock', 'light/dark', 'forced colors', 'foreground Settings action'] };
+  const result = { url: base, panelPixels, dockPixels, surfaces, errors, checks: ['ABBA pixel stability', 'live real desktop', 'Applications integrated chrome without glass opt-in', 'Dock', 'light/dark', 'forced colors', 'foreground Settings action'] };
   await writeFile(join(output, 'evidence.json'), JSON.stringify(result, null, 2));
   console.log('integrated liquid glass smoke ok', JSON.stringify({ panelPixels, dockPixels }));
 } finally { await browser.close(); }
