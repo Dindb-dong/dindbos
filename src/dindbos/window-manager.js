@@ -245,6 +245,23 @@ export class WindowManager {
         this.syncWindowObject(task);
         this.renderTasks();
       },
+      setBounds: (rect = {}) => {
+        if (!this.windows.has(config.id)) return null;
+        if (!rect || typeof rect !== "object" || ["left", "top", "width", "height"].some((key) => key in rect && !Number.isFinite(rect[key]))) throw new TypeError("setBounds requires finite window coordinates");
+        const viewport = this.viewport();
+        const placement = isMobileWindowViewport(viewport) ? mobileWindowPlacement(viewport) : {
+          ...constrainWindowRect({ ...windowPlacementForTask(task), ...rect }, viewport, task), maximized: false,
+        };
+        cancelWindowAnimation(task);
+        task.maximized = Boolean(placement.maximized);
+        task.frame.classList.toggle("is-maximized", task.maximized);
+        task.titlebar?.querySelector?.("[data-window-maximize]")?.setAttribute?.("aria-label", task.maximized ? "Restore window size" : "Maximize");
+        Object.assign(task.frame.style, { left: `${placement.left}px`, top: `${placement.top}px`, width: `${placement.width}px`, height: `${placement.height}px` });
+        this.saveWindowPlacement(config.id);
+        this.syncWindowObject(task);
+        this.writeCompositorProcfs("bounds");
+        return { left: placement.left, top: placement.top, width: placement.width, height: placement.height };
+      },
       setAccessibilityTree: (tree) => this.setAccessibilityTree(config.id, tree),
       getAccessibilityTree: () => cloneState(task.accessibilityTree || null),
       captureSurface: (options = {}) => this.captureSurface({ ...options, requesterWindowId: config.id, scope: "window" }),

@@ -46,6 +46,8 @@ export interface DindbOSWindowAPI {
   getState<T = unknown>(key?: string): T;
   setState<T>(key: string, value: T): T;
   setTitle(title: string): void;
+  /** Set host-relative bounds, constrained to this desktop's usable workspace. */
+  setBounds(rect: Partial<{ left: number; top: number; width: number; height: number }>): { left: number; top: number; width: number; height: number } | null;
   setBeforeClose(handler: () => boolean | Promise<boolean>): () => void;
   setAccessibilityTree(tree: unknown): unknown;
   getAccessibilityTree(): unknown;
@@ -86,6 +88,8 @@ export interface DindbOSAppSummary {
   pinned?: boolean;
   category?: string;
   singleton?: boolean;
+  accepts?: string[];
+  associationPriority?: number;
 }
 
 export interface DindbOSAppMenuItem<Context = Record<string, unknown>> {

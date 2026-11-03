@@ -7,6 +7,8 @@ class NotesApp {
   render({ os, content, window }: DindbOSAppContext) {
     content.textContent = String(os.state.get("draft", "Hello"));
     window.setTitle(this.name);
+    const placement = window.setBounds({ left: 40, top: 60 });
+    if (placement) content.dataset.windowLeft = String(placement.left);
     return () => { content.textContent = ""; };
   }
 }

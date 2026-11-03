@@ -327,6 +327,7 @@ export class AppSandbox {
         pinned: app.pinned,
         ...(typeof app.category === "string" ? { category: app.category } : {}),
         accepts: [...(app.accepts || [])],
+        associationPriority: Number(app.associationPriority || 0),
       })),
       manifests: () => this.os.apps.manifests(),
       getManifest: (appId) => this.os.apps.getManifest(appId),
