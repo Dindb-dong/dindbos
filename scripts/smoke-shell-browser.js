@@ -97,6 +97,21 @@ try {
   await dockApp.click({button:'right'});
   await page.getByRole('menuitem',{name:'Quit',exact:true}).click();
   await expect(counter).toHaveCount(0);
+  // Follow the actual system-menu → Settings → Wallpaper workflow.
+  await page.locator('.dos-system-menu').click();
+  await page.getByRole('menuitem', { name: 'System Settings…', exact: true }).click();
+  const settings = page.locator('.dos-window[data-app-id="settings"]');
+  await settings.locator('[data-settings-section-button="wallpaper"]').click();
+  await expect(settings.locator('[data-settings-section="wallpaper"]')).toBeVisible();
+  await settings.locator('[data-settings-section="wallpaper"] [data-appearance-wallpaper="coast"]').click();
+  await expect(page.locator('.dindbos-host')).toHaveAttribute('data-wallpaper', 'coast');
+  await settings.getByRole('button', { name: 'Minimize', exact: true }).click();
+  await page.mouse.click(5, 400, { button: 'right' });
+  await page.getByRole('menuitem', { name: 'Change Wallpaper…', exact: true }).click();
+  await expect(settings).toBeVisible();
+  await expect(settings.locator('[data-settings-section="wallpaper"]')).toBeVisible();
+  await expect(page.locator('.dos-window[data-app-id="settings"]')).toHaveCount(1);
+  if (output) await page.screenshot({ path: join(output, 'system-settings-wallpaper.png') });
   console.log("Shell browser smoke passed: mobile and embedded menu fit, compact menu access, focus restoration, control panel");
 } finally {
   await browser.close();

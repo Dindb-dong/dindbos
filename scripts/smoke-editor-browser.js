@@ -53,6 +53,11 @@ try {
   await page.goto(url);
   await expect(document).toBeEnabled();
   await document.fill(draft);
+  await document.click();
+  await page.locator('[data-shell-panel="edit"]').click();
+  await expect(page.getByRole('menuitem', { name: /Select All/ })).toBeEnabled();
+  await page.getByRole('menuitem', { name: /Select All/ }).click();
+  assert.deepEqual(await document.evaluate(element => [element.selectionStart, element.selectionEnd]), [0, draft.length], 'mouse-opened Edit menu remembers and selects the active editor');
   await close();
   await expect(changes).toBeVisible();
   await changes.getByRole("button", { name: "Cancel", exact: true }).click();

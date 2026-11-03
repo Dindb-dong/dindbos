@@ -4,7 +4,7 @@ import { renderNotes, renderReminders, renderCalendar } from "./productivity.js"
 import { renderPhotos, renderMusic } from "./media.js";
 import { renderClock } from "./clock.js";
 import { renderApplications } from "./applications.js";
-import { appearanceMarkup, wireAppearanceControls, welcomeMarkup } from "./appearance.js";
+import { appearanceMarkup, wireAppearanceControls, welcomeMarkup, wallpaperSettingsMarkup, desktopSettingsMarkup, wireWallpaperPreviews } from "./appearance.js";
 import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js";
 import {
   BROWSERD_FRAME_ENCODING,
@@ -204,7 +204,7 @@ export function installBuiltinApps(os, options = {}) {
   register({
     id: "settings",
     name: "Settings",
-    title: "Settings.app",
+    title: "Settings",
     icon: "settings",
     pinned: true,
     singleton: true,
@@ -214,7 +214,7 @@ export function installBuiltinApps(os, options = {}) {
       capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read", "browser.read"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
     },
-    render: ({ content, os: runtime }) => renderSettings(runtime, content, appearance),
+    render: ({ content, os: runtime, context }) => renderSettings(runtime, content, appearance, context?.section || context?.settingsSection),
   });
   for (const [id, name, render, width, height, accepts] of [
     ["notes", "Notes", renderNotes, 840, 580],
@@ -2482,8 +2482,18 @@ function renderBrowser(os, content, context = {}, windowApi) {
     refs.error.textContent = isDindbPath(state.address)
       ? `Could not open this document. ${message}`
       : `Could not connect to external browsing. Check that your browser companion is running, then choose Connect. ${message}`;
+    const localDocument = isDindbPath(state.address);
+    if (localDocument) {
+      refs.viewport.appendChild(refs.error);
+      refs.placeholder.hidden = true;
+      refs.local.hidden = true;
+      refs.frame.hidden = true;
+    } else {
+      refs.connect.parentElement.insertBefore(refs.error, refs.connect);
+    }
+    refs.error.classList.toggle("browser-document-error", localDocument);
     refs.error.hidden = false;
-    refs.connection.open = true;
+    refs.connection.open = !localDocument;
   };
   const updateDiagnostics = () => {
     refs.diagnostics.innerHTML = browserDiagnosticsMarkup(buildBrowserDiagnostics(state, { connected: client.connected }));
@@ -2715,7 +2725,8 @@ function renderBrowser(os, content, context = {}, windowApi) {
   async function openLocalPath(path) {
     const normalized = os.fs.normalize(path);
     const node = os.fs.resolve(normalized) || os.fs.lstat(normalized);
-    if (!node || node.mime !== "text/html") throw new Error(`Browser can only open HTML files: ${path}`);
+    if (!node) throw new Error(`Document not found: ${path}`);
+    if (node.mime !== "text/html") throw new Error(`Browser can only open HTML files: ${path}`);
     const html = os.localMounts?.isMountedPath(normalized)
       ? await os.localMounts.readFile(normalized)
       : os.fs.readFile(normalized);
@@ -3699,7 +3710,7 @@ function renderActivityMonitor(os, content) {
                 <span>${escapeHtml(formatActivityScore(process.activityScore))}</span>
                 <span>${escapeHtml(formatBytes(process.runtimeBytes))}</span>
               </button>
-            `).join("") || `<p class="activity-empty">No running processes.</p>`}
+            `).join("") || `<p class="activity-empty">${allProcesses.length ? "No matching processes." : "No running processes."}</p>`}
           </div>
           <aside class="activity-detail">
             ${selected ? renderActivityDetail(selected, processLog, selectedService, selectedServiceLog, selectedServiceManifest) : "<p>No process selected.</p>"}
@@ -4020,8 +4031,28 @@ function renderCalculator(content) {
   root.focus({ preventScroll: true });
 }
 
+function settingsIcon(name) {
+  const paths = {
+    search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>',
+    back: '<path d="m15 5-7 7 7 7"/>', forward: '<path d="m9 5 7 7-7 7"/>',
+    appearance: '<circle cx="12" cy="12" r="8"/><path d="M12 4v16"/><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none"/>',
+    wallpaper: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 3-3 5 5"/>',
+    desktop: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
+    general: '<circle cx="12" cy="12" r="8"/><path d="M12 7v6m0 3h.01"/>',
+    storage: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 14h18m-5 2.5h1"/>',
+    services: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>',
+    sync: '<path d="M19 9a7 7 0 0 0-12-4L4 8m0-5v5h5m-4 7a7 7 0 0 0 12 4l3-3m0 5v-5h-5"/>',
+    security: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/>',
+    browser: '<circle cx="12" cy="12" r="9"/><path d="m16 8-3 5-5 3 3-5Z"/>',
+    folders: '<path d="M3 6h7l2 2h9v11H3Z"/>',
+  };
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.general}</svg>`;
+}
+
 const SETTINGS_SECTIONS = [
-  { id: "appearance", label: "Appearance", detail: "Make it your desktop", icon: "appearance" },
+  { id: "appearance", label: "Appearance", detail: "Light, dark, and accent colors", icon: "appearance" },
+  { id: "wallpaper", label: "Wallpaper", detail: "Choose your desktop background", icon: "wallpaper" },
+  { id: "desktop", label: "Desktop & Dock", detail: "Dock size and arrangement", icon: "desktop" },
   { id: "overview", label: "Advanced", detail: "Runtime and diagnostics", icon: "general" },
   { id: "storage", label: "Storage", detail: "Save engine and recovery", icon: "storage" },
   { id: "services", label: "Services", detail: "Runtime daemons", icon: "services" },
@@ -4033,27 +4064,34 @@ const SETTINGS_SECTIONS = [
 
 const settingsCleanups = new WeakMap();
 
-function renderSettings(os, content, appearance = null) {
-  const initialSection = content.querySelector(".settings-app")?.dataset.settingsActive || "appearance";
+function renderSettings(os, content, appearance = null, requestedSection) {
+  let initialSection = requestedSection || content.querySelector(".settings-app")?.dataset.settingsActive || "appearance";
+  let navigate = null;
+  const onNavigate = (event) => {
+    if (typeof event.detail?.section !== "string") return;
+    initialSection = event.detail.section;
+    navigate?.(initialSection, { focus: true });
+  };
   settingsCleanups.get(content)?.();
   let disposed = false;
   let unsubscribe = () => {};
-  settingsCleanups.set(content, () => { disposed = true; unsubscribe(); });
+  content.addEventListener("dindbos:settings-navigate", onNavigate);
+  settingsCleanups.set(content, () => { disposed = true; unsubscribe(); content.removeEventListener("dindbos:settings-navigate", onNavigate); });
   content.innerHTML = `
     <section class="settings-app">
-      <p class="dos-kicker">System</p>
-      <h2>DindbOS.js Runtime</h2>
-      <p class="settings-muted">Loading runtime status...</p>
+      <p class="settings-muted" role="status">Loading Settings…</p>
     </section>
   `;
-  renderSettingsContent(os, content, appearance, () => disposed, initialSection).then(() => {
-    if (!disposed && appearance) unsubscribe = wireAppearanceControls(content, appearance);
+  renderSettingsContent(os, content, appearance, () => disposed, () => initialSection).then((rendered) => {
+    if (disposed) { rendered?.cleanup(); return; }
+    navigate = rendered.select;
+    const appearanceCleanup = appearance ? wireAppearanceControls(content, appearance) : () => {};
+    unsubscribe = () => { appearanceCleanup(); rendered.cleanup(); };
   }).catch((error) => {
     if (disposed) return;
     content.innerHTML = `
       <section class="settings-app">
-        <p class="dos-kicker">System</p>
-        <h2>DindbOS.js Runtime</h2>
+        <h2>Settings</h2>
         <pre>${escapeHtml(error.message)}</pre>
       </section>
     `;
@@ -4069,10 +4107,19 @@ async function renderSettingsContent(os, content, appearance, isDisposed = () =>
   const settingsApp = content.querySelector(".settings-app");
   const sectionButtons = [...content.querySelectorAll("[data-settings-section-button]")];
   const sections = [...content.querySelectorAll("[data-settings-section]")];
-  const selectSettingsSection = (sectionId) => {
+  const history = [];
+  let historyIndex = -1;
+  const back = content.querySelector("[data-settings-back]");
+  const forward = content.querySelector("[data-settings-forward]");
+  const selectSettingsSection = (sectionId, { focus = false, record = true } = {}) => {
     const nextSection = sections.find((section) => section.dataset.settingsSection === sectionId) || sections[0];
     if (!nextSection) return;
     const nextId = nextSection.dataset.settingsSection;
+    if (record && history[historyIndex] !== nextId) {
+      history.splice(historyIndex + 1); history.push(nextId); historyIndex = history.length - 1;
+    }
+    back.disabled = historyIndex <= 0;
+    forward.disabled = historyIndex >= history.length - 1;
     settingsApp.dataset.settingsActive = nextId;
     const definition = SETTINGS_SECTIONS.find((section) => section.id === nextId);
     const heading = content.querySelector(".settings-detail-header h2");
@@ -4088,8 +4135,10 @@ async function renderSettingsContent(os, content, appearance, isDisposed = () =>
       const active = button.dataset.settingsSectionButton === nextId;
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
     });
-    nextSection.querySelector("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")?.focus?.({ preventScroll: true });
+    if (focus) content.querySelector(".settings-detail-header h2")?.focus({ preventScroll: true });
+    content.querySelector(".settings-detail").scrollTop = 0;
   };
   sectionButtons.forEach((button) => {
     button.addEventListener("click", () => selectSettingsSection(button.dataset.settingsSectionButton));
@@ -4097,12 +4146,32 @@ async function renderSettingsContent(os, content, appearance, isDisposed = () =>
   content.querySelector(".settings-nav")?.addEventListener("keydown", (event) => {
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
-    const current = sectionButtons.indexOf(event.target.closest("[data-settings-section-button]"));
-    const index = event.key === "Home" ? 0 : event.key === "End" ? sectionButtons.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + sectionButtons.length) % sectionButtons.length;
-    selectSettingsSection(sectionButtons[index].dataset.settingsSectionButton);
-    sectionButtons[index].focus();
+    const visible = sectionButtons.filter(button => !button.hidden);
+    const current = visible.indexOf(event.target.closest("[data-settings-section-button]"));
+    const index = event.key === "Home" ? 0 : event.key === "End" ? visible.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + visible.length) % visible.length;
+    if (!visible[index]) return;
+    selectSettingsSection(visible[index].dataset.settingsSectionButton);
+    visible[index].focus();
   });
-  selectSettingsSection(initialSection);
+  back.addEventListener("click", () => { if (historyIndex > 0) selectSettingsSection(history[--historyIndex], { record: false }); });
+  forward.addEventListener("click", () => { if (historyIndex < history.length - 1) selectSettingsSection(history[++historyIndex], { record: false }); });
+  const search = content.querySelector("[data-settings-search]");
+  search.addEventListener("input", () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    let matches = 0;
+    for (const button of sectionButtons) {
+      button.hidden = !button.textContent.toLocaleLowerCase().includes(query);
+      if (!button.hidden) matches++;
+    }
+    content.querySelector("[data-settings-search-empty]").hidden = matches !== 0;
+  });
+  search.addEventListener("keydown", event => {
+    if (event.key === "Escape") { search.value = ""; search.dispatchEvent(new Event("input")); event.stopPropagation(); }
+    if (event.key === "Enter") sectionButtons.find(button => !button.hidden)?.click();
+  });
+  wireWallpaperPreviews(content);
+  const iconCleanups = [...content.querySelectorAll("[data-settings-dock-icon]")].map(icon => mountAppIcon(icon, icon.dataset.settingsDockIcon));
+  selectSettingsSection(typeof initialSection === "function" ? initialSection() : initialSection);
   content.querySelectorAll("[data-settings-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -4124,6 +4193,7 @@ async function renderSettingsContent(os, content, appearance, isDisposed = () =>
       }
     });
   });
+  return { select: selectSettingsSection, cleanup: () => { for (const cleanup of iconCleanups.splice(0)) cleanup(); } };
 }
 
 export async function settingsRuntimeSnapshot(os) {
@@ -4179,17 +4249,20 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
             <span>${escapeHtml(snapshot.home || "/home/guest")}</span>
           </div>
         </div>
-        <nav class="settings-nav" role="tablist" aria-label="System settings">
+        <label class="settings-search"><span aria-hidden="true">${settingsIcon("search")}</span><input type="search" data-settings-search placeholder="Search" aria-label="Search Settings" autocomplete="off"></label>
+        <nav class="settings-nav" role="tablist" aria-orientation="vertical" aria-label="System settings">
           ${SETTINGS_SECTIONS.map((section) => `
             <button
               type="button"
               class="settings-nav-item${section.id === "appearance" ? " is-active" : ""}"
               role="tab"
+              id="${escapeAttr(prefix)}-tab-${escapeAttr(section.id)}"
+              tabindex="${section.id === "appearance" ? "0" : "-1"}"
               aria-controls="${escapeAttr(prefix)}-section-${escapeAttr(section.id)}"
               aria-selected="${section.id === "appearance"}"
               data-settings-section-button="${escapeAttr(section.id)}"
             >
-              <span class="settings-nav-icon" data-settings-icon="${escapeAttr(section.icon)}" aria-hidden="true"></span>
+              <span class="settings-nav-icon" data-settings-icon="${escapeAttr(section.icon)}" aria-hidden="true">${settingsIcon(section.icon)}</span>
               <span>
                 <strong>${escapeHtml(section.label)}</strong>
                 <small>${escapeHtml(section.detail)}</small>
@@ -4197,16 +4270,23 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
             </button>
           `).join("")}
         </nav>
+        <p class="settings-search-empty" data-settings-search-empty hidden>No matching settings</p>
       </aside>
       <main class="settings-detail">
         <header class="settings-detail-header">
-          <h2>System Settings</h2>
-          <p>Personalize your desktop and manage your environment.</p>
+          <div class="settings-history"><button type="button" data-settings-back aria-label="Back in Settings" disabled>${settingsIcon("back")}</button><button type="button" data-settings-forward aria-label="Forward in Settings" disabled>${settingsIcon("forward")}</button></div>
+          <div><h2 tabindex="-1">System Settings</h2><p>Personalize your desktop and manage your environment.</p></div>
         </header>
-        <section class="settings-section is-active" id="${escapeAttr(prefix)}-section-appearance" data-settings-section="appearance" role="tabpanel">
-          ${appearanceMarkup(appearance)}
+        <section class="settings-section is-active" id="${escapeAttr(prefix)}-section-appearance" data-settings-section="appearance" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-appearance">
+          ${appearanceMarkup(appearance, { wallpaper: false, dock: false })}
         </section>
-        <section class="settings-section" id="${escapeAttr(prefix)}-section-overview" data-settings-section="overview" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-wallpaper" data-settings-section="wallpaper" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-wallpaper" hidden>
+          ${wallpaperSettingsMarkup(appearance)}
+        </section>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-desktop" data-settings-section="desktop" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-desktop" hidden>
+          ${desktopSettingsMarkup(appearance)}
+        </section>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-overview" data-settings-section="overview" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-overview" hidden>
           <section class="settings-panel settings-overview-panel">
             <header>
               <h3>Overview</h3>
@@ -4240,7 +4320,7 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
             ${renderSettingsSessionCoordination(snapshot.coordination)}
           </section>
         </section>
-        <section class="settings-section" id="${escapeAttr(prefix)}-section-storage" data-settings-section="storage" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-storage" data-settings-section="storage" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-storage" hidden>
           <section class="settings-panel">
             <header>
               <h3>Save Engine</h3>
@@ -4258,7 +4338,7 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
             ${renderSettingsStorageKernel(snapshot.storageKernel)}
           </section>
         </section>
-        <section class="settings-section" id="${escapeAttr(prefix)}-section-services" data-settings-section="services" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-services" data-settings-section="services" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-services" hidden>
           <section class="settings-panel">
             <header>
               <h3>Services</h3>
@@ -4266,7 +4346,7 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
             ${renderSettingsServices(snapshot.services)}
           </section>
         </section>
-        <section class="settings-section" id="${escapeAttr(prefix)}-section-sync" data-settings-section="sync" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-sync" data-settings-section="sync" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-sync" hidden>
           <section class="settings-panel">
             <header>
               <h3>Remote Sync</h3>
@@ -4274,7 +4354,7 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
             ${renderSettingsRemoteSync(snapshot.sync, snapshot.syncConflicts)}
           </section>
         </section>
-        <section class="settings-section" id="${escapeAttr(prefix)}-section-security" data-settings-section="security" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-security" data-settings-section="security" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-security" hidden>
           <section class="settings-panel">
             <header>
               <h3>Keychain</h3>
@@ -4288,7 +4368,7 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
             ${renderSettingsContainerSecurity(snapshot.containerEvents)}
           </section>
         </section>
-        <section class="settings-section" id="${escapeAttr(prefix)}-section-browser" data-settings-section="browser" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-browser" data-settings-section="browser" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-browser" hidden>
           <section class="settings-panel">
             <header>
               <h3>Browser Permissions</h3>
@@ -4296,7 +4376,7 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
             ${renderSettingsBrowserPermissions(snapshot.browser)}
           </section>
         </section>
-        <section class="settings-section" id="${escapeAttr(prefix)}-section-folders" data-settings-section="folders" role="tabpanel" hidden>
+        <section class="settings-section" id="${escapeAttr(prefix)}-section-folders" data-settings-section="folders" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-folders" hidden>
           <section class="settings-panel">
             <header>
               <h3>Local Folders</h3>

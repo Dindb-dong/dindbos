@@ -4,6 +4,7 @@
 @import "./windows.css";
 @import "./dock.css";
 @import "./apps.css";
+@import "./settings.css";
 @import "./files.css";
 @import "./browser.css";
 @import "./productivity.css";
@@ -11,3 +12,4 @@
 @import "./clock.css";
 @import "./applications.css";
 @import "./liquid-glass.css";
+@import "./control-center.css";

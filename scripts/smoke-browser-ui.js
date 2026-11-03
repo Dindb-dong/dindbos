@@ -118,6 +118,13 @@ try {
   await address.press('Enter');
   await expect(local.getByRole('heading',{name:'Local document two',exact:true})).toBeVisible();
   await expect(app.getByRole('alert')).not.toBeVisible();
+  await address.fill('/home/guest/Documents/missing.html');
+  await address.press('Enter');
+  await expect(app.getByRole('alert')).toContainText('Document not found');
+  await expect(app.getByRole('button',{name:'Connect',exact:true})).not.toBeVisible();
+  await address.fill('/home/guest/Documents/second.html');
+  await address.press('Enter');
+  await expect(app.getByRole('alert')).not.toBeVisible();
   assert.deepEqual(errors,[]);
   await page.evaluate(()=>window.__browserOS.destroy());
   console.log('Browser UI smoke passed: content-first chrome, hidden connection diagnostics, local back/forward, active/background tab closure preserving live iframe state, popover Escape, narrow/dark layout, actionable external startup failure/retry and local recovery, teardown');

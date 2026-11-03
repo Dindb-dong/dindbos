@@ -40,7 +40,18 @@ try {
   await counter.getByRole("button", { name: "Minimize", exact: true }).first().click();
   await page.locator('[data-dock-app-id="counter"]').click();
   assert.equal(await page.locator('.demo-counter output').textContent(), "2");
+  await page.locator('.dos-system-menu').click();
+  await page.getByRole('menuitem', { name: 'System Settings…', exact: true }).click();
+  const settings = page.locator('.dos-window[data-app-id="settings"]');
+  await settings.locator('[data-settings-section-button="wallpaper"]').click();
+  await settle(settings);
+  await page.screenshot({ path: `${output}settings-wallpaper.png` });
+  await settings.getByRole('button', { name: 'Close', exact: true }).click();
+  await settings.waitFor({ state: 'detached' });
   await page.locator('[data-shell-panel="controls"]').click();
+  await page.getByRole('dialog', { name: 'Control Center', exact: true }).waitFor();
+  await settle(page.getByRole('dialog', { name: 'Control Center', exact: true }));
+  await page.screenshot({ path: `${output}control-center.png` });
   const panel = page.getByRole("dialog", { name: "Control Center", exact: true });
   await panel.waitFor();
   await panel.locator('[data-shell-action="mode"][data-value="dark"]').click();
@@ -72,4 +83,8 @@ async function moveWindow(page, target, left, top) {
   await page.mouse.down();
   await page.mouse.move(left + rect.width / 2, top + 20, { steps: 20 });
   await page.mouse.up();
+}
+
+async function settle(target) {
+  await expect.poll(() => target.evaluate(element => element.getAnimations({ subtree: true }).every(animation => animation.playState !== "running"))).toBe(true);
 }

@@ -2,12 +2,6 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { AppIcon } from "./app-icon.js";
 
-const ACCENTS = [
-  ["Green", "#287a58"], ["Blue", "#2775d6"], ["Purple", "#8854c7"],
-  ["Rose", "#c94f78"], ["Orange", "#c97926"], ["Graphite", "#64717e"],
-];
-const WALLPAPERS = [["meadow", "Meadow"], ["coast", "Coast"], ["dusk", "Dusk"]];
-
 export class ShellPanels {
   constructor(shell) {
     this.shell = shell;
@@ -36,16 +30,16 @@ export class ShellPanels {
     const contextApp = this.shell.contextApp;
     const appWindows = contextApp ? [...this.os.windows.windows.values()].filter((entry) => entry.appId === contextApp.id) : [];
     const pinItem = contextApp && { label: contextApp.pinned ? "Remove from Dock" : "Keep in Dock", action: "context-pin", checked: Boolean(contextApp.pinned) };
-    const editable = this.shell.editTarget?.isConnected && this.shell.root.contains?.(this.shell.editTarget);
+    const editable = this.shell.editTarget?.isConnected && this.shell.root.contains?.(this.shell.editTarget) && this.shell.editTarget.closest?.(".dos-window")?.classList.contains("is-active");
     const items = {
       desktop: [
         { label: "New Folder", action: "desktop-new-folder" },
         { label: "Open Files", action: "launch", app: "files", disabled: !available("files") },
         null,
         { label: "Refresh Desktop", action: "refresh" },
-        { label: "Change Wallpaper…", action: "controls" },
+        { label: "Change Wallpaper…", action: "settings", section: "wallpaper", disabled: !available("settings") },
         null,
-        { label: "System Settings…", action: "launch", app: "settings", disabled: !available("settings") },
+        { label: "System Settings…", icon: "settings", action: "settings", disabled: !available("settings") },
       ],
       "desktop-item": [
         { label: "Open", action: "desktop-open" },
@@ -70,10 +64,10 @@ export class ShellPanels {
         ...(appWindows.length ? [null, { label: "Quit", action: "context-quit" }] : []),
       ],
       system: [
-        { label: `About ${this.os.session.product || "DindbOS"}`, action: "about" },
+        { label: `About ${this.os.session.product || "DindbOS"}`, icon: "desktop", action: "about" },
         null,
-        { label: "System Settings…", action: "launch", app: "settings", disabled: !available("settings") },
-        { label: "Applications…", action: "launcher", shortcut: "⌘ K" },
+        { label: "System Settings…", icon: "settings", action: "settings", disabled: !available("settings") },
+        { label: "Applications…", icon: "apps", action: "launch", app: "applications", disabled: !available("applications") },
         null,
         { label: "Show Desktop", action: "show-desktop", disabled: !this.os.windows.windows.size },
       ],
@@ -99,7 +93,7 @@ export class ShellPanels {
         { label: "Select All", action: "edit-selectAll", shortcut: "⌘ A", disabled: !editable },
       ],
       view: [
-        { label: "Appearance…", action: "controls" },
+        { label: "Appearance…", action: "settings", section: "appearance", disabled: !available("settings") },
         { label: "Show Desktop", action: "show-desktop", disabled: !this.os.windows.windows.size },
         { label: "Refresh Desktop", action: "refresh" },
       ],
@@ -116,7 +110,7 @@ export class ShellPanels {
       ],
     }[name] || [];
     this.disposePanel();
-    this.shell.refs.overlays.innerHTML = `<div class="dos-shell-menu" role="menu" aria-label="${escapeHtml(name)} menu">${items.map((item) => item ? `<button type="button" role="menuitem" ${item.compact ? 'class="dos-compact-menu-item"' : ""} data-shell-action="${item.action}" ${item.menu ? `data-menu="${item.menu}"` : ""} ${item.app ? `data-app="${escapeHtml(item.app)}"` : ""} ${item.window ? `data-window="${escapeHtml(item.window)}"` : ""} ${item.disabled ? "disabled" : ""}><span class="dos-menu-check" aria-hidden="true">${item.checked ? "✓" : ""}</span><span>${escapeHtml(item.label)}</span><kbd>${item.shortcut || ""}</kbd></button>` : `<div class="dos-menu-divider" role="separator"></div>`).join("")}</div>`;
+    this.shell.refs.overlays.innerHTML = `<div class="dos-shell-menu" role="menu" aria-label="${escapeHtml(name)} menu">${items.map((item) => item ? `<button type="button" role="menuitem" ${item.compact ? 'class="dos-compact-menu-item"' : ""} data-shell-action="${item.action}" ${item.section ? `data-section="${item.section}"` : ""} ${item.menu ? `data-menu="${item.menu}"` : ""} ${item.app ? `data-app="${escapeHtml(item.app)}"` : ""} ${item.window ? `data-window="${escapeHtml(item.window)}"` : ""} ${item.disabled ? "disabled" : ""}><span class="dos-menu-check" aria-hidden="true">${item.icon ? controlIcon(item.icon) : item.checked ? "✓" : ""}</span><span>${escapeHtml(item.label)}</span><kbd>${item.shortcut || ""}</kbd></button>` : `<div class="dos-menu-divider" role="separator"></div>`).join("")}</div>`;
     const menu = this.shell.refs.overlays.firstElementChild;
     const rootRect = this.shell.refs.shell.getBoundingClientRect?.();
     const triggerRect = trigger?.getBoundingClientRect?.();
@@ -149,28 +143,84 @@ export class ShellPanels {
   }
 
   renderControls() {
-    const appearance = this.os.appearance || {};
+    const fullscreen = Boolean(this.shell.root.requestFullscreen && this.shell.root.ownerDocument?.fullscreenEnabled);
     const panel = this.panel(`
-      <header><h2>Control Center</h2><button type="button" data-shell-action="dismiss" class="dos-panel-close" aria-label="Close Control Center">×</button></header>
-      <section class="dos-control-section"><h3>Appearance</h3><div class="dos-appearance-options">${[["light", "Light"], ["dark", "Dark"], ["system", "Auto"]].map(([value, label]) => `<button type="button" data-shell-action="mode" data-value="${value}" aria-pressed="${(appearance.mode || "system") === value}"><span class="dos-mode-preview dos-mode-${value}" aria-hidden="true"></span>${label}</button>`).join("")}</div></section>
-      <section class="dos-control-section"><h3>Accent color</h3><div class="dos-accent-options">${ACCENTS.map(([label, value]) => `<button type="button" data-shell-action="accent" data-value="${value}" aria-label="${label} accent" aria-pressed="${(appearance.accent || "#287a58") === value}" style="--swatch:${value}"></button>`).join("")}</div></section>
-      <section class="dos-control-section"><h3>Wallpaper</h3><div class="dos-wallpaper-options">${WALLPAPERS.map(([value, label]) => `<button type="button" data-shell-action="wallpaper" data-value="${value}" aria-pressed="${(appearance.wallpaper || "meadow") === value}"><span class="dos-wallpaper-preview dos-wallpaper-${value}" aria-hidden="true"></span>${label}</button>`).join("")}</div></section>
-      <section class="dos-control-section dos-dock-control"><label for="${this.os.instanceId}-dock-size">Dock size</label><input type="range" id="${this.os.instanceId}-dock-size" min="36" max="72" value="${Number(appearance.dockSize || 52)}" data-shell-dock-size><span aria-hidden="true">Small</span><span aria-hidden="true">Large</span></section>
-      <button type="button" class="dos-panel-link" data-shell-action="launch" data-app="settings" ${this.os.apps.has("settings") ? "" : "disabled"}>Open System Settings <span aria-hidden="true">↗</span></button>`, "dos-control-center", "Control Center");
-    if (this.shell.activePanel !== "controls") return;
-    panel.querySelector("button")?.focus({ preventScroll: true });
+      <header class="cc-heading"><h2>Control Center</h2><button type="button" data-shell-action="dismiss" class="dos-panel-close" aria-label="Close Control Center">×</button></header>
+      <div class="cc-grid">
+        <section class="cc-tile cc-appearance" data-glass-surface="control-tile" aria-label="Appearance">
+          <div class="cc-tile-heading"><span class="cc-symbol" aria-hidden="true">${controlIcon("appearance")}</span><div><h3>Appearance</h3><span data-control-mode>Auto</span></div></div>
+          <div class="cc-mode-options" role="group" aria-label="Appearance mode">${[["light", "Light", "sun"], ["dark", "Dark", "moon"], ["system", "Auto", "appearance"]].map(([value, label, glyph]) => `<button type="button" data-shell-action="mode" data-value="${value}" aria-label="${label}" title="${label}" aria-pressed="false">${controlIcon(glyph)}</button>`).join("")}</div>
+        </section>
+        <section class="cc-tile cc-media" data-glass-surface="control-tile" aria-label="Now Playing">
+          <button type="button" class="cc-artwork" data-shell-action="control-media-open" aria-label="Open Music">${controlIcon("music")}</button>
+          <button type="button" class="cc-track" data-shell-action="control-media-open" aria-label="Open Music"><strong data-control-track>Not Playing</strong><span data-control-playback>Music</span></button>
+          <div class="cc-transport"><button type="button" data-shell-action="control-media-previous" aria-label="Previous song" disabled>${controlIcon("previous")}</button><button type="button" data-shell-action="control-media-play" aria-label="Play" disabled>${controlIcon("play")}</button><button type="button" data-shell-action="control-media-next" aria-label="Next song" disabled>${controlIcon("next")}</button></div>
+        </section>
+        <button type="button" class="cc-tile cc-action cc-desktop" data-glass-surface="control-tile" data-shell-action="show-desktop"><span class="cc-symbol" aria-hidden="true">${controlIcon("desktop")}</span><span><strong>Show Desktop</strong><small>Minimize windows</small></span></button>
+        <button type="button" class="cc-tile cc-action cc-applications" data-glass-surface="control-tile" data-shell-action="launch" data-app="applications" ${this.os.apps.has("applications") ? "" : "disabled"}><span class="cc-symbol" aria-hidden="true">${controlIcon("apps")}</span><span><strong>Applications</strong><small>All your apps</small></span></button>
+        ${fullscreen ? `<button type="button" class="cc-tile cc-action cc-fullscreen" data-glass-surface="control-tile" data-shell-action="control-fullscreen" aria-pressed="false"><span class="cc-symbol" aria-hidden="true">${controlIcon("fullscreen")}</span><span><strong>Full Screen</strong><small data-control-fullscreen>Desktop</small></span></button>` : `<button type="button" class="cc-tile cc-action cc-settings" data-glass-surface="control-tile" data-shell-action="settings" ${this.os.apps.has("settings") ? "" : "disabled"}><span class="cc-symbol" aria-hidden="true">${controlIcon("settings")}</span><span><strong>Settings</strong><small>Personalize</small></span></button>`}
+        <section class="cc-tile cc-sound" data-glass-surface="control-tile" aria-label="Sound"><div class="cc-sound-heading"><h3>Sound</h3><span data-control-sound-status>Music volume</span></div><label class="cc-volume"><span aria-hidden="true">${controlIcon("volume-low")}</span><input type="range" min="0" max="1" step=".05" value=".7" data-control-volume aria-label="Music volume" disabled><span aria-hidden="true">${controlIcon("volume-high")}</span></label></section>
+      </div>
+      <button type="button" class="cc-settings-link" data-shell-action="settings" ${this.os.apps.has("settings") ? "" : "disabled"}>System Settings…</button>`, "dos-control-center", "Control Center");
+    const update = () => this.updateControls();
+    for (const event of ["play", "pause", "ended", "loadedmetadata", "emptied", "volumechange"]) this.shell.root.addEventListener(event, update, true);
+    const document = this.shell.root.ownerDocument;
+    document.addEventListener("fullscreenchange", update);
+    const windowLayer = this.shell.refs.windowLayer;
+    const Observer = document.defaultView?.MutationObserver;
+    const observer = Observer && windowLayer ? new Observer(update) : null;
+    observer?.observe(windowLayer, { childList: true, subtree: true });
+    this.controlsCleanup = () => {
+      for (const event of ["play", "pause", "ended", "loadedmetadata", "emptied", "volumechange"]) this.shell.root.removeEventListener(event, update, true);
+      document.removeEventListener("fullscreenchange", update);
+      observer?.disconnect();
+    };
+    this.updateControls();
+    if (this.shell.activePanel === "controls") panel.querySelector("button")?.focus({ preventScroll: true });
+  }
+
+  controlAudio() {
+    const sources = [...this.shell.root.querySelectorAll(".music-app audio")].filter(audio => audio.closest(".dindbos-host") === this.shell.root);
+    return sources.find(audio => !audio.paused && audio.getAttribute("src")) || sources.find(audio => audio.getAttribute("src")) || sources[0] || null;
   }
 
   updateControls() {
-    const appearance = this.os.appearance || {};
     const overlay = this.shell.refs.overlays;
-    overlay.querySelectorAll("[data-shell-action='mode'], [data-shell-action='accent'], [data-shell-action='wallpaper']").forEach((button) => {
-      const key = button.dataset.shellAction;
-      const fallback = { mode: "system", accent: "#287a58", wallpaper: "meadow" };
-      button.setAttribute("aria-pressed", String(button.dataset.value === (appearance[key] || fallback[key])));
-    });
-    const size = overlay.querySelector("[data-shell-dock-size]");
-    if (size && size !== this.shell.root.ownerDocument?.activeElement) size.value = appearance.dockSize || 52;
+    const panel = overlay.querySelector(".dos-control-center");
+    if (!panel) return;
+    const mode = this.os.appearance?.mode || "system";
+    panel.querySelectorAll("[data-shell-action='mode']").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.value === mode)));
+    const modeLabel = panel.querySelector("[data-control-mode]");
+    if (modeLabel) modeLabel.textContent = { light: "Light", dark: "Dark", system: "Auto" }[mode] || "Auto";
+    const audio = this.controlAudio();
+    const app = audio?.closest(".music-app");
+    const hasTrack = Boolean(audio?.getAttribute("src"));
+    const title = app?.querySelector("[data-music-title]")?.textContent;
+    const track = panel.querySelector("[data-control-track]");
+    if (track) track.textContent = hasTrack ? title || "Music" : "Not Playing";
+    const playback = panel.querySelector("[data-control-playback]");
+    if (playback) playback.textContent = hasTrack ? audio.paused ? "Paused" : "Playing" : "Music";
+    for (const action of ["previous", "next", "play"]) {
+      const button = panel.querySelector(`[data-shell-action="control-media-${action}"]`);
+      if (!button) continue;
+      button.disabled = action === "play" ? !hasTrack : !hasTrack || Boolean(app.querySelector(`[data-media-action="${action}"]`)?.disabled);
+      if (action === "play") {
+        button.setAttribute("aria-label", hasTrack && !audio.paused ? "Pause" : "Play");
+        button.innerHTML = controlIcon(hasTrack && !audio.paused ? "pause" : "play");
+      }
+    }
+    const volume = panel.querySelector("[data-control-volume]");
+    if (volume) { volume.disabled = !audio; if (volume !== this.shell.root.ownerDocument.activeElement) volume.value = String(audio?.volume ?? .7); }
+    const soundStatus = panel.querySelector("[data-control-sound-status]");
+    if (soundStatus) soundStatus.textContent = audio ? "Music volume" : "Open Music to adjust";
+    panel.querySelectorAll('[data-shell-action="control-media-open"]').forEach(button => button.disabled = !this.os.apps.has("music"));
+    const fullscreen = panel.querySelector('[data-shell-action="control-fullscreen"]');
+    if (fullscreen) {
+      const active = this.shell.root.ownerDocument.fullscreenElement === this.shell.root;
+      fullscreen.setAttribute("aria-pressed", String(active));
+      const status = panel.querySelector("[data-control-fullscreen]");
+      if (status) status.textContent = active ? "On" : "Desktop";
+    }
   }
 
   renderCalendar() {
@@ -193,11 +243,21 @@ export class ShellPanels {
   }
 
   disposePanel() {
+    this.controlsCleanup?.();
+    this.controlsCleanup = null;
     this.launcherRoot?.unmount();
     this.launcherRoot = null;
   }
 
   handleInput(event) {
+    if (event.target.matches?.("[data-control-volume]")) {
+      const audio = this.controlAudio();
+      if (audio) {
+        audio.volume = Math.max(0, Math.min(1, Number(event.target.value)));
+        const slider = audio.closest(".music-app")?.querySelector('[aria-label="Volume"]');
+        if (slider) slider.value = String(audio.volume);
+      }
+    }
     if (event.target.matches?.("[data-shell-search]")) this.renderLauncherResults(event.target.value);
     if (event.target.matches?.("[data-shell-dock-size]")) this.os.setAppearance?.({ dockSize: Number(event.target.value) });
   }
@@ -208,6 +268,21 @@ export class ShellPanels {
 
   runAction(action, data = {}) {
     const task = this.shell.activeTask();
+    if (action.startsWith("control-media-")) {
+      if (action === "control-media-open") { this.shell.closePanel(false); this.shell.launchApp("music"); return; }
+      const name = action.slice("control-media-".length);
+      const audio = this.controlAudio();
+      const button = audio?.closest(".music-app")?.querySelector(`[data-media-action="${name}"]`);
+      if (button && !button.disabled) button.click();
+      this.updateControls();
+      return;
+    }
+    if (action === "control-fullscreen") {
+      const document = this.shell.root.ownerDocument;
+      const operation = document.fullscreenElement === this.shell.root ? document.exitFullscreen?.() : !document.fullscreenElement ? this.shell.root.requestFullscreen?.() : null;
+      operation?.catch?.(() => this.shell.notify("Full screen is unavailable in this browser."));
+      return;
+    }
     if (action === "dismiss") { this.shell.closePanel(); return; }
     if (action === "open-menu") {
       const trigger = this.shell.refs.menubar.querySelector(".dos-active-app");
@@ -256,6 +331,7 @@ export class ShellPanels {
       return this.os.flushPersistentFileSystem?.();
     }
     else if (action === "desktop-reveal" && contextNode) this.shell.launchApp("files", { path: this.os.fs.dirname(contextNode.path) });
+    else if (action === "settings") this.shell.openSettings(data.section);
     else if (action === "launch") this.shell.launchApp(data.app);
     else if (action === "launch-new") this.shell.launchApp(data.app, {});
     else if (action === "close" && task) this.os.windows.close(task.id);
@@ -319,3 +395,19 @@ function sameDate(a, b) {
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
+
+const CONTROL_GLYPHS = {
+  appearance: '<path d="M12 3a9 9 0 1 0 0 18V3Z"/><circle cx="12" cy="12" r="9"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>',
+  moon: '<path d="M20 14A8 8 0 0 1 10 4a8.5 8.5 0 1 0 10 10Z"/>',
+  desktop: '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
+  apps: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+  fullscreen: '<path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/>',
+  settings: '<circle cx="12" cy="12" r="4"/><path d="m10 3-1 3-3 1-3-1v4l3 2-1 3-2 2 3 3 3-1 3 2 2-3 3-1 3 1v-4l-3-2 1-3 2-2-3-3-3 1-3-2Z"/>',
+  music: '<path d="M9 17V5l11-2v12M9 9l11-2"/><ellipse cx="6" cy="17" rx="3" ry="2"/><ellipse cx="17" cy="15" rx="3" ry="2"/>',
+  previous: '<path d="M5 5v14m14-14L8 12l11 7Z"/>', next: '<path d="M19 5v14M5 5l11 7-11 7Z"/>',
+  play: '<path d="m8 4 12 8-12 8Z"/>', pause: '<path d="M8 4v16M16 4v16"/>',
+  'volume-low': '<path d="m11 5-5 4H3v6h3l5 4Z"/>',
+  'volume-high': '<path d="m11 5-5 4H3v6h3l5 4Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
+};
+function controlIcon(name) { return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CONTROL_GLYPHS[name] || ""}</svg>`; }

@@ -7,6 +7,12 @@
     background: var(--content-bg);
     font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, sans-serif);
   }
+  .browser-document-error {
+    position: absolute; inset: 24px; margin: 0; padding: 28px;
+    align-self: center; height: fit-content; max-height: calc(100% - 48px); overflow: auto;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--content-bg);
+    color: var(--text); font: 13px/1.6 var(--font-ui); overflow-wrap: anywhere;
+  }
   .browser-app .browser-toolbar {
     position: relative;
     z-index: 5;

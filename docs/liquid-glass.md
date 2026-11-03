@@ -35,7 +35,7 @@ cleanup();
 
 Add `data-glass-surface` to a rounded surface to opt in. The default selector also includes `.dos-dock`, `.dos-menubar`, `.dos-shell-menu` and `.dos-shell-panel`. Nested `.dindbos-host` instances are excluded from their parent's adapter. Each root owns unique SVG filters; cleanup restores prior inline filters and mode attributes without affecting other roots.
 
-Use pixel border radii for predictable rounded lens geometry. Apply the lens to chrome and floating controls, rather than an entire opaque app body. A surface may set the unitless `--liquid-glass-blur` custom property to override the adapter blur; built-in panels use `5` and menus use `4` to keep background text from competing with controls. An opaque background or an ancestor backdrop boundary can hide or limit the available scene behind it. The adapter adds no z-index, fixed positioning, pointer handlers or stacking isolation to the decorated surface.
+Use pixel border radii for predictable rounded lens geometry. Apply the lens to chrome and floating controls, rather than an entire opaque app body. A surface may set the unitless `--liquid-glass-blur` custom property to override the adapter blur; ordinary built-in panels use `5` and menus use `4` to keep background text from competing with controls. Control Center adds rounded module lenses with a softer outer backdrop; its own stylesheet follows the general glass rules. An opaque background or an ancestor backdrop boundary can hide or limit the available scene behind it. The adapter adds no z-index, fixed positioning, pointer handlers or stacking isolation to the decorated surface.
 
 | Option | Default | Meaning |
 | --- | --- | --- |

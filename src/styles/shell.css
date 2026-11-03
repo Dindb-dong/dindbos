@@ -45,6 +45,7 @@
 .dos-shell-menu kbd { padding-left: 12px; font: inherit; font-size: 12px; opacity: .65; }
 .dos-shell-menu button.dos-compact-menu-item { display: none; }
 .dos-menu-check { text-align: center; font-size: 12px; }
+.dos-menu-check svg { display: block; width: 14px; height: 14px; }
 .dos-menu-divider { height: 1px; margin: 5px 8px; background: var(--line, rgb(80 95 87 / 16%)); }
 .dos-shell-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .dos-shell-panel h2 { margin: 0; color: inherit; font-size: 17px; font-weight: 650; letter-spacing: 0; line-height: 1.3; }

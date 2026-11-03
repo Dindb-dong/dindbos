@@ -18,7 +18,7 @@ Choose apps with `builtins: { include: ['files', 'notes', 'calendar'] }` or excl
 | `calculator` | Calculator | Arithmetic and keyboard input |
 | `terminal` | Terminal | Runtime shell, file commands and process tools |
 | `activity-monitor` | Activity Monitor | Runtime processes and operations |
-| `settings` | Settings | Appearance, storage, permissions and advanced diagnostics |
+| `settings` | Settings | Searchable sidebar, Wallpaper with local photo import, Appearance, Desktop & Dock, storage, permissions and advanced diagnostics |
 | `welcome` | Welcome | App shortcuts and appearance controls; opt in with `includeWelcome: true` |
 | `portfolio` | Portfolio | Host-supplied project content; disable with `includePortfolio: false` |
 
@@ -37,3 +37,11 @@ The desktop background offers desktop actions. Desktop files/folders offer item 
 Drag a folder from the desktop or Files into the Favorites insertion area to save a shortcut. Drag favorites to reorder them; right-click provides Move Up, Move Down and Remove alternatives. Dropping files onto a sidebar folder moves them into that folder. External file drops import a copy through the usual permission checks. Favorites are saved in `~/.config/dindbos/files-favorites.json`; the active location selects only its deepest matching sidebar item.
 
 Applications uses the installed app registry. Choose Refresh after registering or removing apps while the library is open. Custom app definitions may set `category` to `productivity`, `media`, `utilities`, `development`, `internet`, or `other`. Unrecognized categories appear under Other.
+
+## Settings and Control Center
+
+Open the system menu → **System Settings…** → **Wallpaper** to choose a background. The desktop’s **Change Wallpaper…** opens that page directly, restoring an existing Settings window. Back/forward and sidebar search stay within the app. **Add Photo…** accepts PNG, JPEG and WebP up to 16 MB / 40 million pixels and applies a resized JPEG copy bounded to 500,000 characters; the original stays on the user’s computer. The chosen background follows the instance’s appearance persistence, including memory-only and unavailable-storage behavior.
+
+Control Center provides quick appearance switching, real Music transport/volume, Show Desktop, Applications, and Full Screen where supported. Media controls use only Music in their own desktop instance. Wallpaper, accent and Dock sizing live in Settings. Hardware network controls are outside the browser runtime.
+
+The navigation and separation follow Apple’s [Wallpaper settings](https://support.apple.com/guide/mac-help/choose-your-desktop-picture-mchlp3013/mac) and [Control Center guide](https://support.apple.com/guide/mac-help/quickly-change-settings-with-control-center-mchlc9d0e1f2/27/mac/27), adapted to browser capabilities.

@@ -38,6 +38,11 @@ export class DesktopShell {
     });
     this.renderSlot("menubar", this.menuState(), () => this.renderMenubar());
     const owns = (event) => !event.target?.closest || event.target.closest(".dindbos-host") === root;
+    this.listen(root, "focusin", (event) => {
+      if (!owns(event)) return;
+      if (isEditable(event.target)) this.editTarget = event.target;
+      else if (event.target.closest?.(".dos-window")) this.editTarget = null;
+    });
     this.listen(root, "click", (event) => { if (owns(event)) this.handleClick(event); });
     this.listen(root, "keydown", (event) => { if (owns(event)) this.handleKeyDown(event); });
     this.listen(root, "contextmenu", (event) => {
@@ -169,6 +174,22 @@ export class DesktopShell {
     return this.os.launch(id, context || {});
   }
 
+  openSettings(section) {
+    if (!this.os.apps.has("settings")) return;
+    this.closePanel(false);
+    const existing = [...this.os.windows.windows.values()].find((entry) => entry.appId === "settings");
+    if (existing) {
+      this.os.windows.restore(existing.id);
+      if (section) {
+        const content = this.root.querySelector('.dos-window[data-app-id="settings"] .dos-window-content');
+        const CustomEventType = this.root.ownerDocument.defaultView.CustomEvent;
+        content?.dispatchEvent(new CustomEventType("dindbos:settings-navigate", { detail: { section } }));
+      }
+      return existing;
+    }
+    return this.os.launch("settings", section ? { section } : {});
+  }
+
   handleClick(event) {
     const button = event.target.closest?.("[data-shell-panel]");
     if (button && this.root.contains?.(button)) {
@@ -295,6 +316,7 @@ export class DesktopShell {
     this.renderer = null;
     attempt(() => renderer?.unmount?.());
     this.refs = {};
+    this.editTarget = null;
     if (errors.length) throw new AggregateError(errors, "Desktop shell cleanup failed");
   }
 }

@@ -28,7 +28,10 @@ try {
   await mkdir(output, { recursive: true });
   for (const [name, script] of [
     ["shell", "smoke-shell-browser.js"],
+    ["control-center", "smoke-control-center-browser.js"],
+    ["settings", "smoke-settings-ui-browser.js"],
     ["dock", "smoke-dock-browser.js"],
+    ["window-resize", "smoke-window-resize-browser.js"],
     ["react", "smoke-react-apps.js"],
     ["editor", "smoke-editor-browser.js"],
     ["browser", "smoke-browser-ui.js"],

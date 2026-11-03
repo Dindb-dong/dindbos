@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { chromium, expect } from '@playwright/test';
 
 // Exercises the real running showcase, without starting/stopping its server.
-const base = process.env.DINDBOS_BASE_URL || process.env.DINDBOS_QA_URL || 'http://127.0.0.1:5174';
+const base = (process.env.DINDBOS_BASE_URL || process.env.DINDBOS_QA_URL || 'http://127.0.0.1:5174').replace(/\/$/, '');
 const output = process.env.DINDBOS_QA_OUTPUT || 'internal/docs/qa/liquid-glass-integrated';
 const require = createRequire(import.meta.url);
 const { PNG } = require(join(process.cwd(), 'node_modules/playwright-core/lib/utilsBundle.js'));
@@ -15,7 +15,8 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${base}/?qa=fresh`);
-  await page.getByRole('button', { name: 'Launch Applications', exact: true }).click();
+  await page.locator('.dos-boot-screen').waitFor({ state: 'detached' });
+  await page.locator('[data-dock-app-id="applications"]').click();
   const header = page.locator('.applications-header');
   await expect(header).toHaveAttribute('data-liquid-glass-mode', 'refraction');
   const title = page.locator('.dos-window[data-app-id="applications"] .dos-window-titlebar');
@@ -80,7 +81,7 @@ try {
   assert.equal(await dock.evaluate(element => getComputedStyle(element).backdropFilter), 'none');
   assert.equal(await dock.evaluate(element => getComputedStyle(element).backgroundColor), await page.evaluate(() => { const test=document.createElement('div');test.style.background='Canvas';document.body.append(test);const color=getComputedStyle(test).backgroundColor;test.remove();return color; }));
   await page.emulateMedia({ forcedColors: 'none' }); await expect(panel).toHaveAttribute('data-liquid-glass-mode', 'refraction');
-  await panel.getByRole('button', { name: /Open System Settings/ }).click();
+  await panel.getByRole('button', { name: /System Settings/ }).click();
   await expect(page.locator('.dos-window[data-app-id="settings"]')).toBeVisible();
   assert.deepEqual(errors, []);
   const result = { url: base, panelPixels, dockPixels, surfaces, errors, checks: ['ABBA pixel stability', 'live real desktop', 'Applications header', 'Dock', 'light/dark', 'forced colors', 'foreground Settings action'] };

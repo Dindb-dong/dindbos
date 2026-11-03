@@ -3586,12 +3586,6 @@ textarea:focus-visible,
     rgba(255, 255, 255, 0.14);
 }
 
-/* Desktop OS Settings window scale */
-.dos-window:has(.settings-app):not(.is-maximized) {
-  width: min(980px, calc(100cqw - 84px)) !important;
-  height: min(620px, calc(100cqh - 260px)) !important;
-}
-
 /* Desktop OS transparent app content */
 .dos-window:has(.settings-app) .dos-window-content,
 .dos-window:has(.browser-app) .dos-window-content,
@@ -4213,12 +4207,6 @@ textarea:focus-visible,
     height: auto !important;
     min-width: 0;
     max-width: calc(100cqw - 20px);
-  }
-
-  /* Mobile Settings window scale */
-  .dos-window:has(.settings-app):not(.is-maximized) {
-    width: auto !important;
-    height: auto !important;
   }
 
   /* Mobile maximized window */
