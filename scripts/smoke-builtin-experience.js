@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { installBuiltinApps, safeCalculate, saveTextDocument } from "../src/dindbos/apps/builtins.js";
 import { AppSandbox } from "../src/dindbos/app-sandbox.js";
 import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
-import { appearanceMarkup, welcomeMarkup } from "../src/dindbos/apps/appearance.js";
+import { removeLegacyWelcomeLaunchers } from "../src/demo/portfolio-demo.js";
+import { appearanceMarkup } from "../src/dindbos/apps/appearance.js";
 
 for (const [expression, expected] of [
   ["2+3", "5"], ["2+3*4", "14"], ["(2+3)*4", "20"],
@@ -14,18 +15,24 @@ for (const [expression, expected] of [
 
 const installed = [];
 const os = { session: { home: "/home/guest" }, registerApp: (app) => installed.push(app) };
-installBuiltinApps(os, { includePortfolio: false, includeWelcome: true, include: ["welcome", "files", "calculator"], exclude: ["calculator"] });
-assert.deepEqual(installed.map((app) => app.id), ["files", "welcome"]);
-assert.equal(typeof installed[1].render, "function");
+installBuiltinApps(os, { includePortfolio: false, include: ["files", "calculator"], exclude: ["calculator"] });
+assert.deepEqual(installed.map((app) => app.id), ["files"]);
+assert.equal(typeof installed[0].render, "function");
 const appearance = appearanceMarkup({ mode: "dark", wallpaper: "coast", dockSize: 1000 });
 assert.match(appearance, /data-appearance-mode="dark" aria-pressed="true"/);
 assert.match(appearance, /data-appearance-wallpaper="coast" aria-pressed="true"/);
 assert.match(appearance, /value="72"/);
-assert.match(welcomeMarkup(), /DindbOSApp/);
 console.log("builtin experience smoke ok: arithmetic, selective installation, appearance choices");
 
 const runtime = createDindbOSTestRuntime();
 runtime.fs.createDirectory("/home/guest/Documents", "/", { owner: "guest", group: "users" });
+for (const path of ["/usr", "/usr/share", "/usr/share/applications"]) if (!runtime.fs.exists(path)) runtime.fs.createDirectory(path);
+runtime.fs.createDirectory("/home/guest/Desktop", "/", { owner: "guest", group: "users" });
+runtime.fs.createApp("/usr/share/applications/Welcome.app", "welcome", "welcome");
+runtime.fs.createApp("/home/guest/Desktop/Welcome.app", "host-welcome", "app");
+removeLegacyWelcomeLaunchers(runtime);
+assert.equal(runtime.fs.exists("/usr/share/applications/Welcome.app"), false, "retired showcase launcher is removed");
+assert.equal(runtime.fs.resolve("/home/guest/Desktop/Welcome.app").appId, "host-welcome", "a host-owned app with the same display name survives");
 let syncs = 0;
 runtime.localMounts = { isMountedPath: () => false };
 runtime.storage = { status: () => ({ enabled: true }) };

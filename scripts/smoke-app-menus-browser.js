@@ -7,11 +7,12 @@ const source = `
 import {createAndBootDindbOS} from '/src/sdk/index.js';
 import {demoFileSystem} from '/src/demo/portfolio-demo.js';
 import '/src/styles/index.css';
-window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'memory',name:'app-menu-fixture'},bootstrapPackages:false,builtins:{includeWelcome:true},fileSystem:demoFileSystem}).then(os=>{
+window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'memory',name:'app-menu-fixture'},bootstrapPackages:false,fileSystem:demoFileSystem}).then(os=>{
  window.__os=os;
  os.registerApp({id:'host-menu',name:'Host Menu',menus:({content})=>({file:[{label:'Run Host Command',accelerator:'Mod+Shift+L',shortcut:'<img src=x onerror="window.__unsafe=true">',run:({os:appOS,content,window,context})=>{if(appOS===os)throw Error('raw kernel leaked');content.dataset.command=String(Number(content.dataset.command||0)+1);window.setTitle('Host command ran');}},{label:'Mutable Command',enabled:()=>!window.__commandDisabled,run:()=>{window.__mutableRan=true;}},{label:'Disabled Command',enabled:()=>false,run:()=>{window.__disabledRan=true;}}],view:[{label:'Throwing Enabled',enabled:()=>{throw Error('enabled failure');},run:()=>{}}]}),render:({content})=>{content.innerHTML='<textarea aria-label="Host text"></textarea>';}});
  os.registerApp({id:'bad-menu',name:'Bad Menu',menus:()=>{throw Error('factory failure');},render:({content})=>{content.textContent='Failure isolation';}});
- os.launch('welcome');return os;
+ os.registerApp({id:'neutral',name:'Neutral App',render:({content})=>{content.textContent='Host app without custom menus';}});
+ os.launch('neutral');return os;
 });`;
 const output=process.env.DINDBOS_QA_OUTPUT||'internal/docs/qa/app-menus';
 const server=await createServer({configFile:false,logLevel:'error',optimizeDeps:{entries:[]},plugins:[{name:'app-menu-fixture',resolveId(id){if(id==='/app-menu-fixture.js')return '\0app-menu-fixture';},load(id){if(id==='\0app-menu-fixture')return source;},configureServer(vite){vite.middlewares.use(async(req,res,next)=>{if(req.url?.split('?')[0]!=='/app-menu-fixture')return next();try{res.setHeader('Content-Type','text/html');res.end(await vite.transformIndexHtml(req.url,'<!doctype html><body style="margin:0"><div id="desktop" style="height:100vh"></div><script type="module" src="/app-menu-fixture.js"></script>'));}catch(error){next(error);}});}}],server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});
@@ -27,7 +28,7 @@ try{
  const launch=async(id,context={})=>{await page.keyboard.press('Escape');await page.evaluate(({id,context})=>window.__os.launch(id,context),{id,context});await expect(page.locator(`.dos-window[data-app-id="${id}"]`).last()).toBeVisible();};
  await open('file');await expect(menu.getByRole('menuitem')).toHaveCount(1);await expect(menu.getByRole('menuitem',{name:/Close Window/})).toBeEnabled();
  await expect(menu).not.toContainText('New Files');await expect(page.locator('[data-shell-panel="view"]')).toBeHidden();
- await page.screenshot({path:`${output}/welcome-file.png`});await page.keyboard.press('Escape');await page.setViewportSize({width:390,height:844});await page.locator('.dos-active-app').click();await expect(page.getByRole('menuitem',{name:'View…',exact:true})).toHaveCount(0);await page.keyboard.press('Escape');await page.setViewportSize({width:1280,height:900});
+ await page.screenshot({path:`${output}/neutral-file.png`});await page.keyboard.press('Escape');await page.setViewportSize({width:390,height:844});await page.locator('.dos-active-app').click();await expect(page.getByRole('menuitem',{name:'View…',exact:true})).toHaveCount(0);await page.keyboard.press('Escape');await page.setViewportSize({width:1280,height:900});
  await launch('files',{path:'/home/guest/Documents'});await expect(page.locator('.files-app')).toBeVisible();
  await open('file');await menu.getByRole('menuitem',{name:/New Tab/}).click();await expect(page.locator('.files-app [role="tab"]')).toHaveCount(2);
  await open('view');await page.getByRole('menu',{name:'view menu',exact:true}).getByRole('menuitem',{name:'as List',exact:true}).click();await expect(page.locator('.files-app')).toHaveAttribute('data-files-view','list');

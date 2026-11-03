@@ -22,7 +22,7 @@
     gap: 16px;
     height: 52px;
     padding: 9px 16px 10px 94px;
-    cursor: grab;
+    cursor: default;
     border: 0;
     background: var(--sidebar-bg);
     box-shadow: none;

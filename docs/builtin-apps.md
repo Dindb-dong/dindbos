@@ -1,6 +1,6 @@
 # Built-in apps
 
-Choose apps with `builtins: { include: ['files', 'notes', 'calendar'] }` or exclude individual IDs. Register your own replacements through the same app API. Applications in the Dock lists installed apps with search and categories. Welcome provides shortcuts. Built-ins use the desktop instance's filesystem, permissions, appearance, and lifecycle.
+Choose apps with `builtins: { include: ['files', 'notes', 'calendar'] }` or exclude individual IDs. Register your own replacements through the same app API. Applications in the Dock lists installed apps with search and categories. Built-ins use the desktop instance's filesystem, permissions, appearance, and lifecycle.
 
 | ID | App | Working features |
 | --- | --- | --- |
@@ -19,7 +19,6 @@ Choose apps with `builtins: { include: ['files', 'notes', 'calendar'] }` or excl
 | `terminal` | Terminal | Runtime shell, file commands and process tools |
 | `activity-monitor` | Activity Monitor | Runtime processes and operations |
 | `settings` | Settings | Searchable sidebar, Wallpaper with local photo import, Appearance, Desktop & Dock, storage, permissions and advanced diagnostics |
-| `welcome` | Welcome | App shortcuts and appearance controls; opt in with `includeWelcome: true` |
 | `portfolio` | Portfolio | Host-supplied project content; disable with `includePortfolio: false` |
 
 ## Local data

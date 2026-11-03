@@ -105,7 +105,8 @@ export class ShellPanels {
     const rootRect = this.shell.refs.shell.getBoundingClientRect?.();
     const triggerRect = trigger?.getBoundingClientRect?.();
     if (rootRect && triggerRect) menu.style.left = `${Math.max(6, Math.min(triggerRect.left - rootRect.left, rootRect.width - 248))}px`;
-    menu.querySelector?.("button:not(:disabled)")?.focus({ preventScroll: true });
+    menu.tabIndex = -1;
+    (menu.querySelector?.("button:not(:disabled)") || menu).focus({ preventScroll: true });
   }
 
   renderLauncher() {

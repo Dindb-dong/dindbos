@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DindbOSDesktop, DindbOSApp, useDindbOSApp } from "./sdk/react.js";
-import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js";
+import { demoFileSystem, portfolioData, removeLegacyWelcomeLaunchers } from "./demo/portfolio-demo.js";
 
 const h = React.createElement;
-const launch = new URLSearchParams(window.location.search).get("qa") === "fresh" ? ["welcome", "files"] : [];
+const launch = new URLSearchParams(window.location.search).get("qa") === "fresh" ? ["files"] : [];
 
 function Counter() {
   const [count, setCount] = useState(0);
@@ -26,8 +26,9 @@ createRoot(document.querySelector("#dindbos-root")).render(
     fileSystem: demoFileSystem,
     session: { user: "guest", product: "DindbOS" },
     storage: { name: "dindbos-showcase" },
-    builtins: { portfolioData, includeWelcome: true },
+    builtins: { portfolioData },
     installApps(os) {
+      removeLegacyWelcomeLaunchers(os);
       const pinned = new Set(["files", "applications", "terminal", "browser", "calculator", "settings"]);
       for (const app of os.apps.list()) os.registerApp({ ...app, desktop: false, pinned: pinned.has(app.id) });
     },

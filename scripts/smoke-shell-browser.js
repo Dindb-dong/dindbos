@@ -47,7 +47,7 @@ try {
   await page.locator(".dindbos-host").evaluate((element) => { element.style.width = "100%"; });
   await expect(page.locator(".dos-menu-label").first()).toBeVisible();
   await expect(page.locator(".dos-clock-date")).toBeVisible();
-  await page.locator('.dos-window[data-app-id="welcome"] button[aria-label="Close"]').click();
+  await expect(page.locator(".dos-window")).toHaveCount(0);
   // The wallpaper includes shell gutters outside the icon grid.
   for (const point of [{ x: 5, y: 400 }, { x: 600, y: 400 }, { x: 1436, y: 892 }]) {
     await page.mouse.click(point.x, point.y, { button: "right" });

@@ -512,3 +512,11 @@ function iconForMime(mime) {
   if (mime === "application/json") return "text";
   return "text";
 }
+
+// Retire only launchers left by this showcase's removed onboarding app.
+export function removeLegacyWelcomeLaunchers(os) {
+  for (const path of ["/usr/share/applications/Welcome.app", `${os.session.home}/Desktop/Welcome.app`]) {
+    const node = os.fs.lstat(path);
+    if (node?.type === "app" && os.fs.resolve(path)?.appId === "welcome") os.fs.remove(path, "/", {}, os.permissions.systemPrincipal());
+  }
+}

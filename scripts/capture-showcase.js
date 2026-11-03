@@ -19,12 +19,9 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(`http://127.0.0.1:${address.port}/`);
-  const welcome = page.locator('.dos-window[data-app-id="welcome"]');
-  await welcome.waitFor();
+  await page.locator(".dos-menubar").waitFor();
   await page.locator(".dos-boot-screen").waitFor({ state: "detached" });
-  await page.screenshot({ path: `${output}welcome.png` });
-  await welcome.getByRole("button", { name: "Close", exact: true }).click();
-  await welcome.waitFor({ state: "detached" });
+  await page.screenshot({ path: `${output}desktop-empty.png` });
   await page.locator('[data-dock-app-id="files"]').click();
   const files = page.locator('.dos-window[data-app-id="files"]');
   await files.waitFor();

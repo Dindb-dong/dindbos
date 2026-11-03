@@ -4,7 +4,7 @@ const GROUPS = [["all", "All"], ["productivity", "Productivity"], ["media", "Med
 const CATEGORY = {
   notes: "productivity", reminders: "productivity", calendar: "productivity", text: "productivity",
   photos: "media", music: "media", viewer: "media", browser: "internet",
-  files: "utilities", clock: "utilities", calculator: "utilities", settings: "utilities", welcome: "utilities", applications: "utilities",
+  files: "utilities", clock: "utilities", calculator: "utilities", settings: "utilities", applications: "utilities",
   terminal: "development", "activity-monitor": "development", portfolio: "other",
 };
 const escape = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

@@ -2,7 +2,6 @@ import type { DindbOS } from "./index.js";
 
 export interface BuiltinAppOptions {
   includePortfolio?: boolean;
-  includeWelcome?: boolean;
   include?: string[];
   exclude?: string[];
   portfolioData?: {

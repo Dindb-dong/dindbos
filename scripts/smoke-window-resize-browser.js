@@ -22,6 +22,7 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/window-resize-fixture`);
   await page.evaluate(() => window.__ready);
   const frame = page.locator('.dos-window[data-app-id="foreground"]');
+  await expect(frame.locator('.dos-window-titlebar')).toHaveCSS('cursor', 'default');
   const reset = async () => {
     await page.evaluate(() => { const os=window.__os; const task=os.windows.windows.get('foreground'); Object.assign(task.frame.style,{left:'300px',top:'180px',width:'640px',height:'480px'}); os.windows.activate('foreground'); });
     await expect(frame).toHaveClass(/is-active/);
@@ -75,7 +76,11 @@ try {
   assert.equal(initial.width,700);assert.equal(initial.height,500);
   assert.equal(initial.styleWidth,initial.width);assert.equal(initial.styleHeight,initial.height,'declared minimum size and persisted geometry agree');
   let grip=await bounded.locator('[data-window-drag]').boundingBox();
-  await page.mouse.move(grip.x+grip.width/2,grip.y+25);await page.mouse.down();await page.mouse.move(1190,400,{steps:8});await page.mouse.up();
+  await expect(bounded.locator('[data-window-drag]')).toHaveCSS('cursor', 'default');
+  await page.mouse.move(grip.x+grip.width/2,grip.y+25);await page.mouse.down();
+  await expect(bounded).toHaveClass(/is-dragging/);
+  await expect(bounded.locator('.dos-window-titlebar')).toHaveCSS('cursor', 'default');
+  await page.mouse.move(1190,400,{steps:8});await page.mouse.up();
   assert((await geometry()).right<=1192,'a declared minimum never pushes the rendered window outside its host');
   await page.setViewportSize({width:800,height:700});
   await expect.poll(async()=>(await geometry()).right).toBeLessThanOrEqual(792);

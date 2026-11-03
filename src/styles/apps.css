@@ -10,7 +10,6 @@
   .dos-window .dos-window-content:has(> .files-app),
   .dos-window .dos-window-content:has(> .settings-app),
   .dos-window .dos-window-content:has(> .viewer-app),
-  .dos-window .dos-window-content:has(> .welcome-app),
   .dos-window .dos-window-content:has(> .calculator-app),
   .dos-window .dos-window-content:has(> .text-app),
   .dos-window .dos-window-content:has(> .terminal-app) {
@@ -123,7 +122,7 @@
   .appearance-wallpaper[aria-pressed='true'] .appearance-wallpaper-preview { outline: 2px solid var(--accent); outline-offset: 2px; }
   .appearance-setting-row input[type='range'] { width: 45%; accent-color: var(--accent); }
   .viewer-app { height: 100%; padding: 0; display: flex; flex-direction: column; min-height: 0; gap: 0; overflow: hidden; background: var(--content-bg); }
-  .viewer-header { position: relative; z-index: 3; flex: 0 0 52px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 94px; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); cursor: grab; }
+  .viewer-header { position: relative; z-index: 3; flex: 0 0 52px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 94px; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); cursor: default; }
   .viewer-header > div:first-child { min-width: 40px; flex: 1; }
   .viewer-header h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; margin: 0; }
   .viewer-toolbar { display: flex; align-items: center; flex-wrap: nowrap; gap: 1px; margin-left: auto; border-radius: 18px; background: var(--control-bg); }
@@ -192,29 +191,6 @@
   .terminal-app form { gap: 8px; border-top: 0; padding-top: 4px; }
   .terminal-app [data-prompt] { color: #8ac6a5; font: inherit; white-space: nowrap; }
   .terminal-app input { font: inherit; color: inherit; border: 0; border-radius: 0; background: transparent; padding: 0; box-shadow: none; outline: none; min-width: 0; }
-  .welcome-app { height: 100%; overflow: auto; color: var(--text); background: var(--content-bg); padding: 36px 42px 22px; }
-  .welcome-heading { text-align: center; margin-bottom: 30px; }
-  .welcome-symbol { display: inline-grid; place-items: center; width: 58px; height: 58px; color: white; background: var(--accent); font-size: 34px; font-weight: 600; border-radius: 15px; box-shadow: inset 0 1px #ffffff80, 0 6px 14px #0001; }
-  .welcome-heading h1 { margin: 16px 0 8px; font-size: 30px; font-weight: 650; letter-spacing: -.6px; line-height: 1.2; }
-  .welcome-heading p { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0; }
-  .welcome-apps { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; margin-bottom: 30px; }
-  .welcome-apps button { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 5px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; color: var(--text); }
-  .welcome-apps button:hover { background: var(--accent-soft); }
-  .welcome-app-art { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 11px; color: #2676d9; background: #d9eafa; font-size: 25px; }
-  .welcome-app-art[data-icon='terminal'] { color: #dce7e0; background: #26352c; font-size: 19px; }
-  .welcome-app-art[data-icon='calculator'] { color: white; background: #c88d39; }
-  .welcome-app-art[data-icon='settings'] { color: #54606c; background: #e1e5e8; }
-  .welcome-apps strong { font-size: 12px; font-weight: 500; }
-  .welcome-apps button > span:last-child { color: var(--muted); font-size: 10px; line-height: 1.4; }
-  .welcome-customize { padding: 22px 0; border-block: 1px solid var(--line); }
-  .welcome-customize .appearance-modes { max-width: 400px; }
-  .welcome-customize .appearance-wallpapers { max-width: 400px; }
-  .welcome-code { padding: 26px 0 12px; }
-  .welcome-code h2 { margin: 0 0 6px; font-size: 19px; font-weight: 600; }
-  .welcome-code p { color: var(--muted); font-size: 12px; }
-  .welcome-code pre { padding: 18px; overflow: auto; font: 11px/1.7 var(--mono); background: var(--sidebar-bg); border: 1px solid var(--line); border-radius: 8px; }
-  .welcome-footer { display: flex; justify-content: space-between; gap: 12px; padding-top: 16px; font-size: 10px; color: var(--muted); }
-  .welcome-footer a { color: var(--accent); text-decoration: none; }
   @container app-pane (max-width: 600px) {
     .files-app, .files-app.has-inspector { grid-template-columns: 120px minmax(0,1fr); }
     .files-app.has-inspector .files-inspector { position: absolute; right: 0; top: 0; bottom: 0; width: min(220px,70%); z-index: 30; box-shadow: -10px 0 30px #0002; }
@@ -223,8 +199,6 @@
     .settings-detail { padding: 18px; }
     .appearance-setting-row { align-items: start; flex-direction: column; gap: 12px; }
     .appearance-setting-row input[type='range'] { width: 100%; }
-    .welcome-app { padding: 24px; }
-    .welcome-heading h1 { font-size: 26px; }
   }
   @container app-pane (max-width: 420px) {
     .files-app, .files-app.has-inspector { grid-template-columns: minmax(0,1fr); }
@@ -239,8 +213,6 @@
     .settings-nav-icon { display: none; }
     .settings-detail { padding: 16px; }
     .settings-detail-header h2 { font-size: 19px; }
-    .welcome-apps { grid-template-columns: repeat(2,minmax(0,1fr)); }
-    .welcome-heading h1 { font-size: 24px; }
     .appearance-modes { gap: 9px; }
     .appearance-wallpapers { gap: 8px; }
   }
@@ -288,8 +260,7 @@
 }
 
 @scope (.dindbos-host) to (.dindbos-host) {
-  :scope[data-appearance='dark'] .appearance-mode[aria-pressed='true'] > span:last-child,
-  :scope[data-appearance='dark'] .welcome-footer a { color: color-mix(in srgb, var(--accent) 55%, white); }
+  :scope[data-appearance='dark'] .appearance-mode[aria-pressed='true'] > span:last-child { color: color-mix(in srgb, var(--accent) 55%, white); }
   :scope[data-appearance='dark'] .appearance-mode[aria-pressed='true'] .appearance-mode-preview,
   :scope[data-appearance='dark'] .appearance-wallpaper[aria-pressed='true'] .appearance-wallpaper-preview { outline-color: color-mix(in srgb, var(--accent) 65%, white); }
   :scope[data-appearance='dark'] .settings-nav-item.is-active { background: color-mix(in srgb, var(--accent) 65%, #143322); color: white; }
@@ -302,10 +273,6 @@
   .files-row.is-selected .dos-mini-icon { color: white; }
   :scope[data-appearance='dark'] .files-app .dos-mini-icon { color: #8ac5eb; }
   :scope[data-appearance='dark'] .files-row.is-selected .dos-mini-icon { color: white; }
-}
-@scope (.dindbos-host) to (.dindbos-host) {
-  .welcome-app-art { width: 48px; height: 48px; border-radius: 0; background: transparent; box-shadow: none; }
-  .welcome-app-art .dos-app-icon { width: 100%; height: 100%; display: block; }
 }
 @scope (.dindbos-host) to (.dindbos-host) {
   .settings-detail .appearance-modes, .settings-detail .appearance-wallpapers { max-width: 540px; }

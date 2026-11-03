@@ -5,7 +5,7 @@ import { renderPhotos, renderMusic } from "./media.js";
 import { renderClock } from "./clock.js";
 import { renderApplications } from "./applications.js";
 import { executeFilesContextCommand, readFilesTags, remapFilesTags, forgetFilesTags } from "./files-context-commands.js";
-import { appearanceMarkup, wireAppearanceControls, welcomeMarkup, wallpaperSettingsMarkup, desktopSettingsMarkup, wireWallpaperPreviews } from "./appearance.js";
+import { appearanceMarkup, wireAppearanceControls, wallpaperSettingsMarkup, desktopSettingsMarkup, wireWallpaperPreviews } from "./appearance.js";
 import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js";
 import {
   BROWSERD_FRAME_ENCODING,
@@ -237,23 +237,7 @@ export function installBuiltinApps(os, options = {}) {
       render: ({ os: runtime, content, context, window }) => render(runtime, content, context, window),
     });
   }
-  if (options.includeWelcome) {
-    register({
-      id: "welcome", name: "Welcome", title: "Welcome to DindbOS", icon: "welcome",
-      singleton: true, pinned: true, width: 880, height: 640,
-      manifest: { capabilities: ["app.launch"], fileSystem: { read: [], write: [] } },
-      render: ({ content, os: runtime }) => {
-        content.innerHTML = welcomeMarkup(appearance.get());
-        const cleanup = wireAppearanceControls(content, appearance);
-        const iconCleanups = [...content.querySelectorAll("[data-welcome-icon]")].map((element) => mountAppIcon(element, element.dataset.welcomeIcon));
-        content.querySelectorAll("[data-welcome-launch]").forEach((button) => {
-          button.disabled = !os.apps.has(button.dataset.welcomeLaunch);
-          button.addEventListener("click", () => runtime.launch(button.dataset.welcomeLaunch));
-        });
-        return () => { cleanup(); iconCleanups.forEach((dispose) => dispose()); };
-      },
-    });
-  }
+
 }
 
 function documentReadRoots(userHome) {

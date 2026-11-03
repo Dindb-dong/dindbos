@@ -454,14 +454,14 @@ button {
   padding: 0 10px 0 14px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-strong);
-  cursor: grab;
+  cursor: default;
   touch-action: none;
   user-select: none;
 }
 
 /* Dragging window titlebar */
 .dos-window.is-dragging .dos-window-titlebar {
-  cursor: grabbing;
+  cursor: default;
 }
 
 /* Window title text */

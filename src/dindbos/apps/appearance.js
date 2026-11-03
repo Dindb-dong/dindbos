@@ -108,26 +108,6 @@ export function wireAppearanceControls(content, bridge) {
   };
 }
 
-export function welcomeMarkup(appearance = {}) {
-  return `
-    <section class="welcome-app">
-      <header class="welcome-heading"><span class="welcome-symbol" aria-hidden="true">D</span><h1>Your web. Your desktop.</h1><p>A familiar workspace, made from the components you already build.</p></header>
-      <nav class="welcome-apps" aria-label="Explore built-in apps">
-        ${[["files", "Files", "Browse your workspace"], ["notes", "Notes", "Capture a thought"], ["reminders", "Reminders", "Plan what comes next"], ["calendar", "Calendar", "Make time for it"], ["photos", "Photos", "Your image library"], ["music", "Music", "Listen to your files"], ["clock", "Clock", "Keep track of time"], ["settings", "Settings", "Make yourself at home"]].map(([id, name, detail]) => `<button type="button" data-welcome-launch="${id}"><span class="welcome-app-art" data-welcome-icon="${id}" aria-hidden="true"></span><strong>${name}</strong><span>${detail}</span></button>`).join("")}
-      </nav>
-      <div class="welcome-customize">${appearanceMarkup(appearance)}</div>
-      <section class="welcome-code"><h2>Bring your own app</h2><p>Keep your React components, state, and context. Give them a window.</p><pre><code>import { DindbOSDesktop, DindbOSApp } from "dindbos/react";
-import "dindbos/styles.css";
-
-&lt;DindbOSDesktop launch={["hello"]}&gt;
-  &lt;DindbOSApp id="hello" name="Hello"&gt;
-    &lt;YourComponent /&gt;
-  &lt;/DindbOSApp&gt;
-&lt;/DindbOSDesktop&gt;</code></pre></section>
-      <footer class="welcome-footer"><span>DindbOS · Open source</span><a href="https://github.com/Dindb-dong/dindbos" target="_blank" rel="noopener noreferrer">Documentation ↗</a></footer>
-    </section>`;
-}
-
 export function wallpaperSettingsMarkup(appearance = {}) {
   const wallpaper = appearance.wallpaper || "meadow";
   const currentName = WALLPAPERS.find(([id]) => id === wallpaper)?.[1] || "Custom Wallpaper";

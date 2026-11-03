@@ -37,12 +37,11 @@ Use an included icon name such as `folder`, `terminal`, `calculator`, or `app`, 
 ```js
 const builtins = {
   includePortfolio: false,
-  includeWelcome: true,
   exclude: ["browser", "activity-monitor"],
 };
 ```
 
-Use `include` to select specific IDs, or `exclude` to remove defaults. Inspect the installed app registry for IDs rather than guessing a display name. Exclude a builtin before registering your own replacement with the same ID. The Welcome app is opt-in.
+Use `include` to select specific IDs, or `exclude` to remove defaults. Inspect the installed app registry for IDs rather than guessing a display name. Exclude a builtin before registering your own replacement with the same ID.
 
 ## Window layouts
 
