@@ -42,6 +42,7 @@ try {
     ["productivity", "smoke-productivity-browser.js"],
     ["media", "smoke-media-apps-browser.js"],
     ["clock", "smoke-clock-browser.js"],
+    ["calculator", "smoke-calculator-browser.js"],
     ["embed", "smoke-embed-browser.js"],
   ]) {
     if (interrupted) break;

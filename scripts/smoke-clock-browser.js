@@ -34,12 +34,23 @@ try {
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/clock-fixture`);
  await expect(page.locator('.clock-city')).toHaveCount(3);
- await page.getByRole('combobox',{name:'City',exact:true}).selectOption('6');
+ await expect(page.getByRole('tab')).toHaveCount(4);
+ await expect(page.locator('[data-clock-terminator]')).toHaveAttribute('d',/^M/);
  await page.getByRole('button',{name:'Add city',exact:true}).click();
+ await page.getByRole('combobox',{name:'City',exact:true}).selectOption('6');
+ await page.getByRole('button',{name:'Add selected city',exact:true}).click();
  await expect(page.getByRole('heading',{name:'New York',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Remove New York',exact:true}).click();
  await expect(page.locator('.clock-city')).toHaveCount(3);
  await page.screenshot({path:output+'/world-clock.png'});
+ await page.getByRole('tab',{name:'Alarm',exact:true}).click();
+ await page.getByRole('button',{name:'Add alarm',exact:true}).click();
+ await page.getByRole('textbox',{name:'Alarm label',exact:true}).fill('Tea');
+ await page.locator('form[data-add-alarm] button[type="submit"]').click();
+ await expect(page.getByRole('checkbox',{name:'Enable Tea'})).toBeChecked();
+ await page.getByRole('checkbox',{name:'Enable Tea'}).uncheck();
+ await page.getByRole('button',{name:'Delete Tea',exact:true}).click();
+ await expect(page.locator('.clock-alarm-empty')).toBeVisible();
  await page.getByRole('tab',{name:'Stopwatch',exact:true}).click();
  await page.getByRole('button',{name:'Start',exact:true}).click();
  await expect.poll(()=>page.locator('[data-clock-display]').textContent()).not.toBe('00:00.00');
@@ -87,8 +98,9 @@ try {
  const withinClock = async () => {
   const invalid=await registry.locator('.clock-app').evaluate(app=>{
    const bounds=app.getBoundingClientRect();
-   return [...app.querySelectorAll('button,input,select,.clock-city,.clock-digits')].filter(el=>{
+   return [...app.querySelectorAll('button,input,select,.clock-digits')].filter(el=>{
     const rect=el.getBoundingClientRect();
+    if(el.closest(".clock-world-grid"))return false; // City cards intentionally scroll horizontally.
     return rect.width>0&&(rect.left<bounds.left-1||rect.right>bounds.right+1);
    }).map(el=>el.outerHTML);
   });

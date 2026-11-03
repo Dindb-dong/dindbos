@@ -9,6 +9,8 @@ const glyphs = {
   grid: '<rect x="2" y="2" width="6" height="6" rx="1"/><rect x="12" y="2" width="6" height="6" rx="1"/><rect x="2" y="12" width="6" height="6" rx="1"/><rect x="12" y="12" width="6" height="6" rx="1"/>',
   back: '<path d="m12 4-6 6 6 6"/>', next: '<path d="m8 4 6 6-6 6"/>',
   trash: '<path d="M3 5h14M7 5V2h6v3M5 5l1 13h8l1-13M8 8v7m4-7v7"/>',
+  volume: '<path d="M3 8h3l4-4v12l-4-4H3Zm10-2c2 2 2 6 0 8m3-11c4 4 4 10 0 14"/>',
+  search: '<circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 5 5"/>',
   photo: '<rect x="2" y="3" width="16" height="14" rx="2"/><circle cx="7" cy="7" r="1.5"/><path d="m3 15 5-5 4 4 3-3 3 4"/>',
   music: '<path d="M8 15V4l9-2v11M8 8l9-2"/><ellipse cx="5" cy="15" rx="3" ry="2"/><ellipse cx="14" cy="13" rx="3" ry="2"/>',
   play: '<path d="m6 3 11 7-11 7Z"/>', pause: '<path d="M6 3v14M14 3v14"/>',
@@ -105,7 +107,7 @@ export function renderPhotos(os, content, context = {}, windowApi = {}) {
   let viewer = false;
   let zoom = 1;
   let importing = false;
-  content.innerHTML = `<section class="media-app photos-app" tabindex="-1"><aside class="media-sidebar"><h2>Photos</h2><button type="button" class="is-selected" data-media-action="library">${icon("photo")}<span>Library</span><small data-photo-count>0</small></button><p>Your imported photos stay on this desktop.</p></aside><main class="media-main"><header class="media-toolbar"><div class="media-toolbar-title"><strong data-photo-title>Library</strong><small data-photo-subtitle>All Photos</small></div><div class="media-toolbar-actions">${tool("gallery", "Show photo grid", "grid")}${tool("previous", "Previous photo", "back")}${tool("next", "Next photo")}${tool("trash", "Move photo to Trash")}${tool("import", "Import photos")}</div></header><div class="media-feedback" data-media-feedback hidden></div><div class="photo-grid" aria-label="Photo library"></div><div class="photo-viewer" hidden><div class="photo-image-scroll"><img alt="" /></div><footer><button type="button" data-media-action="zoom-out" aria-label="Zoom out">−</button><button type="button" data-media-action="fit">Fit</button><button type="button" data-media-action="zoom-in" aria-label="Zoom in">+</button><span data-photo-dimensions></span></footer></div><footer class="media-library-footer" data-photo-footer></footer></main><input data-media-input type="file" accept="image/*" multiple hidden /></section>`;
+  content.innerHTML = `<section class="media-app photos-app" tabindex="-1"><aside class="media-sidebar" aria-label="Photos sidebar"><div class="media-sidebar-caption">Photos</div><button type="button" class="is-selected" data-media-action="library">${icon("photo")}<span>Library</span><small data-photo-count>0</small></button><div class="media-sidebar-caption media-sidebar-section">Library</div><button type="button" data-media-action="import">${icon("import")}<span>Import Photos…</span></button><div class="media-sidebar-note">On this desktop</div></aside><main class="media-main"><header class="media-toolbar" data-window-drag><div class="media-toolbar-title"><strong data-photo-title>Library</strong><small data-photo-subtitle>All Photos</small></div><div class="media-toolbar-actions">${tool("gallery", "Show photo grid", "grid")}${tool("previous", "Previous photo", "back")}${tool("next", "Next photo")}${tool("trash", "Move photo to Trash")}${tool("import", "Import photos")}</div></header><div class="media-feedback" data-media-feedback hidden></div><div class="photo-grid" aria-label="Photo library"></div><div class="photo-viewer" hidden><div class="photo-image-scroll"><img alt="" /></div><footer><button type="button" data-media-action="zoom-out" aria-label="Zoom out">−</button><button type="button" data-media-action="fit">Fit</button><button type="button" data-media-action="zoom-in" aria-label="Zoom in">+</button><span data-photo-dimensions></span></footer></div><footer class="media-library-footer" data-photo-footer></footer></main><input data-media-input type="file" accept="image/*" multiple hidden /></section>`;
   const root = content.querySelector(".photos-app");
   const grid = root.querySelector(".photo-grid");
   const image = root.querySelector(".photo-viewer img");
@@ -129,7 +131,7 @@ export function renderPhotos(os, content, context = {}, windowApi = {}) {
       image.alt = selected.name;
       applyZoom();
     } else {
-      grid.innerHTML = entries.length ? entries.map((node) => `<button type="button" class="photo-tile${selected?.path === node.path ? " is-selected" : ""}" data-photo-path="${escape(node.path)}" aria-label="Open ${escape(node.name)}" aria-pressed="${selected?.path === node.path}"><img src="${escape(library.url(node))}" alt="" loading="lazy"/><span>${escape(node.name)}</span></button>`).join("") : `<div class="media-empty">${icon("photo")}<h2>Your photo library</h2><p>Import images to collect and view them here.</p><button type="button" data-media-action="import">Import Photos…</button></div>`;
+      grid.innerHTML = entries.length ? entries.map((node) => `<button type="button" class="photo-tile${selected?.path === node.path ? " is-selected" : ""}" data-photo-path="${escape(node.path)}" title="${escape(node.name)}" aria-label="Open ${escape(node.name)}" aria-pressed="${selected?.path === node.path}"><img src="${escape(library.url(node))}" alt="" loading="lazy"/><span>${escape(node.name)}</span></button>`).join("") : `<div class="media-empty">${icon("photo")}<h2>Your photo library</h2><p>Import images to collect and view them here.</p><button type="button" data-media-action="import">Import Photos…</button></div>`;
     }
     windowApi.setTitle?.(viewer && selected ? `${selected.name} — Photos` : "Photos");
   };
@@ -193,7 +195,7 @@ export function renderMusic(os, content, context = {}, windowApi = {}) {
   const feedback = mediaFeedback(content, controller);
   let selected = null;
   let importing = false;
-  content.innerHTML = `<section class="media-app music-app" tabindex="-1"><aside class="media-sidebar"><h2>Music</h2><button type="button" class="is-selected">${icon("music")}<span>Songs</span><small data-music-count>0</small></button><p>Play audio imported from your device.</p></aside><main class="media-main"><header class="media-toolbar"><div class="media-toolbar-title"><strong>Songs</strong><small>Your library</small></div><div class="media-toolbar-actions">${tool("trash", "Move song to Trash")}${tool("import", "Import audio")}</div></header><div class="media-feedback" data-media-feedback hidden></div><div class="music-library" aria-label="Song library"></div><footer class="music-player"><div class="music-now-playing"><span class="music-artwork">${icon("music")}</span><div><strong data-music-title>Not Playing</strong><small data-music-detail>Choose a song from your library</small></div></div><div class="music-playback"><div class="music-transport">${tool("previous", "Previous song")}${tool("play", "Play", "play")}${tool("next", "Next song", "skip")}</div><div class="music-timeline"><span data-music-elapsed>0:00</span><input type="range" aria-label="Playback position" min="0" max="100" step=".1" value="0" disabled /><span data-music-duration>0:00</span></div></div><label class="music-volume">Volume<input type="range" aria-label="Volume" min="0" max="1" step=".05" value=".7" /></label></footer><audio preload="metadata"></audio></main><input data-media-input type="file" accept="audio/*" multiple hidden /></section>`;
+  content.innerHTML = `<section class="media-app music-app" tabindex="-1"><aside class="media-sidebar" aria-label="Music sidebar"><label class="media-search">${icon("search")}<input type="search" aria-label="Search songs" placeholder="Search" /></label><div class="media-sidebar-caption media-sidebar-section">Library</div><button type="button" class="is-selected" data-media-action="songs">${icon("music")}<span>Songs</span><small data-music-count>0</small></button><div class="media-sidebar-caption media-sidebar-section">Your Music</div><button type="button" data-media-action="import">${icon("import")}<span>Import Audio…</span></button><div class="media-sidebar-note">On this desktop</div></aside><main class="media-main"><header class="media-toolbar" data-window-drag><div class="media-toolbar-title"><strong>Songs</strong></div><div class="media-toolbar-actions">${tool("trash", "Move song to Trash")}${tool("import", "Import audio")}</div></header><div class="media-feedback" data-media-feedback hidden></div><div class="music-library" aria-label="Song library"></div><footer class="music-player"><div class="music-now-playing"><span class="music-artwork">${icon("music")}</span><div><strong data-music-title>Not Playing</strong><small data-music-detail>Choose a song from your library</small></div></div><div class="music-playback"><div class="music-transport">${tool("previous", "Previous song")}${tool("play", "Play", "play")}${tool("next", "Next song", "skip")}</div><div class="music-timeline"><span data-music-elapsed>0:00</span><input type="range" aria-label="Playback position" min="0" max="100" step=".1" value="0" disabled /><span data-music-duration>0:00</span></div></div><label class="music-volume">${icon("volume")}<input type="range" aria-label="Volume" min="0" max="1" step=".05" value=".7" /></label></footer><audio preload="metadata"></audio></main><input data-media-input type="file" accept="audio/*" multiple hidden /></section>`;
   const root = content.querySelector(".music-app");
   const list = root.querySelector(".music-library");
   const input = root.querySelector("[data-media-input]");
@@ -222,11 +224,15 @@ export function renderMusic(os, content, context = {}, windowApi = {}) {
   };
   const refresh = () => {
     if (controller.signal.aborted) return;
-    const tracks = entries();
-    root.querySelector("[data-music-count]").textContent = tracks.length;
+    const allTracks = entries();
+    const query = root.querySelector('[aria-label="Search songs"]').value.trim().toLowerCase();
+    const tracks = allTracks.filter(node => node.name.toLowerCase().includes(query));
+    root.querySelector("[data-music-count]").textContent = allTracks.length;
     list.innerHTML = tracks.length ? `<div class="music-list-heading"><span>Title</span><span>File type</span></div>${tracks.map((node) => `<button type="button" class="music-track${selected?.path === node.path ? " is-selected" : ""}" data-music-path="${escape(node.path)}" aria-label="Play ${escape(node.name)}" aria-pressed="${selected?.path === node.path}"><span class="music-track-icon">${icon("music")}</span><span>${escape(node.name)}</span><small>${escape((node.mime || "audio").replace("audio/", ""))}</small></button>`).join("")}` : `<div class="media-empty">${icon("music")}<h2>Your music, here</h2><p>Import audio files to start a local library.</p><button type="button" data-media-action="import">Import Audio…</button></div>`;
+    if (!tracks.length && query) list.innerHTML = `<div class="media-empty"><h2>No Results</h2><p>No songs match “${escape(query)}”.</p></div>`;
     updatePlayback();
   };
+  root.querySelector('[aria-label="Search songs"]').addEventListener("input", refresh, { signal: controller.signal });
   const load = async (node, autoplay = true) => {
     if (!node) return;
     if (node.path !== selected?.path) {
@@ -249,6 +255,7 @@ export function renderMusic(os, content, context = {}, windowApi = {}) {
       if (track) { await load(entries().find((node) => node.path === track.dataset.musicPath)); return; }
       const action = event.target.closest("[data-media-action]")?.dataset.mediaAction;
       if (action === "import") input.click();
+      else if (action === "songs") { root.querySelector('[aria-label="Search songs"]').value = ""; refresh(); }
       else if (action === "play") { if (audio.paused) await load(selected); else audio.pause(); }
       else if (action === "previous") await step(-1);
       else if (action === "next") await step(1);

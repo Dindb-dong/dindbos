@@ -64,4 +64,95 @@
     .files-app .files-dropzone.is-active { left: 8px; }
     .files-app .files-status .files-breadcrumb { max-width: 60%; }
   }
+  /* Finder's sidebar and toolbar share the window's top edge. The window
+     manager hosts its real traffic lights above the sidebar, not a second row. */
+  .files-app { --content-bg: var(--files-content-bg, #fff); --sidebar-bg: var(--files-sidebar-bg, #ecebeb); --control-bg: var(--files-control-bg, #fafafa); --control-hover: var(--files-control-hover, #efefef); --text: var(--files-text, #242424); --muted: var(--files-muted, #777); --line: var(--files-line, #dedede); grid-template-columns: 205px minmax(0, 1fr); background: var(--content-bg); }
+  :scope[data-appearance='dark'] .files-app { --content-bg: var(--files-content-bg, #1e1e1e); --sidebar-bg: var(--files-sidebar-bg, #282828); --control-bg: var(--files-control-bg, #2d2d2d); --control-hover: var(--files-control-hover, #3a3a3a); --text: var(--files-text, #eee); --muted: var(--files-muted, #aaa); --line: var(--files-line, #ffffff20); }
+  :is(.files-menu-layer, .files-context-menu) { --chrome-bg: var(--files-menu-bg, #fffffff0); --text: var(--files-text, #242424); --muted: var(--files-muted, #777); --line: var(--files-line, #dedede); }
+  :scope[data-appearance='dark'] :is(.files-menu-layer, .files-context-menu) { --chrome-bg: var(--files-menu-bg, #2c2c2cf0); --text: var(--files-text, #eee); --muted: var(--files-muted, #aaa); --line: var(--files-line, #ffffff20); }
+  .files-app.has-inspector { grid-template-columns: 205px minmax(0, 1fr) 220px; }
+  .files-app .files-sidebar { padding: 58px 8px 12px; gap: 20px; background: var(--sidebar-bg); }
+  .files-app .files-sidebar section { gap: 0; }
+  .files-app .files-sidebar h3 { padding: 0 9px; margin: 7px 0 6px; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .files-app .files-sidebar button { min-height: 32px; padding: 5px 9px; gap: 9px; border-radius: 6px; font-size: 13px; font-weight: 400; }
+  .files-sidebar .dos-mini-icon { width: 19px; height: 20px; color: var(--files-sidebar-icon, #007aff); flex: 0 0 19px; }
+  .files-sidebar .files-mini-icon { width: 19px; height: 20px; }
+  .files-app .files-sidebar button.is-active { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+  .dos-window:not(.is-active) .files-sidebar .dos-mini-icon { color: var(--muted); }
+  .dos-window:not(.is-active) .files-app :is(.files-sidebar, .files-commandbar, .files-tabstrip) { --text: var(--files-inactive-text, #aaa); --muted: var(--files-inactive-text, #aaa); }
+  .dos-window:not(.is-active) .files-app .files-commandbar { --control-bg: var(--files-inactive-control-bg, #efefef); }
+  :scope[data-appearance='dark'] .dos-window:not(.is-active) .files-app .files-commandbar { --control-bg: var(--files-inactive-control-bg, #292929); }
+  .files-app .files-commandbar { color: var(--text); height: 52px; min-height: 52px; flex: 0 0 52px; gap: 6px; padding: 7px 9px; border-bottom: 0; background: var(--content-bg); }
+  .files-commandbar .files-history { gap: 0; margin-right: 6px; border: 1px solid var(--line); border-radius: 22px; background: linear-gradient(180deg, color-mix(in srgb, var(--content-bg) 96%, white), var(--control-bg)); box-shadow: inset 0 1px 0 #fff8; overflow: hidden; flex-shrink: 0; }
+  .files-app .files-commandbar .files-history button { width: 36px; height: 36px; min-height: 36px; padding: 7px; border-radius: 0; }
+  .files-history button + button { position: relative; }
+  .files-history button + button::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 1px; background: var(--line); }
+  .files-commandbar .files-folder-title { font-size: 16px; font-weight: 650; min-width: 28px; max-width: 210px; }
+  .files-app .files-commandbar summary, .files-app .files-commandbar > button { width: 40px; height: 36px; min-height: 36px; border-radius: 22px; border: 1px solid var(--line); background: var(--control-bg); padding: 7px; box-shadow: inset 0 1px 0 #fff8; }
+  .files-commandbar .files-view-menu summary, .files-commandbar .files-sort-menu summary { width: 46px; gap: 2px; }
+  .files-commandbar .files-tool-icon { width: 20px; height: 20px; flex: 0 0 20px; }
+  .files-commandbar :is(.files-view-menu,.files-sort-menu) summary .files-tool-icon:last-child { width: 10px; flex-basis: 10px; }
+  .files-tools-group { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 22px; padding: 0 2px; background: var(--control-bg); flex-shrink: 0; box-shadow: inset 0 1px 0 #fff8; }
+  .files-app .files-tools-group > button, .files-app .files-tools-group summary { width: 34px; height: 36px; min-height: 36px; padding: 7px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 20px; background: transparent; color: var(--text); box-shadow: none; }
+  .files-app .files-tools-group > button:hover { background: var(--control-hover); }
+  .files-commandbar .files-search-field { flex: 0 1 108px; min-width: 48px; height: 36px; border-radius: 20px; margin-left: 0; padding: 0 10px; }
+  .files-commandbar [hidden] { display: none !important; }
+  .files-tabstrip { height: 28px; flex: 0 0 28px; display: flex; align-items: center; gap: 5px; padding: 0 9px 2px; background: var(--content-bg); }
+  .files-tabs { display: flex; flex: 1; min-width: 0; height: 26px; padding: 2px; border-radius: 16px; background: color-mix(in srgb, var(--text) 8%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+  .files-tab-item { display: flex; position: relative; flex: 1; min-width: 0; border-radius: 14px; }
+  .files-tab-item + .files-tab-item::before { content: ''; position: absolute; width: 1px; left: 0; top: 4px; bottom: 4px; background: var(--line); }
+  .files-tab-item.is-current { background: var(--content-bg); box-shadow: 0 1px 2px #00000006; }
+  .files-tab-item.is-current::before { display: none; }
+  .files-app .files-tab-item button { display: block; flex: 1; min-width: 0; min-height: 0; border: 0; padding: 2px 16px; border-radius: 14px; background: transparent; color: var(--muted); font-size: 11px; font-family: inherit; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; box-shadow: none; }
+  .files-app .files-tab-item.is-current button { color: var(--text); font-weight: 500; }
+  .files-app .files-tab-item .files-tab-close { position: absolute; left: 3px; top: 2px; padding: 0; width: 18px; height: 18px; font-size: 14px; opacity: 0; }
+  .files-tab-item:hover .files-tab-close, .files-tab-item:focus-within .files-tab-close { opacity: 1; }
+  .files-app [data-files-new-tab] { width: 26px; height: 26px; min-height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--control-bg); color: var(--text); font: 22px/1 var(--font-ui); box-shadow: inset 0 1px 0 #fff8; }
+  .files-entry-art { display: none; }
+  .files-list-glyph { display: inline-flex; }
+  .files-app[data-files-view='icons'] .files-column-view { border-top: 0; overflow-y: auto; overflow-x: hidden; }
+  .files-app[data-files-view='icons'] .files-column { display: grid; grid-template-columns: repeat(auto-fit, 112px); justify-content: center; align-content: start; gap: 12px 8px; flex: 1; width: 100%; min-width: 0; padding: 18px 16px; border: 0; overflow: visible; }
+  .files-app[data-files-view='icons'] .files-row { display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 7px; height: 116px; min-width: 0; padding: 3px 4px; border-radius: 6px; font-size: 13px; background: transparent; color: var(--text); }
+  .files-app[data-files-view='icons'] .files-row > .dos-mini-icon { display: flex; flex: 0 0 78px; width: 84px; height: 78px; align-items: center; justify-content: center; border-radius: 6px; }
+  .files-app[data-files-view='icons'] .files-list-glyph, .files-app[data-files-view='icons'] .files-row > small, .files-app[data-files-view='icons'] .files-row > .files-row-chevron { display: none; }
+  .files-app[data-files-view='icons'] .files-entry-art { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; }
+  .files-app[data-files-view='icons'] .files-row > .files-row-name { flex: 0 1 auto; max-width: 100%; width: auto; padding: 1px 4px; text-align: center; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; border-radius: 4px; line-height: 1.3; }
+  .files-app[data-files-view='icons'] .files-row.is-selected > .dos-mini-icon { background: color-mix(in srgb, var(--text) 10%, transparent); }
+  .files-app[data-files-view='icons'] .files-row.is-selected > .files-row-name { background: var(--accent); color: white; }
+  .files-app[data-files-view='icons'] :is(.files-empty, .files-column-limit) { grid-column: 1 / -1; }
+  .files-folder-art { width: 74px; height: 66px; filter: drop-shadow(0 2px 2px #0002); }
+  .files-document-art { position: relative; display: block; width: 43px; height: 56px; padding: 8px 5px; border-radius: 3px; background: white; color: #3c4044; box-shadow: 0 1px 4px #0004, inset 0 0 0 1px #0000000b; overflow: hidden; }
+  .files-document-art::after { content: ''; position: absolute; right: 0; top: 0; width: 8px; height: 8px; background: linear-gradient(45deg, #ddd 49%, #fafafa 51%); box-shadow: -1px 1px 1px #0002; }
+  .files-document-art pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; color: #51565c; background: transparent; padding: 0; border: 0; font: 3px/1.4 var(--font-mono, monospace); text-align: left; }
+  .files-document-extension { display: grid; height: 100%; place-items: center; font: 600 10px/1 var(--font-ui); color: #69727b; }
+  .files-app .files-status { min-height: 26px; flex-basis: 26px; padding: 3px 12px; border-top: 1px solid var(--line); }
+  .files-app .files-breadcrumb button { font-size: 11px; }
+  :is(.files-app, .files-menu-layer) .files-action-menu { padding: 6px; border-radius: 12px; min-width: 160px; }
+  .files-menu-layer > .files-action-menu[data-files-menu-kind='sort'] { width: 164px; }
+  .files-menu-layer > .files-action-menu[data-files-menu-kind='view'] { width: 180px; }
+  :is(.files-app, .files-menu-layer) .files-action-menu button { min-height: 25px; padding: 4px 7px; gap: 7px; font-size: 13px; border-radius: 5px; }
+  .files-menu-check { width: 15px; flex: 0 0 15px; margin: 0; text-align: center; }
+  .files-app .files-dropzone.is-active { inset: 80px 12px 33px 217px; }
+  @container app-pane (max-width: 720px) {
+    .files-commandbar .files-folder-title { max-width: 100px; font-size: 14px; }
+    .files-app .files-commandbar { gap: 4px; padding-inline: 7px; }
+    .files-commandbar .files-search-field { flex-basis: 50px; }
+    .files-commandbar .files-search-field input { font-size: 11px; }
+    .files-app .files-tools-group > button { width: 29px; }
+  }
+  @container app-pane (max-width: 600px) {
+    .files-app, .files-app.has-inspector { grid-template-columns: 155px minmax(0,1fr); }
+    .files-app .files-commandbar { flex-wrap: wrap; height: auto; min-height: 92px; flex-basis: auto; justify-content: flex-end; }
+    .files-commandbar .files-folder-title { flex: 1; max-width: none; }
+    .files-commandbar .files-toolbar-spacer { display: none; }
+    .files-commandbar .files-search-field { flex: 1; max-width: none; }
+    .files-app .files-dropzone.is-active { left: 167px; top: 120px; }
+  }
+  @container app-pane (max-width: 420px) {
+    .files-app, .files-app.has-inspector { grid-template-columns: minmax(0,1fr); }
+    .files-app .files-sidebar { display: none; }
+    .files-app .files-commandbar { padding-top: 52px; }
+    .files-app .files-dropzone.is-active { left: 12px; top: 160px; }
+  }
+
 }

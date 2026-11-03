@@ -2,10 +2,10 @@
   .dos-window-content:has(> .applications-app) { padding: 0; overflow: hidden; container: app-pane / inline-size; }
   .applications-app { height: 100%; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; color: var(--text); background: var(--content-bg); font: 13px/1.4 var(--font-ui, -apple-system, BlinkMacSystemFont, sans-serif); }
   .applications-app *, .applications-app *::before, .applications-app *::after { box-sizing: border-box; }
-  .applications-header { display: flex; align-items: center; gap: 16px; min-height: 78px; padding: 18px 26px; border-bottom: 1px solid var(--line); background: var(--chrome-bg); }
+  .applications-header { display: flex; align-items: center; gap: 16px; height: 52px; min-height: 52px; padding: 0 18px 0 90px; border-bottom: 1px solid var(--line); background: var(--chrome-bg); }
   .applications-title { display: flex; align-items: center; gap: 11px; min-width: 0; }
-  .applications-title > svg { width: 27px; height: 27px; flex-shrink: 0; color: var(--muted); }
-  .applications-title h1 { margin: 0; font-size: 25px; font-weight: 550; letter-spacing: -.8px; line-height: 1.2; }
+  .applications-title > svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--muted); }
+  .applications-title h1 { margin: 0; font-size: 19px; font-weight: 550; letter-spacing: -.8px; line-height: 1.2; }
   .applications-search { display: flex; align-items: center; gap: 7px; margin-left: auto; flex: 0 1 240px; min-width: 110px; height: 32px; padding: 0 9px; background: var(--control-bg); border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
   .applications-search svg { width: 16px; height: 16px; flex: 0 0 16px; }
   .applications-search:focus-within { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); }
@@ -14,12 +14,12 @@
   .applications-header .applications-refresh { width: 30px; height: 30px; display: grid; place-items: center; flex-shrink: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); padding: 6px; box-shadow: none; }
   .applications-refresh svg { width: 18px; height: 18px; }
   .applications-header .applications-refresh:hover { background: var(--control-hover); color: var(--text); }
-  .applications-categories { display: flex; align-items: center; gap: 7px; padding: 13px 26px; overflow-x: auto; scrollbar-width: none; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); }
+  .applications-categories { display: flex; align-items: center; gap: 7px; padding: 10px 22px; overflow-x: auto; scrollbar-width: none; background: var(--sidebar-bg); border-bottom: 1px solid var(--line); }
   .applications-categories button { flex: 0 0 auto; min-height: 28px; padding: 4px 12px; font: inherit; font-size: 12px; font-weight: 500; border: 0; border-radius: 7px; background: transparent; color: var(--muted-strong); box-shadow: none; white-space: nowrap; }
   .applications-categories button:hover { background: var(--control-hover); color: var(--text); }
   .applications-categories button[aria-selected=true] { color: var(--text); background: var(--control-bg); box-shadow: 0 1px 2px #00000010; }
   .applications-library { min-height: 0; overflow: auto; padding: 21px 26px 28px; }
-  .applications-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 20px; padding-bottom: 11px; border-bottom: 1px solid var(--line); }
+  .applications-section-heading { display: none; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
   .applications-section-heading h2 { margin: 0; font-size: 13px; font-weight: 550; color: var(--muted-strong); letter-spacing: 0; }
   .applications-section-heading > span { font-size: 11px; color: var(--muted); white-space: nowrap; }
   .applications-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 21px 12px; align-content: start; }
@@ -40,10 +40,11 @@
   .applications-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 31px; padding: 7px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; background: var(--sidebar-bg); }
   .applications-footer [role=alert] { color: var(--text); overflow-wrap: anywhere; }
   @container app-pane (max-width: 600px) {
-    .applications-header { flex-wrap: wrap; gap: 12px; padding: 15px 17px; }
+    .applications-header { flex-wrap: nowrap; gap: 7px; padding: 0 10px 0 90px; }
     .applications-title { flex: 1; }
-    .applications-title h1 { font-size: 23px; }
-    .applications-search { order: 3; flex-basis: 100%; margin: 0; }
+    .applications-title h1 { font-size: 15px; }
+    .applications-search { flex: 0 1 150px; min-width: 40px; margin-left: auto; }
+    .applications-title > svg { display: none; }
     .applications-categories { padding: 11px 15px; gap: 5px; }
     .applications-library { padding: 16px 13px 22px; }
     .applications-grid { grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 12px 5px; }
@@ -53,4 +54,29 @@
     .applications-footer { padding-inline: 14px; }
     .applications-footer > span:last-child { display: none; }
   }
+  /* Spotlight-inspired library query; window controls remain an SDK adaptation. */
+  .dos-window:has(.applications-app) { background: color-mix(in srgb,var(--content-bg) 60%,transparent); backdrop-filter: blur(28px) saturate(1.35); }
+  .dos-window-content:has(> .applications-app) { background: transparent; }
+  .applications-app { background: transparent; }
+  .applications-header { gap: 12px; background: transparent; height: 62px; min-height: 62px; border-bottom: 1px solid var(--line); }
+  .applications-app .applications-search { flex: 1; min-width: 0; height: 44px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+  .applications-search > svg { width: 26px; height: 26px; flex-basis: 26px; color: var(--muted); }
+  .applications-app .applications-search input { height: 44px; font-size: 25px; line-height: 1.2; letter-spacing: -.8px; background: transparent; }
+  .applications-app .applications-search:focus-within { outline: 0; }
+  .applications-header-drag { width: 12px; align-self: stretch; flex-shrink: 0; }
+  .applications-actions { position: relative; }
+  .applications-actions > summary { list-style: none; padding: 6px 8px; border-radius: 12px; font-size: 18px; letter-spacing: 2px; color: var(--muted); cursor: default; }
+  .applications-actions > summary::-webkit-details-marker { display: none; }
+  .applications-actions > div { position: absolute; right: 0; top: 100%; z-index: 10; padding: 5px; width: 180px; background: var(--chrome-bg); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px #0002; }
+  .applications-header .applications-actions .applications-refresh { display: block; width: 100%; height: auto; padding: 7px 10px; text-align: left; color: var(--text); font: inherit; }
+  .applications-categories { background: transparent; border-bottom: 0; }
+  .applications-categories button { background: color-mix(in srgb,var(--content-bg) 55%,transparent); border-radius: 12px; }
+  .applications-categories button[aria-selected=true] { background: color-mix(in srgb,var(--text) 12%,transparent); box-shadow: none; }
+  .applications-library { padding-top: 18px; }
+  .applications-footer { background: transparent; }
+  @container app-pane (max-width: 600px) {
+    .applications-app .applications-search input { font-size: 21px; }
+    .applications-search > svg { width: 22px; height: 22px; flex-basis: 22px; }
+  }
+
 }

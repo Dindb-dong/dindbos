@@ -39,7 +39,8 @@ try {
   await expect(app.getByRole('button',{name:'Go',exact:true})).not.toBeVisible();
   assert(!/mono/i.test(await app.getByRole('textbox',{name:'Address',exact:true}).evaluate(el=>getComputedStyle(el).fontFamily)));
   const chrome=await app.evaluate(el=>{const vp=el.querySelector('.browser-viewport').getBoundingClientRect(),rect=el.getBoundingClientRect();return{height:vp.top-rect.top,ratio:vp.height/rect.height};});
-  assert(chrome.height<105,'Browser chrome must stay compact');
+  assert(chrome.height<=53,'A single tab uses one integrated toolbar');
+  await expect(app.getByRole('button',{name:'New tab',exact:true})).toBeVisible();
   assert(chrome.ratio>.7,'Document owns the majority of the window');
   await page.screenshot({path:`${output}/local-document-light.png`});
   const address=app.getByRole('textbox',{name:'Address',exact:true});
@@ -56,7 +57,7 @@ try {
   await expect(app.getByRole('tab')).toHaveCount(2);
   await expect(app.getByRole('heading',{name:'Start Page',exact:true})).toBeVisible();
   await app.getByRole('button',{name:'Close New Tab',exact:true}).click();
-  await expect(app.getByRole('tab')).toHaveCount(1);
+  await expect(app.getByRole('tab',{includeHidden:true})).toHaveCount(1);
   await expect(local.getByRole('heading',{name:'Local document two',exact:true})).toBeVisible();
   // Closing a background tab must preserve both active selection and live iframe state.
   await address.fill('/home/guest/Documents/first.html');
@@ -79,7 +80,7 @@ try {
   await expect(local.getByRole('heading',{name:'Local document three',exact:true})).toBeVisible();
   await expect(local.getByRole('textbox',{name:'Draft',exact:true})).toHaveValue('Keep this unsaved iframe state');
   await app.getByRole('button',{name:'Close third.html',exact:true}).click();
-  await expect(app.getByRole('tab',{name:'second.html',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(app.getByRole('tab',{name:'second.html',exact:true,includeHidden:true})).toHaveAttribute('aria-selected','true');
   await expect(local.getByRole('heading',{name:'Local document two',exact:true})).toBeVisible();
   await app.getByLabel('Connection settings',{exact:true}).click();
   await expect(app.getByRole('heading',{name:'External Browsing',exact:true})).toBeVisible();

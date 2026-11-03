@@ -52,6 +52,7 @@ try {
   await search.fill("calculator"); await item("calculator").focus(); await page.keyboard.press("Enter");
   await expect(page.locator('.dos-window[data-app-id="calculator"]')).toBeVisible();
   await page.evaluate(() => { window.__os.windows.focusLatestAppWindow("applications"); window.__os.registerApp({ id: "local-lab", name: "Local Lab", category: "productivity", icon: "app", manifest: { capabilities: [], fileSystem: {read:[],write:[]} }, render: ({content}) => {content.textContent="A registered custom application";} }); });
+  await library.getByLabel("Application actions", { exact: true }).click();
   await library.getByRole("button", { name: "Refresh applications", exact: true }).click();
   await search.fill("local lab"); await expect(item("local-lab")).toBeVisible();
   await search.fill(""); await library.getByRole("tab", { name: "Productivity", exact: true }).click(); await expect(item("local-lab")).toBeVisible();
@@ -59,7 +60,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => window.__os.setAppearance({ mode: "dark" }));
   await expect.poll(() => library.locator('.applications-app').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   const bounds = await library.boundingBox();
-  for (const control of [search, library.getByRole("button", { name: "Refresh applications", exact: true }), item("notes")]) { const box = await control.boundingBox(); assert(box.x >= bounds.x && box.x + box.width <= bounds.x + bounds.width + 1, "narrow application controls fit their window"); }
+  for (const control of [search, library.getByLabel("Application actions", { exact: true }), item("notes")]) { const box = await control.boundingBox(); assert(box.x >= bounds.x && box.x + box.width <= bounds.x + bounds.width + 1, "narrow application controls fit their window"); }
   await page.screenshot({ path: `${output}/applications-390-dark.png` });
   await page.evaluate(() => window.__os.destroy());
   await expect(library).toHaveCount(0); assert.deepEqual(errors, []);

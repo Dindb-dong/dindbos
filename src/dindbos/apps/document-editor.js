@@ -13,24 +13,25 @@ export function renderDocumentEditor(os, content, node, windowApi, saveDocument)
       ? local ? await os.localMounts.readFile(documentNode.path) : os.fs.readFile(documentNode.path)
       : documentNode.content || "";
     if (controller.signal.aborted) return;
-    content.innerHTML = `<section class="text-app"><textarea aria-label="Document text" spellcheck="false"></textarea><footer><span data-document-info></span><button type="button" data-document-save>Save</button></footer></section>`;
+    content.innerHTML = `<section class="text-app"><textarea aria-label="Document text" spellcheck="false"></textarea><footer class="text-document-status"><span data-document-info></span><button type="button" data-document-save aria-label="Save document" title="Save document (⌘S)">Save</button></footer></section>`;
     const textarea = content.querySelector("textarea");
     const info = content.querySelector("[data-document-info]");
     const saveButton = content.querySelector("[data-document-save]");
+    content.parentElement?.querySelector(".dos-window-titlebar")?.appendChild(content.querySelector(".text-document-status"));
     textarea.value = String(text);
     const updateInfo = () => {
       info.textContent = `${documentNode.path || "Untitled"} · ${textarea.value.length.toLocaleString()} characters${modified ? " · Edited" : ""}`;
       windowApi.setTitle(`${documentNode.name || "Untitled"}${modified ? " — Edited" : ""}`);
     };
-    const showToast = (message) => {
+    const showToast = (message, role = "status") => {
       window.clearTimeout(toastTimer);
       content.querySelector(".app-toast")?.remove();
       const toast = document.createElement("div");
       toast.className = "app-toast";
-      toast.setAttribute("role", "status");
+      toast.setAttribute("role", role);
       toast.textContent = message;
       content.querySelector(".text-app").appendChild(toast);
-      toastTimer = window.setTimeout(() => toast.remove(), 2400);
+      toastTimer = window.setTimeout(() => toast.remove(), role === "alert" ? 5000 : 2400);
     };
     const save = async () => {
       if (saving || controller.signal.aborted) return false;
@@ -59,6 +60,7 @@ export function renderDocumentEditor(os, content, node, windowApi, saveDocument)
         if (!controller.signal.aborted) {
           info.textContent = `Could not save: ${error.message}`;
           info.setAttribute("role", "alert");
+          showToast(info.textContent, "alert");
         }
         return false;
       } finally {

@@ -4,12 +4,12 @@ Choose apps with `builtins: { include: ['files', 'notes', 'calendar'] }` or excl
 
 | ID | App | Working features |
 | --- | --- | --- |
-| `files` | Files | Folders, history, search, list/columns, view/sort menus, import/export, contextual actions, saved drag-and-drop Favorites |
+| `files` | Files | Folders, history, search, icons/list/columns, folder tabs, view/sort menus, import/export, contextual actions, saved drag-and-drop Favorites |
 | `applications` | Applications | Installed app grid, search, categories, keyboard launch, restore existing windows |
 | `notes` | Notes | Create, edit, search, delete, automatic local saving |
 | `reminders` | Reminders | Tasks, completion, due dates, filtered lists |
 | `calendar` | Calendar | Month navigation, selected-day events, add/delete events |
-| `clock` | Clock | World clocks, stopwatch/laps, countdown timer |
+| `clock` | Clock | Day/night world map, analog clocks, in-app alarms, stopwatch/laps, countdown timer |
 | `photos` | Photos | Import local images, thumbnail library, viewer, zoom/fit, trash |
 | `music` | Music | Import local audio, library, play/pause, seek, volume, previous/next |
 | `text` | TextEdit | Edit, Save As, reopen, unsaved-close Save/Discard/Cancel |
@@ -45,3 +45,5 @@ Open the system menu → **System Settings…** → **Wallpaper** to choose a ba
 Control Center provides quick appearance switching, real Music transport/volume, Show Desktop, Applications, and Full Screen where supported. Media controls use only Music in their own desktop instance. Wallpaper, accent and Dock sizing live in Settings. Hardware network controls are outside the browser runtime.
 
 The navigation and separation follow Apple’s [Wallpaper settings](https://support.apple.com/guide/mac-help/choose-your-desktop-picture-mchlp3013/mac) and [Control Center guide](https://support.apple.com/guide/mac-help/quickly-change-settings-with-control-center-mchlc9d0e1f2/27/mac/27), adapted to browser capabilities.
+
+Clock alarms run while the desktop session is active; they are not operating-system background alarms. Built-in apps adapt native macOS layouts to the browser runtime. Notes uses plain text, Reminders has one local collection with smart filters, and Calendar implements Month view. Apple account services, hardware controls and unsupported native editing tools are omitted.

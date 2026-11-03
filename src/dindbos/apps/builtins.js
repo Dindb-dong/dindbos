@@ -70,7 +70,7 @@ export function installBuiltinApps(os, options = {}) {
   }
 
   register({
-    id: "files",
+    id: "files", chrome: "integrated", sidebarWidth: 205,
     name: "Files",
     title: ({ path = "/" }) => `Files - ${path}`,
     icon: "files",
@@ -88,7 +88,7 @@ export function installBuiltinApps(os, options = {}) {
   });
 
   register({
-    id: "applications", name: "Applications", title: "Applications", icon: "applications",
+    id: "applications", chrome: "integrated", name: "Applications", title: "Applications", icon: "applications",
     singleton: true, pinned: true, desktop: false, width: 960, height: 680,
     manifest: { capabilities: ["app.launch"], fileSystem: { read: [], write: [] } },
     render: ({ os: runtime, content, context, window }) => renderApplications(runtime, content, { ...context, launchApp: (id) => os.shell.launchApp(id) }, window),
@@ -139,7 +139,7 @@ export function installBuiltinApps(os, options = {}) {
   });
 
   register({
-    id: "text",
+    id: "text", chrome: "document",
     name: "TextEdit",
     title: ({ node }) => node?.name || "TextEdit",
     icon: "text",
@@ -154,7 +154,7 @@ export function installBuiltinApps(os, options = {}) {
   });
 
   register({
-    id: "browser",
+    id: "browser", chrome: "integrated",
     name: "Browser",
     title: ({ node, url }) => node?.name || url || "Browser.app",
     icon: "browser",
@@ -171,7 +171,7 @@ export function installBuiltinApps(os, options = {}) {
   });
 
   register({
-    id: "viewer",
+    id: "viewer", chrome: "integrated",
     name: "Viewer",
     title: ({ node }) => node?.name || "Viewer",
     icon: "pdf",
@@ -187,14 +187,14 @@ export function installBuiltinApps(os, options = {}) {
   });
 
   register({
-    id: "calculator",
+    id: "calculator", chrome: "integrated", minWidth: 230, minHeight: 408,
     name: "Calculator",
     title: "Calculator.app",
     icon: "calculator",
     pinned: true,
     singleton: true,
-    width: 360,
-    height: 430,
+    width: 230,
+    height: 408,
     manifest: {
       fileSystem: { read: [], write: [] },
     },
@@ -202,14 +202,14 @@ export function installBuiltinApps(os, options = {}) {
   });
 
   register({
-    id: "settings",
+    id: "settings", chrome: "integrated", sidebarWidth: 232,
     name: "Settings",
     title: "Settings",
     icon: "settings",
     pinned: true,
     singleton: true,
-    width: 980,
-    height: 620,
+    width: 740,
+    height: 625,
     manifest: {
       capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read", "browser.read"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
@@ -226,6 +226,8 @@ export function installBuiltinApps(os, options = {}) {
   ]) {
     register({
       id, name, icon: id, title: name, singleton: true, desktop: false, pinned: false, width, height,
+      chrome: "integrated",
+      ...({ notes: 180, reminders: 240, calendar: 200, photos: 168, music: 180 }[id] ? { sidebarWidth: { notes: 180, reminders: 240, calendar: 200, photos: 168, music: 180 }[id] } : {}),
       ...(accepts ? { accepts } : {}),
       manifest: {
         capabilities: id === "clock" ? [] : ["storage.read"],
@@ -335,9 +337,10 @@ function renderFiles(os, content, path, windowApi) {
   let clipboard = null;
   let clickTimer = null;
   let searchQuery = "";
+  let searchOpen = false;
   let searchTimer = null;
   let sortMode = "kind-name";
-  let viewMode = "list";
+  let viewMode = "icons";
   let inspectorOpen = false;
   let disposed = false;
   let drawGeneration = 0;
@@ -349,6 +352,22 @@ function renderFiles(os, content, path, windowApi) {
   let navigationIndex = 0;
   let dismissToolbarMenus = null;
   let disconnectColumns = null;
+  let tabSequence = 1;
+  let activeTabId = "1";
+  const folderTabs = [{ id: "1", path: currentPath, history: [currentPath], historyIndex: 0 }];
+  const selectFolderTab = (id, focusTab = false) => {
+    const tab = folderTabs.find((item) => item.id === id);
+    if (!tab) return;
+    activeTabId = tab.id;
+    navigationHistory.splice(0, navigationHistory.length, ...tab.history);
+    navigationIndex = tab.historyIndex;
+    draw(tab.path, null, { skipHistory: true, focusTab });
+  };
+  const addFolderTab = () => {
+    const tab = { id: String(++tabSequence), path: currentPath, history: [currentPath], historyIndex: 0 };
+    folderTabs.push(tab);
+    selectFolderTab(tab.id);
+  };
 
   const draw = async (nextPath, nextSelectedPath = null, options = {}) => {
     contextMenuCleanups.get(content)?.();
@@ -363,6 +382,8 @@ function renderFiles(os, content, path, windowApi) {
       navigationHistory.push(currentPath);
       navigationIndex = navigationHistory.length - 1;
     }
+    const activeTab = folderTabs.find((tab) => tab.id === activeTabId);
+    Object.assign(activeTab, { path: currentPath, history: [...navigationHistory], historyIndex: navigationIndex });
     if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.syncDirectory(currentPath);
     selectedPath = nextSelectedPath ? os.fs.normalize(nextSelectedPath) : currentPath;
     if (!options.preserveSelection) {
@@ -386,12 +407,12 @@ function renderFiles(os, content, path, windowApi) {
       : fileOperation || latestMountOperation;
     const diagnostics = buildFilesDiagnostics(os, currentPath, [...selectedPaths], operationHistory, visibleOperation, mountStatus);
     if (disposed || generation !== drawGeneration) return;
-    const visibleColumns = viewMode === "list" ? [currentColumn] : columns;
+    const visibleColumns = viewMode === "columns" ? columns : [currentColumn];
     sidebar[0].items = favoriteItems();
     const activeSidebarItem = sidebar.flatMap((group) => group.items).filter((item) => isWithinPath(currentPath, item.path)).sort((a, b) => b.path.length - a.path.length)[0];
 
     content.innerHTML = `
-      <section class="files-app${inspectorOpen ? " has-inspector" : ""}" tabindex="0" data-files-view="${viewMode}">
+      <section class="files-app${inspectorOpen ? " has-inspector" : ""}" tabindex="0" data-files-view="${viewMode}" style="--app-sidebar-width:205px">
         <aside class="files-sidebar">
           ${sidebar.map((group) => `
             <section ${group.section === "Favorites" ? 'data-files-favorites aria-label="Favorites"' : ""}>
@@ -407,7 +428,7 @@ function renderFiles(os, content, path, windowApi) {
           `).join("")}
         </aside>
         <div class="files-main">
-          <div class="files-toolbar files-commandbar" role="toolbar" aria-label="File actions">
+          <div class="files-toolbar files-commandbar" data-window-drag role="toolbar" aria-label="File actions">
             <div class="files-history">
               <button type="button" data-files-back aria-label="Back" title="Back" ${navigationIndex === 0 ? "disabled" : ""}>${filesToolIcon("back")}</button>
               <button type="button" data-files-forward aria-label="Forward" title="Forward" ${navigationIndex >= navigationHistory.length - 1 ? "disabled" : ""}>${filesToolIcon("forward")}</button>
@@ -415,29 +436,33 @@ function renderFiles(os, content, path, windowApi) {
             <strong class="files-folder-title" title="${escapeAttr(currentPath)}">${escapeHtml(currentPath === (os.session.home || "/home/guest") ? "Home" : currentPath === "/" ? "DindbOS" : os.fs.basename(currentPath))}</strong>
             <span class="files-toolbar-spacer"></span>
             <details class="files-toolbar-menu files-view-menu">
-              <summary aria-label="File view" title="Change view">${filesToolIcon(viewMode === "list" ? "list" : "columns")}${filesToolIcon("chevron")}</summary>
-              <div class="files-action-menu" data-glass-surface="menu" role="menu" aria-label="File view">
-                ${[["list", "as List"], ["columns", "as Columns"]].map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${viewMode === value}" data-files-view="${value}"><span>${filesToolIcon(value)}</span>${label}<span class="files-menu-check" aria-hidden="true">${viewMode === value ? "✓" : ""}</span></button>`).join("")}
+              <summary data-no-drag aria-label="File view" title="Change view">${filesToolIcon(viewMode)}${filesToolIcon("chevron")}</summary>
+              <div class="files-action-menu" data-glass-surface="menu" data-files-menu-kind="view" role="menu" aria-label="File view">
+                ${[["list", "as List"], ["columns", "as Columns"], ["icons", "as Icons"]].map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${viewMode === value}" data-files-view="${value}"><span class="files-menu-check" aria-hidden="true">${viewMode === value ? "✓" : ""}</span><span>${filesToolIcon(value)}</span>${label}</button>`).join("")}
               </div>
             </details>
             <details class="files-toolbar-menu files-sort-menu">
-              <summary aria-label="Sort files" title="Sort files">${filesToolIcon("sort")}</summary>
-              <div class="files-action-menu" data-glass-surface="menu" role="menu" aria-label="Sort files">
-                <span class="files-menu-heading">Sort by</span>
-                ${[["kind-name", "Kind"], ["name", "Name"], ["modified", "Date Modified"], ["size", "Size"]].map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${sortMode === value}" data-files-sort="${value}">${label}<span class="files-menu-check" aria-hidden="true">${sortMode === value ? "✓" : ""}</span></button>`).join("")}
+              <summary data-no-drag aria-label="Sort files" title="Sort files">${filesToolIcon("sort")}${filesToolIcon("chevron")}</summary>
+              <div class="files-action-menu" data-glass-surface="menu" data-files-menu-kind="sort" role="menu" aria-label="Sort files">
+                ${[["kind-name", "Kind"], ["name", "Name"], ["modified", "Date Modified"], ["size", "Size"]].map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${sortMode === value}" data-files-sort="${value}"><span class="files-menu-check" aria-hidden="true">${sortMode === value ? "✓" : ""}</span>${label}</button>`).join("")}
               </div>
             </details>
-            <span class="files-tool-divider"></span>
+            <div class="files-tools-group">
             <button type="button" data-action="new-folder" aria-label="New Folder" title="New Folder">${filesToolIcon("new-folder")}</button>
             <button type="button" data-action="import" aria-label="Import" title="Import files">${filesToolIcon("import")}</button>
             <details class="files-more-actions files-toolbar-menu">
-              <summary aria-label="More file actions" title="More actions">${filesToolIcon("more")}</summary>
+              <summary data-no-drag aria-label="More file actions" title="More actions">${filesToolIcon("more")}</summary>
               <div class="files-action-menu" data-glass-surface="menu" role="menu" aria-label="More file actions">
-                ${[["favorite-current", "Add Current Folder to Favorites"], ["new-file", "New File"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["mount-local", "Mount Local Folder"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" role="menuitem" data-action="${action}">${label}</button>`).join("")}
+                ${[["favorite-current", "Add Current Folder to Favorites"], ["new-file", "New File"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["info", "Get Info"], ["mount-local", "Mount Local Folder"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" role="menuitem" data-action="${action}">${label}</button>`).join("")}
               </div>
             </details>
-            <button type="button" data-files-inspector aria-label="Toggle Inspector" aria-pressed="${inspectorOpen}" title="Show file information">${filesToolIcon("info")}</button>
-            <label class="files-search-field">${filesToolIcon("search")}<input type="search" data-files-search aria-label="Search files" placeholder="Search" value="${escapeAttr(searchQuery)}" /></label>
+            </div>
+            <button type="button" data-files-search-toggle aria-label="Search" title="Search" ${searchOpen ? 'hidden' : ''}>${filesToolIcon("search")}</button>
+            <label class="files-search-field" ${searchOpen ? '' : 'hidden'}>${filesToolIcon("search")}<input type="search" data-files-search aria-label="Search files" placeholder="Search" value="${escapeAttr(searchQuery)}" /></label>
+          </div>
+          <div class="files-tabstrip" role="tablist" aria-label="Folder tabs">
+            <div class="files-tabs">${folderTabs.map((tab) => `<div class="files-tab-item${tab.id === activeTabId ? ' is-current' : ''}"><button type="button" role="tab" data-files-tab="${tab.id}" aria-selected="${tab.id === activeTabId}" tabindex="${tab.id === activeTabId ? '0' : '-1'}" title="${escapeAttr(tab.path)}">${escapeHtml(tab.path === (os.session.home || '/home/guest') ? 'Home' : os.fs.basename(tab.path) || 'DindbOS')}</button>${folderTabs.length > 1 ? `<button type="button" class="files-tab-close" data-files-close-tab="${tab.id}" aria-label="Close ${escapeAttr(os.fs.basename(tab.path) || 'DindbOS')} tab">×</button>` : ''}</div>`).join('')}</div>
+            <button type="button" data-files-new-tab aria-label="New tab" title="New tab">+</button>
           </div>
           <div class="files-dropzone" aria-hidden="true">Drop to import into ${escapeHtml(os.fs.basename(currentPath) || "DindbOS")}</div>
           ${mountStatus ? renderMountStatusBanner(mountStatus) : ""}
@@ -460,8 +485,8 @@ function renderFiles(os, content, path, windowApi) {
                       data-icon="${escapeAttr(entry.icon || resolved.icon || resolved.type)}"
                       draggable="true"
                     >
-                      <span class="dos-mini-icon">${filesMiniIcon(entry.icon || resolved.icon || resolved.type)}</span>
-                      <span>${escapeHtml(entry.name)}</span>
+                      <span class="dos-mini-icon"><span class="files-list-glyph">${filesMiniIcon(entry.icon || resolved.icon || resolved.type)}</span><span class="files-entry-art" aria-hidden="true">${viewMode === "icons" ? filesEntryArtwork(os, entry, resolved, stat) : ""}</span></span>
+                      <span class="files-row-name">${escapeHtml(entry.name)}</span>
                       <small>${escapeHtml(rowKind(os, entry, stat))}</small>
                     </button>
                   `;
@@ -488,6 +513,39 @@ function renderFiles(os, content, path, windowApi) {
       </section>
     `;
     const appRoot = content.querySelector(".files-app");
+    content.querySelectorAll("[data-files-tab]").forEach((button) => {
+      button.addEventListener("click", () => selectFolderTab(button.dataset.filesTab));
+      button.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault(); event.stopPropagation();
+        const index = folderTabs.findIndex((tab) => tab.id === button.dataset.filesTab);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? folderTabs.length - 1 : (index + (event.key === "ArrowLeft" ? -1 : 1) + folderTabs.length) % folderTabs.length;
+        selectFolderTab(folderTabs[next].id, true);
+      });
+    });
+    content.querySelector("[data-files-new-tab]").addEventListener("click", addFolderTab);
+    content.querySelectorAll("[data-files-close-tab]").forEach((button) => button.addEventListener("click", () => {
+      const index = folderTabs.findIndex((tab) => tab.id === button.dataset.filesCloseTab);
+      const closingActive = folderTabs[index]?.id === activeTabId;
+      if (index < 0 || folderTabs.length < 2) return;
+      folderTabs.splice(index, 1);
+      if (closingActive) selectFolderTab(folderTabs[Math.max(0, index - 1)].id);
+      else draw(currentPath, selectedPath, { preserveSelection: true, skipHistory: true });
+    }));
+    const paintSelection = () => {
+      content.querySelectorAll(".files-row").forEach((row) => {
+        const selected = selectedPaths.has(row.dataset.path);
+        row.classList.toggle("is-selected", selected);
+        row.setAttribute("aria-selected", String(selected));
+      });
+      const status = content.querySelector(".files-status > span");
+      if (status) status.textContent = status.textContent.replace(/ · \d+ selected$/, ` · ${selectedPaths.size} selected`);
+      if (inspectorOpen) {
+        const node = os.fs.lstat(selectedPath) || os.fs.stat(selectedPath);
+        const inspector = content.querySelector(".files-inspector");
+        inspector.innerHTML = `${node ? renderInspector(node) : "<p>No selection</p>"}${renderFilesDiagnostics(buildFilesDiagnostics(os, currentPath, [...selectedPaths], operationHistory, visibleOperation, mountStatus))}${renderFilesOperationHistory(operationHistory)}`;
+      }
+    };
     content.querySelectorAll("[data-nav]").forEach((button) => {
       button.addEventListener("click", () => draw(button.dataset.nav));
     });
@@ -566,7 +624,7 @@ function renderFiles(os, content, path, windowApi) {
       } catch (error) { reportSidebarError(error); }
     });
     appRoot.addEventListener("dragend", clearSidebarDrag);
-    content.querySelector("[data-files-inspector]").addEventListener("click", () => {
+    content.querySelector("[data-files-inspector]")?.addEventListener("click", () => {
       inspectorOpen = !inspectorOpen;
       draw(currentPath, selectedPath, { preserveSelection: true });
     });
@@ -662,6 +720,19 @@ function renderFiles(os, content, path, windowApi) {
       }
     }
     const searchInput = content.querySelector("[data-files-search]");
+    const openSearch = () => {
+      searchOpen = true;
+      content.querySelector(".files-search-field").hidden = false;
+      content.querySelector("[data-files-search-toggle]").hidden = true;
+      searchInput.focus();
+    };
+    content.querySelector("[data-files-search-toggle]").addEventListener("click", openSearch);
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault(); event.stopPropagation();
+      searchQuery = ""; searchOpen = false; window.clearTimeout(searchTimer);
+      draw(currentPath, selectedPath, { focusSearchToggle: true });
+    });
     searchInput.addEventListener("input", () => {
       searchQuery = searchInput.value;
       window.clearTimeout(searchTimer);
@@ -687,19 +758,17 @@ function renderFiles(os, content, path, windowApi) {
         }
         selectedPaths = new Set([button.dataset.path]);
         selectionAnchorPath = button.dataset.path;
-        clickTimer = window.setTimeout(() => {
-          const node = os.fs.resolve(button.dataset.path) || os.fs.lstat(button.dataset.path);
-          const resolved = os.fs.resolveNode(node);
-          if (resolved.type === "directory" || resolved.type === "mount") {
-            draw(button.dataset.path, button.dataset.path);
-            return;
-          }
-          draw(currentPath, button.dataset.path, { preserveSelection: true });
-        }, 180);
+        selectedPath = button.dataset.path;
+        const node = os.fs.resolve(selectedPath) || os.fs.lstat(selectedPath);
+        const resolved = os.fs.resolveNode(node);
+        if (viewMode === "columns" && (resolved.type === "directory" || resolved.type === "mount")) draw(selectedPath, selectedPath);
+        else paintSelection();
       });
       button.addEventListener("dblclick", () => {
         clearTimeout(clickTimer);
-        os.openPath(button.dataset.path);
+        const node = os.fs.resolveNode(os.fs.resolve(button.dataset.path) || os.fs.lstat(button.dataset.path));
+        if (node.type === "directory" || node.type === "mount") draw(button.dataset.path, button.dataset.path);
+        else os.openPath(button.dataset.path);
       });
       button.addEventListener("contextmenu", (event) => {
         event.preventDefault();
@@ -752,6 +821,15 @@ function renderFiles(os, content, path, windowApi) {
     });
     appRoot.addEventListener("keydown", async (event) => {
       if (event.defaultPrevented) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault(); event.stopPropagation(); openSearch(); return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
+        event.preventDefault(); event.stopPropagation(); addFolderTab(); return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "w" && folderTabs.length > 1) {
+        event.preventDefault(); event.stopPropagation(); content.querySelector(`[data-files-close-tab="${activeTabId}"]`)?.click(); return;
+      }
       if (event.key === "Escape") {
         content.querySelectorAll("details.files-toolbar-menu[open]").forEach((details) => closeToolbarMenu(details, true));
       }
@@ -786,6 +864,21 @@ function renderFiles(os, content, path, windowApi) {
       if (event.key === "Enter") {
         event.preventDefault();
         openSelectedPath();
+        return;
+      }
+      if (viewMode === "icons" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        const rows = [...content.querySelectorAll(".files-row")];
+        const grid = content.querySelector(".files-column");
+        const gridColumns = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").filter((track) => Number.parseFloat(track) > 0).length);
+        const index = Math.max(0, rows.findIndex((row) => row.dataset.path === selectedPath));
+        const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -gridColumns, ArrowDown: gridColumns }[event.key] || 0;
+        const next = event.key === "Home" ? 0 : event.key === "End" ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, index + step));
+        if (rows[next]) {
+          selectedPath = rows[next].dataset.path;
+          selectedPaths = new Set([selectedPath]); selectionAnchorPath = selectedPath;
+          paintSelection(); rows[next].focus({ preventScroll: true }); rows[next].scrollIntoView({ block: "nearest" });
+        }
         return;
       }
       if (event.key === "ArrowLeft") {
@@ -834,6 +927,8 @@ function renderFiles(os, content, path, windowApi) {
         operationHistory = recordFilesOperationHistory(operationHistory, operation);
       });
     });
+    if (options.focusTab) content.querySelector(`[data-files-tab="${activeTabId}"]`)?.focus();
+    if (options.focusSearchToggle) content.querySelector("[data-files-search-toggle]")?.focus();
     if (options.focusSearch) {
       const nextSearchInput = content.querySelector("[data-files-search]");
       nextSearchInput.focus();
@@ -855,6 +950,11 @@ function renderFiles(os, content, path, windowApi) {
   };
   const runAction = async (action, actionPath = selectedPath) => {
     if (disposed) return;
+    if (action === "info") {
+      inspectorOpen = !inspectorOpen;
+      await draw(currentPath, selectedPath, { preserveSelection: true });
+      return;
+    }
     if (action === "favorite" || action === "favorite-current") {
       try { await addFavorite(action === "favorite-current" ? currentPath : actionPath); } catch (error) { windowApi.setTitle(`Files — ${error.message}`); }
       return;
@@ -902,8 +1002,9 @@ function filesToolIcon(name) {
     back: '<path d="m12 4-6 6 6 6"/>', forward: '<path d="m8 4 6 6-6 6"/>',
     chevron: '<path d="m6 8 4 4 4-4"/>',
     list: '<path d="M7 5h10M7 10h10M7 15h10M3 5h.1M3 10h.1M3 15h.1"/>',
+    icons: '<rect x="2" y="2" width="6" height="6" rx="1"/><rect x="12" y="2" width="6" height="6" rx="1"/><rect x="2" y="12" width="6" height="6" rx="1"/><rect x="12" y="12" width="6" height="6" rx="1"/>',
     columns: '<rect x="2" y="3" width="16" height="14" rx="2"/><path d="M8 3v14m5-14v14"/>',
-    sort: '<path d="M3 5h10M3 10h7M3 15h4m9-12v14m-3-3 3 3 3-3"/>',
+    sort: '<path d="M2 3h16M2 17h16"/><rect x="2" y="6" width="6" height="8" rx="1"/><rect x="11" y="6" width="7" height="3" rx=".7"/><rect x="11" y="11" width="7" height="3" rx=".7"/>',
     'new-folder': '<path d="M2 5h5l2 2h9v10H2Z"/><path d="M10 9v6m-3-3h6"/>',
     import: '<path d="M10 2v10m-4-4 4 4 4-4M3 13v5h14v-5"/>',
     more: '<circle cx="4" cy="10" r=".9"/><circle cx="10" cy="10" r=".9"/><circle cx="16" cy="10" r=".9"/>',
@@ -911,6 +1012,17 @@ function filesToolIcon(name) {
     search: '<circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/>',
   };
   return `<svg class="files-tool-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.more}</svg>`;
+}
+
+function filesEntryArtwork(os, entry, resolved, stat) {
+  if (["directory", "mount"].includes(resolved.type)) return '<svg class="files-folder-art" viewBox="0 0 80 70" aria-hidden="true"><path fill="#73c8fa" d="M3 13a5 5 0 0 1 5-5h23l8 7h33a5 5 0 0 1 5 5v39a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5Z"/><path fill="#9eddff" d="M4 18h72v7H4z"/><path fill="#5ab9ef" d="M3 24h74v35a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5Z"/><path fill="none" stroke="#c7edff" d="M5 25h70"/></svg>';
+  let preview = "";
+  const mime = resolved.mime || stat?.mime || "";
+  if ((mime.startsWith("text/") || /json|javascript|xml/.test(mime)) && Number(stat?.size || 0) < 65536) {
+    preview = safeRead(() => String(os.fs.readFile(entry.path)).slice(0, 600), "");
+  }
+  const extension = (entry.name.split(".").pop() || "").slice(0, 5).toUpperCase();
+  return `<span class="files-document-art">${preview ? `<pre>${escapeHtml(preview)}</pre>` : `<span class="files-document-extension">${escapeHtml(extension)}</span>`}</span>`;
 }
 
 function filesMiniIcon(type) {
@@ -2362,7 +2474,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
   const state = createBrowserSessionState({ ...context, companionUrl: providerUrl }, restoredState);
   content.innerHTML = `
     <section class="browser-app">
-      <form class="browser-toolbar" aria-label="Browser navigation">
+      <form class="browser-toolbar" data-window-drag aria-label="Browser navigation">
         <div class="browser-navigation-controls">
           <button type="button" data-browser-action="back" aria-label="Back" title="Back">${browserChromeIcon("back")}</button>
           <button type="button" data-browser-action="forward" aria-label="Forward" title="Forward">${browserChromeIcon("forward")}</button>
@@ -2374,7 +2486,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
           <button class="browser-go" type="submit" aria-label="Go" title="Go">${browserChromeIcon("forward")}</button>
         </div>
         <details class="browser-connection">
-          <summary aria-label="Connection settings" title="Connection settings">${browserChromeIcon("connection")}</summary>
+          <summary data-no-drag aria-label="Connection settings" title="Connection settings">${browserChromeIcon("connection")}</summary>
           <div class="browser-connection-panel" role="group" aria-label="External browsing connection">
             <h3>External Browsing</h3>
             <p>Local HTML documents open directly. To visit websites, connect to your browser companion.</p>
@@ -2427,6 +2539,7 @@ function renderBrowser(os, content, context = {}, windowApi) {
   const persistState = () => { if (!disposed) windowApi?.setState?.("browser", browserSessionSnapshot(state)); };
   const renderTabs = () => {
     refs.tabs.innerHTML = browserTabsMarkup(state);
+    refs.tabs.dataset.singleTab = String(state.tabs.length === 1);
     refs.tabs.querySelectorAll("[data-browser-tab]").forEach((button) => {
       button.addEventListener("click", () => {
         state.activeTabId = button.dataset.browserTab;
@@ -3252,24 +3365,23 @@ export function viewerMarkup({ mime, name, path = "", preview, url, status = "",
   const statusText = status || (path ? path : "No file path");
   return `
     <section class="viewer-app">
-      <header class="viewer-header">
+      <header class="viewer-header" data-window-drag>
         <div>
           <h2>${escapeHtml(name || "Document")}</h2>
+          <p class="viewer-status" data-viewer-status>${escapeHtml(statusText)}</p>
         </div>
         <div class="viewer-toolbar" role="toolbar" aria-label="Viewer controls">
-          <button type="button" data-viewer-action="zoom-out">-</button>
+          <button type="button" data-viewer-action="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
           <button type="button" data-viewer-action="zoom-reset">100%</button>
-          <button type="button" data-viewer-action="zoom-in">+</button>
+          <button type="button" data-viewer-action="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
           <button type="button" data-viewer-action="page-prev" disabled>Prev</button>
           <button type="button" data-viewer-action="page-next" disabled>Next</button>
-          <button type="button" data-viewer-action="open-browser" ${browserDisabled}>Browser</button>
+          <details class="viewer-actions"><summary data-no-drag aria-label="Document actions" title="Document actions">•••</summary><div role="group" aria-label="Document actions"><button type="button" data-viewer-action="open-browser" ${browserDisabled}>Open in Browser</button>
           <button type="button" data-viewer-action="open-editor" ${editDisabled}>Edit</button>
           <button type="button" data-viewer-action="export">Export</button>
-          <button type="button" data-viewer-action="copy-path" ${path ? "" : "disabled"}>Copy path</button>
+          <button type="button" data-viewer-action="copy-path" ${path ? "" : "disabled"}>Copy path</button>${diagnostics ? `<details class="viewer-info"><summary>Document information</summary>${renderViewerDiagnostics(diagnostics)}</details>` : ""}</div></details>
         </div>
       </header>
-      <p class="viewer-status" data-viewer-status>${escapeHtml(statusText)}</p>
-      ${diagnostics ? `<details class="viewer-info"><summary>Document information</summary>${renderViewerDiagnostics(diagnostics)}</details>` : ""}
       <div class="viewer-preview" data-viewer-preview style="--viewer-zoom: 1">
         ${mime.startsWith("image/") && url ? `<img data-viewer-object src="${escapeAttr(url)}" alt="${escapeAttr(name || "Image")}" />` : ""}
         ${mime === "application/pdf" && url ? `<canvas class="viewer-pdf-canvas" data-viewer-pdf-canvas hidden></canvas><iframe data-viewer-object src="${escapeAttr(url)}" title="${escapeAttr(name || "PDF")}"></iframe>` : ""}
@@ -3587,10 +3699,10 @@ function renderTerminal(os, content) {
   const shell = new ShellSession(os, { ptySessionId: pty?.id || "" });
   content.innerHTML = `
     <section class="terminal-app">
-      <pre></pre>
+      <pre aria-live="polite" aria-label="Terminal output"></pre>
       <form>
         <span data-prompt>$</span>
-        <input autocomplete="off" spellcheck="false" autofocus />
+        <input aria-label="Terminal command" autocomplete="off" spellcheck="false" autofocus />
       </form>
     </section>
   `;
@@ -3602,8 +3714,8 @@ function renderTerminal(os, content) {
   };
   const print = (line = "") => {
     if (!line) return;
-    output.textContent += `${line}\n`;
-    output.scrollTop = output.scrollHeight;
+    output.textContent += `${String(line).replace(/\n+$/, "")}\n`;
+    content.querySelector(".terminal-app").scrollTop = content.querySelector(".terminal-app").scrollHeight;
   };
   const run = async (commandLine) => {
     print(`${shell.prompt()} ${commandLine}`);
@@ -3643,6 +3755,7 @@ function renderTerminal(os, content) {
 function renderActivityMonitor(os, content) {
   let selectedPid = os.processes.current()?.pid || null;
   let refreshTimer = null;
+  let inspectorOpen = false;
   const view = {
     query: "",
     state: "all",
@@ -3654,6 +3767,9 @@ function renderActivityMonitor(os, content) {
       window.clearInterval(refreshTimer);
       return;
     }
+    const focused = content.contains(document.activeElement) ? document.activeElement : null;
+    const focusedSelector = focused?.matches("[data-activity-filter]") ? "[data-activity-filter]" : null;
+    const selection = focusedSelector ? [focused.selectionStart, focused.selectionEnd] : null;
     const allProcesses = safeRead(() => os.processes.list(), []);
     const processes = filterAndSortActivityProcesses(allProcesses, view);
     if (!processes.some((process) => process.pid === selectedPid)) selectedPid = processes[0]?.pid || null;
@@ -3665,19 +3781,9 @@ function renderActivityMonitor(os, content) {
     const selectedServiceManifest = selectedServiceId ? safeRead(() => os.services?.manifest?.(selectedServiceId), null) : null;
     content.innerHTML = `
       <section class="activity-app">
-        <header>
-          <div>
-            <p class="dos-kicker">Runtime processes</p>
-            <h2>Activity Monitor</h2>
-          </div>
-          <div class="activity-summary">
-            <span>${allProcesses.length} running</span>
-            <span>${processes.length} visible</span>
-            <span>${formatBytes(allProcesses.reduce((total, process) => total + Number(process.runtimeBytes || 0), 0))} runtime</span>
-            <span>${formatActivityScore(allProcesses.reduce((total, process) => total + Number(process.activityScore || 0), 0))} activity</span>
-          </div>
-        </header>
         <div class="activity-controls">
+          <button type="button" data-activity-inspect aria-label="Inspect selected process" aria-pressed="${inspectorOpen}" title="Inspect selected process" ${selected ? "" : "disabled"}><svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v6m0-10v1"/></svg></button>
+          <div class="activity-metric-tabs" role="group" aria-label="Sort by runtime metric"><button type="button" data-activity-metric="activity" aria-pressed="${view.sort === "activity"}">Activity</button><button type="button" data-activity-metric="runtime" aria-pressed="${view.sort === "runtime"}">Memory</button></div>
           <input data-activity-filter autocomplete="off" spellcheck="false" placeholder="Filter app or state" value="${escapeAttr(view.query)}" />
           <select data-activity-state aria-label="State filter">
             ${activityStateOptions(allProcesses, view.state)}
@@ -3687,7 +3793,7 @@ function renderActivityMonitor(os, content) {
           </select>
           <button type="button" data-activity-direction="${escapeAttr(view.direction)}">${view.direction === "asc" ? "Asc" : "Desc"}</button>
         </div>
-        <div class="activity-grid">
+        <div class="activity-grid ${inspectorOpen ? "has-inspector" : ""}">
           <div class="activity-table" role="table" aria-label="Processes">
             <div class="activity-row activity-row-head" role="row">
               <span>PID</span>
@@ -3705,19 +3811,33 @@ function renderActivityMonitor(os, content) {
                 <span>${escapeHtml(process.appId)}</span>
                 <span>${escapeHtml(process.state)}</span>
                 <span>${escapeHtml(process.executionBackend || "main-thread")}</span>
-                <span>${renderContainerBadge(process)}</span>
+                <span>${escapeHtml(process.container?.isolation || process.container?.mode || "trusted")}</span>
                 <span>${escapeHtml(formatDuration(process.uptimeMs))}</span>
                 <span>${escapeHtml(formatActivityScore(process.activityScore))}</span>
                 <span>${escapeHtml(formatBytes(process.runtimeBytes))}</span>
               </button>
             `).join("") || `<p class="activity-empty">${allProcesses.length ? "No matching processes." : "No running processes."}</p>`}
           </div>
-          <aside class="activity-detail">
+          <aside class="activity-detail" ${inspectorOpen ? "" : "hidden"} aria-label="Process inspector">
+            <button type="button" data-activity-close aria-label="Close process inspector">Done</button>
             ${selected ? renderActivityDetail(selected, processLog, selectedService, selectedServiceLog, selectedServiceManifest) : "<p>No process selected.</p>"}
           </aside>
         </div>
+        <footer class="activity-bottom-summary" aria-label="Runtime summary">
+          <dl><div><dt>Processes</dt><dd>${allProcesses.length}</dd></div><div><dt>Shown</dt><dd>${processes.length}</dd></div></dl>
+          <dl><div><dt>Runtime memory</dt><dd>${formatBytes(allProcesses.reduce((total, process) => total + Number(process.runtimeBytes || 0), 0))}</dd></div><div><dt>Activity events</dt><dd>${formatActivityScore(allProcesses.reduce((total, process) => total + Number(process.activityScore || 0), 0))}</dd></div></dl>
+          <p>Application runtime<br><span>Local session</span></p>
+        </footer>
       </section>
     `;
+    if (focusedSelector) {
+      const replacement = content.querySelector(focusedSelector);
+      replacement?.focus({ preventScroll: true });
+      if (selection) replacement?.setSelectionRange(...selection);
+    }
+    content.querySelector("[data-activity-inspect]")?.addEventListener("click", () => { inspectorOpen = !inspectorOpen; draw(); });
+    content.querySelector("[data-activity-close]")?.addEventListener("click", () => { inspectorOpen = false; draw(); content.querySelector("[data-activity-inspect]")?.focus(); });
+    content.querySelectorAll("[data-activity-metric]").forEach((button) => button.addEventListener("click", () => { view.sort = button.dataset.activityMetric; view.direction = "desc"; draw(); }));
     content.querySelectorAll("[data-pid]").forEach((button) => {
       button.addEventListener("click", () => {
         selectedPid = Number(button.dataset.pid);
@@ -3977,16 +4097,19 @@ function formatActivityScore(value) {
 }
 
 function renderCalculator(content) {
-  const keys = [["clear", "AC"], ["sign", "±"], ["percent", "%"], ["/", "÷"], ["7", "7"], ["8", "8"], ["9", "9"], ["*", "×"], ["4", "4"], ["5", "5"], ["6", "6"], ["-", "−"], ["1", "1"], ["2", "2"], ["3", "3"], ["+", "+"], ["0", "0"], [".", "."], ["=", "="]];
+  const keys = [["backspace", "⌫"], ["clear", "AC"], ["percent", "%"], ["/", "÷"], ["7", "7"], ["8", "8"], ["9", "9"], ["*", "×"], ["4", "4"], ["5", "5"], ["6", "6"], ["-", "−"], ["1", "1"], ["2", "2"], ["3", "3"], ["+", "+"], ["sign", "⁺/₋"], ["0", "0"], [".", "."], ["=", "="]];
   content.innerHTML = `
     <section class="calculator-app" tabindex="0" aria-label="Calculator">
+      <header class="calculator-toolbar" data-window-drag><button type="button" data-calculator-history aria-label="Calculation history" aria-expanded="false" title="History"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16M5 8h2m-2 4h2m-2 4h2"/></svg></button><details class="calculator-mode"><summary aria-label="Calculator mode" title="Calculator mode"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M8 6h8M8 11h1m3 0h1m3 0h.1M8 15h1m3 0h1m3 0h.1M8 19h1m3 0h1m3 0h.1"/></svg></summary><div role="menu" aria-label="Calculator mode"><button type="button" role="menuitemradio" aria-checked="true" data-basic-calculator>✓ Basic</button></div></details></header>
       <div class="calculator-display"><span data-expression aria-hidden="true"></span><output aria-label="Result">0</output></div>
       <div class="calculator-keys">
-        ${keys.map(([key, label]) => `<button type="button" data-key="${key}" ${key === "clear" ? "data-clear" : ""} class="${["/", "*", "-", "+", "="].includes(key) ? "is-operator" : ["clear", "sign", "percent"].includes(key) ? "is-function" : ""}${key === "0" ? " is-zero" : ""}" aria-label="${({clear: "Clear", sign: "Change sign", percent: "Percent", "/": "Divide", "*": "Multiply", "-": "Subtract", "+": "Add", "=": "Equals"})[key] || label}">${label}</button>`).join("")}
+        ${keys.map(([key, label]) => `<button type="button" data-key="${key}" ${key === "clear" ? "data-clear" : ""} class="${["/", "*", "-", "+", "="].includes(key) ? "is-operator" : ["clear", "backspace", "sign", "percent"].includes(key) ? "is-function" : ""}" aria-label="${({backspace: "Delete", clear: "Clear", sign: "Change sign", percent: "Percent", "/": "Divide", "*": "Multiply", "-": "Subtract", "+": "Add", "=": "Equals"})[key] || label}">${label}</button>`).join("")}
       </div>
+      <aside class="calculator-history" aria-label="Calculation history" hidden><h2>History</h2><div data-calculator-history-list><p>No calculations yet.</p></div></aside>
     </section>`;
   let expression = "";
   let completed = false;
+  const calculations = [];
   const output = content.querySelector("output");
   const history = content.querySelector("[data-expression]");
   const enter = (key) => {
@@ -3995,7 +4118,11 @@ function renderCalculator(content) {
     else if (key === "=") {
       if (!expression || expression === "Error") return;
       history.textContent = expression.replaceAll("*", "×").replaceAll("/", "÷") + " =";
+      const original = expression;
       expression = safeCalculate(expression);
+      calculations.unshift({ expression: original, result: expression });
+      calculations.splice(30);
+      content.querySelector("[data-calculator-history-list]").innerHTML = calculations.map((item, index) => `<button type="button" data-calculator-result="${index}"><span>${escapeHtml(item.expression.replaceAll("*", "×").replaceAll("/", "÷"))}</span><strong>${escapeHtml(item.result)}</strong></button>`).join("");
       completed = true;
     } else if (key === "sign" || key === "percent") {
       const value = safeCalculate(expression || "0");
@@ -4019,7 +4146,20 @@ function renderCalculator(content) {
   };
   content.querySelectorAll("[data-key]").forEach((button) => button.addEventListener("click", () => enter(button.dataset.key)));
   const root = content.querySelector(".calculator-app");
+  const historyPanel = content.querySelector(".calculator-history");
+  const historyToggle = content.querySelector("[data-calculator-history]");
+  historyToggle.addEventListener("click", () => { historyPanel.hidden = !historyPanel.hidden; historyToggle.setAttribute("aria-expanded", String(!historyPanel.hidden)); });
+  content.querySelector("[data-basic-calculator]").addEventListener("click", () => { content.querySelector(".calculator-mode").open = false; });
+  historyPanel.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-calculator-result]");
+    if (!button) return;
+    expression = calculations[Number(button.dataset.calculatorResult)].result;
+    completed = true; output.textContent = expression; historyPanel.hidden = true; historyToggle.setAttribute("aria-expanded", "false");
+  });
   root.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && (!historyPanel.hidden || content.querySelector(".calculator-mode").open)) {
+      event.preventDefault(); event.stopPropagation(); historyPanel.hidden = true; historyToggle.setAttribute("aria-expanded", "false"); content.querySelector(".calculator-mode").open = false; root.focus(); return;
+    }
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const key = event.key === "Enter" || event.key === "=" ? "=" : event.key === "Escape" || event.key.toLowerCase() === "c" ? "clear" : event.key === "Backspace" ? "backspace" : event.key === "%" ? "percent" : event.key;
     if (/^[0-9.+*/-]$/.test(key) || ["=", "clear", "backspace", "percent"].includes(key)) {
@@ -4273,7 +4413,7 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
         <p class="settings-search-empty" data-settings-search-empty hidden>No matching settings</p>
       </aside>
       <main class="settings-detail">
-        <header class="settings-detail-header">
+        <header class="settings-detail-header" data-window-drag>
           <div class="settings-history"><button type="button" data-settings-back aria-label="Back in Settings" disabled>${settingsIcon("back")}</button><button type="button" data-settings-forward aria-label="Forward in Settings" disabled>${settingsIcon("forward")}</button></div>
           <div><h2 tabindex="-1">System Settings</h2><p>Personalize your desktop and manage your environment.</p></div>
         </header>
