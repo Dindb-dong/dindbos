@@ -134,6 +134,8 @@ Replace `SOURCE` with the repository or a built package tarball. Generated proje
 
 ## Examples and browser boundaries
 
+**Currently verified in Google Chrome on macOS.** Narrow/mobile layouts are checked with Chrome emulation. Safari, Firefox, and real mobile devices have not been validated; fallback implementations do not imply verified support.
+
 Examples cover [React/Vite](examples/react-vite), [Vanilla/Vite](examples/vanilla-vite), [Next.js client routes](examples/next-client), and [Astro islands](examples/astro-island). See [examples](examples/README.md) and [deployment](docs/deployment.md) and [troubleshooting](docs/troubleshooting.md).
 
 Files use the browser's available storage. Persistence can be denied or evicted; export important files. Clipboard, local folders, and other browser features depend on browser support and permission. Browser.app can show local HTML; unrestricted external sites may require the optional [browser companion](docs/browserd.md). A normal desktop does not require that companion or a Service Worker.
@@ -151,6 +153,8 @@ npm run build
 ```
 
 Run the relevant smoke scripts for the area you change. The repository includes SDK, CLI, files, window-manager, and runtime checks; [CONTRIBUTING.md](CONTRIBUTING.md) explains the workflow. Keep screenshots and examples aligned with real behavior and preserve the public Vanilla API when adding React features.
+
+[Report a bug](https://github.com/Dindb-dong/dindbos/issues/new?template=bug_report.md) · [Request a feature](https://github.com/Dindb-dong/dindbos/issues/new?template=feature_request.md) · [Pull request template](.github/PULL_REQUEST_TEMPLATE.md). Reports from other browsers are welcome; include reproduction steps and the browser version.
 
 ## License
 

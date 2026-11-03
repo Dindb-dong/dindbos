@@ -1,19 +1,23 @@
-## Summary
+## Problem and resulting behavior
 
-- 
+<!-- Describe the trigger, what happens before this change, and what happens after it. Link a related issue if applicable. -->
+
+## Changes
+
+<!-- Briefly explain the implementation and any public API, type, documentation, or dependency changes. -->
 
 ## Verification
 
-- [ ] `npm run check`
-- [ ] `npm run smoke`
+<!-- List commands actually run and their results. Start with the smallest relevant check; do not claim unrun checks passed. For SDK changes, include a consuming app or package check. For persistence/permissions/lifecycle changes, include failure and cleanup cases. -->
 
-## Runtime Checklist
+| Check | Result |
+| --- | --- |
+| | |
 
-- [ ] Storage changes cover persistence, binary byte preservation, local mounts, and reload behavior.
-- [ ] Package changes cover install, update, rollback/failure cleanup, permissions, and launcher state.
-- [ ] Browser.app changes cover local HTML, companion identity/failure states, real `browserd` smoke, and URL policy.
-- [ ] Permission changes cover Terminal, app sandbox, packages, local mounts, and clear denial messages.
+## UI evidence (if applicable)
 
-## Notes
+<!-- Attach screenshots or a short recording. Include browser/OS, viewport or container size, appearance, and input method. For motion or drag changes, include actual interaction evidence. Current project browser validation targets Chrome on macOS; name any additional browsers you tested. -->
 
-- 
+## Remaining limitations
+
+<!-- Note known issues, untested paths, compatibility changes, or migrations. Write "None known" when appropriate. Never attach private files, tokens, browser profiles, or unredacted user data. -->

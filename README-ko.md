@@ -87,11 +87,15 @@ SOURCE를 저장소 또는 빌드한 tarball 경로로 바꾸세요. 생성 프�
 
 ## 예제와 지원 범위
 
+**현재 브라우저 동작·화면 검증은 macOS의 Google Chrome에서 수행했습니다.** 좁은 화면·모바일 레이아웃은 Chrome 에뮬레이션으로 확인했습니다. Safari·Firefox·실제 모바일 기기는 아직 검증하지 않았으며, 대체 표시 구현이 검증된 지원을 뜻하지는 않습니다.
+
 [React/Vite](examples/react-vite), [Vanilla/Vite](examples/vanilla-vite), [Next.js](examples/next-client), [Astro](examples/astro-island) 예제가 있습니다. [배포 안내](docs/deployment.md)도 참고하세요.
 
 브라우저 저장소는 권한·용량·삭제 정책에 영향을 받습니다. 중요한 파일은 내보내세요. 클립보드·로컬 폴더 기능은 브라우저 지원과 권한에 따라 달라집니다. Browser.app의 외부 사이트 탐색은 선택적인 [browser companion](docs/browserd.md)이 필요할 수 있습니다. 기본 데스크톱은 companion이나 Service Worker 없이 실행됩니다.
 
 ## 개발·기여
+
+[버그 제보](https://github.com/Dindb-dong/dindbos/issues/new?template=bug_report.md) · [기능 제안](https://github.com/Dindb-dong/dindbos/issues/new?template=feature_request.md) · [PR 템플릿](.github/PULL_REQUEST_TEMPLATE.md) · [기여 안내](CONTRIBUTING.md). 다른 브라우저의 문제도 제보할 수 있습니다. 재현 순서와 브라우저 버전을 함께 적어주세요.
 
 ```sh
 npm ci
