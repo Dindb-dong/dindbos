@@ -18,6 +18,18 @@ const launchArgs = [
 
 const server = await createServer({
   logLevel: "error",
+  plugins: [{ name: "embedded-service-worker-fixture", configureServer(vite) {
+    vite.middlewares.use((request, response, next) => {
+      const path = request.url?.split("?")[0];
+      if (path === "/embedded/sw.js") {
+        response.setHeader("Content-Type", "application/javascript");
+        response.end('self.addEventListener("install",()=>self.skipWaiting());');
+      } else if (path === "/embedded/sdk-scope") {
+        response.setHeader("Content-Type", "text/html");
+        response.end('<!doctype html><div id="desktop" style="height:600px"></div>');
+      } else next();
+    });
+  } }],
   server: { host, port, strictPort: Boolean(port) },
 });
 
@@ -31,6 +43,7 @@ try {
   browser = await chromium.launch({ headless: true, args: launchArgs, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
   const context = await browser.newContext({ serviceWorkers: "allow" });
   const page = await context.newPage();
+  await verifyEmbeddedServiceWorkerScope(page, baseUrl);
   const result = await runServiceWorkerRecoverySmoke(context, page, baseUrl);
   assert(result.supported, `service worker unsupported: ${JSON.stringify(result)}`);
   assert(result.registered, `service worker did not register: ${JSON.stringify(result)}`);
@@ -42,6 +55,26 @@ try {
 } finally {
   await browser?.close();
   await server.close();
+}
+
+async function verifyEmbeddedServiceWorkerScope(page, baseUrl) {
+  await page.goto(`${baseUrl}embedded/sdk-scope`);
+  const result = await page.evaluate(async () => {
+    const { createAndBootDindbOS } = await import("/src/sdk/index.js");
+    const os = await createAndBootDindbOS({
+      root: document.getElementById("desktop"), storage: { backend: "memory", name: "embedded-scope" },
+      builtins: false, bootstrapPackages: false,
+      serviceWorker: { enabled: true, scriptUrl: "/embedded/sw.js", scope: "/embedded/" },
+    });
+    const status = os.lastServiceWorkerBoot;
+    const registration = await navigator.serviceWorker.getRegistration(new URL("/embedded/", location.href));
+    const scope = registration?.scope;
+    await registration?.unregister();
+    await os.destroy();
+    return { scope, error: status?.error || "" };
+  });
+  assert(!result.error, `embedded Service Worker registration failed: ${result.error}`);
+  assert(result.scope === `${baseUrl}embedded/`, `SDK ignored embedded Service Worker scope: ${JSON.stringify(result)}`);
 }
 
 async function runServiceWorkerRecoverySmoke(context, page, baseUrl) {

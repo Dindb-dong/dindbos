@@ -84,6 +84,24 @@ assert(os.fs.exists("/home/guest/Desktop/Sticky.app"), "pinned sticky desktop la
 assert(registry.unregister("sticky") === true, "pinned sticky unregister did not return true");
 assert(!os.fs.exists("/home/guest/Desktop/Sticky.app"), "pinned sticky unregister left desktop launcher");
 
+registry.register({ id: "editor-a", name: "Shared Editor", pinned: true, render() {} });
+registry.register({ id: "editor-b", name: "Shared Editor", pinned: true, render() {} });
+const firstEditorPath = registry.applicationPathFor(registry.apps.get("editor-a"));
+const secondEditorPath = registry.applicationPathFor(registry.apps.get("editor-b"));
+const secondDesktopPath = registry.desktopApplicationPathFor(registry.apps.get("editor-b"));
+assert(firstEditorPath !== secondEditorPath, "same-name apps must have distinct launchers");
+assert(os.fs.resolve(firstEditorPath)?.appId === "editor-a" && os.fs.resolve(secondEditorPath)?.appId === "editor-b", "launcher collision replaced an app's identity");
+registry.unregister("editor-a");
+assert(os.fs.resolve(secondEditorPath)?.appId === "editor-b", "unregistering a same-name app removed its neighbor's launcher");
+assert(os.fs.resolve(secondDesktopPath)?.appId === "editor-b", "unregistering a same-name app removed its neighbor's desktop launcher");
+registry.register({ id: "editor-b", name: "Renamed Editor", pinned: true, render() {} });
+assert(!os.fs.exists(secondEditorPath), "renaming a collided app left its old launcher");
+assert(os.fs.resolve("/usr/share/applications/Renamed Editor.app")?.appId === "editor-b", "renamed app lost its launcher");
+os.fs.remove("/usr/share/applications/Renamed Editor.app");
+os.fs.createFile("/usr/share/applications/Renamed Editor.app", "/", { content: "User document" });
+registry.unregister("editor-b");
+assert(os.fs.readFile("/usr/share/applications/Renamed Editor.app") === "User document", "unregister removed a replacement user file");
+
 console.log("app registry smoke ok singleton non-singleton crash-isolation transactions");
 
 function bootOs() {

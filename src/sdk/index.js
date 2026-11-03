@@ -49,7 +49,7 @@ export async function bootDindbOS(os, options = {}) {
   throwIfAborted(options.signal, os);
   os.boot();
   if (config.serviceWorker.enabled) {
-    await abortable(os.registerServiceWorkerBoot(config.serviceWorker.scriptUrl), options.signal);
+    await abortable(os.registerServiceWorkerBoot(config.serviceWorker.scriptUrl, { scope: config.serviceWorker.scope || "/" }), options.signal);
   }
   throwIfAborted(options.signal, os);
   launchInitialApps(os, config.launch);

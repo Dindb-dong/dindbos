@@ -13,7 +13,7 @@ class NotesApp {
   }
 }
 const notes = defineApp(new NotesApp());
-const hello = defineApp({ id: "hello", category: "productivity", chrome: "integrated", sidebarWidth: 180, minWidth: 230, minHeight: 408, menus: { file: [{ label: "Minimize", accelerator: "Mod+Shift+M", run({ window }) { window.minimize(); } }] }, render({ window }) { window.setTitle("Hello"); } });
+const hello = defineApp({ id: "hello", category: "productivity", accepts: ["text/plain"], associationPriority: 20, chrome: "integrated", sidebarWidth: 180, minWidth: 230, minHeight: 408, menus: { file: [{ label: "Minimize", accelerator: "Mod+Shift+M", run({ window }) { window.minimize(); } }] }, render({ window }) { window.setTitle("Hello"); } });
 function Counter() {
   const { window, os } = useDindbOSApp();
   return <button onClick={() => { os.state.set("count", 1); window.minimize(); }}>Minimize</button>;

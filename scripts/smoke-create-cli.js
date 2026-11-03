@@ -31,6 +31,8 @@ try {
     await assert.rejects(addDindbOSApp("notes", { root }), /already registered/);
     assert.equal(await readFile(join(root, "src/apps/index.js"), "utf8"), after);
     await assert.rejects(addDindbOSApp("../unsafe", { root }), /lowercase/);
+    for (const id of ["a--b", "a-"]) await assert.rejects(addDindbOSApp(id, { root }), /single hyphens/);
+    assert.equal(await readFile(join(root, "src/apps/index.js"), "utf8"), after, "invalid hyphenated IDs leave the project unchanged");
     await writeFile(join(root, "src/apps/index.js"), "export const apps = [];\n");
     await assert.rejects(addDindbOSApp("incomplete", { root }), /markers/);
     assert(!(await readdir(join(root, "src/apps"))).some((file) => file.startsWith("incomplete.")));

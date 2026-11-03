@@ -120,6 +120,7 @@ export interface DindbOSHostApp<Context = Record<string, unknown>> {
   minWidth?: number;
   minHeight?: number;
   accepts?: string[];
+  associationPriority?: number;
   manifest?: DindbOSAppManifest;
   menus?: DindbOSAppMenus<Context> | ((context: DindbOSAppContext<Context>) => DindbOSAppMenus<Context>);
   render(context: DindbOSAppContext<Context>): void | (() => void);
@@ -264,7 +265,7 @@ export class DindbOS {
   boot(): void;
   loadPersistentFileSystem(options?: Record<string, unknown>): Promise<void>;
   runBootPhase<T>(id: string, action: () => T | Promise<T>): Promise<T>;
-  registerServiceWorkerBoot(scriptUrl?: string): Promise<unknown>;
+  registerServiceWorkerBoot(scriptUrl?: string, options?: { scope?: string }): Promise<unknown>;
   launch(appId: string, context?: Record<string, unknown>): DindbOSWindowAPI;
   addConformanceEvidence(record: DindbOSDiagnosticsEvidence): DindbOSDiagnosticsEvidence;
   conformanceEvidenceRecords(): DindbOSDiagnosticsEvidence[];

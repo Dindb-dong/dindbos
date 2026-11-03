@@ -5,6 +5,7 @@ export class AppRegistry {
   constructor(os) {
     this.os = os;
     this.apps = new Map();
+    this.launcherPaths = new Map();
     this.launchSeq = 0;
   }
 
@@ -12,11 +13,16 @@ export class AppRegistry {
     app = defineApp(app);
     const manifest = normalizeAppManifest(app);
     const previous = this.apps.get(app.id) || null;
+    const previousPaths = this.launcherPaths.get(app.id);
     const beforeRoot = this.os.fs.snapshot();
     try {
       this.apps.set(app.id, { ...app, manifest });
+      this.launcherPaths.set(app.id, {
+        application: this.availableLauncherPath("/usr/share/applications", app, manifest),
+        desktop: this.desktopDirectoryFor(app) ? this.availableLauncherPath(this.desktopDirectoryFor(app), app, manifest) : "",
+      });
       this.writeManifestFile(manifest);
-      this.removePreviousApplicationFile(previous, app, manifest);
+      this.removePreviousApplicationFile(previous, app, manifest, previousPaths);
       this.writeApplicationFile(app, manifest);
       this.writeDesktopApplicationFile(app, manifest);
       return this.getManifest(app.id);
@@ -24,6 +30,8 @@ export class AppRegistry {
       this.os.fs.root = beforeRoot;
       if (previous) this.apps.set(app.id, previous);
       else this.apps.delete(app.id);
+      if (previousPaths) this.launcherPaths.set(app.id, previousPaths);
+      else this.launcherPaths.delete(app.id);
       throw error;
     }
   }
@@ -38,13 +46,14 @@ export class AppRegistry {
       const manifestPath = `/usr/share/dindbos/manifests/${appId}.json`;
       if (this.os.fs.exists(manifestPath)) this.os.fs.remove(manifestPath, "/", {}, system);
       const applicationPath = this.applicationPathFor(app, app.manifest);
-      if (this.os.fs.exists(applicationPath)) this.os.fs.remove(applicationPath, "/", {}, system);
+      this.removeOwnedLauncher(applicationPath, appId);
       const desktopPath = this.desktopApplicationPathFor(app, app.manifest);
-      if (desktopPath && this.os.fs.exists(desktopPath)) this.os.fs.remove(desktopPath, "/", {}, system);
+      this.removeOwnedLauncher(desktopPath, appId);
       for (const [id, task] of this.os.windows?.windows || []) {
         if (task.appId === appId) this.os.windows.close(id, { force: true });
       }
       if (this.os.shell?.renderer) this.os.shell.renderDesktop();
+      this.launcherPaths.delete(appId);
       return true;
     } catch (error) {
       this.os.fs.root = beforeRoot;
@@ -183,32 +192,45 @@ export class AppRegistry {
     );
   }
 
-  removePreviousApplicationFile(previous, app, manifest) {
-    if (!previous || !this.os.fs.exists("/usr/share/applications")) return;
-    const previousPath = this.applicationPathFor(previous, previous.manifest);
-    const nextPath = this.applicationPathFor(app, manifest);
-    if (previousPath !== nextPath && this.os.fs.exists(previousPath)) {
-      this.os.fs.remove(previousPath, "/", {}, this.os.permissions.systemPrincipal());
+  removePreviousApplicationFile(previous, app, manifest, previousPaths) {
+    if (!previous) return;
+    const previousPath = previousPaths?.application || this.availableLauncherPath("/usr/share/applications", previous, previous.manifest);
+    if (previousPath !== this.applicationPathFor(app, manifest)) this.removeOwnedLauncher(previousPath, previous.id);
+    const previousDesktopPath = previousPaths?.desktop || "";
+    if (previousDesktopPath !== this.desktopApplicationPathFor(app, manifest)) this.removeOwnedLauncher(previousDesktopPath, previous.id);
+  }
+
+  removeOwnedLauncher(path, appId) {
+    if (!path || this.os.fs.lstat(path)?.type !== "app" || this.os.fs.resolve(path)?.appId !== appId) return;
+    this.os.fs.remove(path, "/", {}, this.os.permissions.systemPrincipal());
+  }
+
+  availableLauncherPath(directory, app, manifest = app?.manifest || {}) {
+    const name = sanitizeLauncherName(typeof app?.name === "string" && app.name ? app.name : manifest.name);
+    for (let index = 0; index < 1000; index += 1) {
+      const suffix = index === 0 ? "" : ` (${app.id}${index > 1 ? ` ${index}` : ""})`;
+      const path = this.os.fs.join(directory, `${name}${suffix}.app`);
+      const node = this.os.fs.lstat(path);
+      if (!node || node.type === "app" && this.os.fs.resolve(path)?.appId === app.id) return path;
     }
-    const previousDesktopPath = this.desktopApplicationPathFor(previous, previous.manifest);
-    const nextDesktopPath = this.desktopApplicationPathFor(app, manifest);
-    if (previousDesktopPath && previousDesktopPath !== nextDesktopPath && this.os.fs.exists(previousDesktopPath)) {
-      this.os.fs.remove(previousDesktopPath, "/", {}, this.os.permissions.systemPrincipal());
-    }
+    throw new Error(`No available launcher name for ${app.id}`);
   }
 
   applicationPathFor(app, manifest = app?.manifest || {}) {
-    const appName = sanitizeLauncherName(typeof app?.name === "string" && app.name ? app.name : manifest.name);
-    return `/usr/share/applications/${appName}.app`;
+    return this.launcherPaths.get(app.id)?.application || this.availableLauncherPath("/usr/share/applications", app, manifest);
+  }
+
+  desktopDirectoryFor(app) {
+    if (app?.desktop === false || app?.desktop !== true && app?.pinned !== true) return "";
+    const path = this.os.session?.desktopPath || this.os.fs?.join?.(this.os.session?.home || "/home/guest", "Desktop");
+    return path && this.os.fs.exists(path) ? path : "";
   }
 
   desktopApplicationPathFor(app, manifest = app?.manifest || {}) {
-    if (app?.desktop === false) return "";
-    if (app?.desktop !== true && app?.pinned !== true) return "";
-    const desktopPath = this.os.session?.desktopPath || this.os.fs?.join?.(this.os.session?.home || "/home/guest", "Desktop");
-    if (!desktopPath || !this.os.fs.exists(desktopPath)) return "";
-    const appName = sanitizeLauncherName(typeof app?.name === "string" && app.name ? app.name : manifest.name);
-    return this.os.fs.join(desktopPath, `${appName}.app`);
+    const paths = this.launcherPaths.get(app.id);
+    if (paths) return paths.desktop;
+    const directory = this.desktopDirectoryFor(app);
+    return directory ? this.availableLauncherPath(directory, app, manifest) : "";
   }
 }
 

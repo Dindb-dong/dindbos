@@ -33,7 +33,7 @@ function Fixture() {
       launch={[{ id: appId, context: { message: "launch context preserved" } }]}
       onReady={(os) => { window.__sdkFixture.os = os; window.__sdkFixture.ready += 1; }}
       onError={(error) => window.__sdkFixture.errors.push(error.stack || error.message)}>
-      <DindbOSApp id={appId} name="Counter" title={(context) => `${label}: ${context.message}`} singleton pinned width={420} height={260}>
+      <DindbOSApp id={appId} name="Counter" title={(context) => `${label}: ${context.message}`} singleton pinned accepts={label === "Before update" ? ["text/plain"] : ["text/markdown"]} associationPriority={label === "Before update" ? 10 : 90} width={420} height={260}>
         <Counter label={label} />
       </DindbOSApp>
     </DindbOSDesktop>}

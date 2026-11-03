@@ -29,7 +29,7 @@ export async function createDindbOSProject(targetDir = "my-desktop", options = {
 export async function addDindbOSApp(name, options = {}) {
   const root = resolve(options.root || ".");
   const id = String(name || "").trim();
-  if (!/^[a-z][a-z0-9-]*$/.test(id)) throw new Error("App name must start with a lowercase letter and contain only lowercase letters, numbers, or hyphens.");
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(id)) throw new Error("App name must start with a lowercase letter and use lowercase letters/numbers separated by single hyphens.");
   const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   const template = options.template || pkg.dindbos?.template;
   if (!Object.hasOwn(templates, template)) throw new Error("Cannot determine this project's template. Supply --template react or --template vanilla.");

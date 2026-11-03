@@ -1,15 +1,18 @@
 import { defineApp } from "./app-definition.js";
 
+const normalizedConfigs = new WeakSet();
+
 const VALID_EVIDENCE_STATUSES = new Set(["pass", "fail", "degraded", "blocked"]);
 
 export function normalizeDindbOSHostConfig(options = {}) {
+  if (normalizedConfigs.has(options)) return options;
   const apps = normalizeHostApps(options.apps || []);
   const packages = normalizeHostPackages(options.packages || {});
   const serviceWorker = normalizeServiceWorker(options.serviceWorker);
   const brokers = normalizeBrokers(options.brokers || options.browserProvider || {});
   const isolation = normalizeIsolation(options.isolation || {});
   const diagnostics = normalizeDiagnostics(options.diagnostics || {});
-  return {
+  const config = {
     root: options.root ?? null,
     fileSystem: normalizeFileSystemSeed(options.fileSystem || options.files || null),
     session: {
@@ -35,6 +38,8 @@ export function normalizeDindbOSHostConfig(options = {}) {
     configure: typeof options.configure === "function" ? options.configure : null,
     installApps: typeof options.installApps === "function" ? options.installApps : null,
   };
+  normalizedConfigs.add(config);
+  return config;
 }
 
 export function publicHostConfig(config = {}) {

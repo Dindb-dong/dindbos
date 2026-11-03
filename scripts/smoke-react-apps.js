@@ -36,9 +36,13 @@ try {
   assert.equal(await page.getByTestId("app-identity").textContent(), "launch context preserved");
   await page.getByTestId("increment").click();
   assert.equal(await page.getByTestId("increment").textContent(), "Count 1");
+  await page.evaluate(() => { const os = window.__sdkFixture.os; os.registerApp({ id: "association-peer", accepts: ["text/plain", "text/markdown"], associationPriority: 50, render() {} }); });
+  assert.equal(await page.evaluate(() => window.__sdkFixture.os.apps.resolveFileApp({ mime: "text/plain" }).id), "association-peer", "initial React priority participates in file associations");
   await page.getByTestId("update-label").click();
   assert.equal(await page.getByTestId("live-label").textContent(), "After update");
   assert.equal(await page.locator('[data-window-id="counter"] .dos-window-titlebar strong').textContent(), "After update: launch context preserved", "reactive title retains its launch context");
+  assert.equal(await page.evaluate(() => window.__sdkFixture.os.apps.resolveFileApp({ mime: "text/markdown" }).id), "counter", "live accepts/priority updates change the default associated app");
+  assert.equal(await page.evaluate(() => window.__sdkFixture.os.apps.resolveFileApp({ mime: "text/plain" }).id), "association-peer", "removed React MIME associations do not remain registered");
   await page.getByRole("button", { name: "Minimize", exact: true }).click();
   await page.evaluate(() => window.__sdkFixture.os.windows.restore("counter"));
   assert.equal(await page.getByTestId("increment").textContent(), "Count 1", "minimize/restore retains component state");

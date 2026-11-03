@@ -12,6 +12,8 @@ class Notes {
   prefix = "class instance";
   closed = 0;
   get width() { return 640; }
+  get category() { return "productivity"; }
+  get associationPriority() { return 30; }
   title() { return this.prefix; }
   menus() { return { file: [{ label: this.prefix, run: () => {} }] }; }
   render({ content }) {
@@ -25,6 +27,8 @@ const notes = new Notes();
 const app = defineApp(notes);
 assert.equal(app.title({}), "class instance");
 assert.equal(app.menus({}).file[0].label, "class instance", "class menu factories retain their instance binding");
+assert.equal(app.category, "productivity");
+assert.equal(app.associationPriority, 30);
 assert.equal(app.width, 640, "class getters remain part of the app contract");
 assert.equal(defineApp({ id: "function-app" }, () => {}).id, "function-app");
 assert.throws(() => defineApp({ id: "invalid id", render() {} }), /invalid id/);
@@ -32,6 +36,10 @@ assert.throws(() => defineApp({ id: "missing-render" }), /render function/);
 assert.throws(() => normalizeDindbOSHostConfig({ apps: [app, app] }), /duplicate app id/);
 assert.throws(() => normalizeDindbOSHostConfig({ ui: { slots: { dock: "invalid" } } }), /Invalid DindbOS UI slot/);
 assert.equal(normalizeDindbOSHostConfig({ storage: { backend: "memory", name: "isolated" } }).storage.runtimeOptions.storageBackend, "memory");
+
+const normalized = normalizeDindbOSHostConfig({ storage: { backend: "memory", name: "audit-sdk" } });
+assert.equal(normalizeDindbOSHostConfig(normalized).storage.public.mode, "memory");
+assert.equal(normalizeDindbOSHostConfig(normalized).storage.public.name, "audit-sdk");
 
 const os = createDindbOSTestRuntime();
 os.registerApp(notes);

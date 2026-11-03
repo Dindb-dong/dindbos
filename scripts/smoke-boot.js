@@ -8,6 +8,7 @@ import { demoFileSystem, portfolioData } from "../src/demo/portfolio-demo.js";
 const restoreGlobals = installDomShim();
 try {
   await verifySuccessfulBootPhases();
+  await verifyScopedServiceWorkerBoot();
   await verifySafeBootProfileEnforcement();
   await verifyDirtyShutdownRecoveryRecord();
   await verifyBootPhaseFailure();
@@ -16,6 +17,33 @@ try {
 }
 
 console.log(`boot smoke ok phases=${BOOT_PHASES.length}`);
+
+async function verifyScopedServiceWorkerBoot() {
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const calls = [];
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: {
+    serviceWorker: { register: async (script, options) => {
+      calls.push({ script, options });
+      return { scope: `http://localhost${options.scope}`, active: null };
+    } },
+  } });
+  const os = new DindbOS({ root: createElement("root"), fileSystem: demoFileSystem, storageBackend: "memory", persistDelayMs: 0 });
+  try {
+    await bootDindbOS(os, {
+      builtins: false, bootstrapPackages: false,
+      storage: { backend: "memory", name: "audit-sdk" },
+      serviceWorker: { enabled: true, scriptUrl: "/embedded/sw.js", scope: "/embedded/" },
+    });
+    assert(calls[0]?.script === "/embedded/sw.js" && calls[0]?.options.scope === "/embedded/", "SDK boot lost configured Service Worker scope");
+    assert(os.sdkHostConfig.storage.mode === "memory" && os.sdkHostConfig.storage.name === "audit-sdk", "preparing a normalized host config changed its storage diagnostics");
+    await os.registerServiceWorkerBoot("/dindbos-sw.js");
+    assert(calls[1]?.options.scope === "/", "direct Service Worker registration changed its default root scope");
+  } finally {
+    await os.destroy();
+    if (previousNavigator) Object.defineProperty(globalThis, "navigator", previousNavigator);
+    else delete globalThis.navigator;
+  }
+}
 
 async function verifySuccessfulBootPhases() {
   const os = new DindbOS({
