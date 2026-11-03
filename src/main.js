@@ -4,7 +4,7 @@ import { DindbOSDesktop, DindbOSApp, useDindbOSApp } from "./sdk/react.js";
 import { demoFileSystem, portfolioData } from "./demo/portfolio-demo.js";
 
 const h = React.createElement;
-const launch = new URLSearchParams(window.location.search).get("qa") === "fresh" ? ["welcome", "files"] : ["welcome"];
+const launch = new URLSearchParams(window.location.search).get("qa") === "fresh" ? ["welcome", "files"] : [];
 
 function Counter() {
   const [count, setCount] = useState(0);
