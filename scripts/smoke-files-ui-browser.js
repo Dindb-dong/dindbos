@@ -267,6 +267,17 @@ try {
   await page.getByRole('menuitemradio',{name:'as List',exact:true}).click();
   await expect(calculatorIcon.locator('svg.dos-app-icon')).toBeVisible();
   await page.screenshot({path:output+'/files-application-icons-list.png'});
+  await page.evaluate(()=>{for(let index=0;index<20;index++)window.__filesOS.registerApp({id:'scroll-app-'+index,name:'Scroll App '+index,icon:'app',render:()=>{}});window.__filesOS.setAppearance({mode:'dark'});});
+  await files.locator('.files-sidebar [data-nav="/home/guest"]').click();
+  await files.locator('.files-sidebar [data-nav="/usr/share/applications"]').click();
+  await files.locator('.files-view-menu > summary').click();
+  await page.getByRole('menuitemradio',{name:'as Icons',exact:true}).click();
+  assert.equal(await files.locator('.files-column').evaluate(element=>getComputedStyle(element).backgroundColor),'rgba(0, 0, 0, 0)','a column must not tint only the occupied part of the icon viewport');
+  await files.evaluate(element=>{const frame=element.closest('.dos-window');frame.classList.remove('is-maximized');Object.assign(frame.style,{width:'760px',height:'520px'});});
+  const scrollArea=files.locator('.files-column-view');
+  await scrollArea.evaluate(element=>{element.scrollTop=150;});
+  await expect.poll(()=>scrollArea.evaluate(element=>element.scrollTop)).toBeGreaterThan(0);
+  await page.screenshot({path:output+'/files-icons-dark-scrolled.png'});
   assert.deepEqual(errors,[]);
   console.log('Files UI browser smoke passed: overlay hit-tests, single sidebar selection, persistent favorite add/reorder/remove, internal/external folder drops and denied-move preservation, context commands, keyboard menus, history, dark/mobile');
 } catch(error) {

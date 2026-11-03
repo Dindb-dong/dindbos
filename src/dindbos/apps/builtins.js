@@ -83,7 +83,7 @@ export function installBuiltinApps(os, options = {}) {
       fileSystem: { read: ["/"], write: userDocumentWriteRoots },
     },
     render: ({ os: runtime, content, context, window }) => (
-      renderFiles(runtime, content, context.path || runtime.session.home || "/", window)
+      renderFiles(runtime, content, context.path || runtime.session.home || "/", window, context)
     ),
   });
 
@@ -286,7 +286,7 @@ function renderPortfolio(content, data) {
   `;
 }
 
-function renderFiles(os, content, path, windowApi) {
+function renderFiles(os, content, path, windowApi, context = {}) {
   const sidebar = [
     { section: "Favorites", items: [
       { label: "Home", path: os.session.home || "/home/guest", icon: "home" },
@@ -344,8 +344,9 @@ function renderFiles(os, content, path, windowApi) {
   let searchQuery = "";
   let searchOpen = false;
   let searchTimer = null;
-  let sortMode = "kind-name";
-  let viewMode = "icons";
+  const transferredTab = context.filesTab || {};
+  let sortMode = ["kind-name", "name", "modified", "size"].includes(transferredTab.sortMode) ? transferredTab.sortMode : "kind-name";
+  let viewMode = ["icons", "list", "columns"].includes(transferredTab.viewMode) ? transferredTab.viewMode : "icons";
   let inspectorOpen = false;
   let disposed = false;
   let drawGeneration = 0;
@@ -353,14 +354,59 @@ function renderFiles(os, content, path, windowApi) {
   let operationHistory = [];
   let selectedPaths = new Set([selectedPath]);
   let selectionAnchorPath = selectedPath;
-  const navigationHistory = [currentPath];
-  let navigationIndex = 0;
+  const restoredHistory = Array.isArray(transferredTab.history) ? transferredTab.history.filter((item) => typeof item === "string" && item.startsWith("/")).map((item) => os.fs.normalize(item)) : [];
+  const restoredIndex = Number.isInteger(transferredTab.historyIndex) ? Math.max(0, Math.min(restoredHistory.length - 1, transferredTab.historyIndex)) : 0;
+  const navigationHistory = restoredHistory[restoredIndex] === currentPath ? restoredHistory : [currentPath];
+  let navigationIndex = navigationHistory === restoredHistory ? restoredIndex : 0;
   let dismissToolbarMenus = null;
   let disconnectColumns = null;
   let fileIconCleanups = [];
   let tabSequence = 1;
   let activeTabId = "1";
-  const folderTabs = [{ id: "1", path: currentPath, history: [currentPath], historyIndex: 0 }];
+  const folderTabs = [{ id: "1", path: currentPath, history: [...navigationHistory], historyIndex: navigationIndex }];
+  let cancelTabDrag = () => {};
+  let suppressTabClick = false;
+  let tabClickResetTimer = null;
+  const pendingTabTransfers = new Set();
+  const suppressDragClick = () => {
+    suppressTabClick = true;
+    window.clearTimeout(tabClickResetTimer);
+    tabClickResetTimer = window.setTimeout(() => { suppressTabClick = false; }, 0);
+  };
+  const moveFolderTab = (id, targetId, after) => {
+    if (id === targetId) return;
+    const index = folderTabs.findIndex((tab) => tab.id === id);
+    if (index < 0) return;
+    const [tab] = folderTabs.splice(index, 1);
+    const targetIndex = folderTabs.findIndex((item) => item.id === targetId);
+    folderTabs.splice(targetIndex < 0 ? folderTabs.length : targetIndex + (after ? 1 : 0), 0, tab);
+    draw(currentPath, selectedPath, { preserveSelection: true, skipHistory: true, focusTab: true });
+  };
+  const detachFolderTab = (id) => {
+    const tab = folderTabs.find((item) => item.id === id);
+    if (!tab) return;
+    const snapshot = { path: tab.path, history: [...tab.history], historyIndex: tab.historyIndex };
+    let settled = false;
+    let openedWindow = null;
+    const cancel = () => { settled = true; pendingTabTransfers.delete(cancel); };
+    const finish = (error = null) => {
+      if (settled) return;
+      cancel();
+      if (disposed) return;
+      if (error) { openedWindow?.close(); windowApi.setTitle(`Files — Could not detach tab: ${error.message || error}`); return; }
+      const index = folderTabs.indexOf(tab);
+      // Navigation or closing the source during the target's async mount must not discard new work.
+      if (index < 0 || tab.path !== snapshot.path || tab.historyIndex !== snapshot.historyIndex || JSON.stringify(tab.history) !== JSON.stringify(snapshot.history)) return;
+      if (folderTabs.length === 1) { windowApi.close(); return; }
+      folderTabs.splice(index, 1);
+      if (activeTabId === id) selectFolderTab(folderTabs[Math.max(0, index - 1)].id);
+      else draw(currentPath, selectedPath, { preserveSelection: true, skipHistory: true });
+    };
+    pendingTabTransfers.add(cancel);
+    try {
+      openedWindow = os.launch("files", { path: snapshot.path, filesTab: { history: snapshot.history, historyIndex: snapshot.historyIndex, viewMode, sortMode }, filesTabTransfer: { ready: () => finish(), onError: (error) => finish(error) } });
+    } catch (error) { finish(error); }
+  };
   const selectFolderTab = (id, focusTab = false) => {
     const tab = folderTabs.find((item) => item.id === id);
     if (!tab) return;
@@ -379,6 +425,7 @@ function renderFiles(os, content, path, windowApi) {
     contextMenuCleanups.get(content)?.();
     dismissToolbarMenus?.();
     disconnectColumns?.();
+    cancelTabDrag();
     if (disposed) return;
     const generation = ++drawGeneration;
     currentPath = os.fs.normalize(nextPath);
@@ -469,7 +516,7 @@ function renderFiles(os, content, path, windowApi) {
             <label class="files-search-field" ${searchOpen ? '' : 'hidden'}>${filesToolIcon("search")}<input type="search" data-files-search aria-label="Search files" placeholder="Search" value="${escapeAttr(searchQuery)}" /></label>
           </div>
           <div class="files-tabstrip" role="tablist" aria-label="Folder tabs">
-            <div class="files-tabs">${folderTabs.map((tab) => `<div class="files-tab-item${tab.id === activeTabId ? ' is-current' : ''}"><button type="button" role="tab" data-files-tab="${tab.id}" aria-selected="${tab.id === activeTabId}" tabindex="${tab.id === activeTabId ? '0' : '-1'}" title="${escapeAttr(tab.path)}">${escapeHtml(tab.path === (os.session.home || '/home/guest') ? 'Home' : os.fs.basename(tab.path) || 'DindbOS')}</button>${folderTabs.length > 1 ? `<button type="button" class="files-tab-close" data-files-close-tab="${tab.id}" aria-label="Close ${escapeAttr(os.fs.basename(tab.path) || 'DindbOS')} tab">×</button>` : ''}</div>`).join('')}</div>
+            <div class="files-tabs">${folderTabs.map((tab) => `<div class="files-tab-item${tab.id === activeTabId ? ' is-current' : ''}"><button type="button" role="tab" data-files-tab="${tab.id}" aria-selected="${tab.id === activeTabId}" tabindex="${tab.id === activeTabId ? '0' : '-1'}" title="${escapeAttr(tab.path)}">${escapeHtml(tab.path === (os.session.home || '/home/guest') ? 'Home' : os.fs.basename(tab.path) || 'DindbOS')}</button>${folderTabs.length > 1 ? `<button type="button" class="files-tab-close" data-files-close-tab="${tab.id}" aria-label="Close ${escapeAttr(tab.path === (os.session.home || '/home/guest') ? 'Home' : os.fs.basename(tab.path) || 'DindbOS')} tab">×</button>` : ''}</div>`).join('')}</div>
             <button type="button" data-files-new-tab aria-label="New tab" title="New tab">+</button>
           </div>
           <div class="files-dropzone" aria-hidden="true">Drop to import into ${escapeHtml(os.fs.basename(currentPath) || "DindbOS")}</div>
@@ -521,10 +568,90 @@ function renderFiles(os, content, path, windowApi) {
       </section>
     `;
     const appRoot = content.querySelector(".files-app");
+    appRoot.dataset.filesPath = currentPath;
     const registeredApps = new Map(os.apps.list().map((app) => [app.id, app]));
     fileIconCleanups = [...content.querySelectorAll("[data-files-app-icon]")].map((element) => mountAppIcon(element, registeredApps.get(element.dataset.filesAppIcon)?.icon || element.dataset.filesIconFallback || "app"));
     content.querySelectorAll("[data-files-tab]").forEach((button) => {
-      button.addEventListener("click", () => selectFolderTab(button.dataset.filesTab));
+      button.addEventListener("click", (event) => {
+        if (suppressTabClick) { suppressTabClick = false; event.preventDefault(); return; }
+        selectFolderTab(button.dataset.filesTab, true);
+      });
+      button.addEventListener("dragstart", (event) => event.preventDefault());
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0 || !event.isPrimary) return;
+        cancelTabDrag();
+        const frame = content.closest(".dos-window");
+        const host = content.closest(".dindbos-host");
+        if (!frame || !host) return;
+        const pointerId = event.pointerId;
+        const origin = { x: event.clientX, y: event.clientY };
+        let dragging = false;
+        let preview = null;
+        let targetId = null;
+        let after = false;
+        const clearMarkers = () => content.querySelectorAll(".is-tab-drop-before, .is-tab-drop-after").forEach((item) => item.classList.remove("is-tab-drop-before", "is-tab-drop-after"));
+        const cleanup = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", end);
+          window.removeEventListener("pointercancel", cancel);
+          window.removeEventListener("keydown", keydown, true);
+          if (button.hasPointerCapture?.(pointerId)) button.releasePointerCapture(pointerId);
+          preview?.remove(); clearMarkers();
+          frame.classList.remove("is-tab-dragging");
+          cancelTabDrag = () => {};
+        };
+        const cancel = () => { if (dragging) suppressDragClick(); cleanup(); };
+        const keydown = (keyEvent) => {
+          if (keyEvent.key !== "Escape") return;
+          keyEvent.preventDefault(); keyEvent.stopPropagation(); cancel();
+        };
+        const move = (moveEvent) => {
+          if (moveEvent.pointerId !== pointerId) return;
+          if (!dragging && Math.hypot(moveEvent.clientX - origin.x, moveEvent.clientY - origin.y) < 6) return;
+          if (!dragging) {
+            dragging = true;
+            frame.classList.add("is-tab-dragging");
+            preview = document.createElement("div");
+            preview.className = "files-tab-drag-preview";
+            preview.textContent = button.textContent;
+            preview.setAttribute("aria-hidden", "true");
+            host.appendChild(preview);
+          }
+          const hostBounds = host.getBoundingClientRect();
+          Object.assign(preview.style, { left: `${moveEvent.clientX - hostBounds.left + 12}px`, top: `${moveEvent.clientY - hostBounds.top + 12}px` });
+          clearMarkers(); targetId = null;
+          const strip = content.querySelector(".files-tabs").getBoundingClientRect();
+          if (moveEvent.clientY >= strip.top - 8 && moveEvent.clientY <= strip.bottom + 8 && moveEvent.clientX >= strip.left && moveEvent.clientX <= strip.right) {
+            const tabs = [...content.querySelectorAll("[data-files-tab]")];
+            const target = tabs.find((item) => moveEvent.clientX < item.getBoundingClientRect().right) || tabs.at(-1);
+            const bounds = target.getBoundingClientRect();
+            targetId = target.dataset.filesTab;
+            after = moveEvent.clientX > bounds.left + bounds.width / 2;
+            if (targetId !== button.dataset.filesTab) target.closest(".files-tab-item").classList.add(after ? "is-tab-drop-after" : "is-tab-drop-before");
+          }
+          moveEvent.preventDefault();
+        };
+        const end = (endEvent) => {
+          if (endEvent.pointerId !== pointerId) return;
+          const wasDragging = dragging;
+          const bounds = frame.getBoundingClientRect();
+          const outside = endEvent.clientX < bounds.left || endEvent.clientX > bounds.right || endEvent.clientY < bounds.top || endEvent.clientY > bounds.bottom;
+          const dropTarget = targetId;
+          const dropAfter = after;
+          cleanup();
+          if (!wasDragging || disposed) return;
+          suppressDragClick();
+          endEvent.preventDefault();
+          if (outside) detachFolderTab(button.dataset.filesTab);
+          else if (dropTarget) moveFolderTab(button.dataset.filesTab, dropTarget, dropAfter);
+        };
+        cancelTabDrag = cancel;
+        button.setPointerCapture?.(pointerId);
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", cancel);
+        window.addEventListener("keydown", keydown, true);
+      });
       button.addEventListener("keydown", (event) => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault(); event.stopPropagation();
@@ -854,7 +981,7 @@ function renderFiles(os, content, path, windowApi) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
         event.preventDefault(); event.stopPropagation(); addFolderTab(); return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "w" && folderTabs.length > 1) {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "w" && folderTabs.length > 1) {
         event.preventDefault(); event.stopPropagation(); content.querySelector(`[data-files-close-tab="${activeTabId}"]`)?.click(); return;
       }
       if (event.key === "Escape") {
@@ -1012,9 +1139,23 @@ function renderFiles(os, content, path, windowApi) {
       updateFilesOperation(content, fileOperation);
     }
   };
-  draw(path).catch((error) => { if (!disposed) windowApi.setTitle(`Files - ${error.message}`); });
+  let initialDrawFinished = false;
+  const finishInitialDraw = (error = null) => {
+    if (initialDrawFinished) return;
+    initialDrawFinished = true;
+    const handler = error ? context.filesTabTransfer?.onError : context.filesTabTransfer?.ready;
+    if (typeof handler === "function") handler(error);
+  };
+  draw(path).then(() => finishInitialDraw(disposed ? new Error("Finder window closed before opening") : null)).catch((error) => {
+    if (!disposed) windowApi.setTitle(`Files - ${error.message}`);
+    finishInitialDraw(error);
+  });
   return () => {
     disposed = true;
+    finishInitialDraw(new Error("Finder window closed before opening"));
+    for (const cancel of pendingTabTransfers) cancel();
+    window.clearTimeout(tabClickResetTimer);
+    cancelTabDrag();
     fileIconCleanups.forEach((cleanup) => cleanup());
     fileIconCleanups = [];
     contextMenuCleanups.get(content)?.();
