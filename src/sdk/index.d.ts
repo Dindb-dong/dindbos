@@ -99,6 +99,10 @@ export interface DindbOSHostApp<Context = Record<string, unknown>> {
   singleton?: boolean;
   width?: number;
   height?: number;
+  chrome?: "standard" | "integrated" | "document";
+  sidebarWidth?: number;
+  minWidth?: number;
+  minHeight?: number;
   accepts?: string[];
   manifest?: DindbOSAppManifest;
   render(context: DindbOSAppContext<Context>): void | (() => void);

@@ -27,6 +27,8 @@ try {
     await expect(frame).toHaveClass(/is-active/);
   };
   const edges = ["top", "right", "bottom", "left", "top-left", "top-right", "bottom-right", "bottom-left"];
+  for (const chrome of ["standard", "integrated"]) {
+  await frame.evaluate((element, mode) => { element.dataset.windowChrome = mode; element.style.setProperty("--app-sidebar-width", "205px"); }, chrome);
   for (const edge of edges) {
     await reset();
     const handle = frame.locator(`[data-resize="${edge}"]`);
@@ -47,6 +49,8 @@ try {
     if (edge.includes("top")) assert(Math.abs(after.y+after.height-before.y-before.height)<2,`${edge}: opposite vertical edge stays anchored`);
     assert.equal(await page.evaluate(()=>window.__os.windows.activeWindowId),'foreground',`${edge}: resize never activates the background`);
   }
+  }
+  await frame.evaluate(element => { element.dataset.windowChrome = "standard"; });
   await page.screenshot({path:`${output}/all-eight-handles.png`});
   await reset();
   const corner = frame.locator('[data-resize="top-left"]'); const cornerBox=await corner.boundingBox();
@@ -59,6 +63,23 @@ try {
   await frame.getByRole('button',{name:'Maximize',exact:true}).click();
   await expect(frame).toHaveClass(/is-maximized/);assert.equal(await frame.locator('[data-resize]:visible').count(),0,'maximized windows expose no inert resize handles');
   await page.setViewportSize({width:390,height:844});assert.equal(await frame.locator('[data-resize]:visible').count(),0,'mobile preserves non-resizable window presentation');
+  await page.setViewportSize({width:1200,height:900});
+  await page.evaluate(() => {
+    const os=window.__os;
+    os.registerApp({id:'minimum-contract',width:200,height:200,minWidth:700,minHeight:500,chrome:'integrated',sidebarWidth:180,render:({content})=>{content.innerHTML='<header data-window-drag style="height:52px;padding-left:95px">Window minimum contract</header>';}});
+    os.launch('minimum-contract');
+  });
+  const bounded=page.locator('.dos-window[data-app-id="minimum-contract"]');
+  const geometry=()=>bounded.evaluate(element=>{const rect=element.getBoundingClientRect();return {width:rect.width,height:rect.height,right:rect.right,styleWidth:parseFloat(element.style.width),styleHeight:parseFloat(element.style.height)};});
+  const initial=await geometry();
+  assert.equal(initial.width,700);assert.equal(initial.height,500);
+  assert.equal(initial.styleWidth,initial.width);assert.equal(initial.styleHeight,initial.height,'declared minimum size and persisted geometry agree');
+  let grip=await bounded.locator('[data-window-drag]').boundingBox();
+  await page.mouse.move(grip.x+grip.width/2,grip.y+25);await page.mouse.down();await page.mouse.move(1190,400,{steps:8});await page.mouse.up();
+  assert((await geometry()).right<=1192,'a declared minimum never pushes the rendered window outside its host');
+  await page.setViewportSize({width:800,height:700});
+  await expect.poll(async()=>(await geometry()).right).toBeLessThanOrEqual(792);
+  const shrunk=await geometry();assert.equal(shrunk.width,shrunk.styleWidth);assert(shrunk.right<=792,'viewport resizing constrains the actual minimum-sized window');
   assert.deepEqual(errors,[]);
   await page.evaluate(()=>window.__os.destroy());
   console.log('window resize browser smoke ok all eight physical handle hit regions, actual pointer growth, anchored opposite edges, minimum sizes, workspace top, maximize/mobile and teardown');

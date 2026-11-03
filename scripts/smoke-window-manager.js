@@ -35,6 +35,11 @@ assert(tooLarge.top === 58, "negative top was not clamped to titlebar margin");
 assert(tooLarge.width === 374, `oversized width was not reduced: ${tooLarge.width}`);
 assert(tooLarge.height === 574, `oversized height was not reduced: ${tooLarge.height}`);
 
+const declaredMinimum = constrainWindowRect({ left: 1100, top: 500, width: 200, height: 200 }, { width: 1200, height: 900 }, { minWidth: 700, minHeight: 500 });
+assert(declaredMinimum.width === 700 && declaredMinimum.height === 500 && declaredMinimum.left === 492, "declared minima must be included before origin clamping");
+const restoredMinimum = restoreWindowPlacement({ left: 900, top: 700, width: 200, height: 200 }, { left: 8, top: 58, width: 200, height: 200 }, { width: 800, height: 700 }, { minWidth: 700, minHeight: 500 });
+assert(restoredMinimum.width === 700 && restoredMinimum.height === 500 && restoredMinimum.left === 92, "saved placements must honor app minima");
+
 const tinyViewport = constrainWindowRect(
   { left: 500, top: 500, width: 340, height: 240 },
   { width: 220, height: 180 },

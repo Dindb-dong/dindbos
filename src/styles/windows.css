@@ -4,8 +4,8 @@
 
   .dos-window {
     grid-template-rows: 46px minmax(0, 1fr);
-    min-width: min(340px, calc(100% - 16px));
-    min-height: min(240px, calc(100% - 66px));
+    min-width: min(var(--app-min-width, 340px), calc(100% - 16px));
+    min-height: min(var(--app-min-height, 240px), calc(100% - 58px - var(--window-workspace-bottom, 8px)));
     border: 1px solid rgb(255 255 255 / .62);
     border-radius: 14px;
     background: var(--window-surface, #f6f6f6);
@@ -18,6 +18,30 @@
     outline: none;
   }
 
+  .dos-window[data-window-chrome="integrated"] { grid-template-rows: minmax(0, 1fr); }
+  .dos-window[data-window-chrome="integrated"] > .dos-window-content { grid-row: 1; padding: 0; }
+  .dos-window[data-window-chrome="integrated"] > .dos-window-titlebar {
+    position: absolute; z-index: 5; left: 0; top: 0;
+    width: var(--app-sidebar-width, 90px); height: 52px;
+    display: flex; justify-content: flex-start; padding: 0 14px;
+    background: transparent; border: 0; box-shadow: none; backdrop-filter: none;
+  }
+  .dos-window[data-window-chrome="integrated"] > .dos-window-titlebar > strong,
+  .dos-window[data-window-chrome="integrated"] > .dos-window-titlebar > .dos-window-titlebar-spacer { display: none; }
+  .dos-window[data-window-chrome="document"] { grid-template-rows: 28px minmax(0, 1fr); }
+  .dos-window[data-window-chrome="document"] > .dos-window-titlebar { min-height: 28px; padding-block: 0; font-size: 12px; }
+  @container (max-width: 600px) {
+    .dos-window[data-app-id="files"][data-window-chrome="integrated"] > .dos-window-titlebar { width: 155px; }
+  }
+  @container (max-width: 420px) {
+    .dos-window[data-app-id="files"][data-window-chrome="integrated"] > .dos-window-titlebar { width: 90px; }
+  }
+  @container (max-width: 520px) {
+    .dos-window[data-window-chrome="integrated"] > .dos-window-titlebar { width: 90px; }
+  }
+
+  .dos-window:is([data-app-id="calculator"], [data-app-id="clock"]) { border-color: rgb(255 255 255 / .18); background: #242424; }
+  .dos-window:is([data-app-id="calculator"], [data-app-id="clock"]):not(.is-active) .dos-window-controls button { background: #555; border-color: #0003; }
   .dos-window:not(.is-active) {
     box-shadow: 0 0 0 .5px rgb(0 0 0 / .1), 0 4px 16px rgb(16 35 31 / .09), 0 14px 40px -12px rgb(13 31 29 / .17);
   }
@@ -27,6 +51,7 @@
     box-shadow: 0 0 0 .5px rgb(0 0 0 / .18), 0 8px 24px rgb(16 35 31 / .15), 0 28px 76px -10px rgb(13 31 29 / .29);
   }
 
+  .dos-window.is-active:is([data-app-id="calculator"], [data-app-id="clock"]) { border-color: rgb(255 255 255 / .22); }
   .dos-window.is-maximized {
     inset: 38px 8px var(--window-workspace-bottom, 82px) !important;
     width: auto !important;
@@ -128,7 +153,7 @@
   .dos-window.is-resizing { transition: none; will-change: left, top, width, height; }
   .dos-window.is-dragging .dos-window-titlebar { cursor: grabbing; }
   .dos-window[hidden] { display: none !important; }
-  .dos-resize { z-index: 4; touch-action: none; }
+  .dos-resize { z-index: 6; touch-action: none; }
   /* Keep the whole hit region inside the clipped, rounded window frame. */
   .dos-window.is-maximized .dos-resize { display: none; }
   .dos-resize-left, .dos-resize-right { top: 16px; bottom: 16px; width: 6px; }

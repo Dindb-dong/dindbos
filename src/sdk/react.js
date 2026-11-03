@@ -123,7 +123,7 @@ export function DindbOSApp({ children, ...definition }) {
     const app = ownedRef.current;
     if (!os || !app || os.destroyed) return;
     let changed = false;
-    for (const key of ["name", "title", "icon", "pinned", "category", "desktop", "width", "height"]) {
+    for (const key of ["name", "title", "icon", "pinned", "category", "desktop", "width", "height", "chrome", "sidebarWidth", "minWidth", "minHeight"]) {
       if (app[key] !== definition[key]) { app[key] = definition[key]; changed = true; }
     }
     if (!changed) return;

@@ -174,9 +174,16 @@ export class WindowManager {
     frame.className = "dos-window";
     frame.dataset.windowId = config.id;
     frame.dataset.appId = config.appId;
+    frame.dataset.windowChrome = ["integrated", "document"].includes(config.chrome) ? config.chrome : "standard";
+    const minimumWidth = Number.isFinite(config.minWidth) ? clamp(config.minWidth, 160, 3200) : MIN_WIDTH;
+    const minimumHeight = Number.isFinite(config.minHeight) ? clamp(config.minHeight, 120, 2400) : MIN_HEIGHT;
+    frame.style.setProperty?.("--app-min-width", `${minimumWidth}px`);
+    frame.style.setProperty?.("--app-min-height", `${minimumHeight}px`);
+    if (Number.isFinite(config.sidebarWidth)) frame.style.setProperty?.("--app-sidebar-width", `${clamp(config.sidebarWidth, 90, 600)}px`);
     frame.tabIndex = -1;
     frame.setAttribute?.("role", "group");
     frame.setAttribute?.("aria-label", config.title || config.appId || "App window");
+    config = { ...config, minWidth: minimumWidth, minHeight: minimumHeight };
     const placement = this.initialPlacement(config);
     frame.style.setProperty?.("--window-workspace-bottom", `${this.viewport().bottomInset}px`);
     Object.assign(frame.style, {
@@ -261,8 +268,10 @@ export class WindowManager {
     titlebar.querySelector("[data-window-minimize]")?.addEventListener("click", () => this.minimize(config.id));
     titlebar.querySelector("[data-window-maximize]")?.addEventListener("click", () => this.maximize(config.id));
     titlebar.querySelector("[data-window-close]")?.addEventListener("click", () => this.close(config.id));
-    titlebar.addEventListener("dblclick", (event) => {
-      if (event.target.closest("button")) return;
+    const dragSurface = config.chrome === "integrated" ? frame : titlebar;
+    dragSurface.addEventListener("dblclick", (event) => {
+      if (config.chrome === "integrated" && !event.target.closest?.(".dos-window-titlebar, [data-window-drag]")) return;
+      if (event.target.closest("button, summary, input, select, textarea, a, [data-no-drag]")) return;
       this.maximize(config.id);
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -271,12 +280,15 @@ export class WindowManager {
       this.focus(config.id);
       this.routeInputEvent("pointerdown", event, { targetWindowId: config.id });
     });
-    task.dragCleanup = makeDraggable(frame, titlebar, () => this.saveWindowPlacement(config.id), {
+    task.dragCleanup = makeDraggable(frame, dragSurface, () => this.saveWindowPlacement(config.id), {
       viewport: () => this.viewport(),
+      handleSelector: config.chrome === "integrated" ? ".dos-window-titlebar, [data-window-drag]" : null,
+      minWidth: minimumWidth, minHeight: minimumHeight,
       onCapture: (capture) => { this.focus(config.id); frame.focus?.({ preventScroll: true }); this.recordPointerCapture(config.id, task.pid, "drag", capture); },
       onRelease: (capture) => this.releasePointerCapture(config.id, capture.pointerId, "drag-end"),
     });
     task.resizeCleanup = makeResizable(frame, () => this.saveWindowPlacement(config.id), {
+      minWidth: minimumWidth, minHeight: minimumHeight,
       viewport: () => this.viewport(),
       onCapture: (capture) => { this.focus(config.id); frame.focus?.({ preventScroll: true }); this.recordPointerCapture(config.id, task.pid, "resize", capture); },
       onRelease: (capture) => this.releasePointerCapture(config.id, capture.pointerId, "resize-end"),
@@ -698,7 +710,7 @@ export class WindowManager {
         width: Number.parseFloat(task.frame.style.width) || task.frame.getBoundingClientRect().width || MIN_WIDTH,
         height: Number.parseFloat(task.frame.style.height) || task.frame.getBoundingClientRect().height || MIN_HEIGHT,
       };
-      const next = constrainWindowRect(rect, viewport);
+      const next = constrainWindowRect(rect, viewport, task);
       Object.assign(task.frame.style, {
         left: `${next.left}px`,
         top: `${next.top}px`,
@@ -1275,7 +1287,7 @@ export class WindowManager {
       height: preferred.height,
       maximized: preferred.maximized,
     };
-    return restoreWindowPlacement(saved, fallback, viewport);
+    return restoreWindowPlacement(saved, fallback, viewport, config);
   }
 
   saveWindowPlacement(id) {
@@ -1292,14 +1304,16 @@ export class WindowManager {
   }
 }
 
-export function constrainWindowRect(rect, viewport) {
+export function constrainWindowRect(rect, viewport, minimum = {}) {
   const viewportWidth = Number(viewport.width || 1024);
   const viewportHeight = Number(viewport.height || 768);
   const maxWidth = Math.max(160, viewportWidth - 16);
   const bottomInset = Math.max(8, Number(viewport.bottomInset || 8));
   const maxHeight = Math.max(160, viewportHeight - 58 - bottomInset);
-  const width = Math.min(Math.max(Number(rect.width || MIN_WIDTH), 160), maxWidth);
-  const height = Math.min(Math.max(Number(rect.height || MIN_HEIGHT), 160), maxHeight);
+  const minWidth = Number.isFinite(minimum.minWidth) ? clamp(minimum.minWidth, 160, 3200) : 160;
+  const minHeight = Number.isFinite(minimum.minHeight) ? clamp(minimum.minHeight, 120, 2400) : 160;
+  const width = Math.min(Math.max(Number(rect.width || MIN_WIDTH), minWidth), maxWidth);
+  const height = Math.min(Math.max(Number(rect.height || MIN_HEIGHT), minHeight), maxHeight);
   return {
     left: Math.round(clamp(Number(rect.left || 0), 8, Math.max(8, viewportWidth - width - 8))),
     top: Math.round(clamp(Number(rect.top || 0), 58, Math.max(58, viewportHeight - height - bottomInset))),
@@ -1378,14 +1392,14 @@ export function preferredWindowSize(config = {}, viewport = {}) {
   };
 }
 
-export function restoreWindowPlacement(saved, fallback, viewport) {
+export function restoreWindowPlacement(saved, fallback, viewport, minimum = {}) {
   const candidate = saved && typeof saved === "object" ? saved : fallback;
   const constrained = constrainWindowRect({
     left: candidate.left ?? fallback.left,
     top: candidate.top ?? fallback.top,
     width: candidate.width ?? fallback.width,
     height: candidate.height ?? fallback.height,
-  }, viewport);
+  }, viewport, minimum);
   return {
     ...constrained,
     maximized: Boolean(candidate.maximized),
@@ -1444,7 +1458,7 @@ function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {
   const viewport = () => captureHooks.viewport?.() || { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 };
   const move = (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
-    const next = constrainWindowRect({ left: drag.left + event.clientX - drag.x, top: drag.top + event.clientY - drag.y, width: drag.width, height: drag.height }, viewport());
+    const next = constrainWindowRect({ left: drag.left + event.clientX - drag.x, top: drag.top + event.clientY - drag.y, width: drag.width, height: drag.height }, viewport(), captureHooks);
     frame.style.left = `${next.left}px`;
     frame.style.top = `${next.top}px`;
     event.preventDefault?.();
@@ -1460,7 +1474,8 @@ function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {
     if (event.type === "pointerup" && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
       const bounds = viewport();
       const zone = snapZoneForPoint({ x: event.clientX - (bounds.left || 0), y: event.clientY - (bounds.top || 0) }, bounds);
-      const snapped = snapWindowRect(zone, bounds);
+      const candidate = snapWindowRect(zone, bounds);
+      const snapped = candidate ? constrainWindowRect(candidate, bounds, captureHooks) : null;
       if (snapped) Object.assign(frame.style, { left: `${snapped.left}px`, top: `${snapped.top}px`, width: `${snapped.width}px`, height: `${snapped.height}px` });
     }
     if (titlebar.hasPointerCapture?.(endedDrag.pointerId)) titlebar.releasePointerCapture(endedDrag.pointerId);
@@ -1469,7 +1484,8 @@ function makeDraggable(frame, titlebar, onPlacement = () => {}, captureHooks = {
     event.preventDefault?.();
   };
   const begin = (event) => {
-    if (event.button > 0 || event.target.closest?.("button, input, select, textarea, a, [contenteditable='true'], [data-no-drag]") || frame.classList.contains("is-maximized")) return;
+    if (captureHooks.handleSelector && !event.target.closest?.(captureHooks.handleSelector)) return;
+    if (event.button > 0 || event.target.closest?.("button, summary, input, select, textarea, a, [contenteditable='true'], [data-no-drag]") || frame.classList.contains("is-maximized")) return;
     const rect = windowLocalRect(frame);
     drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     frame.classList.add("is-dragging");
@@ -1495,8 +1511,8 @@ function windowLocalRect(frame) {
   return {
     left: Number.isFinite(styleLeft) ? styleLeft : Number(viewportRect.left || 0) - Number(layerRect.left || 0),
     top: Number.isFinite(styleTop) ? styleTop : Number(viewportRect.top || 0) - Number(layerRect.top || 0),
-    width: Number.parseFloat(frame.style.width) || Number(viewportRect.width || MIN_WIDTH),
-    height: Number.parseFloat(frame.style.height) || Number(viewportRect.height || MIN_HEIGHT),
+    width: Number(viewportRect.width) || Number.parseFloat(frame.style.width) || MIN_WIDTH,
+    height: Number(viewportRect.height) || Number.parseFloat(frame.style.height) || MIN_HEIGHT,
   };
 }
 
@@ -1507,9 +1523,9 @@ function makeResizable(frame, onPlacement = () => {}, captureHooks = {}) {
     const move = (event) => {
       if (!start || event.pointerId !== start.pointerId) return;
       const bounds = captureHooks.viewport?.() || { width: window.innerWidth, height: window.innerHeight };
-      const minWidth = Math.min(MIN_WIDTH, Math.max(120, bounds.width - 16));
+      const minWidth = Math.min(captureHooks.minWidth || MIN_WIDTH, Math.max(120, bounds.width - 16));
       const bottomInset = Math.max(8, Number(bounds.bottomInset || 8));
-      const minHeight = Math.min(MIN_HEIGHT, Math.max(100, bounds.height - 58 - bottomInset));
+      const minHeight = Math.min(captureHooks.minHeight || MIN_HEIGHT, Math.max(100, bounds.height - 58 - bottomInset));
       const dx = event.clientX - start.x;
       const dy = event.clientY - start.y;
       let left = start.left;

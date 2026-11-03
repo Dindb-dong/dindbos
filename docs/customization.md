@@ -44,6 +44,25 @@ const builtins = {
 
 Use `include` to select specific IDs, or `exclude` to remove defaults. Inspect the installed app registry for IDs rather than guessing a display name. Exclude a builtin before registering your own replacement with the same ID. The Welcome app is opt-in.
 
+## Window layouts
+
+App definitions and `<DindbOSApp>` accept `chrome`, `sidebarWidth`, `minWidth` and `minHeight`:
+
+```js
+const app = defineApp({
+  id: "library",
+  chrome: "integrated",
+  sidebarWidth: 180,
+  minWidth: 480,
+  minHeight: 320,
+  render({ content }) {
+    content.innerHTML = `<section class="library"><header data-window-drag>Library</header><main>…</main></section>`;
+  },
+});
+```
+
+`standard` keeps the default title bar, `document` uses a compact 28px bar, and `integrated` places the window controls over your app's first 52px. In an integrated layout reserve the top-left `sidebarWidth` (90px by default) for window controls. Mark your own toolbar with `data-window-drag`; interactive form elements remain clickable. Use `data-no-drag` for additional custom interactive regions. The runtime retains close, minimize, maximize, resize, focus and saved placement behavior. Declared minimum sizes are bounded by the available desktop workspace.
+
 ## Replace a desktop surface
 
 `ui.slots` supports `desktop`, `menubar`, `dock`, and `windowChrome`. Each renderer receives one object: `{ element, state, actions, defaultRender }`. It can mount into `element` and return a cleanup function. `defaultRender()` mounts the standard UI into that element.
