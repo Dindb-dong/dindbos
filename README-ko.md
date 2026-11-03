@@ -1,17 +1,53 @@
-<p align="center"><img src="docs/assets/banner.svg" alt="dindbOS — 웹페이지 안의 나만의 데스크톱" width="1280"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/dindbos-mark.png">
+    <img src="docs/assets/brand/dindbos-lockup.png" alt="DindbOS" height="96">
+  </picture>
+</p>
 
-<h1 align="center">dindbOS</h1>
+<h1 align="center">DindbOS</h1>
 <p align="center">웹페이지에 데스크톱을 넣고, 내 앱을 올리세요.</p>
 <p align="center"><a href="README.md">English</a> · <strong>한국어</strong></p>
 <p align="center"><a href="https://dindb-dong.github.io/dindbos/">데모</a> · <a href="INSTALL.md">설치</a> · <a href="docs/react-apps.md">앱 만들기</a> · <a href="docs/customization.md">커스터마이징</a></p>
 
-<p align="center"><img src="docs/assets/desktop.png" alt="실제 앱과 메뉴바, Dock이 표시된 dindbOS" width="1280"></p>
+<p align="center"><img src="docs/assets/desktop.png" alt="최신 Files·Notes·Calculator를 실행한 DindbOS 데스크톱" width="1280"></p>
 
 포트폴리오, 인터랙티브 프로젝트, 웹사이트의 일부 페이지를 macOS풍 데스크톱으로 만드는 SDK입니다. React 컴포넌트나 JavaScript 함수를 앱으로 등록하고, 테마와 데스크톱 UI를 바꿀 수 있습니다. 창·포커스·파일·실행 상태는 런타임이 관리합니다.
 
 [개인 포트폴리오](https://dindb-dong.github.io/)에서도 실제로 사용합니다. Applications·Files·Reminders·Calendar·Photos·Music·Clock·TextEdit·Viewer·Terminal·Calculator·Activity Monitor·Settings를 선택해서 사용할 수 있습니다. [기본 앱 기능과 저장 위치](docs/builtin-apps.md).
 
 > 이 문서는 현재 소스의 API를 설명합니다. 해당 소스가 npm에 게시되기 전에는 [INSTALL.md](INSTALL.md)의 로컬 tarball 설치를 사용하세요. 공개 데모는 이전 릴리스일 수 있습니다.
+
+## 데스크톱에서 할 수 있는 일
+
+- **창과 메뉴:** 창 이동·크기 변경·최소화·복원, 활성 앱에 맞는 메뉴를 제공합니다. 여러 데스크톱을 각각 독립된 영역에 넣을 수 있습니다.
+- **익숙한 파일 탐색:** 탭 순서 변경·새 창 분리, 사이드바 즐겨찾기·순서 변경, 인라인 이름 편집, 다음으로 열기, 문서 미리보기, ZIP 압축과 색 태그를 지원합니다.
+- **내 사이트에 맞게:** Settings에서 배경과 화면 모드를 바꾸고 Dock을 조정하세요. 테마 토큰과 렌더 슬롯으로 UI를 교체할 수 있고, React 앱은 호스트 Context를 유지합니다.
+
+기본 진입 시 안내 창 없이 데스크톱이 열립니다. 아래 사진은 실제 기본 앱을 실행하고 촬영용 메모를 입력해 찍은 화면이며, 합성한 UI가 아닙니다.
+
+<table>
+  <tr>
+    <td><img src="docs/assets/applications.png" alt="설치된 앱 아이콘과 검색 기능이 있는 Applications" width="600"></td>
+    <td><img src="docs/assets/files-context-menu.png" alt="다음으로 열기 하위 메뉴가 표시된 Files 우클릭 메뉴" width="600"></td>
+  </tr>
+  <tr><td align="center">설치한 앱을 한곳에서</td><td align="center">파일 작업과 실제 앱 연결</td></tr>
+  <tr>
+    <td><img src="docs/assets/settings-wallpaper.png" alt="배경 미리보기와 갤러리가 있는 Settings" width="600"></td>
+    <td><img src="docs/assets/control-center.png" alt="굴절 유리 재질의 제어센터" width="600"></td>
+  </tr>
+  <tr><td align="center">배경화면과 화면 모드</td><td align="center">제어센터와 Liquid Glass</td></tr>
+</table>
+
+<details>
+<summary>다크 모드·좁은 화면·기본 데스크톱 보기</summary>
+
+![다크 모드 데스크톱](docs/assets/desktop-dark.png)
+<p align="center"><img src="docs/assets/mobile.png" alt="좁은 다크 모드 데스크톱에서 실행한 Notes" width="260"></p>
+
+![안내 창 없이 시작하는 기본 데스크톱](docs/assets/desktop-empty.png)
+
+</details>
 
 ## 시작하기
 
@@ -107,8 +143,12 @@ npm run build
 
 변경 영역의 smoke 검사를 실행하고 실제 화면과 동작을 확인하세요. [기여 안내](CONTRIBUTING.md) · [개발자 문서](docs/developer-guide.md).
 
+## 프로젝트 로고
+
+<p><img src="docs/assets/brand/dindbos-mark.png" alt="DindbOS 프로젝트 로고" width="88"></p>
+
+[투명 로고](docs/assets/brand/dindbos-mark.png) · [투명 lockup](docs/assets/brand/dindbos-lockup.png). 전달받은 파랑·청록 계열 원본을 바탕으로 외곽 배경과 로고 안쪽의 빈 영역을 투명화했습니다. [아트워크와 촬영 출처](docs/assets/README.md).
+
 ## 라이선스
 
 [MIT](LICENSE). 아이콘·SVG는 프로젝트의 원본 아트워크이며 데모 배경은 이 프로젝트를 위해 생성했습니다. [아트워크 출처](docs/assets/README.md)를 참고하세요. 연결된 외부 자료와 프로젝트에는 각각의 라이선스가 적용됩니다.
-
-Dock의 **Applications**에서 설치한 앱을 검색하고 분류해 실행합니다. Files는 사이드바 즐겨찾기 추가·순서 변경과 폴더 드롭을 지원합니다. 떠 있는 UI에는 데스크톱 Chromium의 [실시간 굴절 Liquid Glass](docs/liquid-glass.md)를 적용하며, Safari·Firefox에는 반투명 블러 대체 표시를 제공합니다.

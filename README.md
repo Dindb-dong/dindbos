@@ -1,12 +1,17 @@
-<p align="center"><img src="docs/assets/banner.svg" alt="dindbOS — a desktop for your corner of the web" width="1280"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/dindbos-mark.png">
+    <img src="docs/assets/brand/dindbos-lockup.png" alt="DindbOS" height="96">
+  </picture>
+</p>
 
-<h1 align="center">dindbOS</h1>
+<h1 align="center">DindbOS</h1>
 <p align="center">Give a page its own desktop. Bring your own apps.</p>
 <p align="center"><a href="https://github.com/Dindb-dong/dindbos/blob/main/LICENSE">MIT</a> · React + JavaScript · Browser storage · Custom UI</p>
 <p align="center"><strong>English</strong> · <a href="README-ko.md">한국어</a></p>
 <p align="center"><a href="https://dindb-dong.github.io/dindbos/">Live desktop</a> · <a href="#quick-start">Quick start</a> · <a href="docs/react-apps.md">Write an app</a> · <a href="docs/customization.md">Customize</a> · <a href="docs/agent-guide.md">For agents</a></p>
 
-<p align="center"><img src="docs/assets/desktop.png" alt="dindbOS desktop with real apps, a translucent menu bar, and Dock" width="1280"></p>
+<p align="center"><img src="docs/assets/desktop.png" alt="Current DindbOS desktop with Files, Notes, and Calculator" width="1280"></p>
 
 [Watch the actual desktop in motion](docs/assets/demo.webm) · [Dark appearance](docs/assets/desktop-dark.png) · [Mobile](docs/assets/mobile.png) · [Two embedded desktops](examples/embedded/README.md)
 
@@ -22,6 +27,37 @@ A macOS-inspired desktop SDK for portfolios, interactive projects, and pages tha
 The [portfolio](https://dindb-dong.github.io/) is a real SDK consumer. Built-in Applications, Files, Notes, Reminders, Calendar, Photos, Music, Clock, TextEdit, Viewer, Terminal, Calculator, Activity Monitor, and Settings give a new desktop something useful to do. [App features and storage](docs/builtin-apps.md).
 
 > This README describes the current source revision. The new APIs need its corresponding package build; until that revision is published, use the local tarball instructions in [INSTALL.md](INSTALL.md). The hosted demo may still show an earlier release.
+
+## The desktop experience
+
+- **Windows and menus:** drag, resize, minimize, restore, and use commands belonging to the active app. Embed more than one desktop without sharing focus or window coordinates.
+- **Files that feel familiar:** reorder or tear off tabs, pin and reorder sidebar folders, rename inline, choose Open With, preview documents, create ZIP archives, and add color tags.
+- **Make it yours:** choose wallpaper and appearance in Settings, tune the Dock, or replace shell UI through theme tokens and render slots. Your React components keep their host context.
+
+A normal visit starts with an unobstructed desktop. The showcase images below use actual built-in apps and sample notes entered during capture; they are not UI mockups.
+
+<table>
+  <tr>
+    <td><img src="docs/assets/applications.png" alt="Searchable Applications library with installed app icons" width="600"></td>
+    <td><img src="docs/assets/files-context-menu.png" alt="Finder-style Files context menu with an Open With submenu" width="600"></td>
+  </tr>
+  <tr><td align="center">Your installed apps, together</td><td align="center">File actions and real app associations</td></tr>
+  <tr>
+    <td><img src="docs/assets/settings-wallpaper.png" alt="Settings wallpaper gallery with a live desktop preview" width="600"></td>
+    <td><img src="docs/assets/control-center.png" alt="Control Center with refractive glass controls" width="600"></td>
+  </tr>
+  <tr><td align="center">Wallpaper and appearance</td><td align="center">Control Center and Liquid Glass</td></tr>
+</table>
+
+<details>
+<summary>Dark appearance, narrow screens, and the default desktop</summary>
+
+![Dark desktop](docs/assets/desktop-dark.png)
+<p align="center"><img src="docs/assets/mobile.png" alt="Notes in a narrow dark desktop" width="260"></p>
+
+![Default desktop without an onboarding window](docs/assets/desktop-empty.png)
+
+</details>
 
 ## Quick start
 
@@ -156,8 +192,12 @@ Run the relevant smoke scripts for the area you change. The repository includes 
 
 [Report a bug](https://github.com/Dindb-dong/dindbos/issues/new?template=bug_report.md) · [Request a feature](https://github.com/Dindb-dong/dindbos/issues/new?template=feature_request.md) · [Pull request template](.github/PULL_REQUEST_TEMPLATE.md). Reports from other browsers are welcome; include reproduction steps and the browser version.
 
+## Brand assets
+
+<p><img src="docs/assets/brand/dindbos-mark.png" alt="DindbOS project mark" width="88"></p>
+
+[Transparent logo](docs/assets/brand/dindbos-mark.png) · [Transparent lockup](docs/assets/brand/dindbos-lockup.png). The supplied project artwork uses blue, cyan, and teal; the center aperture and outer background are transparent. [Artwork and capture provenance](docs/assets/README.md).
+
 ## License
 
 [MIT](LICENSE). Original dindbOS icons and SVG artwork are included. Demo wallpaper artwork was generated for this project; see [artwork provenance](docs/assets/README.md). Third-party projects and linked materials retain their own licenses.
-
-The Dock’s **Applications** opens a searchable library of installed apps. Files supports saved sidebar favorites and folder drops. Floating chrome uses [live refractive Liquid Glass](docs/liquid-glass.md) on desktop Chromium, with an explicit frosted fallback on Safari and Firefox.
