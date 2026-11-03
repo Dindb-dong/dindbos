@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { createGlassMap, roundedRectDistance } from "../src/ui/liquid-glass.js";
+assert(roundedRectDistance(0,0,150,100,30)<0);
+assert(roundedRectDistance(150,100,150,100,30)>0);
+const map=createGlassMap(1200,700,40);
+assert(map.width*map.height<=151000);
+assert(map.width<=768);
+assert(map.displacement>2);
+const center=(Math.floor(map.height/2)*map.width+Math.floor(map.width/2))*4;
+assert(Math.abs(map.data[center]-128)<=1&&Math.abs(map.data[center+1]-128)<=1,'stable content field stays neutral');
+assert(map.data.some((value,index)=>index%4<2&&Math.abs(value-128)>20),'curved rim encodes an actual non-neutral displacement');
+assert(createGlassMap(100,100,20,{strength:0}).data.every((value,index)=>index%4===3?value===255:value===128));
+console.log('liquid glass map smoke ok SDF, bounded raster, neutral center and refractive rim');

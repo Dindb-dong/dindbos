@@ -28,7 +28,7 @@ createRoot(document.querySelector("#dindbos-root")).render(
     storage: { name: "dindbos-showcase" },
     builtins: { portfolioData, includeWelcome: true },
     installApps(os) {
-      const pinned = new Set(["files", "terminal", "browser", "calculator", "settings"]);
+      const pinned = new Set(["files", "applications", "terminal", "browser", "calculator", "settings"]);
       for (const app of os.apps.list()) os.registerApp({ ...app, desktop: false, pinned: pinned.has(app.id) });
     },
     serviceWorker: false,

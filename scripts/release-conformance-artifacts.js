@@ -386,7 +386,7 @@ async function createNpmReleaseTrust({ repoRoot, outDir, generatedAt, packageJso
     },
     contentAllowlist: {
       status: violations.length ? "fail" : "pass",
-      allowed: ["package.json", "README.md", "README-ko.md", "LICENSE", "INSTALL.md", "CONTRIBUTING.md", "docs/agent-guide.md", "docs/customization.md", "docs/react-apps.md", "docs/first-app.md", "docs/builtin-apps.md", "docs/assets/**", "dist/**"],
+      allowed: ["package.json", "README.md", "README-ko.md", "LICENSE", "INSTALL.md", "CONTRIBUTING.md", "docs/agent-guide.md", "docs/customization.md", "docs/react-apps.md", "docs/first-app.md", "docs/builtin-apps.md", "docs/liquid-glass.md", "THIRD_PARTY_NOTICES.md", "docs/assets/**", "dist/**"],
       violations,
     },
     requiredFiles: {
@@ -411,7 +411,7 @@ async function createNpmReleaseTrust({ repoRoot, outDir, generatedAt, packageJso
 }
 
 function isAllowedNpmPackageFile(path) {
-  return ["package.json", "README.md", "README-ko.md", "LICENSE", "INSTALL.md", "CONTRIBUTING.md", "docs/agent-guide.md", "docs/customization.md", "docs/react-apps.md", "docs/first-app.md", "docs/builtin-apps.md"].includes(path) || path.startsWith("docs/assets/") || path.startsWith("dist/");
+  return ["package.json", "README.md", "README-ko.md", "LICENSE", "INSTALL.md", "CONTRIBUTING.md", "docs/agent-guide.md", "docs/customization.md", "docs/react-apps.md", "docs/first-app.md", "docs/builtin-apps.md", "docs/liquid-glass.md", "THIRD_PARTY_NOTICES.md"].includes(path) || path.startsWith("docs/assets/") || path.startsWith("dist/");
 }
 
 function createDeploymentRecipes({ generatedAt }) {

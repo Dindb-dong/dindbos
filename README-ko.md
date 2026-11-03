@@ -9,7 +9,7 @@
 
 포트폴리오, 인터랙티브 프로젝트, 웹사이트의 일부 페이지를 macOS풍 데스크톱으로 만드는 SDK입니다. React 컴포넌트나 JavaScript 함수를 앱으로 등록하고, 테마와 데스크톱 UI를 바꿀 수 있습니다. 창·포커스·파일·실행 상태는 런타임이 관리합니다.
 
-[개인 포트폴리오](https://dindb-dong.github.io/)에서도 실제로 사용합니다. Files·Notes·Reminders·Calendar·Photos·Music·Clock·TextEdit·Viewer·Terminal·Calculator·Activity Monitor·Settings를 선택해서 사용할 수 있습니다. [기본 앱 기능과 저장 위치](docs/builtin-apps.md).
+[개인 포트폴리오](https://dindb-dong.github.io/)에서도 실제로 사용합니다. Applications·Files·Reminders·Calendar·Photos·Music·Clock·TextEdit·Viewer·Terminal·Calculator·Activity Monitor·Settings를 선택해서 사용할 수 있습니다. [기본 앱 기능과 저장 위치](docs/builtin-apps.md).
 
 > 이 문서는 현재 소스의 API를 설명합니다. 해당 소스가 npm에 게시되기 전에는 [INSTALL.md](INSTALL.md)의 로컬 tarball 설치를 사용하세요. 공개 데모는 이전 릴리스일 수 있습니다.
 
@@ -106,3 +106,5 @@ npm run build
 ## 라이선스
 
 [MIT](LICENSE). 아이콘·SVG는 프로젝트의 원본 아트워크이며 데모 배경은 이 프로젝트를 위해 생성했습니다. [아트워크 출처](docs/assets/README.md)를 참고하세요. 연결된 외부 자료와 프로젝트에는 각각의 라이선스가 적용됩니다.
+
+Dock의 **Applications**에서 설치한 앱을 검색하고 분류해 실행합니다. Files는 사이드바 즐겨찾기 추가·순서 변경과 폴더 드롭을 지원합니다. 떠 있는 UI에는 데스크톱 Chromium의 [실시간 굴절 Liquid Glass](docs/liquid-glass.md)를 적용하며, Safari·Firefox에는 반투명 블러 대체 표시를 제공합니다.

@@ -44,6 +44,11 @@ function DesktopGrid({ entries, isMobile, openNode, onSelectNode }) {
     "data-desktop-path": entry.path,
     "data-desktop-app-id": entry.appId || undefined,
     "data-desktop-kind": entry.kind,
+    draggable: true,
+    onDragStart: (event) => {
+      event.dataTransfer.setData("application/x-dindbos-path", entry.path);
+      event.dataTransfer.effectAllowed = "copyMove";
+    },
     "aria-label": `Open ${entry.name}`, "aria-pressed": selected === (entry.path || entry.name),
     onPointerDown: () => select(entry),
     onClick: (event) => {

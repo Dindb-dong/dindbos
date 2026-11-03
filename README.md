@@ -19,7 +19,7 @@ A macOS-inspired desktop SDK for portfolios, interactive projects, and pages tha
 | Documents and app content | Virtual files, browser-backed storage, and file associations |
 | An embedded page or full-screen experience | Container-based layout and runtime cleanup |
 
-The [portfolio](https://dindb-dong.github.io/) is a real SDK consumer. Built-in Files, Notes, Reminders, Calendar, Photos, Music, Clock, TextEdit, Viewer, Terminal, Calculator, Activity Monitor, and Settings give a new desktop something useful to do. [App features and storage](docs/builtin-apps.md).
+The [portfolio](https://dindb-dong.github.io/) is a real SDK consumer. Built-in Applications, Files, Notes, Reminders, Calendar, Photos, Music, Clock, TextEdit, Viewer, Terminal, Calculator, Activity Monitor, and Settings give a new desktop something useful to do. [App features and storage](docs/builtin-apps.md).
 
 > This README describes the current source revision. The new APIs need its corresponding package build; until that revision is published, use the local tarball instructions in [INSTALL.md](INSTALL.md). The hosted demo may still show an earlier release.
 
@@ -155,3 +155,5 @@ Run the relevant smoke scripts for the area you change. The repository includes 
 ## License
 
 [MIT](LICENSE). Original dindbOS icons and SVG artwork are included. Demo wallpaper artwork was generated for this project; see [artwork provenance](docs/assets/README.md). Third-party projects and linked materials retain their own licenses.
+
+The Dock’s **Applications** opens a searchable library of installed apps. Files supports saved sidebar favorites and folder drops. Floating chrome uses [live refractive Liquid Glass](docs/liquid-glass.md) on desktop Chromium, with an explicit frosted fallback on Safari and Firefox.

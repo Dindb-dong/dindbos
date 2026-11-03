@@ -54,7 +54,7 @@ export function publicHostConfig(config = {}) {
       hasConformanceHook: typeof config.diagnostics?.onConformanceEvidence === "function",
     },
     theme: config.theme,
-    ui: { slots: Object.keys(config.ui?.slots || {}) },
+    ui: { slots: Object.keys(config.ui?.slots || {}), liquidGlass: config.ui?.liquidGlass !== false },
   };
 }
 
@@ -262,6 +262,13 @@ function normalizeEvidence(record, index) {
 
 function normalizeUI(value) {
   if (!value || typeof value !== "object") throw new TypeError("DindbOS ui must be an object");
+  if (value.liquidGlass !== undefined && typeof value.liquidGlass !== "boolean") {
+    if (!value.liquidGlass || typeof value.liquidGlass !== "object" || Array.isArray(value.liquidGlass)) throw new TypeError("DindbOS liquidGlass must be a boolean or options object");
+    for (const [key, limit] of [["strength", 3], ["blur", 30], ["maxSurfaces", 48]]) {
+      const option = value.liquidGlass[key];
+      if (option !== undefined && (!Number.isFinite(option) || option < (key === "maxSurfaces" ? 1 : 0) || option > limit || (key === "maxSurfaces" && !Number.isInteger(option)))) throw new TypeError(`Invalid liquidGlass ${key}`);
+    }
+  }
   const slots = { ...(value.slots || {}) };
   for (const [name, render] of Object.entries(slots)) {
     if (!["desktop", "menubar", "dock", "windowChrome"].includes(name) || typeof render !== "function") throw new TypeError(`Invalid DindbOS UI slot: ${name}`);

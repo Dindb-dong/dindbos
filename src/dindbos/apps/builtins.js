@@ -3,6 +3,7 @@ import { renderDocumentEditor } from "./document-editor.js";
 import { renderNotes, renderReminders, renderCalendar } from "./productivity.js";
 import { renderPhotos, renderMusic } from "./media.js";
 import { renderClock } from "./clock.js";
+import { renderApplications } from "./applications.js";
 import { appearanceMarkup, wireAppearanceControls, welcomeMarkup } from "./appearance.js";
 import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js";
 import {
@@ -84,6 +85,13 @@ export function installBuiltinApps(os, options = {}) {
     render: ({ os: runtime, content, context, window }) => (
       renderFiles(runtime, content, context.path || runtime.session.home || "/", window)
     ),
+  });
+
+  register({
+    id: "applications", name: "Applications", title: "Applications", icon: "applications",
+    singleton: true, pinned: true, desktop: false, width: 960, height: 680,
+    manifest: { capabilities: ["app.launch"], fileSystem: { read: [], write: [] } },
+    render: ({ os: runtime, content, context, window }) => renderApplications(runtime, content, { ...context, launchApp: (id) => os.shell.launchApp(id) }, window),
   });
 
   register({
@@ -293,6 +301,35 @@ function renderFiles(os, content, path, windowApi) {
       { label: "Logs", path: "/var/log", icon: "text" },
     ] },
   ];
+  const favoritesPath = os.fs.join(os.session.home || "/home/guest", ".config/dindbos/files-favorites.json");
+  const defaultFavorites = sidebar[0].items;
+  let favoritePaths = defaultFavorites.map((item) => item.path);
+  try {
+    if (os.fs.exists(favoritesPath)) {
+      const saved = JSON.parse(os.fs.readFile(favoritesPath));
+      if (Array.isArray(saved) && saved.every((item) => typeof item === "string" && item.startsWith("/"))) favoritePaths = [...new Set(saved)];
+    }
+  } catch { /* Preserve unreadable preferences; the built-in shortcuts remain usable. */ }
+  const favoriteItems = () => favoritePaths.map((path) => defaultFavorites.find((item) => item.path === path) || { path, label: os.fs.basename(path) || "DindbOS", icon: "folder" });
+  const saveFavorites = async (next) => {
+    const previous = favoritePaths;
+    favoritePaths = [...new Set(next)];
+    try {
+      const home = os.session.home || "/home/guest";
+      for (const directory of [os.fs.join(home, ".config"), os.fs.join(home, ".config/dindbos")]) if (!os.fs.exists(directory)) os.fs.createDirectory(directory, "/", { owner: os.session.user, group: os.session.groups?.[0] || "users" });
+      const text = JSON.stringify(favoritePaths);
+      if (os.fs.exists(favoritesPath)) os.fs.writeFile(favoritesPath, text);
+      else os.fs.createFile(favoritesPath, "/", { content: text, mime: "application/json" });
+      await syncAppStorage(os);
+      await draw(currentPath, selectedPath, { preserveSelection: true });
+    } catch (error) { favoritePaths = previous; windowApi.setTitle(`Files — Could not save Favorites: ${error.message}`); }
+  };
+  const addFavorite = async (path) => {
+    if (typeof path !== "string" || !path.startsWith("/")) throw new Error("Drag a folder from this desktop to add it to Favorites.");
+    const node = os.fs.resolveNode(os.fs.resolve(path) || os.fs.stat(path));
+    if (!["directory", "mount"].includes(node?.type)) throw new Error("Only folders can be added to Favorites.");
+    await saveFavorites([...favoritePaths, os.fs.normalize(path)]);
+  };
   let currentPath = os.fs.normalize(path);
   let selectedPath = currentPath;
   let clipboard = null;
@@ -350,18 +387,22 @@ function renderFiles(os, content, path, windowApi) {
     const diagnostics = buildFilesDiagnostics(os, currentPath, [...selectedPaths], operationHistory, visibleOperation, mountStatus);
     if (disposed || generation !== drawGeneration) return;
     const visibleColumns = viewMode === "list" ? [currentColumn] : columns;
+    sidebar[0].items = favoriteItems();
+    const activeSidebarItem = sidebar.flatMap((group) => group.items).filter((item) => isWithinPath(currentPath, item.path)).sort((a, b) => b.path.length - a.path.length)[0];
+
     content.innerHTML = `
       <section class="files-app${inspectorOpen ? " has-inspector" : ""}" tabindex="0" data-files-view="${viewMode}">
         <aside class="files-sidebar">
           ${sidebar.map((group) => `
-            <section>
+            <section ${group.section === "Favorites" ? 'data-files-favorites aria-label="Favorites"' : ""}>
               <h3>${escapeHtml(group.section)}</h3>
               ${group.items.map((item) => `
-                <button type="button" data-nav="${escapeAttr(item.path)}" data-icon="${escapeAttr(item.icon)}" class="${isWithinPath(currentPath, item.path) ? "is-active" : ""}">
+                <button type="button" data-nav="${escapeAttr(item.path)}" data-icon="${escapeAttr(item.icon)}" ${group.section === "Favorites" ? 'draggable="true" data-favorite="true"' : ""} aria-current="${activeSidebarItem === item ? "page" : "false"}" class="${activeSidebarItem === item ? "is-active" : ""}">
                   <span class="dos-mini-icon">${filesMiniIcon(item.icon)}</span>
                   ${escapeHtml(item.label)}
                 </button>
               `).join("")}
+              ${group.section === "Favorites" ? '<div class="files-favorite-dropzone" data-favorite-drop>Add folder to Favorites</div>' : ""}
             </section>
           `).join("")}
         </aside>
@@ -375,13 +416,13 @@ function renderFiles(os, content, path, windowApi) {
             <span class="files-toolbar-spacer"></span>
             <details class="files-toolbar-menu files-view-menu">
               <summary aria-label="File view" title="Change view">${filesToolIcon(viewMode === "list" ? "list" : "columns")}${filesToolIcon("chevron")}</summary>
-              <div class="files-action-menu" role="menu" aria-label="File view">
+              <div class="files-action-menu" data-glass-surface="menu" role="menu" aria-label="File view">
                 ${[["list", "as List"], ["columns", "as Columns"]].map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${viewMode === value}" data-files-view="${value}"><span>${filesToolIcon(value)}</span>${label}<span class="files-menu-check" aria-hidden="true">${viewMode === value ? "✓" : ""}</span></button>`).join("")}
               </div>
             </details>
             <details class="files-toolbar-menu files-sort-menu">
               <summary aria-label="Sort files" title="Sort files">${filesToolIcon("sort")}</summary>
-              <div class="files-action-menu" role="menu" aria-label="Sort files">
+              <div class="files-action-menu" data-glass-surface="menu" role="menu" aria-label="Sort files">
                 <span class="files-menu-heading">Sort by</span>
                 ${[["kind-name", "Kind"], ["name", "Name"], ["modified", "Date Modified"], ["size", "Size"]].map(([value, label]) => `<button type="button" role="menuitemradio" aria-checked="${sortMode === value}" data-files-sort="${value}">${label}<span class="files-menu-check" aria-hidden="true">${sortMode === value ? "✓" : ""}</span></button>`).join("")}
               </div>
@@ -391,8 +432,8 @@ function renderFiles(os, content, path, windowApi) {
             <button type="button" data-action="import" aria-label="Import" title="Import files">${filesToolIcon("import")}</button>
             <details class="files-more-actions files-toolbar-menu">
               <summary aria-label="More file actions" title="More actions">${filesToolIcon("more")}</summary>
-              <div class="files-action-menu" role="menu" aria-label="More file actions">
-                ${[["new-file", "New File"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["mount-local", "Mount Local Folder"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" role="menuitem" data-action="${action}">${label}</button>`).join("")}
+              <div class="files-action-menu" data-glass-surface="menu" role="menu" aria-label="More file actions">
+                ${[["favorite-current", "Add Current Folder to Favorites"], ["new-file", "New File"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", "Paste"], ["trash", "Move to Trash"], ["export", "Export"], ["mount-local", "Mount Local Folder"], ["delete", "Delete Permanently"]].map(([action, label]) => `<button type="button" role="menuitem" data-action="${action}">${label}</button>`).join("")}
               </div>
             </details>
             <button type="button" data-files-inspector aria-label="Toggle Inspector" aria-pressed="${inspectorOpen}" title="Show file information">${filesToolIcon("info")}</button>
@@ -450,6 +491,81 @@ function renderFiles(os, content, path, windowApi) {
     content.querySelectorAll("[data-nav]").forEach((button) => {
       button.addEventListener("click", () => draw(button.dataset.nav));
     });
+    const favoritesSection = content.querySelector("[data-files-favorites]");
+    const clearSidebarDrag = () => {
+      content.querySelectorAll(".is-drop-target, .is-favorite-before, .is-favorite-after").forEach((item) => item.classList.remove("is-drop-target", "is-favorite-before", "is-favorite-after"));
+      favoritesSection.classList.remove("is-favorite-drop");
+    };
+    const reportSidebarError = (error) => windowApi.setTitle(`Files — ${error.message}`);
+    const reorderFavorite = async (source, target, after = false) => {
+      if (source === target) return;
+      const next = favoritePaths.filter((path) => path !== source);
+      const index = target ? next.indexOf(target) : next.length;
+      next.splice(index < 0 ? next.length : index + (after ? 1 : 0), 0, source);
+      await saveFavorites(next);
+    };
+    content.querySelectorAll("[data-nav]").forEach((button) => {
+      if (button.dataset.favorite) {
+        button.addEventListener("dragstart", (event) => {
+          event.dataTransfer.setData("application/x-dindbos-sidebar-favorite", button.dataset.nav);
+          event.dataTransfer.setData("application/x-dindbos-path", button.dataset.nav);
+          event.dataTransfer.effectAllowed = "move";
+        });
+        const favoriteMenu = (event) => {
+          event.preventDefault(); event.stopPropagation();
+          const index = favoritePaths.indexOf(button.dataset.nav);
+          showFilesActionMenu(content, event, [["remove", "Remove from Favorites"], ["up", "Move Up", index === 0], ["down", "Move Down", index === favoritePaths.length - 1]], async (action) => {
+            if (action === "remove") await saveFavorites(favoritePaths.filter((path) => path !== button.dataset.nav));
+            else {
+              const next = [...favoritePaths];
+              const to = index + (action === "up" ? -1 : 1);
+              if (to >= 0 && to < next.length) { [next[index], next[to]] = [next[to], next[index]]; await saveFavorites(next); }
+            }
+          }, "Favorite actions");
+        };
+        button.addEventListener("contextmenu", favoriteMenu);
+        button.addEventListener("keydown", (event) => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            const box = button.getBoundingClientRect(); favoriteMenu({ target: button, clientX: box.left + 20, clientY: box.bottom, preventDefault: () => event.preventDefault(), stopPropagation: () => event.stopPropagation() });
+          }
+        });
+      }
+      button.addEventListener("dragover", (event) => {
+        if (![...event.dataTransfer.types].some((type) => ["application/x-dindbos-sidebar-favorite", "application/x-dindbos-path", "Files"].includes(type))) return;
+        event.preventDefault(); event.stopPropagation(); clearSidebarDrag();
+        const reordering = event.dataTransfer.types.includes("application/x-dindbos-sidebar-favorite") && button.dataset.favorite;
+        const after = event.clientY > button.getBoundingClientRect().top + button.offsetHeight / 2;
+        button.classList.add(reordering ? after ? "is-favorite-after" : "is-favorite-before" : "is-drop-target");
+        event.dataTransfer.dropEffect = reordering ? "move" : event.dataTransfer.types.includes("Files") ? "copy" : "move";
+      });
+      button.addEventListener("dragleave", () => button.classList.remove("is-drop-target", "is-favorite-before", "is-favorite-after"));
+      button.addEventListener("drop", async (event) => {
+        event.preventDefault(); event.stopPropagation();
+        const after = button.classList.contains("is-favorite-after");
+        clearSidebarDrag();
+        try {
+          const sourceFavorite = event.dataTransfer.getData("application/x-dindbos-sidebar-favorite");
+          if (sourceFavorite && button.dataset.favorite) await reorderFavorite(sourceFavorite, button.dataset.nav, after);
+          else await handleFilesDrop(os, event, button.dataset.nav, draw, windowApi, content, (operation) => { operationHistory = recordFilesOperationHistory(operationHistory, operation); });
+        } catch (error) { reportSidebarError(error); }
+      });
+    });
+    favoritesSection.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer.types.includes("application/x-dindbos-path")) return;
+      event.preventDefault(); event.stopPropagation(); clearSidebarDrag();
+      favoritesSection.classList.add("is-favorite-drop");
+      event.dataTransfer.dropEffect = event.dataTransfer.types.includes("application/x-dindbos-sidebar-favorite") ? "move" : "copy";
+    });
+    favoritesSection.addEventListener("dragleave", (event) => { if (!favoritesSection.contains(event.relatedTarget)) clearSidebarDrag(); });
+    favoritesSection.addEventListener("drop", async (event) => {
+      event.preventDefault(); event.stopPropagation(); clearSidebarDrag();
+      try {
+        const favorite = event.dataTransfer.getData("application/x-dindbos-sidebar-favorite");
+        if (favorite) await reorderFavorite(favorite, null);
+        else await addFavorite(event.dataTransfer.getData("application/x-dindbos-path"));
+      } catch (error) { reportSidebarError(error); }
+    });
+    appRoot.addEventListener("dragend", clearSidebarDrag);
     content.querySelector("[data-files-inspector]").addEventListener("click", () => {
       inspectorOpen = !inspectorOpen;
       draw(currentPath, selectedPath, { preserveSelection: true });
@@ -464,35 +580,77 @@ function renderFiles(os, content, path, windowApi) {
       viewMode = button.dataset.filesView;
       draw(currentPath, selectedPath, { preserveSelection: true });
     }));
-    content.querySelectorAll("details.files-toolbar-menu").forEach((details) => {
-      details.addEventListener("toggle", () => {
-        if (details.open) content.querySelectorAll("details.files-toolbar-menu").forEach((other) => { if (other !== details) other.open = false; });
-      });
-    });
-    const dismissOutsideToolbar = (event) => {
-      content.querySelectorAll("details.files-toolbar-menu[open]").forEach((details) => { if (!details.contains(event.target)) details.open = false; });
+    const menuLayer = document.createElement("div");
+    menuLayer.className = "files-menu-layer";
+    content.appendChild(menuLayer);
+    const toolbarMenus = new Map([...content.querySelectorAll("details.files-toolbar-menu")].map((details, index) => {
+      const menu = details.querySelector(".files-action-menu");
+      menu.id = `files-menu-${windowApi.id || "window"}-${generation}-${index}`;
+      details.querySelector("summary").setAttribute("aria-controls", menu.id);
+      return [details, menu];
+    }));
+    const closeToolbarMenu = (details, restoreFocus = false) => {
+      details.open = false;
+      const menu = toolbarMenus.get(details);
+      if (menu && menu.parentElement !== details) details.appendChild(menu);
+      if (restoreFocus) details.querySelector("summary")?.focus({ preventScroll: true });
     };
-    document.addEventListener("pointerdown", dismissOutsideToolbar, true);
-    dismissToolbarMenus = () => document.removeEventListener("pointerdown", dismissOutsideToolbar, true);
-    appRoot.addEventListener("keydown", (event) => {
-      const details = event.target.closest("details.files-toolbar-menu");
+    const positionToolbarMenu = (details) => {
+      const menu = toolbarMenus.get(details);
+      if (!menu || !details.open) return;
+      const bounds = content.getBoundingClientRect();
+      const anchor = details.querySelector("summary").getBoundingClientRect();
+      menu.style.maxHeight = `${Math.max(40, bounds.height - 8)}px`;
+      const left = Math.max(4, Math.min(anchor.right - bounds.left - menu.offsetWidth, bounds.width - menu.offsetWidth - 4));
+      let top = anchor.bottom - bounds.top + 5;
+      if (top + menu.offsetHeight > bounds.height - 4) top = anchor.top - bounds.top - menu.offsetHeight - 5;
+      menu.style.left = `${left}px`;
+      menu.style.top = `${Math.max(4, Math.min(top, bounds.height - menu.offsetHeight - 4))}px`;
+    };
+    const openToolbarMenu = (details) => {
+      for (const other of toolbarMenus.keys()) if (other !== details) closeToolbarMenu(other);
+      const menu = toolbarMenus.get(details);
+      details.open = true;
+      if (menu.parentElement !== menuLayer) menuLayer.appendChild(menu);
+      positionToolbarMenu(details);
+    };
+    for (const [details] of toolbarMenus) {
+      details.querySelector("summary").addEventListener("click", (event) => {
+        event.preventDefault();
+        if (details.open) closeToolbarMenu(details);
+        else openToolbarMenu(details);
+      });
+      details.addEventListener("toggle", () => details.open ? openToolbarMenu(details) : closeToolbarMenu(details));
+    }
+    const dismissOutsideToolbar = (event) => {
+      for (const [details, menu] of toolbarMenus) if (details.open && !details.contains(event.target) && !menu.contains(event.target)) closeToolbarMenu(details);
+    };
+    const toolbarKeyDown = (event) => {
+      const details = event.target.closest("details.files-toolbar-menu") || [...toolbarMenus].find(([, menu]) => menu.contains(event.target))?.[0];
       if (!details) return;
-      const items = [...details.querySelectorAll("button:not(:disabled)")];
+      const items = [...toolbarMenus.get(details).querySelectorAll("button:not(:disabled)")];
       const index = items.indexOf(document.activeElement);
       if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-        event.preventDefault();
-        event.stopPropagation();
-        details.open = true;
+        event.preventDefault(); event.stopPropagation(); openToolbarMenu(details);
         const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : index < 0 ? (event.key === "ArrowUp" ? items.length - 1 : 0) : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-        items[next]?.focus();
+        items[next]?.focus({ preventScroll: true });
       }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        details.open = false;
-        details.querySelector("summary")?.focus();
-      }
-    });
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeToolbarMenu(details, true); }
+    };
+    const repositionMenus = () => { for (const details of toolbarMenus.keys()) positionToolbarMenu(details); };
+    const menuObserver = typeof ResizeObserver === "function" ? new ResizeObserver(repositionMenus) : null;
+    menuObserver?.observe(content);
+    document.addEventListener("pointerdown", dismissOutsideToolbar, true);
+    content.addEventListener("keydown", toolbarKeyDown);
+    content.addEventListener("scroll", repositionMenus, true);
+    menuLayer.addEventListener("contextmenu", (event) => { event.preventDefault(); event.stopPropagation(); });
+    dismissToolbarMenus = () => {
+      document.removeEventListener("pointerdown", dismissOutsideToolbar, true);
+      content.removeEventListener("keydown", toolbarKeyDown);
+      content.removeEventListener("scroll", repositionMenus, true);
+      menuObserver?.disconnect();
+      for (const details of toolbarMenus.keys()) closeToolbarMenu(details);
+    };
     if (viewMode === "columns") {
       const columnView = content.querySelector(".files-column-view");
       const revealCurrentColumn = () => { columnView.scrollLeft = columnView.scrollWidth; };
@@ -559,20 +717,22 @@ function renderFiles(os, content, path, windowApi) {
         });
         const selectionStatus = content.querySelector(".files-status > span");
         if (selectionStatus) selectionStatus.textContent = selectionStatus.textContent.replace(/ · \d+ selected$/, ` · ${selectedPaths.size} selected`);
-        showFilesContextMenu(content, event, selectedPath, clipboard, runAction);
+        showFilesContextMenu(content, event, selectedPath, clipboard, runAction, false, Boolean(button.dataset.dropPath));
       });
       button.addEventListener("dragstart", (event) => {
         event.dataTransfer.setData("application/x-dindbos-path", button.dataset.path);
-        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.effectAllowed = "copyMove";
       });
       if (button.dataset.dropPath) {
         button.addEventListener("dragover", (event) => {
           event.preventDefault();
+          event.stopPropagation();
           button.classList.add("is-drop-target");
         });
         button.addEventListener("dragleave", () => button.classList.remove("is-drop-target"));
         button.addEventListener("drop", async (event) => {
           event.preventDefault();
+          event.stopPropagation();
           button.classList.remove("is-drop-target");
           await handleFilesDrop(os, event, button.dataset.dropPath, draw, windowApi, content, (operation) => {
             operationHistory = recordFilesOperationHistory(operationHistory, operation);
@@ -593,16 +753,16 @@ function renderFiles(os, content, path, windowApi) {
     appRoot.addEventListener("keydown", async (event) => {
       if (event.defaultPrevented) return;
       if (event.key === "Escape") {
-        content.querySelectorAll("details.files-toolbar-menu[open]").forEach((details) => { details.open = false; details.querySelector("summary")?.focus(); });
+        content.querySelectorAll("details.files-toolbar-menu[open]").forEach((details) => closeToolbarMenu(details, true));
       }
       if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
         event.preventDefault();
         const row = [...content.querySelectorAll(".files-row")].find((item) => item.dataset.path === selectedPath);
         const box = (row || appRoot).getBoundingClientRect();
-        showFilesContextMenu(content, { clientX: box.left + 24, clientY: box.top + 24 }, selectedPath, clipboard, runAction, selectedPath === currentPath);
+        showFilesContextMenu(content, { clientX: box.left + 24, clientY: box.top + 24 }, selectedPath, clipboard, runAction, selectedPath === currentPath, Boolean(row?.dataset.dropPath));
         return;
       }
-      if (event.target.closest(".files-commandbar, input, textarea, select, [contenteditable='true']")) return;
+      if (event.target.closest(".files-commandbar, .files-sidebar, input, textarea, select, [contenteditable='true']")) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
         event.preventDefault();
         await runAction("copy");
@@ -651,7 +811,7 @@ function renderFiles(os, content, path, windowApi) {
       }
     });
     appRoot.addEventListener("contextmenu", (event) => {
-      if (event.target.closest("[data-path], input, textarea")) return;
+      if (event.target.closest("[data-path], .files-sidebar, input, textarea")) return;
       event.preventDefault();
       event.stopPropagation();
       showFilesContextMenu(content, event, currentPath, clipboard, runAction, true);
@@ -695,6 +855,10 @@ function renderFiles(os, content, path, windowApi) {
   };
   const runAction = async (action, actionPath = selectedPath) => {
     if (disposed) return;
+    if (action === "favorite" || action === "favorite-current") {
+      try { await addFavorite(action === "favorite-current" ? currentPath : actionPath); } catch (error) { windowApi.setTitle(`Files — ${error.message}`); }
+      return;
+    }
     content.querySelector(".files-more-actions")?.removeAttribute("open");
     const reporter = createFilesOperationReporter(content, operationLabel(action));
     try {
@@ -1320,16 +1484,22 @@ function operationLabel(action) {
 
 const contextMenuCleanups = new WeakMap();
 
-function showFilesContextMenu(content, event, targetPath, clipboard, runAction, background = false) {
+function showFilesContextMenu(content, event, targetPath, clipboard, runAction, background = false, folder = false) {
+  const actions = background
+    ? [["new-folder", "New Folder"], ["new-file", "New File"], ["import", "Import Files…"], ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste", !clipboard]]
+    : [["open", "Open"], ...(folder ? [["favorite", "Add to Favorites"]] : []), ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste", !clipboard], ["trash", "Move to Trash"], ["export", "Export…"]];
+  showFilesActionMenu(content, event, actions, (action) => runAction(action, targetPath), background ? "Folder actions" : "File actions");
+}
+
+function showFilesActionMenu(content, event, actions, runAction, label) {
   contextMenuCleanups.get(content)?.();
+  const previousFocus = document.activeElement;
   const menu = document.createElement("div");
   menu.className = "files-context-menu";
+  menu.dataset.glassSurface = "menu";
   menu.setAttribute("role", "menu");
-  const actions = background
-    ? [["new-folder", "New Folder"], ["new-file", "New File"], ["import", "Import Files…"], ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste"]]
-    : [["open", "Open"], ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste"], ["trash", "Move to Trash"], ["export", "Export…"]];
-  menu.setAttribute("aria-label", background ? "Folder actions" : "File actions");
-  menu.innerHTML = actions.map(([action, label]) => `<button type="button" role="menuitem" data-context-action="${escapeAttr(action)}" ${action === "paste" && !clipboard ? "disabled" : ""}>${escapeHtml(label)}${action === "copy" ? '<kbd>⌘C</kbd>' : action === "paste" ? '<kbd>⌘V</kbd>' : ""}</button>`).join("");
+  menu.setAttribute("aria-label", label);
+  menu.innerHTML = actions.map(([action, text, disabled]) => `<button type="button" role="menuitem" data-context-action="${escapeAttr(action)}" ${disabled ? "disabled" : ""}>${escapeHtml(text)}${action === "copy" ? '<kbd>⌘C</kbd>' : action === "paste" ? '<kbd>⌘V</kbd>' : ""}</button>`).join("");
   content.appendChild(menu);
   const bounds = content.getBoundingClientRect();
   menu.style.left = `${Math.max(4, Math.min(event.clientX - bounds.left, bounds.width - menu.offsetWidth - 4))}px`;
@@ -1343,14 +1513,17 @@ function showFilesContextMenu(content, event, targetPath, clipboard, runAction, 
   const outside = (nextEvent) => { if (!menu.contains(nextEvent.target)) close(); };
   contextMenuCleanups.set(content, close);
   document.addEventListener("pointerdown", outside, true);
-  menu.querySelectorAll("[data-context-action]").forEach((button) => button.addEventListener("click", async () => { close(); await runAction(button.dataset.contextAction, targetPath); }));
+  menu.querySelectorAll("[data-context-action]").forEach((button) => button.addEventListener("click", async () => {
+    close();
+    try { await runAction(button.dataset.contextAction); } catch { /* The owning app reports operation failures. */ }
+  }));
   menu.addEventListener("keydown", (keyEvent) => {
     const items = [...menu.querySelectorAll("button:not(:disabled)")];
     const index = items.indexOf(document.activeElement);
-    if (keyEvent.key === "Escape") { keyEvent.preventDefault(); close(); content.querySelector(".files-app")?.focus(); }
-    if (["ArrowDown", "ArrowUp"].includes(keyEvent.key)) { keyEvent.preventDefault(); items[(index + (keyEvent.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus(); }
+    if (keyEvent.key === "Escape") { keyEvent.preventDefault(); keyEvent.stopPropagation(); close(); (previousFocus?.isConnected ? previousFocus : content.querySelector(".files-app"))?.focus({ preventScroll: true }); }
+    if (["ArrowDown", "ArrowUp"].includes(keyEvent.key)) { keyEvent.preventDefault(); items[(index + (keyEvent.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus({ preventScroll: true }); }
   });
-  menu.querySelector("button:not(:disabled)")?.focus();
+  menu.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
 }
 
 async function handleFilesDrop(os, event, destinationPath, draw, windowApi, content, onHistory = null) {
@@ -1361,11 +1534,13 @@ async function handleFilesDrop(os, event, destinationPath, draw, windowApi, cont
     if (sourcePath) {
       const moved = await movePathIntoDirectory(os, sourcePath, destinationPath, reporter, conflict);
       onHistory?.(reporter.complete("Complete"));
+      await syncAppStorage(os);
       await draw(destinationPath, moved || destinationPath);
       return;
     }
     const imported = await importDroppedFiles(os, destinationPath, event.dataTransfer?.files || [], reporter, conflict);
     onHistory?.(reporter.complete("Complete"));
+    await syncAppStorage(os);
     await draw(destinationPath, imported[0] || destinationPath);
   } catch (error) {
     onHistory?.(reporter.fail(error));

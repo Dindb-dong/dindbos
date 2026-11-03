@@ -1,10 +1,11 @@
 # Built-in apps
 
-Choose apps with `builtins: { include: ['files', 'notes', 'calendar'] }` or exclude individual IDs. Register your own replacements through the same app API. Welcome provides shortcuts; Search applications lists installed apps. Built-ins use the desktop instance's filesystem, permissions, appearance, and lifecycle.
+Choose apps with `builtins: { include: ['files', 'notes', 'calendar'] }` or exclude individual IDs. Register your own replacements through the same app API. Applications in the Dock lists installed apps with search and categories. Welcome provides shortcuts. Built-ins use the desktop instance's filesystem, permissions, appearance, and lifecycle.
 
 | ID | App | Working features |
 | --- | --- | --- |
-| `files` | Files | Folders, history, search, list/columns, view/sort menus, import/export, contextual actions |
+| `files` | Files | Folders, history, search, list/columns, view/sort menus, import/export, contextual actions, saved drag-and-drop Favorites |
+| `applications` | Applications | Installed app grid, search, categories, keyboard launch, restore existing windows |
 | `notes` | Notes | Create, edit, search, delete, automatic local saving |
 | `reminders` | Reminders | Tasks, completion, due dates, filtered lists |
 | `calendar` | Calendar | Month navigation, selected-day events, add/delete events |
@@ -30,3 +31,9 @@ Data persists through the configured runtime storage backend. Memory-only deskto
 ## Context menus
 
 The desktop background offers desktop actions. Desktop files/folders offer item actions. App shortcuts offer launch/reveal/Dock actions. Dock app menus reflect open windows, minimized state and pin state, with Show, New Window where supported, Keep/Remove from Dock, and Quit while running. Quit respects each window's unsaved-close guard. Right-click or Shift+F10 opens the relevant menu; Escape dismisses it and restores focus.
+
+## Finder sidebar
+
+Drag a folder from the desktop or Files into the Favorites insertion area to save a shortcut. Drag favorites to reorder them; right-click provides Move Up, Move Down and Remove alternatives. Dropping files onto a sidebar folder moves them into that folder. External file drops import a copy through the usual permission checks. Favorites are saved in `~/.config/dindbos/files-favorites.json`; the active location selects only its deepest matching sidebar item.
+
+Applications uses the installed app registry. Choose Refresh after registering or removing apps while the library is open. Custom app definitions may set `category` to `productivity`, `media`, `utilities`, `development`, `internet`, or `other`. Unrecognized categories appear under Other.

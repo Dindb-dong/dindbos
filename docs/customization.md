@@ -67,3 +67,7 @@ Use the supplied `state` and `actions` when building a replacement. Their member
 `fileSystem` seeds the virtual filesystem; it is not access to the visitor's real disk. `storage.name` separates independent desktops. Use `backend: "memory"` for temporary examples. Persisted data may override seed files on later visits, so do not reset storage just to refresh a demo.
 
 The host container controls the desktop's size. Your existing page and sibling desktops should retain their own styles, scroll, and keyboard behavior. Test both a full-screen host and a small embedded host after a custom UI change.
+
+## Refractive glass
+
+Floating shell surfaces use the instance-owned [Liquid Glass adapter](liquid-glass.md). Set `ui.liquidGlass` to `false` to retain the ordinary theme material, or configure `{ strength: 1, blur: 0.6, maxSurfaces: 18 }`. Mark custom chrome with `data-glass-surface` to opt in. The adapter follows desktop cleanup and honors reduced transparency; desktop Chromium provides refraction and Safari/Firefox use a frosted fallback.

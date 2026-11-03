@@ -84,6 +84,7 @@ export interface DindbOSAppSummary {
   name: string;
   icon?: unknown;
   pinned?: boolean;
+  category?: string;
   singleton?: boolean;
 }
 
@@ -93,6 +94,7 @@ export interface DindbOSHostApp<Context = Record<string, unknown>> {
   title?: string | ((context: Context) => string);
   icon?: unknown;
   pinned?: boolean;
+  category?: string;
   desktop?: boolean;
   singleton?: boolean;
   width?: number;
@@ -116,6 +118,7 @@ export interface DindbOSSlotContext {
 export type DindbOSSlotRenderer = (context: DindbOSSlotContext) => void | (() => void);
 export interface DindbOSUIOptions {
   slots?: Partial<Record<"desktop" | "menubar" | "dock" | "windowChrome", DindbOSSlotRenderer>>;
+  liquidGlass?: boolean | { strength?: number; blur?: number; maxSurfaces?: number };
 }
 
 export interface DindbOSStorageAdapter {

@@ -1,5 +1,6 @@
 import { createDesktopRenderer } from "../ui/desktop-view.js";
 import { ShellPanels } from "../ui/shell-panels.js";
+import { attachLiquidGlass } from "../ui/liquid-glass.js";
 
 export class DesktopShell {
   constructor(os) {
@@ -57,6 +58,7 @@ export class DesktopShell {
     this.clockTimer = globalThis.setInterval(() => this.tickClock(), 1000);
     this.clockTimer.unref?.();
     this.tickClock();
+    if (this.os.uiOptions?.liquidGlass !== false) this.cleanups.push(attachLiquidGlass(root, this.os.uiOptions?.liquidGlass === true ? {} : this.os.uiOptions?.liquidGlass || {}));
   }
 
   listen(target, name, handler, options) {

@@ -9,6 +9,7 @@ const PALETTES = {
   activity: ["#334447", "#101c1e"], settings: ["#d4dbe1", "#8e9aa8"], portfolio: ["#66b88a", "#287451"],
   notes: ["#ffdc77", "#edb540"], reminders: ["#fff", "#e7ecf1"], calendar: ["#fff", "#eef1f4"],
   clock: ["#353e47", "#11171d"], photos: ["#fff", "#e8edf0"], music: ["#f8838c", "#db3b61"],
+  applications: ["#d9e5f5", "#7792ba"],
   text: ["#fff", "#e3e9ef"], file: ["#fff", "#e3e9ef"], pdf: ["#fff", "#e3e9ef"], image: ["#fff", "#e3e9ef"],
 };
 
@@ -54,6 +55,8 @@ export function AppIcon({ icon = "app" }) {
 function path(d, props = {}) { return h("path", { d, stroke: "currentColor", strokeWidth: "2.5", strokeLinecap: "round", strokeLinejoin: "round", ...props }); }
 function iconArtwork(type) {
   if (type === "folder" || type === "directory") return [];
+  if (type === "applications") return [h("g", { key: "applications" },
+    ...[[16, 16, "#86c6ed"], [29, 16, "#f0c776"], [42, 16, "#8fc6ad"], [16, 29, "#e697a7"], [29, 29, "#f6f7f5"], [42, 29, "#b2a9dc"], [16, 42, "#f6f7f5"], [29, 42, "#9eb7d7"], [42, 42, "#f0c776"]].map(([x, y, fill]) => h("rect", { key: `${x}-${y}`, x: x - 4, y: y - 4, width: "10", height: "10", rx: "2.6", fill, stroke: "#fff", strokeOpacity: ".55", strokeWidth: ".7" })))];
   if (type === "notes") return [h("g", { key: "notes" },
     h("path", { d: "M10 20h44v29a5 5 0 0 1-5 5H15a5 5 0 0 1-5-5Z", fill: "#fffdf5" }),
     h("path", { d: "M10 20h44", stroke: "#d5a22d", strokeWidth: "1.2", strokeDasharray: "2 2" }),

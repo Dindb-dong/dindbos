@@ -1,0 +1,67 @@
+import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+import { chromium, expect } from "@playwright/test";
+import { createServer } from "vite";
+
+const source = `
+import {createAndBootDindbOS} from '/src/sdk/index.js';
+import '/src/styles/index.css';
+import '/src/styles/applications.css';
+window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'memory',name:'applications-ui'},bootstrapPackages:false,builtins:{includeWelcome:true}}).then(os=>{window.__os=os;os.launch('applications');return os;});`;
+const server = await createServer({ configFile: false, logLevel: "error", optimizeDeps: { entries: [] }, plugins: [{ name: "applications-fixture", resolveId(id) { if (id === "/applications-fixture.js") return "\0applications-fixture"; }, load(id) { if (id === "\0applications-fixture") return source; }, configureServer(vite) { vite.middlewares.use(async (req, res, next) => { if (req.url?.split("?")[0] !== "/applications-fixture") return next(); res.setHeader("Content-Type", "text/html"); try { res.end(await vite.transformIndexHtml(req.url, '<!doctype html><body style="margin:0"><div id="desktop" style="height:100vh"></div><script type="module" src="/applications-fixture.js"></script>')); } catch (error) { next(error); } }); } }], server: { host: "127.0.0.1", port: 0, hmr: false, watch: null } });
+const output = process.env.DINDBOS_QA_OUTPUT || "internal/docs/qa/applications";
+let browser;
+try {
+  await server.listen(); await mkdir(output, { recursive: true });
+  browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+  const errors = []; page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/applications-fixture`);
+  await page.evaluate(() => window.__ready);
+  const library = page.locator('.dos-window[data-app-id="applications"]');
+  const search = library.getByRole("searchbox", { name: "Search applications", exact: true });
+  const item = (id) => library.locator(`[data-application-id="${id}"]`);
+  for (const id of ["notes", "reminders", "calendar", "clock", "photos", "music"]) await expect(item(id)).toBeVisible();
+  assert.equal(await library.locator("[data-application-id]").count(), await page.evaluate(() => window.__os.apps.list().length - 1), "the library reflects the installed registry");
+  await page.screenshot({ path: `${output}/applications-desktop.png` });
+  await library.getByRole("tab", { name: "Media", exact: true }).click();
+  await expect(item("photos")).toBeVisible(); await expect(item("music")).toBeVisible(); await expect(item("notes")).toHaveCount(0);
+  await library.getByRole("tab", { name: "All", exact: true }).click();
+  await search.fill("notes");
+  await expect(library.locator("[data-application-id]")).toHaveCount(1);
+  await item("notes").click();
+  const notes = page.locator('.dos-window[data-app-id="notes"]');
+  await notes.getByRole("button", { name: "New note", exact: true }).click();
+  await notes.getByRole("textbox", { name: "Note text", exact: true }).fill("Keep this draft when reopening from Applications");
+  await notes.getByRole("button", { name: "Minimize", exact: true }).click();
+  await expect(notes).toBeHidden();
+  await page.evaluate(() => window.__os.windows.focusLatestAppWindow("applications"));
+  await item("notes").click();
+  await expect(notes).toBeVisible(); await expect(page.locator('.dos-window[data-app-id="notes"]')).toHaveCount(1);
+  await expect(notes.getByRole("textbox", { name: "Note text", exact: true })).toHaveValue("Keep this draft when reopening from Applications");
+  await notes.getByRole("button", { name: "Close", exact: true }).click();
+  await page.evaluate(() => window.__os.windows.focusLatestAppWindow("applications"));
+  await search.fill("no such installed app");
+  await expect(library.getByRole("heading", { name: "No applications found", exact: true })).toBeVisible();
+  await library.getByRole("button", { name: "Show all applications", exact: true }).click();
+  await expect(search).toHaveValue("");
+  const buttons = library.locator("[data-application-id]");
+  await buttons.first().focus(); await page.keyboard.press("ArrowRight"); await expect(buttons.nth(1)).toBeFocused();
+  await page.keyboard.press("End"); await expect(buttons.last()).toBeFocused();
+  await page.keyboard.press("Home"); await expect(buttons.first()).toBeFocused();
+  await search.fill("calculator"); await item("calculator").focus(); await page.keyboard.press("Enter");
+  await expect(page.locator('.dos-window[data-app-id="calculator"]')).toBeVisible();
+  await page.evaluate(() => { window.__os.windows.focusLatestAppWindow("applications"); window.__os.registerApp({ id: "local-lab", name: "Local Lab", category: "productivity", icon: "app", manifest: { capabilities: [], fileSystem: {read:[],write:[]} }, render: ({content}) => {content.textContent="A registered custom application";} }); });
+  await library.getByRole("button", { name: "Refresh applications", exact: true }).click();
+  await search.fill("local lab"); await expect(item("local-lab")).toBeVisible();
+  await search.fill(""); await library.getByRole("tab", { name: "Productivity", exact: true }).click(); await expect(item("local-lab")).toBeVisible();
+  await library.getByRole("tab", { name: "All", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => window.__os.setAppearance({ mode: "dark" }));
+  await expect.poll(() => library.locator('.applications-app').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  const bounds = await library.boundingBox();
+  for (const control of [search, library.getByRole("button", { name: "Refresh applications", exact: true }), item("notes")]) { const box = await control.boundingBox(); assert(box.x >= bounds.x && box.x + box.width <= bounds.x + bounds.width + 1, "narrow application controls fit their window"); }
+  await page.screenshot({ path: `${output}/applications-390-dark.png` });
+  await page.evaluate(() => window.__os.destroy());
+  await expect(library).toHaveCount(0); assert.deepEqual(errors, []);
+  console.log("applications browser smoke ok installed registry, six new apps, categories/search, launch+restore draft, keyboard, refresh and narrow dark");
+} finally { await browser?.close(); await server.close(); }

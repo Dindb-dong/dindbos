@@ -325,6 +325,7 @@ export class AppSandbox {
         name: app.name,
         icon: app.icon,
         pinned: app.pinned,
+        ...(typeof app.category === "string" ? { category: app.category } : {}),
         accepts: [...(app.accepts || [])],
       })),
       manifests: () => this.os.apps.manifests(),

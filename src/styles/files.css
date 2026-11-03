@@ -15,12 +15,22 @@
   .files-commandbar .files-view-menu summary { width: 43px; gap: 1px; }
   .files-commandbar .files-view-menu summary .files-tool-icon:last-child { width: 10px; flex-basis: 10px; }
   .files-tool-divider { width: 1px; height: 18px; background: var(--line); margin: 0 4px; flex-shrink: 0; }
+  .files-app { position: relative; z-index: 0; }
+  .files-menu-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+  .files-menu-layer > .files-action-menu { position: absolute; right: auto; width: 240px; max-width: calc(100% - 8px); margin: 0; overflow: auto; pointer-events: auto; }
+  .files-sidebar [data-favorite] { position: relative; cursor: default; }
+  .files-sidebar [data-nav].is-drop-target { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); }
+  .files-sidebar [data-favorite].is-favorite-before::before, .files-sidebar [data-favorite].is-favorite-after::after { content: ""; position: absolute; height: 2px; background: var(--accent); left: 4px; right: 4px; }
+  .files-sidebar [data-favorite].is-favorite-before::before { top: 0; }
+  .files-sidebar [data-favorite].is-favorite-after::after { bottom: 0; }
+  .files-favorite-dropzone { min-height: 13px; font-size: 0; color: var(--muted); border: 1px solid transparent; border-radius: 5px; margin: 3px 2px; }
+  .is-favorite-drop .files-favorite-dropzone { font-size: 10px; padding: 9px 4px; border: 1px dashed var(--accent); color: var(--text); background: var(--accent-soft); text-align: center; }
   .files-toolbar-menu { position: relative; flex-shrink: 0; }
   .files-toolbar-menu summary::-webkit-details-marker { display: none; }
-  .files-app .files-action-menu { left: auto; right: 0; min-width: 185px; border-radius: 9px; padding: 5px; background: var(--chrome-bg); color: var(--text); box-shadow: 0 14px 34px #0003, 0 0 0 1px #00000008; z-index: 300; }
-  .files-app .files-action-menu button { display: flex; align-items: center; gap: 10px; min-height: 27px; width: 100%; border: 0; padding: 4px 8px; background: transparent; color: var(--text); border-radius: 4px; font-family: inherit; font-size: 12px; box-shadow: none; }
-  .files-app .files-action-menu button:hover,
-  .files-app .files-action-menu button:focus-visible { background: var(--accent); color: white; }
+  :is(.files-app, .files-menu-layer) .files-action-menu { left: auto; right: 0; min-width: 185px; border-radius: 9px; padding: 5px; background: var(--chrome-bg); color: var(--text); box-shadow: 0 14px 34px #0003, 0 0 0 1px #00000008; z-index: 300; }
+  :is(.files-app, .files-menu-layer) .files-action-menu button { display: flex; align-items: center; gap: 10px; min-height: 27px; width: 100%; border: 0; padding: 4px 8px; background: transparent; color: var(--text); border-radius: 4px; font-family: inherit; font-size: 12px; box-shadow: none; }
+  :is(.files-app, .files-menu-layer) .files-action-menu button:hover,
+  :is(.files-app, .files-menu-layer) .files-action-menu button:focus-visible { background: var(--accent); color: white; }
   .files-action-menu .files-tool-icon { width: 15px; height: 15px; }
   .files-menu-check { margin-left: auto; }
   .files-menu-heading { display: block; padding: 5px 8px; color: var(--muted); font-size: 11px; }

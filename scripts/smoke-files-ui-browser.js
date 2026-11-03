@@ -7,7 +7,7 @@ import { createServer } from "vite";
 // Keep this fixture memory-only: no document or session data survives the run.
 const moduleSource = `
 import { createAndBootDindbOS } from '/src/sdk/index.js';
-${["dindbos", "theme", "shell", "windows", "dock", "apps", "files"].map((name) => `import '/src/styles/${name}.css';`).join("\n")}
+import '/src/styles/index.css';
 window.__filesReady = createAndBootDindbOS({
   root: document.getElementById('desktop'), storage: {backend:'memory', name:'files-ui-smoke'},
   bootstrapPackages: false, builtins: {include:['files']},
@@ -17,6 +17,11 @@ window.__filesReady = createAndBootDindbOS({
   const base='/mnt/portfolio/presentations';
   os.fs.createFile(base+'/clip-blip2-retrieval.html','/',{content:'<h1>Presentation</h1>',mime:'text/html',owner:'guest',group:'guest'});
   os.fs.createFile(base+'/notes.txt','/',{content:'Presentation notes',mime:'text/plain',owner:'guest',group:'guest'});
+  os.fs.createDirectory('/home/guest/Projects','/',{owner:'guest',group:'guest'});
+  os.fs.createDirectory('/home/guest/Desktop/Boards','/',{owner:'guest',group:'guest'});
+  os.shell.renderDesktop();
+  os.fs.createFile('/home/guest/move-me.txt','/',{content:'Keep these bytes',mime:'text/plain',owner:'guest',group:'guest'});
+  os.fs.createFile('/home/guest/readonly-test.txt','/',{content:'Must survive',mime:'text/plain',owner:'guest',group:'guest'});
   os.launch('files', {path:base});
   return window.__filesOS = os;
 });
@@ -59,6 +64,67 @@ try {
   await expect(files.locator('select')).toHaveCount(0);
   await expect(files.locator('.files-dropzone')).toBeHidden();
   await page.screenshot({path:output+'/files-toolbar.png'});
+  await expect(files.locator('.files-sidebar .is-active')).toHaveCount(1);
+  await files.locator('.files-more-actions summary').click();
+  const more=page.getByRole('menu',{name:'More file actions',exact:true});
+  await expect(more).toBeVisible();
+  assert((await more.boundingBox()).width <= 250, 'More menu uses compact native-sized width');
+  await page.screenshot({path:output+'/files-more-layer.png'});
+  for (const item of await more.locator('button').all()) {
+    assert(await item.evaluate((button)=>{const box=button.getBoundingClientRect();const hit=document.elementFromPoint(box.x+box.width/2,box.y+box.height/2);return button===hit||button.contains(hit);}), `More menu command must receive actual pointer hit: ${await item.evaluate(button=>({text:button.textContent,rect:button.getBoundingClientRect().toJSON(),hit:document.elementFromPoint(button.getBoundingClientRect().x+button.offsetWidth/2,button.getBoundingClientRect().y+button.offsetHeight/2)?.outerHTML.slice(0,200)}))}`);
+  }
+  await page.screenshot({path:output+'/files-more-layer.png'});
+  await more.getByRole('menuitem',{name:'Add Current Folder to Favorites',exact:true}).click();
+  await expect(files.locator('[data-favorite][data-nav="/mnt/portfolio/presentations"]')).toBeVisible();
+  await page.locator('.dos-icon[aria-label="Open Boards"]').dragTo(files.locator('[data-favorite-drop]'));
+  await expect(files.locator('[data-favorite][data-nav="/home/guest/Desktop/Boards"]')).toBeVisible();
+  assert(await page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/Desktop/Boards')),'dragging a desktop folder to Favorites keeps it on the desktop');
+  const emptyTransfer=await page.evaluateHandle(()=>{const transfer=new DataTransfer();transfer.setData('application/x-dindbos-path','');return transfer;});
+  await files.locator('[data-favorite-drop]').dispatchEvent('drop',{dataTransfer:emptyTransfer});
+  await expect(files.locator('[data-favorite][data-nav="/"]')).toHaveCount(0);
+  await files.getByRole('button',{name:'Home',exact:true}).click();
+  await files.getByRole('button',{name:'Desktop',exact:true}).click();
+  await expect(files.locator('.files-sidebar .is-active')).toHaveCount(1);
+  await expect(files.locator('.files-sidebar .is-active')).toHaveAttribute('data-nav','/home/guest/Desktop');
+  await files.getByRole('button',{name:'Home',exact:true}).click();
+  const projects=files.locator('.files-row[data-path="/home/guest/Projects"]');
+  await projects.dragTo(files.locator('[data-favorite-drop]'));
+  const pinnedProjects=files.locator('[data-favorite][data-nav="/home/guest/Projects"]');
+  await expect(pinnedProjects).toBeVisible();
+  assert(await page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/Projects')), 'pinning a folder never moves the original');
+  await pinnedProjects.dragTo(files.locator('[data-favorite][data-nav="/home/guest"]'),{targetPosition:{x:25,y:2}});
+  await expect(files.locator('[data-favorite]').first()).toHaveAttribute('data-nav','/home/guest/Projects');
+  await files.locator('.files-row[data-path="/home/guest/move-me.txt"]').dragTo(pinnedProjects);
+  await expect.poll(()=>page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/Projects/move-me.txt'))).toBe(true);
+  assert.equal(await page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/move-me.txt')),false);
+  assert.equal(await page.evaluate(()=>window.__filesOS.fs.readFile('/home/guest/Projects/move-me.txt')),'Keep these bytes');
+  const imported=await page.evaluateHandle(()=>{const transfer=new DataTransfer();transfer.items.add(new File(['Imported into favorite'],'external.txt',{type:'text/plain'}));return transfer;});
+  await pinnedProjects.dispatchEvent('drop',{dataTransfer:imported});
+  await expect.poll(()=>page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/Projects/external.txt'))).toBe(true);
+  assert.equal(await page.evaluate(()=>window.__filesOS.fs.readFile('/home/guest/Projects/external.txt')),'Imported into favorite');
+  await files.getByRole('button',{name:'Home',exact:true}).click();
+  await files.locator('.files-row[data-path="/home/guest/readonly-test.txt"]').dragTo(files.getByRole('button',{name:'System',exact:true}));
+  await expect.poll(()=>page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/readonly-test.txt'))).toBe(true);
+  assert.equal(await page.evaluate(()=>window.__filesOS.fs.exists('/etc/readonly-test.txt')),false,'denied target never receives a partial move');
+  await pinnedProjects.click({button:'right'});
+  await page.getByRole('menuitem',{name:'Move Down',exact:true}).click();
+  await expect(files.locator('[data-favorite]').nth(1)).toHaveAttribute('data-nav','/home/guest/Projects');
+  await pinnedProjects.click({button:'right'});
+  await page.getByRole('menuitem',{name:'Move Up',exact:true}).click();
+  await expect(files.locator('[data-favorite]').first()).toHaveAttribute('data-nav','/home/guest/Projects');
+  const persisted=await page.evaluate(()=>JSON.parse(window.__filesOS.fs.readFile('/home/guest/.config/dindbos/files-favorites.json')));
+  assert.equal(persisted[0],'/home/guest/Projects');
+  await page.locator('.dos-window[data-app-id="files"] button[aria-label="Close"]').click();
+  await expect(files).toHaveCount(0);
+  await page.evaluate(()=>window.__filesOS.launch('files',{path:'/mnt/portfolio/presentations'}));
+  await expect(files.locator('[data-favorite]').first()).toHaveAttribute('data-nav','/home/guest/Projects');
+  await pinnedProjects.focus(); await page.keyboard.press('Shift+F10');
+  await page.getByRole('menuitem',{name:'Remove from Favorites',exact:true}).click();
+  await expect(pinnedProjects).toHaveCount(0);
+  assert(await page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/Projects/move-me.txt')),'removing a favorite never removes its folder or files');
+  await expect(files.locator('.files-sidebar .is-active')).toHaveCount(1);
+  await page.screenshot({path:output+'/files-favorites.png'});
+
   const menu=page.getByRole('menu',{name:'File actions',exact:true});
   await row.click({button:'right'});
   await expect(menu).toBeVisible();
@@ -90,20 +156,25 @@ try {
   await page.keyboard.press('Escape');
   const view=files.locator('.files-view-menu summary');
   await view.focus(); await page.keyboard.press('ArrowDown');
-  await expect(files.getByRole('menuitemradio',{name:'as List',exact:true})).toBeFocused();
+  await expect(page.getByRole('menuitemradio',{name:'as List',exact:true})).toBeFocused();
   await page.keyboard.press('ArrowDown');
-  await expect(files.getByRole('menuitemradio',{name:'as Columns',exact:true})).toBeFocused();
+  await expect(page.getByRole('menuitemradio',{name:'as Columns',exact:true})).toBeFocused();
   await page.keyboard.press('Escape'); await expect(view).toBeFocused();
-  await view.click(); await files.getByRole('menuitemradio',{name:'as Columns',exact:true}).click();
+  await view.click(); await page.getByRole('menuitemradio',{name:'as Columns',exact:true}).click();
   await expect(files).toHaveAttribute('data-files-view','columns');
   const sort=files.locator('.files-sort-menu summary');
-  await sort.focus(); await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await expect(files.getByRole('menuitemradio',{name:'Name',exact:true})).toBeFocused(); await page.keyboard.press('Enter');
-  await expect(files.locator('.files-sort-menu')).not.toHaveAttribute('open',''); await sort.click(); await expect(files.getByRole('menuitemradio',{name:'Name',exact:true})).toHaveAttribute('aria-checked','true'); await page.keyboard.press('Escape');
+  await sort.focus(); await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await expect(page.getByRole('menuitemradio',{name:'Name',exact:true})).toBeFocused(); await page.keyboard.press('Enter');
+  await expect(files.locator('.files-sort-menu')).not.toHaveAttribute('open',''); await sort.click(); await expect(page.getByRole('menuitemradio',{name:'Name',exact:true})).toHaveAttribute('aria-checked','true'); await page.keyboard.press('Escape');
   await files.getByRole('button',{name:'Portfolio',exact:true}).click();
   await files.getByRole('button',{name:'Back',exact:true}).click();
   await expect(files.locator('.files-folder-title')).toHaveText('presentations');
   await files.getByRole('button',{name:'Forward',exact:true}).click();
   await expect(files.locator('.files-folder-title')).toHaveText('portfolio');
+  await files.locator('.files-more-actions summary').click();
+  await page.getByRole('menuitem',{name:'Add Current Folder to Favorites',exact:true}).click();
+  await expect(files.locator('.files-sidebar [data-nav="/mnt/portfolio"]')).toHaveCount(2);
+  await expect(files.locator('.files-sidebar .is-active')).toHaveCount(1);
+  await expect(files.locator('.files-sidebar .is-active')).toHaveAttribute('data-favorite','true');
   await page.evaluate(()=>window.__filesOS.setAppearance({mode:'dark'}));
   await page.screenshot({path:output+'/files-dark.png'});
   await page.setViewportSize({width:390,height:844});
@@ -115,8 +186,30 @@ try {
     return current.right <= viewport.right + 1 && current.left >= viewport.left - 1;
   })).toBe(true);
   await page.screenshot({path:output+'/files-mobile.png'});
+  await files.locator('.files-more-actions summary').click();
+  const compactMenu=page.getByRole('menu',{name:'More file actions',exact:true});
+  await expect(compactMenu).toBeVisible();
+  await page.screenshot({path:output+'/files-more-mobile.png'});
+  await expect.poll(()=>compactMenu.locator('button').last().evaluate(button=>{const b=button.getBoundingClientRect();return button.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})).toBe(true);
+  const compactBox=await compactMenu.boundingBox(); const compactContent=await content.boundingBox();
+  assert(compactBox.x>=compactContent.x&&compactBox.x+compactBox.width<=compactContent.x+compactContent.width+1,'narrow toolbar menu stays in its window');
+  await page.screenshot({path:output+'/files-more-mobile.png'});
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({width:1440,height:900});
+  await page.locator('.dos-window[data-app-id="files"] button[aria-label="Maximize"]').click();
+  await page.evaluate(()=>{for(let index=0;index<35;index++)window.__filesOS.fs.createFile('/home/guest/scroll-'+index+'.txt','/',{content:'row '+index,mime:'text/plain',owner:'guest',group:'guest'});});
+  await files.getByRole('button',{name:'Home',exact:true}).click();
+  await files.locator('.files-view-menu summary').click();
+  await page.getByRole('menuitemradio',{name:'as List',exact:true}).click();
+  await files.locator('.files-more-actions summary').click();
+  await files.locator('.files-column').evaluate(column=>{column.scrollTop=300;});
+  await expect.poll(()=>files.locator('.files-column').evaluate(column=>column.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(()=>page.getByRole('menu',{name:'More file actions',exact:true}).locator('button').last().evaluate(button=>{const b=button.getBoundingClientRect();return button.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})).toBe(true);
+  await page.screenshot({path:output+'/files-menu-scrolled.png'});
+  await page.keyboard.press('Escape');
+
   assert.deepEqual(errors,[]);
-  console.log('Files UI browser smoke passed: compact toolbar, row/background context commands and dismissal, bounds, keyboard menus, view/sort, navigation history, dark/mobile');
+  console.log('Files UI browser smoke passed: overlay hit-tests, single sidebar selection, persistent favorite add/reorder/remove, internal/external folder drops and denied-move preservation, context commands, keyboard menus, history, dark/mobile');
 } catch(error) {
   console.error(await page?.locator('body').innerText().catch(()=>''));
   throw error;

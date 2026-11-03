@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { defineApp } from "../src/sdk/app-definition.js";
 import { normalizeDindbOSHostConfig } from "../src/sdk/host-config.js";
 import { createDindbOSTestRuntime } from "./helpers/dindbos-test-runtime.js";
+assert.equal(normalizeDindbOSHostConfig({ ui: { liquidGlass: false } }).ui.liquidGlass, false);
+assert.throws(() => normalizeDindbOSHostConfig({ ui: { liquidGlass: { strength: NaN } } }), /liquidGlass strength/);
 
 class Notes {
   id = "host-notes";
