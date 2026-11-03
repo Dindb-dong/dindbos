@@ -10,7 +10,7 @@ import { createAndBootDindbOS } from '/src/sdk/index.js';
 import '/src/styles/index.css';
 window.__filesReady = createAndBootDindbOS({
   root: document.getElementById('desktop'), storage: {backend:'memory', name:'files-ui-smoke'},
-  bootstrapPackages: false, builtins: {include:['files']},
+  bootstrapPackages: false, builtins: {include:['files','calculator']},
   launch:[],
 }).then(os => {
   for (const path of ['/mnt', '/mnt/portfolio', '/mnt/portfolio/presentations']) if (!os.fs.exists(path)) os.fs.createDirectory(path, '/', {owner:'guest',group:'guest'});
@@ -19,6 +19,8 @@ window.__filesReady = createAndBootDindbOS({
   os.fs.createFile(base+'/notes.txt','/',{content:'Presentation notes',mime:'text/plain',owner:'guest',group:'guest'});
   os.fs.createDirectory('/home/guest/Projects','/',{owner:'guest',group:'guest'});
   os.fs.createDirectory('/home/guest/Desktop/Boards','/',{owner:'guest',group:'guest'});
+  os.fs.createDirectory('/home/guest/Second Folder','/',{owner:'guest',group:'guest'});
+  os.registerApp({id:'custom-file-icon',name:'Custom File Icon',icon:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="red"/></svg>'),render:({content})=>{content.textContent='Custom app';}});
   os.shell.renderDesktop();
   os.fs.createFile('/home/guest/move-me.txt','/',{content:'Keep these bytes',mime:'text/plain',owner:'guest',group:'guest'});
   os.fs.createFile('/home/guest/readonly-test.txt','/',{content:'Must survive',mime:'text/plain',owner:'guest',group:'guest'});
@@ -229,6 +231,42 @@ try {
   await page.screenshot({path:output+'/files-menu-scrolled.png'});
   await page.keyboard.press('Escape');
 
+  // New content folders can be pinned between rows, rather than moved into them.
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({width:1280,height:900});
+  await page.evaluate(()=>window.__filesOS.setAppearance({mode:"light"}));
+  await files.locator('.files-sidebar [data-nav="/home/guest"]').click();
+  await files.locator('.files-row[data-path="/home/guest/Projects"]').dragTo(files.locator('[data-favorite][data-nav="/home/guest"]'),{targetPosition:{x:25,y:2}});
+  await expect(files.locator('[data-favorite]').first()).toHaveAttribute('data-nav','/home/guest/Projects');
+  assert(await page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/Projects/move-me.txt')),'inserting a favorite leaves the original folder and contents intact');
+  await files.locator('.files-row[data-path="/home/guest/Second Folder"]').dragTo(files.locator('[data-favorite][data-nav="/home/guest"]'),{targetPosition:{x:25,y:30}});
+  const order=await files.locator('[data-favorite]').evaluateAll(items=>items.map(item=>item.dataset.nav));
+  assert.equal(order[order.indexOf('/home/guest')+1],'/home/guest/Second Folder','a new folder inserts after the targeted row');
+  assert(await page.evaluate(()=>window.__filesOS.fs.exists('/home/guest/Second Folder')),'pinning must not move a folder into Home or another Favorite');
+  const transfer=await page.evaluateHandle(()=>{const data=new DataTransfer();data.setData('application/x-dindbos-path','/home/guest/Second Folder');return data;});
+  const firstFavorite=files.locator('[data-favorite]').first();
+  const firstBox=await firstFavorite.boundingBox();
+  await firstFavorite.dispatchEvent('dragover',{dataTransfer:transfer,clientY:firstBox.y+2});
+  await expect(firstFavorite).toHaveClass(/is-favorite-before/);
+  await page.screenshot({path:output+'/files-insertion-indicator.png'});
+  await firstFavorite.dispatchEvent('drop',{dataTransfer:transfer,clientY:firstBox.y+2});
+  await expect(files.locator('[data-favorite]').first()).toHaveAttribute('data-nav','/home/guest/Second Folder');
+  assert.equal(await files.locator('[data-favorite][data-nav="/home/guest/Second Folder"]').count(),1,'reinserting an existing folder never duplicates its shortcut');
+  await transfer.dispose();
+  await page.locator('.dos-window[data-app-id="files"] button[aria-label="Close"]').click();
+  await page.evaluate(()=>window.__filesOS.launch('files',{path:'/usr/share/applications'}));
+  await expect(files.locator('[data-favorite]').first()).toHaveAttribute('data-nav','/home/guest/Second Folder');
+  await files.locator('.files-view-menu > summary').click();
+  await page.getByRole('menuitemradio',{name:'as Icons',exact:true}).click();
+  const calculatorIcon=files.locator('[data-files-app-icon="calculator"]');
+  await expect(calculatorIcon.locator('svg.dos-app-icon')).toBeVisible();
+  await expect(files.locator('[data-files-app-icon="custom-file-icon"] img')).toBeVisible();
+  await expect(files.locator('.files-row:has([data-files-app-icon]) .files-document-art')).toHaveCount(0);
+  await page.screenshot({path:output+'/files-application-icons.png'});
+  await files.locator('.files-view-menu > summary').click();
+  await page.getByRole('menuitemradio',{name:'as List',exact:true}).click();
+  await expect(calculatorIcon.locator('svg.dos-app-icon')).toBeVisible();
+  await page.screenshot({path:output+'/files-application-icons-list.png'});
   assert.deepEqual(errors,[]);
   console.log('Files UI browser smoke passed: overlay hit-tests, single sidebar selection, persistent favorite add/reorder/remove, internal/external folder drops and denied-move preservation, context commands, keyboard menus, history, dark/mobile');
 } catch(error) {

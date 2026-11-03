@@ -326,11 +326,16 @@ function renderFiles(os, content, path, windowApi) {
       await draw(currentPath, selectedPath, { preserveSelection: true });
     } catch (error) { favoritePaths = previous; windowApi.setTitle(`Files — Could not save Favorites: ${error.message}`); }
   };
-  const addFavorite = async (path) => {
+  const addFavorite = async (path, target = null, after = false) => {
     if (typeof path !== "string" || !path.startsWith("/")) throw new Error("Drag a folder from this desktop to add it to Favorites.");
     const node = os.fs.resolveNode(os.fs.resolve(path) || os.fs.stat(path));
     if (!["directory", "mount"].includes(node?.type)) throw new Error("Only folders can be added to Favorites.");
-    await saveFavorites([...favoritePaths, os.fs.normalize(path)]);
+    const normalized = os.fs.normalize(path);
+    if (normalized === target) return;
+    const next = favoritePaths.filter((item) => item !== normalized);
+    const targetIndex = target ? next.indexOf(target) : -1;
+    next.splice(targetIndex < 0 ? next.length : targetIndex + (after ? 1 : 0), 0, normalized);
+    await saveFavorites(next);
   };
   let currentPath = os.fs.normalize(path);
   let selectedPath = currentPath;
@@ -352,6 +357,7 @@ function renderFiles(os, content, path, windowApi) {
   let navigationIndex = 0;
   let dismissToolbarMenus = null;
   let disconnectColumns = null;
+  let fileIconCleanups = [];
   let tabSequence = 1;
   let activeTabId = "1";
   const folderTabs = [{ id: "1", path: currentPath, history: [currentPath], historyIndex: 0 }];
@@ -408,6 +414,8 @@ function renderFiles(os, content, path, windowApi) {
     const diagnostics = buildFilesDiagnostics(os, currentPath, [...selectedPaths], operationHistory, visibleOperation, mountStatus);
     if (disposed || generation !== drawGeneration) return;
     const visibleColumns = viewMode === "columns" ? columns : [currentColumn];
+    fileIconCleanups.forEach((cleanup) => cleanup());
+    fileIconCleanups = [];
     sidebar[0].items = favoriteItems();
     const activeSidebarItem = sidebar.flatMap((group) => group.items).filter((item) => isWithinPath(currentPath, item.path)).sort((a, b) => b.path.length - a.path.length)[0];
 
@@ -485,7 +493,7 @@ function renderFiles(os, content, path, windowApi) {
                       data-icon="${escapeAttr(entry.icon || resolved.icon || resolved.type)}"
                       draggable="true"
                     >
-                      <span class="dos-mini-icon"><span class="files-list-glyph">${filesMiniIcon(entry.icon || resolved.icon || resolved.type)}</span><span class="files-entry-art" aria-hidden="true">${viewMode === "icons" ? filesEntryArtwork(os, entry, resolved, stat) : ""}</span></span>
+                      <span class="dos-mini-icon"><span class="files-list-glyph">${filesMiniIcon(entry.icon || resolved.icon || resolved.type)}</span><span class="files-entry-art" aria-hidden="true">${filesEntryArtwork(os, entry, resolved, stat, viewMode === "icons")}</span></span>
                       <span class="files-row-name">${escapeHtml(entry.name)}</span>
                       <small>${escapeHtml(rowKind(os, entry, stat))}</small>
                     </button>
@@ -513,6 +521,8 @@ function renderFiles(os, content, path, windowApi) {
       </section>
     `;
     const appRoot = content.querySelector(".files-app");
+    const registeredApps = new Map(os.apps.list().map((app) => [app.id, app]));
+    fileIconCleanups = [...content.querySelectorAll("[data-files-app-icon]")].map((element) => mountAppIcon(element, registeredApps.get(element.dataset.filesAppIcon)?.icon || element.dataset.filesIconFallback || "app"));
     content.querySelectorAll("[data-files-tab]").forEach((button) => {
       button.addEventListener("click", () => selectFolderTab(button.dataset.filesTab));
       button.addEventListener("keydown", (event) => {
@@ -591,36 +601,53 @@ function renderFiles(os, content, path, windowApi) {
       button.addEventListener("dragover", (event) => {
         if (![...event.dataTransfer.types].some((type) => ["application/x-dindbos-sidebar-favorite", "application/x-dindbos-path", "Files"].includes(type))) return;
         event.preventDefault(); event.stopPropagation(); clearSidebarDrag();
-        const reordering = event.dataTransfer.types.includes("application/x-dindbos-sidebar-favorite") && button.dataset.favorite;
-        const after = event.clientY > button.getBoundingClientRect().top + button.offsetHeight / 2;
-        button.classList.add(reordering ? after ? "is-favorite-after" : "is-favorite-before" : "is-drop-target");
-        event.dataTransfer.dropEffect = reordering ? "move" : event.dataTransfer.types.includes("Files") ? "copy" : "move";
+        const types = [...event.dataTransfer.types];
+        const bounds = button.getBoundingClientRect();
+        const offset = event.clientY - bounds.top;
+        const reordering = types.includes("application/x-dindbos-sidebar-favorite") && button.dataset.favorite;
+        const inserting = button.dataset.favorite && types.includes("application/x-dindbos-path") && !types.includes("Files") && (reordering || offset < bounds.height / 4 || offset > bounds.height * 3 / 4);
+        const after = offset > bounds.height / 2;
+        button.classList.add(inserting ? after ? "is-favorite-after" : "is-favorite-before" : "is-drop-target");
+        event.dataTransfer.dropEffect = inserting ? reordering ? "move" : "copy" : types.includes("Files") ? "copy" : "move";
       });
       button.addEventListener("dragleave", () => button.classList.remove("is-drop-target", "is-favorite-before", "is-favorite-after"));
       button.addEventListener("drop", async (event) => {
         event.preventDefault(); event.stopPropagation();
-        const after = button.classList.contains("is-favorite-after");
+        const bounds = button.getBoundingClientRect();
+        const offset = event.clientY - bounds.top;
+        const after = offset > bounds.height / 2;
+        const inserting = button.classList.contains("is-favorite-before") || button.classList.contains("is-favorite-after") || (button.dataset.favorite && [...event.dataTransfer.types].includes("application/x-dindbos-path") && ![...event.dataTransfer.types].includes("Files") && (offset < bounds.height / 4 || offset > bounds.height * 3 / 4));
         clearSidebarDrag();
         try {
           const sourceFavorite = event.dataTransfer.getData("application/x-dindbos-sidebar-favorite");
           if (sourceFavorite && button.dataset.favorite) await reorderFavorite(sourceFavorite, button.dataset.nav, after);
+          else if (inserting) await addFavorite(event.dataTransfer.getData("application/x-dindbos-path"), button.dataset.nav, after);
           else await handleFilesDrop(os, event, button.dataset.nav, draw, windowApi, content, (operation) => { operationHistory = recordFilesOperationHistory(operationHistory, operation); });
         } catch (error) { reportSidebarError(error); }
       });
     });
+    const favoriteBoundary = (clientY) => {
+      const buttons = [...favoritesSection.querySelectorAll("[data-favorite]")];
+      const next = buttons.find((button) => clientY < button.getBoundingClientRect().top + button.offsetHeight / 2);
+      return next ? { button: next, after: false } : { button: buttons.at(-1), after: true };
+    };
     favoritesSection.addEventListener("dragover", (event) => {
       if (!event.dataTransfer.types.includes("application/x-dindbos-path")) return;
       event.preventDefault(); event.stopPropagation(); clearSidebarDrag();
-      favoritesSection.classList.add("is-favorite-drop");
+      const boundary = favoriteBoundary(event.clientY);
+      if (boundary.button) boundary.button.classList.add(boundary.after ? "is-favorite-after" : "is-favorite-before");
+      else favoritesSection.classList.add("is-favorite-drop");
       event.dataTransfer.dropEffect = event.dataTransfer.types.includes("application/x-dindbos-sidebar-favorite") ? "move" : "copy";
     });
     favoritesSection.addEventListener("dragleave", (event) => { if (!favoritesSection.contains(event.relatedTarget)) clearSidebarDrag(); });
     favoritesSection.addEventListener("drop", async (event) => {
-      event.preventDefault(); event.stopPropagation(); clearSidebarDrag();
+      event.preventDefault(); event.stopPropagation();
+      const boundary = favoriteBoundary(event.clientY);
+      clearSidebarDrag();
       try {
         const favorite = event.dataTransfer.getData("application/x-dindbos-sidebar-favorite");
-        if (favorite) await reorderFavorite(favorite, null);
-        else await addFavorite(event.dataTransfer.getData("application/x-dindbos-path"));
+        if (favorite) await reorderFavorite(favorite, boundary.button?.dataset.nav, boundary.after);
+        else await addFavorite(event.dataTransfer.getData("application/x-dindbos-path"), boundary.button?.dataset.nav, boundary.after);
       } catch (error) { reportSidebarError(error); }
     });
     appRoot.addEventListener("dragend", clearSidebarDrag);
@@ -988,6 +1015,8 @@ function renderFiles(os, content, path, windowApi) {
   draw(path).catch((error) => { if (!disposed) windowApi.setTitle(`Files - ${error.message}`); });
   return () => {
     disposed = true;
+    fileIconCleanups.forEach((cleanup) => cleanup());
+    fileIconCleanups = [];
     contextMenuCleanups.get(content)?.();
     dismissToolbarMenus?.();
     disconnectColumns?.();
@@ -1014,7 +1043,9 @@ function filesToolIcon(name) {
   return `<svg class="files-tool-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.more}</svg>`;
 }
 
-function filesEntryArtwork(os, entry, resolved, stat) {
+function filesEntryArtwork(os, entry, resolved, stat, showDocument = true) {
+  if (resolved.type === "app" || resolved.appId) return `<span class="files-application-art" data-files-app-icon="${escapeAttr(resolved.appId || "")}" data-files-icon-fallback="${escapeAttr(entry.icon || resolved.icon || "app")}"></span>`;
+  if (!showDocument) return "";
   if (["directory", "mount"].includes(resolved.type)) return '<svg class="files-folder-art" viewBox="0 0 80 70" aria-hidden="true"><path fill="#73c8fa" d="M3 13a5 5 0 0 1 5-5h23l8 7h33a5 5 0 0 1 5 5v39a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5Z"/><path fill="#9eddff" d="M4 18h72v7H4z"/><path fill="#5ab9ef" d="M3 24h74v35a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5Z"/><path fill="none" stroke="#c7edff" d="M5 25h70"/></svg>';
   let preview = "";
   const mime = resolved.mime || stat?.mime || "";

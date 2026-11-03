@@ -112,11 +112,11 @@
   .files-list-glyph { display: inline-flex; }
   .files-app[data-files-view='icons'] .files-column-view { border-top: 0; overflow-y: auto; overflow-x: hidden; }
   .files-app[data-files-view='icons'] .files-column { display: grid; grid-template-columns: repeat(auto-fit, 112px); justify-content: center; align-content: start; gap: 12px 8px; flex: 1; width: 100%; min-width: 0; padding: 18px 16px; border: 0; overflow: visible; }
-  .files-app[data-files-view='icons'] .files-row { display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 7px; height: 116px; min-width: 0; padding: 3px 4px; border-radius: 6px; font-size: 13px; background: transparent; color: var(--text); }
+  .files-app[data-files-view='icons'] .files-row { display: flex; flex-direction: column; justify-content: flex-start; align-items: center; gap: 7px; height: 128px; min-width: 0; padding: 3px 4px; border-radius: 6px; font-size: 13px; background: transparent; color: var(--text); }
   .files-app[data-files-view='icons'] .files-row > .dos-mini-icon { display: flex; flex: 0 0 78px; width: 84px; height: 78px; align-items: center; justify-content: center; border-radius: 6px; }
   .files-app[data-files-view='icons'] .files-list-glyph, .files-app[data-files-view='icons'] .files-row > small, .files-app[data-files-view='icons'] .files-row > .files-row-chevron { display: none; }
   .files-app[data-files-view='icons'] .files-entry-art { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; }
-  .files-app[data-files-view='icons'] .files-row > .files-row-name { flex: 0 1 auto; max-width: 100%; width: auto; padding: 1px 4px; text-align: center; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; border-radius: 4px; line-height: 1.3; }
+  .files-app[data-files-view='icons'] .files-row > .files-row-name { flex: 0 0 auto; max-height: 36px; max-width: 100%; width: auto; padding: 1px 4px; text-align: center; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; border-radius: 4px; line-height: 1.3; }
   .files-app[data-files-view='icons'] .files-row.is-selected > .dos-mini-icon { background: color-mix(in srgb, var(--text) 10%, transparent); }
   .files-app[data-files-view='icons'] .files-row.is-selected > .files-row-name { background: var(--accent); color: white; }
   .files-app[data-files-view='icons'] :is(.files-empty, .files-column-limit) { grid-column: 1 / -1; }
@@ -155,4 +155,10 @@
     .files-app .files-dropzone.is-active { left: 12px; top: 160px; }
   }
 
+  .files-row:has([data-files-app-icon]) .files-list-glyph { display: none; }
+  .files-row:has([data-files-app-icon]) .files-entry-art { display: flex; align-items: center; justify-content: center; }
+  .files-application-art { display: flex; width: 20px; height: 20px; align-items: center; justify-content: center; }
+  .files-application-art > :is(svg, img, span), .files-application-art .dos-custom-icon > :is(svg, img) { width: 100%; height: 100%; object-fit: contain; }
+  .files-app[data-files-view='icons'] .files-application-art { width: 64px; height: 64px; filter: drop-shadow(0 2px 3px #0002); }
+  .files-sidebar [data-favorite].is-favorite-before::before, .files-sidebar [data-favorite].is-favorite-after::after { z-index: 1; height: 3px; border-radius: 2px; }
 }
