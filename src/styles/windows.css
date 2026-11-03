@@ -129,8 +129,20 @@
   .dos-window.is-dragging .dos-window-titlebar { cursor: grabbing; }
   .dos-window[hidden] { display: none !important; }
   .dos-resize { z-index: 4; touch-action: none; }
-  .dos-resize-left, .dos-resize-right { width: 6px; }
-  .dos-resize-bottom-left, .dos-resize-bottom-right { width: 16px; height: 16px; }
+  /* Keep the whole hit region inside the clipped, rounded window frame. */
+  .dos-window.is-maximized .dos-resize { display: none; }
+  .dos-resize-left, .dos-resize-right { top: 16px; bottom: 16px; width: 6px; }
+  .dos-resize-top, .dos-resize-bottom { left: 16px; right: 16px; height: 6px; cursor: ns-resize; }
+  .dos-resize-top { top: 0; }
+  .dos-resize-bottom { bottom: 0; }
+  .dos-resize-top-left, .dos-resize-top-right { top: 0; width: 16px; height: 16px; }
+  .dos-resize-top-left { left: 0; cursor: nwse-resize; }
+  .dos-resize-top-right { right: 0; cursor: nesw-resize; }
+  .dos-resize-left { left: 0; }
+  .dos-resize-right { right: 0; }
+  .dos-resize-bottom-left, .dos-resize-bottom-right { bottom: 0; width: 16px; height: 16px; }
+  .dos-resize-bottom-left { left: 0; }
+  .dos-resize-bottom-right { right: 0; }
 
   :scope[data-appearance="dark"] .dos-window,
   :scope[data-theme="dark"] .dos-window {

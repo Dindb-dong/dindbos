@@ -1430,7 +1430,7 @@ function windowPlacementUser(os) {
 
 function createResizeHandles() {
   const fragment = document.createDocumentFragment();
-  ["right", "left", "bottom-right", "bottom-left"].forEach((edge) => {
+  ["top", "right", "bottom", "left", "top-left", "top-right", "bottom-right", "bottom-left"].forEach((edge) => {
     const handle = document.createElement("span");
     handle.className = `dos-resize dos-resize-${edge}`;
     handle.dataset.resize = edge;
@@ -1513,6 +1513,7 @@ function makeResizable(frame, onPlacement = () => {}, captureHooks = {}) {
       const dx = event.clientX - start.x;
       const dy = event.clientY - start.y;
       let left = start.left;
+      let top = start.top;
       let width = start.width;
       let height = start.height;
       if (start.edge.includes("right")) width = clamp(start.width + dx, minWidth, bounds.width - start.left - 8);
@@ -1521,7 +1522,11 @@ function makeResizable(frame, onPlacement = () => {}, captureHooks = {}) {
         left = start.left + start.width - width;
       }
       if (start.edge.includes("bottom")) height = clamp(start.height + dy, minHeight, bounds.height - start.top - bottomInset);
-      Object.assign(frame.style, { left: `${left}px`, width: `${width}px`, height: `${height}px` });
+      if (start.edge.includes("top")) {
+        height = clamp(start.height - dy, minHeight, start.top + start.height - 58);
+        top = start.top + start.height - height;
+      }
+      Object.assign(frame.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
       event.preventDefault?.();
     };
     const end = (event = {}) => {
