@@ -38,6 +38,14 @@ Drag a folder from the desktop or Files into the Favorites insertion area to sav
 
 Applications uses the installed app registry. Choose Refresh after registering or removing apps while the library is open. Custom app definitions may set `category` to `productivity`, `media`, `utilities`, `development`, `internet`, or `other`. Unrecognized categories appear under Other.
 
+## Finder tabs and file actions
+
+Drag tabs to reorder them, or drop a tab outside its window to open it at the pointer position. The new window keeps its size, location history, and view settings, and stays inside the embedded desktop's workspace.
+
+New Folder immediately selects the name for editing. Right-click Rename or press F2 to edit an existing name; Enter or blur saves and Escape cancels. Conflicting or invalid names leave the original intact.
+
+File and folder context menus offer compatible installed apps under Open With, information, duplication, ZIP compression, export, and color tags. Open With follows the runtime's default association. Tags persist in `~/.config/dindbos/file-tags.json` and follow Files renames and moves. Compression produces a standard ZIP, bounded to 32 MB, 1,000 entries, and 32 directory levels; it does not follow symbolic links. Share provides download and copy-path choices. Make Alias remains disabled when the filesystem facade cannot create links. Native cloud-download controls and operating-system extensions are omitted.
+
 ## Settings and Control Center
 
 Open the system menu → **System Settings…** → **Wallpaper** to choose a background. The desktop’s **Change Wallpaper…** opens that page directly, restoring an existing Settings window. Back/forward and sidebar search stay within the app. **Add Photo…** accepts PNG, JPEG and WebP up to 16 MB / 40 million pixels and applies a resized JPEG copy bounded to 500,000 characters; the original stays on the user’s computer. The chosen background follows the instance’s appearance persistence, including memory-only and unavailable-storage behavior.

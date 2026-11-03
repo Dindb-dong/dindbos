@@ -4,6 +4,7 @@ import { renderNotes, renderReminders, renderCalendar } from "./productivity.js"
 import { renderPhotos, renderMusic } from "./media.js";
 import { renderClock } from "./clock.js";
 import { renderApplications } from "./applications.js";
+import { executeFilesContextCommand, readFilesTags, remapFilesTags, forgetFilesTags } from "./files-context-commands.js";
 import { appearanceMarkup, wireAppearanceControls, welcomeMarkup, wallpaperSettingsMarkup, desktopSettingsMarkup, wireWallpaperPreviews } from "./appearance.js";
 import { base64ToBytes, bytesToBase64, fileContentPreview } from "../file-data.js";
 import {
@@ -361,6 +362,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
   let dismissToolbarMenus = null;
   let disconnectColumns = null;
   let fileIconCleanups = [];
+  let cancelInlineRename = () => {};
   let tabSequence = 1;
   let activeTabId = "1";
   const folderTabs = [{ id: "1", path: currentPath, history: [...navigationHistory], historyIndex: navigationIndex }];
@@ -382,7 +384,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
     folderTabs.splice(targetIndex < 0 ? folderTabs.length : targetIndex + (after ? 1 : 0), 0, tab);
     draw(currentPath, selectedPath, { preserveSelection: true, skipHistory: true, focusTab: true });
   };
-  const detachFolderTab = (id) => {
+  const detachFolderTab = (id, bounds) => {
     const tab = folderTabs.find((item) => item.id === id);
     if (!tab) return;
     const snapshot = { path: tab.path, history: [...tab.history], historyIndex: tab.historyIndex };
@@ -405,6 +407,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
     pendingTabTransfers.add(cancel);
     try {
       openedWindow = os.launch("files", { path: snapshot.path, filesTab: { history: snapshot.history, historyIndex: snapshot.historyIndex, viewMode, sortMode }, filesTabTransfer: { ready: () => finish(), onError: (error) => finish(error) } });
+      openedWindow?.setBounds?.(bounds);
     } catch (error) { finish(error); }
   };
   const selectFolderTab = (id, focusTab = false) => {
@@ -422,6 +425,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
   };
 
   const draw = async (nextPath, nextSelectedPath = null, options = {}) => {
+    cancelInlineRename();
     contextMenuCleanups.get(content)?.();
     dismissToolbarMenus?.();
     disconnectColumns?.();
@@ -585,6 +589,11 @@ function renderFiles(os, content, path, windowApi, context = {}) {
         if (!frame || !host) return;
         const pointerId = event.pointerId;
         const origin = { x: event.clientX, y: event.clientY };
+        const frameBounds = frame.getBoundingClientRect();
+        const tabBounds = button.getBoundingClientRect();
+        const stripBounds = content.querySelector(".files-tabs").getBoundingClientRect();
+        // Keep the grab point within the detached tab rather than anchoring to its old tab index.
+        const grabOffset = { x: stripBounds.left - frameBounds.left + origin.x - tabBounds.left, y: origin.y - frameBounds.top };
         let dragging = false;
         let preview = null;
         let targetId = null;
@@ -642,7 +651,10 @@ function renderFiles(os, content, path, windowApi, context = {}) {
           if (!wasDragging || disposed) return;
           suppressDragClick();
           endEvent.preventDefault();
-          if (outside) detachFolderTab(button.dataset.filesTab);
+          if (outside) {
+            const hostBounds = host.getBoundingClientRect();
+            detachFolderTab(button.dataset.filesTab, { left: endEvent.clientX - hostBounds.left - grabOffset.x, top: endEvent.clientY - hostBounds.top - grabOffset.y, width: frameBounds.width, height: frameBounds.height });
+          }
           else if (dropTarget) moveFolderTab(button.dataset.filesTab, dropTarget, dropAfter);
         };
         cancelTabDrag = cancel;
@@ -940,7 +952,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
         });
         const selectionStatus = content.querySelector(".files-status > span");
         if (selectionStatus) selectionStatus.textContent = selectionStatus.textContent.replace(/ · \d+ selected$/, ` · ${selectedPaths.size} selected`);
-        showFilesContextMenu(content, event, selectedPath, clipboard, runAction, false, Boolean(button.dataset.dropPath));
+        showFilesContextMenu(content, event, selectedPath, clipboard, runAction, false, Boolean(button.dataset.dropPath), os, selectedPaths);
       });
       button.addEventListener("dragstart", (event) => {
         event.dataTransfer.setData("application/x-dindbos-path", button.dataset.path);
@@ -1061,7 +1073,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
       if (event.target.closest("[data-path], .files-sidebar, input, textarea")) return;
       event.preventDefault();
       event.stopPropagation();
-      showFilesContextMenu(content, event, currentPath, clipboard, runAction, true);
+      showFilesContextMenu(content, event, currentPath, clipboard, runAction, true, false, os, selectedPaths);
     });
     const dropTarget = content.querySelector("[data-drop-target]");
     const dropzone = content.querySelector(".files-dropzone");
@@ -1102,11 +1114,89 @@ function renderFiles(os, content, path, windowApi, context = {}) {
     }
     os.openPath(selectedPath);
   };
+  const beginInlineRename = (targetPath) => {
+    cancelInlineRename();
+    const row = [...content.querySelectorAll(".files-row")].find((element) => element.dataset.path === targetPath);
+    const name = row?.querySelector(".files-row-name");
+    const appRoot = content.querySelector(".files-app");
+    if (!name || !appRoot) { windowApi.setTitle("Files — Select an item to rename"); return; }
+    const originalName = os.fs.basename(targetPath);
+    const originalDirectory = currentPath;
+    const originalTab = activeTabId;
+    const editor = document.createElement("div");
+    editor.className = "files-rename-editor";
+    editor.innerHTML = '<input type="text" data-files-rename aria-label="Rename item" spellcheck="false" autocomplete="off"><span class="files-rename-error" role="alert" hidden></span>';
+    const input = editor.querySelector("input");
+    const errorMessage = editor.querySelector("[role='alert']");
+    input.value = originalName;
+    let finished = false;
+    let committing = false;
+    const position = () => {
+      const box = name.getBoundingClientRect(), rootBox = appRoot.getBoundingClientRect();
+      const width = Math.max(90, Math.min(240, box.width + 12, rootBox.width - 12));
+      Object.assign(editor.style, { left: `${Math.max(4, Math.min(box.left - rootBox.left - 6, rootBox.width - width - 4))}px`, top: `${box.top - rootBox.top - 3}px`, width: `${width}px` });
+    };
+    const close = (restoreFocus = false) => {
+      if (finished) return;
+      finished = true;
+      content.removeEventListener("scroll", position, true);
+      observer?.disconnect();
+      editor.remove();
+      row.classList.remove("is-renaming"); row.draggable = true;
+      cancelInlineRename = () => {};
+      if (restoreFocus && row.isConnected) row.focus({ preventScroll: true });
+    };
+    const commit = async () => {
+      if (finished || committing) return;
+      if (input.value === originalName) { close(true); return; }
+      committing = true; input.readOnly = true;
+      input.removeAttribute("aria-invalid"); errorMessage.hidden = true;
+      try {
+        const result = await handleFileAction(os, originalDirectory, targetPath, "rename", { renameTo: input.value });
+        let storageError = result.warning ? new Error(result.warning) : null;
+        try { await syncAppStorage(os); } catch (error) { storageError = error; }
+        const stillEditing = !finished && !disposed && currentPath === originalDirectory && activeTabId === originalTab;
+        close();
+        if (stillEditing) await draw(result.path, result.selectedPath, { focusSelected: true });
+        if (!disposed && storageError) windowApi.setTitle(`Files — Renamed, but could not save: ${storageError.message}`);
+      } catch (error) {
+        if (finished || disposed) return;
+        committing = false; input.readOnly = false;
+        input.setAttribute("aria-invalid", "true");
+        errorMessage.textContent = error.message || "Could not rename this item."; errorMessage.hidden = false;
+        input.focus({ preventScroll: true });
+      }
+    };
+    input.addEventListener("keydown", (event) => {
+      if (event.isComposing) return;
+      if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); void commit(); }
+      else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true); }
+      else if (!event.metaKey && !event.ctrlKey && !event.altKey) event.stopPropagation();
+    });
+    input.addEventListener("blur", () => { void commit(); });
+    editor.addEventListener("pointerdown", (event) => event.stopPropagation());
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(position) : null;
+    observer?.observe(appRoot);
+    row.classList.add("is-renaming"); row.draggable = false;
+    appRoot.appendChild(editor);
+    content.addEventListener("scroll", position, true);
+    cancelInlineRename = close;
+    position(); input.focus({ preventScroll: true });
+    const node = os.fs.resolveNode(os.fs.resolve(targetPath) || os.fs.lstat(targetPath));
+    const dot = originalName.lastIndexOf(".");
+    input.setSelectionRange(0, ["directory", "mount"].includes(node?.type) || dot <= 0 ? originalName.length : dot);
+  };
   const runAction = async (action, actionPath = selectedPath) => {
     if (disposed) return;
+    if (action === "rename") {
+      content.querySelector(".files-more-actions")?.removeAttribute("open");
+      beginInlineRename(actionPath);
+      return;
+    }
     if (action === "info") {
       inspectorOpen = !inspectorOpen;
-      await draw(currentPath, selectedPath, { preserveSelection: true });
+      if (!selectedPaths.has(actionPath)) selectedPaths = new Set([actionPath]);
+      await draw(currentPath, actionPath, { preserveSelection: true });
       return;
     }
     if (action === "favorite" || action === "favorite-current") {
@@ -1129,7 +1219,10 @@ function renderFiles(os, content, path, windowApi, context = {}) {
         operationHistory = recordFilesOperationHistory(operationHistory, fileOperation);
       }
       selectedPaths = new Set([result.selectedPath || result.path || currentPath]);
+      if (action === "new-folder") searchQuery = "";
       await draw(result.path || currentPath, result.selectedPath || result.path || currentPath);
+      if (action === "new-folder" && !disposed) beginInlineRename(result.selectedPath);
+      if (result.warning || reporter.warning) windowApi.setTitle(`Files — ${result.warning || reporter.warning}`);
     } catch (error) {
       if (reporter.started) {
         fileOperation = error.name === "AbortError" ? reporter.cancel(error.message) : reporter.fail(error);
@@ -1152,6 +1245,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
   });
   return () => {
     disposed = true;
+    cancelInlineRename();
     finishInitialDraw(new Error("Finder window closed before opening"));
     for (const cancel of pendingTabTransfers) cancel();
     window.clearTimeout(tabClickResetTimer);
@@ -1768,46 +1862,117 @@ function operationLabel(action) {
 
 const contextMenuCleanups = new WeakMap();
 
-function showFilesContextMenu(content, event, targetPath, clipboard, runAction, background = false, folder = false) {
-  const actions = background
-    ? [["new-folder", "New Folder"], ["new-file", "New File"], ["import", "Import Files…"], ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste", !clipboard]]
-    : [["open", "Open"], ...(folder ? [["favorite", "Add to Favorites"]] : []), ["rename", "Rename"], ["duplicate", "Duplicate"], ["copy", "Copy"], ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste", !clipboard], ["trash", "Move to Trash"], ["export", "Export…"]];
-  showFilesActionMenu(content, event, actions, (action) => runAction(action, targetPath), background ? "Folder actions" : "File actions");
+function showFilesContextMenu(content, event, targetPath, clipboard, runAction, background = false, folder = false, os, selection = new Set()) {
+  const node = os?.fs.resolve(targetPath);
+  const name = os?.fs.basename(targetPath) || "Item";
+  const multiple = !background && selection.size > 1;
+  const compatible = !folder && node ? os.apps.list().filter(app => app.id === node.appId || (app.accepts || []).some(mime => mime === node.mime || mime === "*/*" || mime.endsWith("/*") && node.mime?.startsWith(mime.slice(0, -1)))).sort((a, b) => Number(b.id === node.appId) - Number(a.id === node.appId) || Number(b.associationPriority || 0) - Number(a.associationPriority || 0)) : [];
+  const openWith = compatible.map((app, index) => ({ action: `open-with:${app.id}`, label: `${app.name}${index === 0 ? " (Default)" : ""}`, icon: app.icon || "app" }));
+  let tags = []; let tagsUnavailable = "";
+  try { tags = readFilesTags(os, targetPath); } catch (error) { tagsUnavailable = error.message; }
+  const actions = background ? [
+    ["new-folder", "New Folder"], ["new-file", "New File"], ["import", "Import Files…"], null,
+    ["paste", clipboard ? `Paste ${clipboard.name || "Item"}` : "Paste", !clipboard], null,
+    ["info", "Get Info"],
+  ] : [
+    ["open", "Open"], ...(!folder ? [["open-with", "Open With", multiple || !openWith.length, openWith]] : [["open-new-window", "Open in New Window"]]), null,
+    ["trash", "Move to Trash"], null,
+    ["info", "Get Info"], ["rename", "Rename", multiple],
+    ["compress", multiple ? `Compress ${selection.size} Items` : `Compress “${name}”`],
+    ["duplicate", "Duplicate", multiple], ["make-alias", "Make Alias", typeof os?.fs.createSymlink !== "function" || multiple],
+    ...(!folder ? [["quick-look", `Quick Look “${name}”`, multiple || !os?.apps.list().some(app => app.id === "viewer")]] : []),
+    ["copy", "Copy"], null,
+    ["share", "Share…", folder || multiple, [["export", "Download a Copy…"], ["copy-path", "Copy Path"]]], null,
+    ...(tagsUnavailable ? [["tags-unavailable", `Tags unavailable: ${tagsUnavailable}`, true]] : [{ colors: true, tags }]), null,
+    ["quick-actions", "Quick Actions", false, [["copy-path", "Copy Path"], ...(folder ? [["favorite", "Add to Favorites"]] : [["export", "Export…"]])]],
+  ];
+  showFilesActionMenu(content, event, actions, action => runAction(action, targetPath), background ? "Folder actions" : "File actions");
 }
 
 function showFilesActionMenu(content, event, actions, runAction, label) {
   contextMenuCleanups.get(content)?.();
   const previousFocus = document.activeElement;
-  const menu = document.createElement("div");
-  menu.className = "files-context-menu";
-  menu.dataset.glassSurface = "menu";
-  menu.setAttribute("role", "menu");
-  menu.setAttribute("aria-label", label);
-  menu.innerHTML = actions.map(([action, text, disabled]) => `<button type="button" role="menuitem" data-context-action="${escapeAttr(action)}" ${disabled ? "disabled" : ""}>${escapeHtml(text)}${action === "copy" ? '<kbd>⌘C</kbd>' : action === "paste" ? '<kbd>⌘V</kbd>' : ""}</button>`).join("");
-  content.appendChild(menu);
-  const bounds = content.getBoundingClientRect();
-  menu.style.left = `${Math.max(4, Math.min(event.clientX - bounds.left, bounds.width - menu.offsetWidth - 4))}px`;
-  menu.style.top = `${Math.max(4, Math.min(event.clientY - bounds.top, bounds.height - menu.offsetHeight - 4))}px`;
-  menu.addEventListener("contextmenu", (nextEvent) => { nextEvent.preventDefault(); nextEvent.stopPropagation(); });
-  const close = () => {
-    menu.remove();
-    document.removeEventListener("pointerdown", outside, true);
-    contextMenuCleanups.delete(content);
+  const panels = [];
+  const commands = new Map();
+  const iconCleanups = [];
+  let activeSubmenu = null;
+  const normalize = item => Array.isArray(item) ? { action: item[0], label: item[1], disabled: item[2], children: item[3] } : item;
+  const makePanel = (entries, panelLabel) => {
+    const panel = document.createElement("div");
+    panel.className = "files-context-menu";
+    panel.dataset.glassSurface = "menu";
+    panel.setAttribute("role", "menu"); panel.setAttribute("aria-label", panelLabel);
+    const scroller = document.createElement("div"); scroller.className = "files-context-scroll"; panel.append(scroller);
+    for (const source of entries) {
+      if (!source) { const divider = document.createElement("div"); divider.className = "files-context-divider"; divider.setAttribute("role", "separator"); scroller.append(divider); continue; }
+      const item = normalize(source);
+      if (item.colors) {
+        const group = document.createElement("div"); group.className = "files-context-colors"; group.setAttribute("role", "group"); group.setAttribute("aria-label", "Tags");
+        for (const color of ["red", "orange", "yellow", "green", "blue", "purple", "gray", "none"]) {
+          const button = document.createElement("button"); button.type = "button"; button.dataset.contextAction = `tag:${color}`; button.className = "files-context-tag"; button.style.setProperty("--tag-color", ({ red:"#ff6059",orange:"#ffa143",yellow:"#ffd23f",green:"#50c75a",blue:"#3298ff",purple:"#bd5be5",gray:"#999",none:"transparent" })[color]); button.setAttribute("aria-label", color === "none" ? "Remove Tag" : `${color[0].toUpperCase() + color.slice(1)} Tag`); button.title = button.getAttribute("aria-label"); button.disabled = Boolean(item.disabled); button.setAttribute("aria-pressed", String(color !== "none" && item.tags?.includes(color))); if (color === "none") button.textContent = "×"; group.append(button);
+          commands.set(button, { action: `tag:${color}` });
+        }
+        scroller.append(group); continue;
+      }
+      const button = document.createElement("button"); button.type = "button"; button.setAttribute("role", "menuitem"); button.dataset.contextAction = item.action; button.disabled = Boolean(item.disabled); button.title = item.label;
+      const text = document.createElement("span"); text.textContent = item.label; text.className = "files-context-label";
+      if (item.icon) { const icon = document.createElement("span"); icon.className = "files-context-icon"; button.append(icon); iconCleanups.push(mountAppIcon(icon, item.icon)); }
+      button.append(text);
+      if (item.children) { button.setAttribute("aria-haspopup", "menu"); button.setAttribute("aria-expanded", "false"); const arrow = document.createElement("span"); arrow.textContent = "›"; arrow.className = "files-context-chevron"; button.append(arrow); }
+      else if (["copy", "paste"].includes(item.action)) { const kbd = document.createElement("kbd"); kbd.textContent = item.action === "copy" ? "⌘C" : "⌘V"; button.append(kbd); }
+      commands.set(button, item); scroller.append(button);
+    }
+    panel.addEventListener("contextmenu", nextEvent => { nextEvent.preventDefault(); nextEvent.stopPropagation(); });
+    content.append(panel); panels.push(panel); return panel;
   };
-  const outside = (nextEvent) => { if (!menu.contains(nextEvent.target)) close(); };
+  const bounds = content.getBoundingClientRect();
+  const position = (panel, left, top) => {
+    panel.style.maxHeight = `${Math.max(40, bounds.height - 8)}px`;
+    panel.style.left = `${Math.max(4, Math.min(left, bounds.width - panel.offsetWidth - 4))}px`;
+    panel.style.top = `${Math.max(4, Math.min(top, bounds.height - panel.offsetHeight - 4))}px`;
+  };
+  const menu = makePanel(actions, label);
+  position(menu, event.clientX - bounds.left, event.clientY - bounds.top);
+  const closeSubmenu = () => { if (activeSubmenu) { activeSubmenu.trigger.setAttribute("aria-expanded", "false"); activeSubmenu.panel.remove(); panels.splice(panels.indexOf(activeSubmenu.panel), 1); activeSubmenu = null; } };
+  const openSubmenu = (trigger, item, focus = false) => {
+    if (activeSubmenu?.trigger === trigger) { if (focus) activeSubmenu.panel.querySelector("button:not(:disabled)")?.focus({preventScroll:true}); return; }
+    closeSubmenu();
+    const panel = makePanel(item.children || [], `${item.label} submenu`);
+    trigger.setAttribute("aria-expanded", "true");
+    const anchor = trigger.getBoundingClientRect();
+    const right = menu.offsetLeft + menu.offsetWidth - 3;
+    const left = right + panel.offsetWidth <= bounds.width - 4 ? right : menu.offsetLeft - panel.offsetWidth + 3;
+    position(panel, left >= 4 ? left : menu.offsetLeft + 24, anchor.top - bounds.top - 5);
+    activeSubmenu = { trigger, panel };
+    if (focus) panel.querySelector("button:not(:disabled)")?.focus({preventScroll:true});
+  };
+  let closed = false;
+  const close = () => { if (closed) return; closed = true; panels.forEach(panel => panel.remove()); iconCleanups.forEach(cleanup => cleanup()); document.removeEventListener("pointerdown", outside, true); content.removeEventListener("keydown", keydown); content.removeEventListener("pointerover", hover); content.removeEventListener("click", click); contextMenuCleanups.delete(content); };
+  const outside = nextEvent => { if (!panels.some(panel => panel.contains(nextEvent.target))) close(); };
+  const keydown = keyEvent => {
+    const panel = panels.find(panel => panel.contains(keyEvent.target)); if (!panel) return;
+    const items = [...panel.querySelectorAll("button:not(:disabled)")];
+    const current = document.activeElement; const index = items.indexOf(current);
+    if (keyEvent.key === "Escape") { keyEvent.preventDefault(); keyEvent.stopPropagation(); close(); (previousFocus?.isConnected ? previousFocus : content.querySelector(".files-app"))?.focus({preventScroll:true}); }
+    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(keyEvent.key)) { keyEvent.preventDefault(); keyEvent.stopPropagation(); const next = keyEvent.key === "Home" ? 0 : keyEvent.key === "End" ? items.length - 1 : (index + (keyEvent.key === "ArrowDown" ? 1 : -1) + items.length) % items.length; items[next]?.focus({preventScroll:true}); }
+    if (keyEvent.key === "ArrowRight" && commands.get(current)?.children) { keyEvent.preventDefault(); keyEvent.stopPropagation(); openSubmenu(current, commands.get(current), true); }
+    if (keyEvent.key === "ArrowLeft" && activeSubmenu?.panel === panel) { keyEvent.preventDefault(); keyEvent.stopPropagation(); const trigger = activeSubmenu.trigger; closeSubmenu(); trigger.focus({preventScroll:true}); }
+  };
+  content.addEventListener("keydown", keydown);
+  const hover = nextEvent => { const button = nextEvent.target.closest?.("button"); if (!button || !menu.contains(button)) return; const item = commands.get(button); if (item?.children && !button.disabled) openSubmenu(button, item); else closeSubmenu(); };
+  content.addEventListener("pointerover", hover);
+  // Delegate so submenus created after opening use the same command lifecycle.
+  const click = async nextEvent => {
+    const button = nextEvent.target.closest?.("button"); if (!button || !commands.has(button) || button.disabled) return;
+    const item = commands.get(button);
+    if (item.children) { openSubmenu(button, item, true); return; }
+    close();
+    try { await runAction(item.action); } catch { /* The owning app reports operation failures. */ }
+  };
+  content.addEventListener("click", click);
   contextMenuCleanups.set(content, close);
   document.addEventListener("pointerdown", outside, true);
-  menu.querySelectorAll("[data-context-action]").forEach((button) => button.addEventListener("click", async () => {
-    close();
-    try { await runAction(button.dataset.contextAction); } catch { /* The owning app reports operation failures. */ }
-  }));
-  menu.addEventListener("keydown", (keyEvent) => {
-    const items = [...menu.querySelectorAll("button:not(:disabled)")];
-    const index = items.indexOf(document.activeElement);
-    if (keyEvent.key === "Escape") { keyEvent.preventDefault(); keyEvent.stopPropagation(); close(); (previousFocus?.isConnected ? previousFocus : content.querySelector(".files-app"))?.focus({ preventScroll: true }); }
-    if (["ArrowDown", "ArrowUp"].includes(keyEvent.key)) { keyEvent.preventDefault(); items[(index + (keyEvent.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus({ preventScroll: true }); }
-  });
-  menu.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
+  menu.querySelector("button:not(:disabled)")?.focus({preventScroll:true});
 }
 
 async function handleFilesDrop(os, event, destinationPath, draw, windowApi, content, onHistory = null) {
@@ -1820,6 +1985,7 @@ async function handleFilesDrop(os, event, destinationPath, draw, windowApi, cont
       onHistory?.(reporter.complete("Complete"));
       await syncAppStorage(os);
       await draw(destinationPath, moved || destinationPath);
+      if (reporter.warning) windowApi.setTitle(`Files — ${reporter.warning}`);
       return;
     }
     const imported = await importDroppedFiles(os, destinationPath, event.dataTransfer?.files || [], reporter, conflict);
@@ -1875,6 +2041,25 @@ function permissionSummary(mode = "") {
 
 async function handleFileAction(os, currentPath, selectedPath, action, state = {}) {
   const reporter = state.reporter || null;
+  const contextual = await executeFilesContextCommand(os, currentPath, selectedPath, action, state);
+  if (contextual) return contextual;
+  if (action.startsWith("open-with:")) {
+    const appId = action.slice(10);
+    if (!os.apps.list().some(app => app.id === appId)) throw new Error("The selected application is no longer installed");
+    os.launch(appId, { node: os.fs.resolve(selectedPath), path: selectedPath });
+    return { path: currentPath, selectedPath };
+  }
+  if (["quick-look", "open-new-window"].includes(action)) {
+    const appId = { "quick-look": "viewer", "open-new-window": "files" }[action];
+    if (!os.apps.list().some(app => app.id === appId)) throw new Error("The application is not installed");
+    os.launch(appId, { node: os.fs.resolve(selectedPath), path: selectedPath, cwd: selectedPath });
+    return { path: currentPath, selectedPath };
+  }
+  if (action === "copy-path") {
+    if (!globalThis.navigator?.clipboard?.writeText) throw new Error("Clipboard access is unavailable");
+    await globalThis.navigator.clipboard.writeText(selectedPath);
+    return { path: currentPath, selectedPath };
+  }
   if (action === "mount-local") {
     if (!os.localMounts?.supported()) throw new Error("File System Access API is not available");
     reporter?.start(1, "Waiting for folder picker");
@@ -1895,7 +2080,7 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
     return { path: os.session.home || "/", selectedPath: os.session.home || "/" };
   }
   if (action === "new-folder") {
-    const target = uniquePath(os, currentPath, "untitled-folder");
+    const target = await uniqueDestinationPath(os, currentPath, "Untitled Folder");
     if (os.localMounts?.isMountedPath(currentPath)) {
       await os.localMounts.createDirectory(target);
       return { path: currentPath, selectedPath: target };
@@ -1920,11 +2105,15 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
   if (action === "rename") {
     const target = actionTarget(currentPath, selectedPath);
     const currentName = os.fs.basename(target);
-    const nextName = prompt("Rename", currentName);
-    if (!nextName || nextName === currentName) return { path: currentPath, selectedPath: target };
+    const inline = Object.hasOwn(state, "renameTo");
+    const nextName = inline ? String(state.renameTo) : prompt("Rename", currentName);
+    if ((!inline && !nextName) || nextName === currentName) return { path: currentPath, selectedPath: target };
+    if (String(nextName).includes("/") || String(nextName).includes("\0")) throw new Error("Names cannot contain a slash or null character.");
     const destination = os.fs.join(os.fs.dirname(target), sanitizeFileName(nextName));
-    await movePath(os, target, destination, reporter);
-    return { path: os.fs.dirname(destination), selectedPath: destination };
+    if (await importPathExists(os, destination)) throw new Error(`An item named “${os.fs.basename(destination)}” already exists.`);
+    if (os.localMounts?.isMountedPath(target)) await movePath(os, target, destination, reporter, state);
+    else { os.fs.move(target, destination); maintainFilesTags(() => remapFilesTags(os, target, destination), state); }
+    return { path: os.fs.dirname(destination), selectedPath: destination, warning: state.warning || reporter?.warning };
   }
   if (action === "duplicate") {
     const target = actionTarget(currentPath, selectedPath);
@@ -1970,7 +2159,7 @@ async function handleFileAction(os, currentPath, selectedPath, action, state = {
     if (!targets.length) throw new Error("Select an item first");
     reporter?.start(targets.length, `Deleting ${targets.length} item${targets.length === 1 ? "" : "s"}`);
     for (const target of targets) {
-      await removePath(os, target);
+      await removePath(os, target, reporter);
       reporter?.step(target);
     }
     return { path: currentPath, selectedPath: currentPath };
@@ -2231,7 +2420,11 @@ async function copyPath(os, sourcePath, destinationPath, reporter = null) {
   await copyVirtualToLocal(os, sourcePath, destinationPath, reporter);
 }
 
-async function movePath(os, sourcePath, destinationPath, reporter = null) {
+function maintainFilesTags(update, status) {
+  try { update(); } catch (error) { if (status) status.warning = `File operation succeeded, but tags could not be updated: ${error.message}`; }
+}
+
+async function movePath(os, sourcePath, destinationPath, reporter = null, tagStatus = reporter) {
   assertFilesOperationActive(reporter?.signal);
   const sourceLocal = os.localMounts?.isMountedPath(sourcePath);
   const destinationLocal = os.localMounts?.isMountedPath(destinationPath);
@@ -2240,6 +2433,7 @@ async function movePath(os, sourcePath, destinationPath, reporter = null) {
       recursive: true,
       onProgress: (operation) => reporter?.progress(operation),
     });
+    maintainFilesTags(() => remapFilesTags(os, sourcePath, destinationPath), tagStatus);
     return;
   }
   if (!sourceLocal && !destinationLocal) {
@@ -2247,10 +2441,12 @@ async function movePath(os, sourcePath, destinationPath, reporter = null) {
     await copyVirtualToVirtual(os, sourcePath, destinationPath, reporter);
     os.fs.remove(sourcePath, "/", { recursive: true });
     reporter?.complete(destinationPath);
+    maintainFilesTags(() => remapFilesTags(os, sourcePath, destinationPath), tagStatus);
     return;
   }
   await copyPath(os, sourcePath, destinationPath, reporter);
-  await removePath(os, sourcePath, reporter);
+  await removePath(os, sourcePath, reporter, true);
+  maintainFilesTags(() => remapFilesTags(os, sourcePath, destinationPath), tagStatus);
 }
 
 async function copyLocalToVirtual(os, sourcePath, destinationPath, reporter = null) {
@@ -2346,16 +2542,18 @@ async function countLocalEntries(os, path) {
   return total;
 }
 
-async function removePath(os, path, reporter = null) {
+async function removePath(os, path, reporter = null, preserveTags = false) {
   assertFilesOperationActive(reporter?.signal);
   const ownsProgress = reporter && !reporter.started;
   if (ownsProgress) reporter.start(1, path);
   if (os.localMounts?.isMountedPath(path)) {
     await os.localMounts.remove(path, "/", { recursive: true });
+    if (!preserveTags) maintainFilesTags(() => forgetFilesTags(os, path), reporter);
     if (ownsProgress) reporter.step(path);
     return;
   }
   os.fs.remove(path, "/", { recursive: true });
+  if (!preserveTags) maintainFilesTags(() => forgetFilesTags(os, path), reporter);
   if (ownsProgress) reporter.step(path);
 }
 

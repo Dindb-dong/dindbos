@@ -12,7 +12,7 @@ window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),sto
  window.__os=os;
  const windowApi=os.launch('files',{path:'/home/guest'});
  window.__sourceId=windowApi.id;
- Object.assign(os.windows.windows.get(windowApi.id).frame.style,{left:'40px',top:'80px',width:'900px',height:'650px'});
+ Object.assign(os.windows.windows.get(windowApi.id).frame.style,{left:'40px',top:'80px',width:'600px',height:'400px'});
  return os;
 });`;
 const server=await createServer({configFile:false,logLevel:'error',optimizeDeps:{entries:[]},plugins:[{name:'files-tabs-fixture',resolveId(id){if(id==='/files-tabs.js')return '\0files-tabs';},load(id){if(id==='\0files-tabs')return source;},configureServer(vite){vite.middlewares.use(async(req,res,next)=>{if(req.url?.split('?')[0]!=='/files-tabs')return next();try{res.setHeader('Content-Type','text/html');res.end(await vite.transformIndexHtml(req.url,'<!doctype html><body style="margin:0;background:#ddd"><div id="desktop" style="margin:50px 80px;width:1320px;height:900px"></div><script type="module" src="/files-tabs.js"></script>'));}catch(error){next(error);}});}}],server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});
@@ -51,7 +51,7 @@ try {
  await expect(tabs().first()).toBeFocused();
  const beforeCancel=await tabPaths();
  const bounds=await original.boundingBox();
- const outside={x:bounds.x+bounds.width+80,y:bounds.y+bounds.height+35};
+ const outside={x:bounds.x+bounds.width+80,y:bounds.y+bounds.height/2};
  await dragStart(tabs().nth(1));await page.mouse.move(outside.x,outside.y,{steps:12});
  await expect(page.locator('.files-tab-drag-preview')).toBeVisible();
  await page.keyboard.press('Escape');await page.mouse.up();
@@ -59,11 +59,23 @@ try {
  assert.deepEqual(await tabPaths(),beforeCancel,'Escape cancels detaching and reordering');
  await expect(page.locator('.files-tab-drag-preview')).toHaveCount(0);
  // Detach the background Documents tab, preserving its Home -> Documents history.
+ const backgroundTab=await tabs().nth(2).boundingBox();
+ const firstTab=await tabs().first().boundingBox();
  await dragStart(tabs().nth(2));await page.mouse.move(outside.x,outside.y,{steps:12});await page.mouse.up();
  await expect(page.locator('.dos-window[data-app-id="files"]')).toHaveCount(2);
  await expect(tabs()).toHaveCount(2);
  const detached=page.locator(`.dos-window[data-app-id="files"]:not([data-window-id="${sourceId}"])`);
  await expect(detached.locator('.files-app')).toHaveAttribute('data-files-path','/home/guest/Documents');
+ const detachedBounds=await detached.boundingBox();
+ assert.equal(detachedBounds.width,bounds.width,'detaching preserves source window width');
+ assert.equal(detachedBounds.height,bounds.height,'detaching preserves source window height');
+ const grabbedOffsetX=firstTab.x-bounds.x+backgroundTab.width/2;
+ const grabbedOffsetY=backgroundTab.y-bounds.y+backgroundTab.height/2;
+ assert(Math.abs(detachedBounds.x+grabbedOffsetX-outside.x)<=2,'new window tab keeps the pointer grab point at the release location');
+ assert(Math.abs(detachedBounds.y+grabbedOffsetY-outside.y)<=2,'new window follows the pointer vertically in an offset host');
+ const savedPlacement=await page.evaluate(()=>window.__os.windows.readWindowPlacements().files);
+ const hostBounds=await page.locator('.dindbos-host').boundingBox();
+ assert.equal(savedPlacement.left,Math.round(detachedBounds.x-hostBounds.x),'drop location is persisted in host coordinates');
  await detached.getByRole('button',{name:'Back',exact:true}).click();
  await expect(detached.locator('.files-app')).toHaveAttribute('data-files-path','/home/guest');
  await detached.getByRole('button',{name:'Forward',exact:true}).click();
@@ -73,11 +85,18 @@ try {
  await page.evaluate((id)=>window.__os.windows.focus(id),sourceId);
  await files.getByRole('button',{name:'Close Home tab',exact:true}).click();
  await expect(tabs()).toHaveCount(1);
- await dragStart(tabs().first());await page.mouse.move(outside.x,outside.y,{steps:12});await page.mouse.up();
+ await dragStart(tabs().first());await page.mouse.move(1490,1000,{steps:12});await page.mouse.up();
  await expect(original).toHaveCount(0);
  await expect(page.locator('.dos-window[data-app-id="files"]')).toHaveCount(2);
  await expect(page.locator('.files-app[data-files-path="/home/guest/Downloads"]')).toHaveCount(1);
  await expect(page.locator('.files-tab-drag-preview')).toHaveCount(0);
+ const edgeTarget=page.locator('.dos-window').filter({has:page.locator('.files-app[data-files-path="/home/guest/Downloads"]')});
+ const edgeBounds=await edgeTarget.boundingBox();
+ const viewport=await page.evaluate(()=>window.__os.windows.viewport());
+ assert(edgeBounds.x>=hostBounds.x+8 && edgeBounds.y>=hostBounds.y+58,'edge drop stays below menu and within the host');
+ assert(edgeBounds.x+edgeBounds.width<=hostBounds.x+viewport.width-7,'edge drop clamps at the host right edge');
+ assert(edgeBounds.y+edgeBounds.height<=hostBounds.y+viewport.height-viewport.bottomInset+1,'edge drop reserves the real Dock');
+ await page.screenshot({path:output+'/tab-detached-edge.png'});
  // A transferred tab retains history beyond 100 entries, rather than silently resetting.
  const longSourceId=await page.evaluate(()=>{
    const history=Array.from({length:120},(_,index)=>index%2?'/home/guest/Documents':'/home/guest');
@@ -141,5 +160,5 @@ try {
  await expect(page.locator('.files-tab-drag-preview')).toHaveCount(0);
  await expect(page.locator('.dos-window')).toHaveCount(0);
  assert.deepEqual(errors,[]);
- console.log('Files tabs browser smoke passed: pointer reorder/cancel/tear-off, full history, failed mount recovery, Cmd/Ctrl+W tab close, Shift+Cmd/Ctrl+W window close, offset host and destroy cleanup');
+ console.log('Files tabs browser smoke passed: pointer reorder/cancel/tear-off at release position, host/Dock edge clamp, full history, failed mount recovery, Cmd/Ctrl+W tab close, Shift+Cmd/Ctrl+W window close, offset host and destroy cleanup');
 } finally {await browser?.close();await server.close();}

@@ -77,7 +77,7 @@
     "smoke:conformance": "node scripts/smoke-conformance.js",
     "smoke:release-conformance": "node scripts/smoke-release-conformance.js",
     "smoke:pages-workflow": "node scripts/smoke-pages-workflow.js",
-    "smoke:files": "node scripts/smoke-files-import-export.js",
+    "smoke:files": "node scripts/smoke-files-import-export.js && node scripts/smoke-files-context-commands.js",
     "smoke:settings": "node scripts/smoke-settings.js",
     "smoke:viewer": "node scripts/smoke-viewer.js",
     "smoke:shell": "node scripts/smoke-shell.js",

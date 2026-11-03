@@ -37,6 +37,7 @@ try {
     ["browser", "smoke-browser-ui.js"],
     ["files", "smoke-files-ui-browser.js"],
     ["files-tabs", "smoke-files-tabs-browser.js"],
+    ["files-context-menu", "smoke-files-context-menu-browser.js"],
     ["app-menus", "smoke-app-menus-browser.js"],
     ["applications", "smoke-applications-browser.js"],
     ["liquid-glass", "smoke-liquid-glass-browser.js"],

@@ -16,6 +16,12 @@
   .files-commandbar .files-view-menu summary .files-tool-icon:last-child { width: 10px; flex-basis: 10px; }
   .files-tool-divider { width: 1px; height: 18px; background: var(--line); margin: 0 4px; flex-shrink: 0; }
   .files-app { position: relative; z-index: 0; }
+  .files-rename-editor { position: absolute; z-index: 15; color: var(--text); }
+  .files-app .files-rename-editor input { display: block; width: 100%; min-width: 0; min-height: 24px; height: 24px; margin: 0; padding: 2px 4px; border: 1px solid var(--accent); border-radius: 3px; outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent); background: var(--content-bg); color: var(--text); font: 13px/18px var(--font-ui); box-shadow: none; }
+  .files-app[data-files-view='icons'] .files-rename-editor input { text-align: center; }
+  .files-app .files-row.is-renaming > .files-row-name { visibility: hidden; }
+  .files-rename-error { display: block; position: relative; width: max-content; max-width: 240px; margin-top: 5px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--chrome-bg, var(--content-bg)); color: var(--text); font: 12px/1.4 var(--font-ui); box-shadow: var(--menu-shadow); }
+  .files-rename-error[hidden] { display: none; }
   .files-menu-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
   .files-menu-layer > .files-action-menu { position: absolute; right: auto; width: 240px; max-width: calc(100% - 8px); margin: 0; overflow: auto; pointer-events: auto; }
   .files-sidebar [data-favorite] { position: relative; cursor: default; }
@@ -49,6 +55,20 @@
   .files-context-menu button { display: flex; justify-content: space-between; align-items: center; gap: 24px; min-height: 27px; padding: 4px 9px; border-radius: 4px; color: var(--text); font-size: 12px; font-family: inherit; }
   .files-context-menu button:hover:not(:disabled), .files-context-menu button:focus-visible { color: white; background: var(--accent); outline: none; }
   .files-context-menu kbd { color: inherit; opacity: .65; font: inherit; font-size: 11px; }
+  .files-context-menu { width: 238px; max-width: calc(100% - 8px); display: flex; flex-direction: column; overflow: hidden; padding: 5px; z-index: 220; border: 1px solid var(--line); }
+  .files-context-scroll { overflow: auto; overscroll-behavior: contain; min-height: 0; }
+  .files-context-scroll > button { width: 100%; gap: 10px; min-height: 28px; }
+  .files-context-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files-context-chevron { font-size: 23px; line-height: 16px; font-weight: 500; }
+  .files-context-icon { width: 18px; height: 18px; flex: 0 0 18px; display: grid; place-items: center; }
+  .files-context-icon :is(svg, img) { width: 100%; height: 100%; object-fit: contain; }
+  .files-context-divider { height: 1px; background: var(--line); margin: 5px 7px; }
+  .files-context-colors { display: flex; gap: 6px; padding: 7px 8px; align-items: center; }
+  .files-context-colors .files-context-tag { flex: 0 0 20px; width: 20px; height: 20px; min-height: 20px; padding: 0; border-radius: 50%; border: 1px solid #0002; background: var(--tag-color); color: var(--muted); justify-content: center; font-size: 19px; }
+  .files-context-colors .files-context-tag[aria-pressed='true'] { outline: 2px solid var(--text); outline-offset: 2px; }
+  .files-context-colors .files-context-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .files-context-colors .files-context-tag:hover:not(:disabled) { background: var(--tag-color); color: var(--text); }
+  .files-context-menu button[aria-expanded='true'] { background: var(--accent); color: white; }
   @container app-pane (max-width: 660px) {
     .files-app .files-commandbar { gap: 1px; padding: 9px 7px; }
     .files-commandbar .files-history { gap: 0; margin-right: 3px; }
