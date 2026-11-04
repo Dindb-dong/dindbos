@@ -26,6 +26,38 @@ const theme = {
 };
 ```
 
+For example, replace the wallpaper and Dock material without replacing its controls:
+
+```js
+const theme = {
+  wallpaper: 'url("/images/studio.jpg") center / cover',
+  dockSize: 48,
+  variables: {
+    "--dock-background": "#24332f",
+    "--dock-border": "1px solid #7c978b",
+    "--dock-radius": "12px",
+    "--dock-shadow": "0 4px 16px #0004",
+    "--dock-gap": "8px",
+    "--dock-padding": "6px 10px 10px",
+    "--dock-bottom": "12px",
+  },
+};
+```
+
+Pass this `theme` to `mountDindbOSDesktop({ root, theme })` or `<DindbOSDesktop theme={theme} />`. Image paths resolve from the embedding page; use your own asset URL, including a full URL when needed. Values are CSS strings, so dimensions need units. Each desktop owns its variables.
+
+| Dock token | Controls |
+| --- | --- |
+| `--dock-background` | Full CSS background, including in light/dark and refracted/frosted glass modes |
+| `--dock-border` | Full border shorthand |
+| `--dock-radius` | Corner radius |
+| `--dock-shadow` | Box shadow |
+| `--dock-gap` | Space between icons |
+| `--dock-padding` | Inner space |
+| `--dock-bottom` | Distance from the bottom of the desktop |
+
+Omit a token to retain the standard responsive appearance. These tokens keep the existing Dock actions, tooltips, running indicators and keyboard controls. Reduced transparency and forced colors retain their accessible opaque material, overriding custom background and shadow. For an entirely different layout, use `ui.slots.dock` below.
+
 Shared tokens are described in [DESIGN.md](../DESIGN.md). Prefer public tokens over selecting private descendant markup. Scope your own app styles, too.
 
 ## Icons

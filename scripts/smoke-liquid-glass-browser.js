@@ -62,11 +62,48 @@ try {
   await expect.poll(()=>page.locator('#scene filter').count()).toBe(4);
   await page.locator('.dynamic-lens').evaluateAll(nodes=>nodes.forEach(node=>node.remove()));
   await expect.poll(()=>page.locator('#scene filter').count()).toBe(1);
+  const rebuilds = await page.evaluate(async () => {
+    let maps = 0;
+    const original = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function (...args) { maps++; return original.apply(this, args); };
+    try {
+      const lens = document.querySelector('#scene .lens');
+      for (let n = 0; n < 24; n++) {
+        lens.style.width = `${360 + n}px`;
+        await new Promise(requestAnimationFrame);
+      }
+      await new Promise(resolve => setTimeout(resolve, 130));
+      return maps;
+    } finally { HTMLCanvasElement.prototype.toDataURL = original; }
+  });
+  assert(rebuilds <= 4, `animated resize should coalesce 24 frames into <=4 maps, received ${rebuilds}`);
+  await expect.poll(()=>page.locator('#scene filter').getAttribute('width')).toBe('385');
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  await page.evaluate(async () => {
+    const original = HTMLCanvasElement.prototype.toDataURL;
+    // A slow image encoder makes repeated budget overruns reproducible on fast hosts.
+    HTMLCanvasElement.prototype.toDataURL = function (...args) {
+      const started = performance.now();
+      while (performance.now() - started < 16) { /* isolated test workload */ }
+      return original.apply(this, args);
+    };
+    try {
+      const other = document.querySelector('#other .lens');
+      for (let n = 0; n < 8; n++) {
+        other.style.width = `${221 + n}px`;
+        await new Promise(resolve => setTimeout(resolve, 140));
+      }
+    } finally { HTMLCanvasElement.prototype.toDataURL = original; }
+  });
+  await expect(page.locator('#other')).toHaveAttribute('data-glass-engine', 'frosted');
+  await expect(page.locator('#scene')).toHaveAttribute('data-glass-engine', 'refraction');
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }); await cdp.detach();
   await page.evaluate(()=>{window.__glassCleanup();window.__glassCleanup();});
   assert.equal(await page.locator('#scene filter').count(),0);assert.equal(await lens.getAttribute('data-liquid-glass-mode'),null);
   assert.equal(await page.locator('#other filter').count(),1,'destroying one root must not remove another root filters');
   await page.evaluate(()=>window.__otherCleanup());
   assert.equal(await page.locator('[data-liquid-glass-definitions]').count(),0);assert.deepEqual(errors,[]);
   const video=page.video();await context.close();await video.saveAs(join(output,'live-refraction.webm'));await video.delete();
-  console.log(`liquid glass browser smoke ok: ${changed} refracted rim pixels, live moving DOM, foreground input, resize, forced colors, bounded dynamic surfaces, two roots, idempotent cleanup`);
+  console.log(`liquid glass browser smoke ok: ${changed} refracted rim pixels, live moving DOM, foreground input, resize, forced colors, bounded dynamic surfaces, two roots, 24 resize frames -> ${rebuilds} maps, throttled adaptive fallback, idempotent cleanup`);
 }finally{await browser?.close();await server.close();}

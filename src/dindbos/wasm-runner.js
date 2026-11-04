@@ -614,9 +614,9 @@ function abortReason(options = {}) {
 
 function scopedList(manifestScopes, optionScopes, fallback) {
   if (Array.isArray(manifestScopes) || Array.isArray(optionScopes)) {
-    return unique([...(manifestScopes || []), ...(optionScopes || [])]);
+    return unique([...(manifestScopes || []), ...(optionScopes || [])].map((path) => path.normalize("NFC")));
   }
-  return unique(fallback);
+  return unique(fallback.map((path) => path.normalize("NFC")));
 }
 
 function parseSyscallRequest(text) {

@@ -67,6 +67,13 @@ export function attachLiquidGlass(root, options = {}) {
   const surfaces = new Map();
   let destroyed = false;
   let frame = null;
+  let resizeTimer = null;
+  let resizeStarted = null;
+  const now = () => view.performance.now();
+  const constrained = (view.navigator.hardwareConcurrency > 0 && view.navigator.hardwareConcurrency <= 4)
+    || (view.navigator.deviceMemory > 0 && view.navigator.deviceMemory <= 4);
+  let quality = constrained ? 1 : 0;
+  const pressure = { map: 0, frame: 0 };
   const reduced = view.matchMedia?.("(prefers-reduced-transparency: reduce)");
   const forced = view.matchMedia?.("(forced-colors: active)");
   const chromium = /(?:Chrome|Chromium|Edg)\//.test(view.navigator.userAgent) && !/EdgiOS|CriOS/.test(view.navigator.userAgent);
@@ -77,10 +84,38 @@ export function attachLiquidGlass(root, options = {}) {
   svg.style.cssText = "position:absolute;pointer-events:none;overflow:hidden;width:0;height:0";
   const defs = document.createElementNS(SVG, "defs"); svg.append(defs); root.append(svg);
   const originalRootMode = root.getAttribute("data-glass-engine");
+  const originalQuality = root.getAttribute("data-glass-quality");
   const owned = (element) => !root.matches(".dindbos-host") || element.closest(".dindbos-host") === root;
-  const mode = () => options.enabled === false || reduced?.matches || forced?.matches ? "reduced" : supported ? "refraction" : "frosted";
-  const schedule = () => { if (!destroyed && frame === null) frame = view.requestAnimationFrame(update); };
-  const resize = view.ResizeObserver ? new view.ResizeObserver(schedule) : null;
+  const mode = () => options.enabled === false || reduced?.matches || forced?.matches ? "reduced" : supported && quality < 2 ? "refraction" : "frosted";
+  function sample(cost, limit, kind) {
+    if (quality >= 2 || document.hidden) return;
+    pressure[kind] = cost > limit ? pressure[kind] + 1 : Math.max(0, pressure[kind] - 1);
+    if (pressure[kind] >= 3) {
+      quality += 1;
+      pressure.map = pressure.frame = 0;
+      schedule();
+    }
+  }
+  const schedule = () => {
+    if (destroyed || frame !== null) return;
+    const requested = now();
+    frame = view.requestAnimationFrame(() => {
+      sample(now() - requested, 50, "frame");
+      update();
+    });
+  };
+  const scheduleResize = () => {
+    if (destroyed) return;
+    resizeStarted ??= now();
+    if (resizeTimer !== null) view.clearTimeout(resizeTimer);
+    // Reuse the current lens during magnification; continuous resizing still converges.
+    resizeTimer = view.setTimeout(() => {
+      resizeTimer = null;
+      resizeStarted = null;
+      schedule();
+    }, Math.max(0, Math.min(80, 240 - (now() - resizeStarted))));
+  };
+  const resize = view.ResizeObserver ? new view.ResizeObserver(scheduleResize) : null;
 
   function remove(element, record) {
     resize?.unobserve(element);
@@ -97,6 +132,9 @@ export function attachLiquidGlass(root, options = {}) {
     if (destroyed) return;
     const currentMode = mode();
     root.setAttribute("data-glass-engine", currentMode);
+    root.setAttribute("data-glass-quality", ["full", "economy", "frosted"][quality]);
+    let mapCost = 0;
+    let generated = false;
     const candidates = [...root.querySelectorAll(selector)].filter(element => owned(element)
       && element.offsetWidth >= 2 && element.offsetHeight >= 2 && !element.hidden
       && (!element.checkVisibility || element.checkVisibility({ visibilityProperty: true }))).slice(0, maximumSurfaces);
@@ -119,13 +157,18 @@ export function attachLiquidGlass(root, options = {}) {
       if (width < 2 || height < 2 || element.hidden) continue;
       const computed = view.getComputedStyle(element);
       const radius = parseFloat(computed.borderTopLeftRadius) || 0;
-      const key = `${width}:${height}:${radius}:${options.strength ?? 1}`;
-      if (record.key !== key || !record.filter) {
-        record.key = key;
-        const map = createGlassMap(width, height, radius, options);
+      const key = `${width}:${height}:${radius}:${options.strength ?? 1}:${quality}`;
+      if (!record.filter || (record.key !== key && resizeTimer === null)) {
+        const started = now();
+        const map = createGlassMap(width, height, radius, quality === 0 ? options : {
+          ...options,
+          maxPixels: Math.min(options.maxPixels ?? 150000, 40000),
+          maxDimension: Math.min(options.maxDimension ?? 768, 384),
+        });
         const canvas = document.createElement("canvas"); canvas.width = map.width; canvas.height = map.height;
         const context = canvas.getContext("2d");
         if (!context) continue;
+        record.key = key;
         context.putImageData(new view.ImageData(map.data, map.width, map.height), 0, 0);
         if (!record.filter) {
           record.filter = document.createElementNS(SVG, "filter");
@@ -144,15 +187,20 @@ export function attachLiquidGlass(root, options = {}) {
         }
         record.image.setAttribute("preserveAspectRatio", "none"); record.image.setAttribute("href", canvas.toDataURL());
         record.displace.setAttribute("scale", map.displacement);
+        mapCost += now() - started;
+        generated = true;
       }
       const surfaceBlur = parseFloat(computed.getPropertyValue("--liquid-glass-blur"));
       const blur = Number.isFinite(surfaceBlur) ? clamp(surfaceBlur, 0, 24) : options.blur ?? .6;
       const filter = `url("#${record.filter.id}") blur(${blur}px) saturate(1.18)`;
       element.style.setProperty("backdrop-filter", filter); element.style.setProperty("-webkit-backdrop-filter", filter);
     }
+    if (generated) sample(mapCost, 12, "map");
   }
 
-  const mutation = new view.MutationObserver(schedule);
+  const mutation = new view.MutationObserver((records) => {
+    if (records.some((record) => record.target !== svg && !svg.contains(record.target))) schedule();
+  });
   mutation.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "open", "data-glass-surface"] });
   reduced?.addEventListener?.("change", schedule); forced?.addEventListener?.("change", schedule);
   update();
@@ -161,8 +209,10 @@ export function attachLiquidGlass(root, options = {}) {
     destroyed = true; mutation.disconnect(); resize?.disconnect();
     reduced?.removeEventListener?.("change", schedule); forced?.removeEventListener?.("change", schedule);
     if (frame !== null) view.cancelAnimationFrame(frame);
+    if (resizeTimer !== null) view.clearTimeout(resizeTimer);
     for (const [element, record] of surfaces) remove(element, record);
     svg.remove();
     if (originalRootMode === null) root.removeAttribute("data-glass-engine"); else root.setAttribute("data-glass-engine", originalRootMode);
+    if (originalQuality === null) root.removeAttribute("data-glass-quality"); else root.setAttribute("data-glass-quality", originalQuality);
   };
 }

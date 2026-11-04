@@ -54,6 +54,33 @@ grep TODO < note.txt > matches.txt
 
 Redirection does not change the command status after the command has already produced matching output. For example, `grep text < in.txt > out.txt` keeps the `grep` match status even though stdout is redirected into a file.
 
+## Text And Path Commands
+
+These builtins accept one optional text file, `-` for pipeline input, or input redirection. With no file they read the pipeline input. VFS permissions and asynchronous local-folder reads use the same access path as `cat`.
+
+| Command | Supported options and behavior |
+| --- | --- |
+| `head [-n count] [file|-]` | First 10 lines by default; `count` is a nonnegative integer. |
+| `tail [-n count] [file|-]` | Last 10 lines by default; `-n 0` prints nothing. |
+| `wc [-lwc] [file|-]` | Newline, whitespace-separated word, and UTF-8 byte counts, in that order. Defaults to all three; an unterminated final line adds no newline count. A file operand is printed after the counts. |
+| `sort [-nr] [file|-]` | Sort lines by code-unit order; `-n` compares leading numbers (nonnumeric text counts as zero), `-r` reverses the order. |
+| `uniq [-c] [file|-]` | Collapse adjacent identical lines; `-c` prefixes each group with its count. Sort first to combine duplicates separated in the input. |
+| `basename <path> [suffix]` | Final component after removing trailing slashes; optionally remove a matching suffix. |
+| `dirname <path>` | Parent path, or `.` for a path with no slash. |
+
+Options may be combined for `wc` and `sort`; `--` ends option parsing. `basename` and `dirname` operate on path strings without accessing files or expanding them against the current directory. `head` and `tail` preserve line endings, including an unterminated final line; `sort` and `uniq` terminate each output line with a newline. The shell's existing output-redirection rule ensures the stored output ends in a newline. `wc -c` measures the UTF-8 encoding of the decoded text stream, rather than arbitrary binary file sizes; use `stat` for stored file size. Unsupported options, invalid counts, or extra operands return status `2`; read failures return `1`. Successful empty output returns `0`.
+
+```text
+cat names.txt | sort | uniq -c
+head -n 2 < notes.txt > first-lines.txt
+wc -lw notes.txt
+sort -nr scores.txt | head -n 5
+basename /home/guest/report.md .md
+dirname /home/guest/report.md
+```
+
+`help`, `man <command>`, and `which <command>` include these builtins. Other basic commands include `whoami` and `id` for the current user, `uname` for runtime identity, `date` for local time, `history` for command history, `apps` for registered apps, and `readlink` for a VFS link target. These are browser-runtime commands with the documented subset of options, rather than a full POSIX toolset.
+
 ## Script Dialect
 
 Executable scripts are DindbOS shell scripts, not POSIX shell scripts.
@@ -143,4 +170,4 @@ It reports the active session, current working directory, storage backend and di
 npm run smoke:shell
 ```
 
-The shell smoke verifies parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, compatibility diagnostics, raw syscall ABI calls, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures. `npm run smoke:wasm` verifies executable `.wasm` shell integration.
+The shell smoke verifies text/path utilities, Unicode counts, async local-folder reads, read permissions, usage status, parser behavior, quoted separators, escaped quotes, empty string arguments, mixed pipes/redirection, chaining, status-code-driven `&&`/`||`, command suggestions, doctor diagnostics, compatibility diagnostics, raw syscall ABI calls, package trust commands, executable scripts, stdin pipelines, execute-bit enforcement, and unsupported shebang failures. `npm run smoke:wasm` verifies executable `.wasm` shell integration.

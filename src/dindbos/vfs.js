@@ -5,7 +5,8 @@ export class VirtualFileSystem {
     this.root = rootNode || { name: "", type: "directory", children: [] };
     this.root.name = "";
     this.root.type = "directory";
-    this.home = options.home || "/home/guest";
+    this.home = String(options.home || "/home/guest").normalize("NFC");
+    normalizeTreeNames(this.root);
     this.policy = options.policy || null;
     this.systemPrincipal = this.policy?.systemPrincipal() || { user: "root", groups: ["root"], system: true };
     this.onChange = options.onChange || (() => {});
@@ -32,7 +33,7 @@ export class VirtualFileSystem {
     for (let index = 0; index < parts.length; index += 1) {
       const part = parts[index];
       if (!current || !isDirectoryLike(current)) return null;
-      current = (current.children || []).find((child) => child.name === part);
+      current = findCanonicalChild(current, part);
       currentPath = this.join(currentPath, part);
       if (current && this.isLink(current)) {
         if (seen.has(currentPath)) throw new Error(`Too many symbolic links: ${currentPath}`);
@@ -239,7 +240,7 @@ export class VirtualFileSystem {
     const node = this.createNode({
       name: this.basename(normalized),
       type: "link",
-      target: String(target || ""),
+      target: String(target || "").normalize("NFC"),
       permissions: options.permissions || "lrwxrwxrwx",
       owner: options.owner || ownerFromPrincipal(principal),
       group: options.group || groupFromPrincipal(principal),
@@ -459,7 +460,7 @@ export class VirtualFileSystem {
     const parts = normalized.split("/").filter(Boolean);
     const parentPath = `/${parts.slice(0, -1).join("/")}`;
     const parent = this.resolve(parentPath || "/");
-    const node = parent?.children?.find((child) => child.name === parts.at(-1));
+    const node = parent ? findCanonicalChild(parent, parts.at(-1)) : null;
     if (!node) return null;
     this.assertTraversalAccess(normalized, "/", principal);
     return this.nodeStat(this.withPath(node, normalized), normalized);
@@ -496,7 +497,7 @@ export class VirtualFileSystem {
         parts.pop();
         return;
       }
-      parts.push(part);
+      parts.push(part.normalize("NFC"));
     });
     return `/${parts.join("/")}`;
   }
@@ -533,7 +534,8 @@ export class VirtualFileSystem {
     const normalized = this.normalize(path);
     const parent = this.parentFor(normalized);
     const name = this.basename(normalized);
-    const index = parent.children?.findIndex((child) => child.name === name) ?? -1;
+    const node = findCanonicalChild(parent, name);
+    const index = node ? parent.children.indexOf(node) : -1;
     return { parent, node: index >= 0 ? parent.children[index] : null, index };
   }
 
@@ -543,6 +545,7 @@ export class VirtualFileSystem {
       created,
       modified: created,
       ...node,
+      name: String(node.name || "").normalize("NFC"),
       size: node.size ?? fileContentByteLength(node.content),
     };
   }
@@ -577,7 +580,7 @@ export class VirtualFileSystem {
   }
 
   nextAtomicStagedName(parent, name) {
-    const existing = new Set((parent.children || []).map((child) => child.name));
+    const existing = new Set((parent.children || []).map((child) => String(child.name || "").normalize("NFC")));
     let index = 0;
     let candidate = `.${name}.dindbos-tmp`;
     while (existing.has(candidate)) {
@@ -655,8 +658,9 @@ export class VirtualFileSystem {
             }
           }
         }
-        if (names.has(childName)) problems.push(problem("duplicate-name", childPath, `duplicates ${this.join(path, childName)}`, false));
-        else names.set(childName, child);
+        const canonicalName = String(childName).normalize("NFC");
+        if (names.has(canonicalName)) problems.push(problem("duplicate-name", childPath, `NFC name collision: ${childName}`, false));
+        else names.set(canonicalName, child);
         if (child?.atomicStagedFor || isAtomicStagingName(childName)) {
           problems.push(problem("orphaned-atomic-staging", childPath, `target=${child.atomicStagedFor || "unknown"}`, true));
           if (repair) {
@@ -1013,4 +1017,38 @@ function safeResolveLink(fs, node, path) {
   } catch {
     return false;
   }
+}
+
+// Keep conflicting legacy names intact so loading a snapshot never discards data.
+function normalizeTreeNames(node, seen = new WeakSet()) {
+  if (!node || typeof node !== "object" || seen.has(node)) return;
+  seen.add(node);
+  for (const key of ["path", "target", "atomicStagedFor"]) {
+    if (typeof node[key] === "string") node[key] = node[key].normalize("NFC");
+  }
+  if (!Array.isArray(node.children)) return;
+  const counts = new Map();
+  for (const child of node.children) {
+    const name = String(child?.name || "").normalize("NFC");
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  for (const child of node.children) {
+    if (child && typeof child.name === "string" && counts.get(child.name.normalize("NFC")) === 1) child.name = child.name.normalize("NFC");
+    normalizeTreeNames(child, seen);
+  }
+}
+
+function findCanonicalChild(parent, name) {
+  const canonical = String(name).normalize("NFC");
+  let match = null;
+  for (const child of parent.children || []) {
+    if (String(child?.name || "").normalize("NFC") !== canonical) continue;
+    if (match) {
+      const error = new Error(`Ambiguous NFC filename: ${canonical}`);
+      error.code = "ERR_UNICODE_NAME_COLLISION";
+      throw error;
+    }
+    match = child;
+  }
+  return match;
 }

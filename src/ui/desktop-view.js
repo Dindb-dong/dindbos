@@ -91,9 +91,12 @@ function DockList({ apps, dockApps, appStates, launchApp, element }) {
         frame = null;
         if (element.dataset.contextOpen) return reset();
         if (pointerX === null) return;
-        for (const item of element.querySelectorAll(".dos-dock-item")) {
+        const updates = [...element.querySelectorAll(".dos-dock-item")].map((item) => {
           const rect = item.getBoundingClientRect();
-          item.style.setProperty("--dock-proximity", dockMagnification(pointerX - (rect.left + rect.width / 2)).toFixed(3));
+          return [item, dockMagnification(pointerX - (rect.left + rect.width / 2)).toFixed(3)];
+        });
+        for (const [item, value] of updates) {
+          if (item.style.getPropertyValue("--dock-proximity") !== value) item.style.setProperty("--dock-proximity", value);
         }
       });
     };

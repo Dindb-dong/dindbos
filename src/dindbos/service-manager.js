@@ -507,8 +507,8 @@ function normalizeService(definition = {}) {
     lifecyclePolicy: normalizeLifecyclePolicy(definition.lifecyclePolicy || definition.policy),
     capabilities: [...(definition.capabilities || [])],
     fileSystem: {
-      read: [...(definition.fileSystem?.read || ["/"])],
-      write: [...(definition.fileSystem?.write || [])],
+      read: [...(definition.fileSystem?.read || ["/"])].map((path) => path.normalize("NFC")),
+      write: [...(definition.fileSystem?.write || [])].map((path) => path.normalize("NFC")),
     },
     start: definition.start || null,
     stop: definition.stop || null,

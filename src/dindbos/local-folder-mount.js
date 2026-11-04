@@ -295,8 +295,12 @@ export class LocalFolderMountManager {
     this.assertMountHandleForPath(normalized, ["read"]);
     const directory = await this.directoryHandleFor(normalized);
     const entries = [];
+    const names = new Set();
     for await (const [name, handle] of directory.entries()) {
-      entries.push(await this.nodeFromHandle(name, handle, this.os.fs.join(normalized, name)));
+      const canonical = name.normalize("NFC");
+      if (names.has(canonical)) throw unicodeNameCollision(canonical);
+      names.add(canonical);
+      entries.push(await this.nodeFromHandle(canonical, handle, this.os.fs.join(normalized, canonical)));
     }
     entries.sort((a, b) => sortNodes(a, b));
     this.mirrorDirectory(normalized, entries);
@@ -426,7 +430,7 @@ export class LocalFolderMountManager {
     const sourceStat = await this.stat(source);
     if (!sourceStat) throw new Error(`cp: ${source}: no such file or directory`);
     if ((sourceStat.type === "directory" || sourceStat.type === "mount") && !options.recursive) throw new Error(`cp: ${source}: is a directory`);
-    const destinationStat = await this.stat(destinationInput).catch(() => null);
+    const destinationStat = await this.stat(destinationInput).catch(missingUnlessNameCollision);
     let destination = destinationStat && (destinationStat.type === "directory" || destinationStat.type === "mount")
       ? this.os.fs.join(destinationInput, this.os.fs.basename(source))
       : destinationInput;
@@ -452,7 +456,7 @@ export class LocalFolderMountManager {
     const destinationInput = this.os.fs.normalize(destinationPath, cwd);
     const sourceStat = await this.stat(source);
     if (!sourceStat) throw new Error(`mv: ${source}: no such file or directory`);
-    const destinationStat = await this.stat(destinationInput).catch(() => null);
+    const destinationStat = await this.stat(destinationInput).catch(missingUnlessNameCollision);
     let destination = destinationStat && (destinationStat.type === "directory" || destinationStat.type === "mount")
       ? this.os.fs.join(destinationInput, this.os.fs.basename(source))
       : destinationInput;
@@ -494,6 +498,8 @@ export class LocalFolderMountManager {
       if (!helper || (typeof helper.renameEntry !== "function" && typeof helper.rename !== "function")) {
         throw new Error("local mount rename requires a file helper companion; browser copy-delete rename is disabled");
       }
+      const sourceRelativePath = await this.nativeRelativePath(source);
+      const destinationRelativePath = await this.nativeRelativePath(destination);
       const request = {
         protocol: "dindbos-file-helper-v1",
         capability: "file.rename",
@@ -502,10 +508,10 @@ export class LocalFolderMountManager {
         handleName: mount.handleName,
         sourcePath: source,
         destinationPath: destination,
-        sourceRelativePath: relativeParts(mount.path, source).join("/"),
-        destinationRelativePath: relativeParts(mount.path, destination).join("/"),
-        sourceName: this.os.fs.basename(source),
-        destinationName: this.os.fs.basename(destination),
+        sourceRelativePath,
+        destinationRelativePath,
+        sourceName: sourceRelativePath.split("/").at(-1),
+        destinationName: destinationRelativePath.split("/").at(-1),
         sourceType: sourceStat?.resolvedType || sourceStat?.type || "file",
       };
       const result = typeof helper.renameEntry === "function"
@@ -546,7 +552,7 @@ export class LocalFolderMountManager {
   }
 
   async resolveCopyConflict(source, destination, sourceStat, options = {}) {
-    const existing = await this.stat(destination).catch(() => null);
+    const existing = await this.stat(destination).catch(missingUnlessNameCollision);
     if (!existing) return { action: "write", path: destination };
     const requested = await localCopyConflictDecision({
       action: options.conflictPolicy || LOCAL_DIRECTORY_COPY_POLICY.defaultConflictPolicy,
@@ -659,7 +665,8 @@ export class LocalFolderMountManager {
     try {
       await this.stat(path, cwd);
       return true;
-    } catch {
+    } catch (error) {
+      if (error.code === "ERR_UNICODE_NAME_COLLISION") throw error;
       return false;
     }
   }
@@ -784,20 +791,32 @@ export class LocalFolderMountManager {
     const parts = relativeParts(mount.path, normalized);
     let handle = mount.handle;
     for (const part of parts) {
-      handle = await handle.getDirectoryHandle(part, { create: Boolean(options.create) });
+      handle = await handle.getDirectoryHandle(await canonicalHandleName(handle, part), { create: Boolean(options.create) });
     }
     return handle;
   }
 
+  async nativeRelativePath(path) {
+    const mount = this.mountFor(path);
+    const parts = relativeParts(mount.path, path);
+    let handle = mount.handle;
+    const names = [];
+    for (let index = 0; index < parts.length; index += 1) {
+      const name = await canonicalHandleName(handle, parts[index]);
+      names.push(name);
+      if (index < parts.length - 1) handle = await handle.getDirectoryHandle(name);
+    }
+    return names.join("/");
+  }
+
   async parentHandleFor(path, options = {}) {
     const normalized = this.os.fs.normalize(path);
-    return {
-      parentHandle: await this.directoryHandleFor(this.os.fs.dirname(normalized), options),
-      name: this.os.fs.basename(normalized),
-    };
+    const parentHandle = await this.directoryHandleFor(this.os.fs.dirname(normalized), options);
+    return { parentHandle, name: await canonicalHandleName(parentHandle, this.os.fs.basename(normalized)) };
   }
 
   async nodeFromHandle(name, handle, path) {
+    name = name.normalize("NFC");
     if (handle.kind === "directory") {
       return {
         name,
@@ -913,7 +932,7 @@ export class LocalFolderMountManager {
   async assertNoSyncConflict(path, action, details = {}) {
     const previous = this.syncSnapshots.get(path);
     if (!previous) return;
-    const external = await this.stat(path).catch(() => null);
+    const external = await this.stat(path).catch(missingUnlessNameCollision);
     if (!external || external.type !== "file" || !nodeChangedSinceSnapshot(external, previous)) return;
     const conflict = this.syncConflictRecord(path, "modified-both", {
       action,
@@ -1232,4 +1251,26 @@ function iconFromMime(mime) {
   if (mime === "text/html") return "browser";
   if (mime?.startsWith("image/")) return "image";
   return "text";
+}
+
+function unicodeNameCollision(name) {
+  const error = new Error(`Ambiguous NFC filename: ${name}`);
+  error.code = "ERR_UNICODE_NAME_COLLISION";
+  return error;
+}
+
+async function canonicalHandleName(directory, name) {
+  const canonical = name.normalize("NFC");
+  let match;
+  for await (const [actualName] of directory.entries()) {
+    if (actualName.normalize("NFC") !== canonical) continue;
+    if (match !== undefined) throw unicodeNameCollision(canonical);
+    match = actualName;
+  }
+  return match ?? canonical;
+}
+
+function missingUnlessNameCollision(error) {
+  if (error.code === "ERR_UNICODE_NAME_COLLISION") throw error;
+  return null;
 }

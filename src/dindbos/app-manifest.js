@@ -23,8 +23,8 @@ export function normalizeAppManifest(app) {
     capabilities: [...new Set([...(declared.capabilities || []), ...(app.capabilities || [])])],
     shortcuts: normalizeShortcuts(declared.shortcuts || app.shortcuts || []),
     fileSystem: {
-      read: [...(fileSystem.read || DEFAULT_FS_READ)],
-      write: [...(fileSystem.write || DEFAULT_FS_WRITE)],
+      read: [...(fileSystem.read || DEFAULT_FS_READ)].map((path) => path.normalize("NFC")),
+      write: [...(fileSystem.write || DEFAULT_FS_WRITE)].map((path) => path.normalize("NFC")),
     },
   };
 }
@@ -87,6 +87,8 @@ function isInsideAny(path, scopes) {
 }
 
 function isInside(path, scope) {
+  path = path.normalize("NFC");
+  scope = scope.normalize("NFC");
   if (scope === "/") return path.startsWith("/");
   const normalizedScope = scope.replace(/\/$/, "");
   return path === normalizedScope || path.startsWith(`${normalizedScope}/`);
