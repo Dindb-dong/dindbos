@@ -12,10 +12,12 @@ assert(workflow.includes("actions/upload-pages-artifact@v3"), "Pages workflow do
 assert(workflow.includes("actions/deploy-pages@v4"), "Pages workflow does not deploy Pages");
 assert(workflow.includes("run: npm ci"), "Pages workflow does not install dependencies before verification");
 assert(
-  workflow.includes("run: npx playwright install --with-deps chromium"),
-  "Pages workflow does not install the Chromium runtime for browser smoke tests",
+  workflow.includes("command -v google-chrome || command -v chromium || command -v chromium-browser"),
+  "Pages workflow does not locate the runner browser for smoke tests",
 );
-assert(workflow.includes("CHROME_PATH="), "Pages workflow does not export a browser executable for browserd smoke tests");
+assert(workflow.includes('if [ -z "$chrome_path" ]; then') && workflow.includes("            exit 1"), "Pages workflow must fail when the runner browser is absent");
+assert(workflow.includes('echo "CHROME_PATH=$chrome_path" >> "$GITHUB_ENV"'), "Pages workflow does not export the discovered browser executable");
+assert(workflow.indexOf("Use the runner's existing Chrome") < workflow.indexOf("run: npm run smoke"), "Pages must prepare the browser before smoke tests");
 assert(workflow.includes("run: npm run smoke"), "Pages workflow does not gate deployment on npm run smoke");
 assert(workflow.includes("run: npm run build"), "Pages workflow does not build the static demo");
 assert(workflow.includes("Check Pages Availability"), "Pages workflow does not preflight Pages availability");
