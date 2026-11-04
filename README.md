@@ -59,6 +59,20 @@ A normal visit starts with an unobstructed desktop. The showcase images below us
 
 </details>
 
+## Build your portfolio with an agent
+
+Give a coding agent this repository URL and ask:
+
+> Use https://github.com/Dindb-dong/dindbos to build my web portfolio. Read skills/dindbos-portfolio/SKILL.md, ask me for my resume, portfolio, or LinkedIn and what may be public, then create a DindbOS site. Prepare a preview and deploy it to my GitHub Pages, creating the repository if needed. Ask for missing access or decisions and preserve any existing site.
+
+The [portfolio skill](skills/dindbos-portfolio/SKILL.md) guides intake, personalization, repository creation, and verified deployment. It works as readable instructions for GPT/Claude coding agents with terminal and GitHub access; a URL alone does not install skills or give a chat-only assistant execution tools. You can also install the `skills/dindbos-portfolio` folder in your agent's skill directory.
+
+```sh
+npm exec --package=dindbos -- create-dindbos my-portfolio --template react --pages --yes --json
+```
+
+`--pages` adds a GitHub Actions workflow and `.gitignore`; it does not publish. Install dependencies and commit the lockfile, enable Pages with GitHub Actions, then deploy. The workflow handles root and project-site asset paths. If npm lacks `--pages`, follow the skill's source-tarball route. [Deployment details](docs/deployment.md).
+
 ## Quick start
 
 ### Start a project

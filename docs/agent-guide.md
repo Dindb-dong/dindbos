@@ -2,6 +2,10 @@
 
 Use a precise target: the existing project, route/container, package version or source tarball, and app you want to expose. Existing authenticated access is not needed for ordinary local SDK installation.
 
+## Personal portfolio to GitHub Pages
+
+For a resume/portfolio/LinkedIn-to-site request, follow [the portable portfolio skill](../skills/dindbos-portfolio/SKILL.md). It collects the public-content brief through the agent's question interface, uses the generated host, and handles authorized repository creation and Pages deployment. Terminal and GitHub access are required for execution; reading a repository URL alone does not grant them.
+
 ## Installation prompt
 
 > Install dindbOS from SOURCE in this project. Read INSTALL.md, docs/react-apps.md, and docs/customization.md. Preserve the current routes and unrelated files. Mount one desktop in CONTAINER with an explicit height and unique storage name. Add APP through DindbOSApp or defineApp. Use public theme and UI-slot APIs. Build the host, verify real launch and cleanup, and report the source/version and checks run. Do not publish, deploy, or push.

@@ -15,6 +15,12 @@ export async function createDindbOSProject(targetDir = "my-desktop", options = {
   if (entries.length && !options.force) throw new Error(`Target directory is not empty: ${root}. Choose another directory or explicitly use --force.`);
   const variables = { name, sdkVersion: await sdkVersion() };
   const files = await collectTemplate(templates[template]);
+  if (options.pages) {
+    files.push({ path: ".github/workflows/pages.yml", content: await readFile(join(cliDirectory, "pages-workflow.yml"), "utf8") });
+    const ignore = files.find((file) => file.path === ".gitignore");
+    if (ignore) ignore.content += ".dindbos-private/\n";
+    else files.push({ path: ".gitignore", content: "node_modules/\ndist/\n.env\n.env.*\n.dindbos-private/\n" });
+  }
   const result = { root, name, template, files: files.map(({ path }) => path), dryRun: Boolean(options.dryRun) };
   if (options.dryRun) return result;
   await mkdir(root, { recursive: true });
@@ -101,7 +107,7 @@ function parseArguments(args) {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     if (["--yes", "-y"].includes(arg)) continue;
-    if (["--force", "--json", "--dry-run", "--help", "-h"].includes(arg)) { options[arg === "-h" ? "help" : arg.slice(2).replace("dry-run", "dryRun")] = true; continue; }
+    if (["--force", "--json", "--dry-run", "--pages", "--help", "-h"].includes(arg)) { options[arg === "-h" ? "help" : arg.slice(2).replace("dry-run", "dryRun")] = true; continue; }
     const match = arg.match(/^--(template|root|name)(?:=(.*))?$/);
     if (match) {
       const value = match[2] ?? args[++index];
@@ -119,7 +125,7 @@ export async function runDindbOSCLI(args = process.argv.slice(2)) {
     const { options, positional } = parseArguments(args);
     json = options.json;
     if (options.help) {
-      console.log("create-dindbos [directory] [--template react|vanilla] [--yes] [--json] [--dry-run]\ncreate-dindbos add app <name> [--root directory] [--template react|vanilla] [--json]\ncreate-dindbos doctor [directory] [--json]\n\nExisting files are preserved unless --force is explicit. No packages are installed automatically.");
+      console.log("create-dindbos [directory] [--template react|vanilla] [--pages] [--yes] [--json] [--dry-run]\ncreate-dindbos add app <name> [--root directory] [--template react|vanilla] [--json]\ncreate-dindbos doctor [directory] [--json]\n\nExisting files are preserved unless --force is explicit. No packages are installed automatically. --pages adds a GitHub Actions workflow; enable Pages and commit package-lock.json before deploying.");
       return;
     }
     let result;

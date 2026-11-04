@@ -14,6 +14,21 @@ try {
     const dry = await createDindbOSProject(root, { template, dryRun: true });
     assert(dry.files.includes("AGENTS.md"));
     assert(!(await readdir(workspace)).includes(template), "dry-run created a directory");
+    assert(!dry.files.includes(".github/workflows/pages.yml"), "Pages must remain opt-in");
+    const pagesRoot = join(workspace, `${template}-pages`);
+    const pagesDry = await createDindbOSProject(pagesRoot, { template, pages: true, dryRun: true });
+    assert(pagesDry.files.includes(".github/workflows/pages.yml"));
+    assert(pagesDry.files.includes(".gitignore"));
+    assert(!(await readdir(workspace)).includes(`${template}-pages`));
+    await createDindbOSProject(pagesRoot, { template, pages: true });
+    const workflow = await readFile(join(pagesRoot, ".github/workflows/pages.yml"), "utf8");
+    await assert.rejects(createDindbOSProject(pagesRoot, { template, pages: true }), /not empty/);
+    assert.equal(await readFile(join(pagesRoot, ".github/workflows/pages.yml"), "utf8"), workflow);
+    execFileSync("git", ["-c", "init.defaultBranch=main", "init", "--quiet", pagesRoot]);
+    for (const name of ["node_modules/dep.js", "dist/index.html", ".env", ".env.local", ".dindbos-private/resume.pdf"]) {
+      assert.equal(spawnSync("git", ["check-ignore", "--no-index", name], { cwd: pagesRoot }).status, 0, `${name} must be ignored`);
+    }
+    assert.equal(spawnSync("git", ["check-ignore", "--no-index", "package-lock.json"], { cwd: pagesRoot }).status, 1);
     const result = await createDindbOSProject(root, { template });
     assert.equal(result.template, template);
     assert.equal((await doctorDindbOSProject(root)).ok, true);
@@ -38,10 +53,11 @@ try {
     assert(!(await readdir(join(root, "src/apps"))).some((file) => file.startsWith("incomplete.")));
   }
   const jsonRoot = join(workspace, "json-project");
-  const result = JSON.parse(execFileSync(process.execPath, [cli, "--template", "react", jsonRoot, "--yes", "--json"], { encoding: "utf8" }));
+  const result = JSON.parse(execFileSync(process.execPath, [cli, "--template", "react", "--pages", jsonRoot, "--yes", "--json"], { encoding: "utf8" }));
   assert.equal(result.ok, true);
   assert.equal(result.root, jsonRoot, "option value was parsed as target");
   assert.equal(result.template, "react");
+  assert(result.files.includes(".github/workflows/pages.yml"));
   const error = spawnSync(process.execPath, [cli, "--template", "--json"], { encoding: "utf8" });
   assert.equal(error.status, 1);
   assert.equal(JSON.parse(error.stdout).ok, false);

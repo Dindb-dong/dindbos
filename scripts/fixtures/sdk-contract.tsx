@@ -29,3 +29,6 @@ void createDindbOS({ apps: [notes], configure(os) { os.setAppearance({ mode: "li
 void createDindbOS({ theme: { mode: "night" } });
 // @ts-expect-error App definitions must include their mount function.
 defineApp({ id: "missing-render" });
+
+import { createDindbOSProject } from "../../src/sdk/create.js";
+void createDindbOSProject("typed-portfolio", { template: "react", pages: true, dryRun: true });

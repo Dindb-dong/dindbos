@@ -3,6 +3,7 @@ export interface CreateDindbOSProjectOptions {
   force?: boolean;
   template?: "react" | "vanilla";
   dryRun?: boolean;
+  pages?: boolean;
 }
 export interface CreateDindbOSProjectResult {
   root: string;

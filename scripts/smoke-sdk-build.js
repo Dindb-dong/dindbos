@@ -18,6 +18,7 @@ const expectedDistFiles = [
   "react.d.ts",
   "create.d.ts",
   "create-template/package.json",
+  "pages-workflow.yml",
 ];
 
 execFileSync("npm", ["run", "build:sdk"], { stdio: "inherit" });
@@ -47,6 +48,9 @@ const files = new Set(pack.files.map((entry) => entry.path));
   "dist/react.js",
   "dist/create.js",
   "dist/create-template/package.json",
+  "dist/pages-workflow.yml",
+  "skills/dindbos-portfolio/SKILL.md",
+  "docs/deployment.md",
   "dist/styles.css",
   "dist/index.d.ts",
   "package.json",

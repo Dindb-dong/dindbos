@@ -49,6 +49,20 @@
 
 </details>
 
+## 에이전트로 내 포트폴리오 만들기
+
+코딩 에이전트에게 이 저장소 주소와 함께 요청하세요.
+
+> https://github.com/Dindb-dong/dindbos 기반으로 내 웹 포트폴리오를 만들어줘. skills/dindbos-portfolio/SKILL.md를 읽고 이력서·기존 포트폴리오·LinkedIn과 공개 가능한 내용을 나에게 물어봐. DindbOS 사이트를 만들어 미리보기를 준비하고, 내 GitHub Pages에 배포해줘. 저장소가 없으면 생성하고, 필요한 접근 권한이나 결정만 물어봐. 기존 사이트는 보존해.
+
+[포트폴리오 스킬](skills/dindbos-portfolio/SKILL.md)이 자료 수집부터 개인화, 저장소 생성, 배포 확인까지 안내합니다. 터미널과 GitHub 도구가 연결된 GPT·Claude 코딩 에이전트에서 실행할 수 있습니다. 주소만 전달한다고 스킬이 설치되거나 일반 채팅에 실행 권한이 생기지는 않습니다. `skills/dindbos-portfolio` 폴더를 에이전트의 스킬 경로에 설치해도 됩니다.
+
+```sh
+npm exec --package=dindbos -- create-dindbos my-portfolio --template react --pages --yes --json
+```
+
+`--pages`는 GitHub Actions 워크플로와 `.gitignore`를 생성합니다. 의존성 설치·lockfile 커밋·Pages의 GitHub Actions 활성화 후 배포하며, 루트 사이트와 저장소 하위 경로를 지원합니다. npm에 `--pages`가 없으면 스킬의 소스 tarball 절차를 사용하세요. [배포 안내](docs/deployment.md).
+
 ## 시작하기
 
 현재 소스와 대응하는 npm 패키지가 게시된 경우:

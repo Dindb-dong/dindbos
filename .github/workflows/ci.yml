@@ -55,6 +55,7 @@ jobs:
 
       - name: Verify packed SDK and framework examples
         run: |
+          npm run smoke:create-dindbos
           npm run smoke:sdk-pack
           npm run smoke:sdk-frameworks
 

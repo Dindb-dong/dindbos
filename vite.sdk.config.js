@@ -43,6 +43,7 @@ function sdkArtifactsPlugin() {
       for (const name of Object.keys(entrypoints)) {
         copyFileSync(`src/sdk/${name}.d.ts`, `dist/${name}.d.ts`);
       }
+      copyFileSync("src/sdk/pages-workflow.yml", "dist/pages-workflow.yml");
       cpSync("src/sdk/create-template", "dist/create-template", { recursive: true });
       if (existsSync("src/sdk/create-templates")) cpSync("src/sdk/create-templates", "dist/create-templates", { recursive: true });
     },
