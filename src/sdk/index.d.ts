@@ -287,3 +287,21 @@ export function conformanceReport(runtime?: Record<string, unknown>): Record<str
 export function isolationSnapshot(browser?: Record<string, unknown>): Record<string, unknown>;
 
 export function applyDindbOSTheme(os: DindbOS, theme?: DindbOSThemeConfig): void;
+
+/** String values must be unique within a selector. Import dindbos/styles.css. */
+export interface SearchableSelectOption {
+  value: string;
+  label: string;
+  searchText?: string;
+  /** Keep a navigation/reset choice visible while searching. */
+  pinned?: boolean;
+}
+export function renderSearchableSelect(options: { id: string; label: string; placeholder: string }): string;
+export function mountSearchableSelect(root: HTMLElement, options: {
+  options: SearchableSelectOption[];
+  value: string;
+  query?: string;
+  empty: string;
+  onSearch: (query: string, value: string) => void;
+  onSelect: (value: string) => void;
+}): { select(value: string): void; setValue(value: string): void; destroy(): void };

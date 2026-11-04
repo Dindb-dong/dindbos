@@ -1,6 +1,6 @@
 {
   "name": "dindbos",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": false,
   "type": "module",
   "description": "Embeddable browser-native OS runtime for web apps.",
@@ -129,7 +129,8 @@
     "verify:ui": "node scripts/verify-ui.js",
     "smoke:editor-browser": "node scripts/smoke-editor-browser.js",
     "smoke:productivity": "node scripts/smoke-productivity-apps.js",
-    "smoke:clock": "node scripts/smoke-clock.js"
+    "smoke:clock": "node scripts/smoke-clock.js",
+    "smoke:searchable-select": "npm run build:sdk && node scripts/smoke-searchable-select.js"
   },
   "keywords": [
     "web-os",

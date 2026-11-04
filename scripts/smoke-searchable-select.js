@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { renderSearchableSelect, mountSearchableSelect } from '../src/sdk/index.js';
+const html = renderSearchableSelect({ id: 'picker"', label: '<Projects>', placeholder: 'Search & select' });
+assert.equal(typeof mountSearchableSelect, 'function');
+assert.ok(html.includes('role="combobox"'));
+assert.ok(html.includes('role="listbox"'));
+assert.ok(html.includes('aria-label="&lt;Projects&gt;"'));
+assert.ok(html.includes('aria-controls="picker&quot;"'));
+assert.ok(!html.includes('aria-label="<Projects>"'));
+const css = readFileSync('src/styles/searchable-select.css', 'utf8');
+assert.ok(css.includes('@scope (.dindbos-host) to (.dindbos-host)'));
+assert.ok(css.includes('min-height: 44px'));
+const packaged = await import('../dist/index.js');
+assert.equal(typeof packaged.mountSearchableSelect, 'function');
+assert.equal(packaged.renderSearchableSelect({ id: 'x', label: 'X', placeholder: 'Find' }), renderSearchableSelect({ id: 'x', label: 'X', placeholder: 'Find' }));
+console.log('searchable select smoke ok: public/package exports, escaping, semantics, scoped touch styles');

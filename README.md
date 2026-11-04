@@ -201,3 +201,21 @@ Run the relevant smoke scripts for the area you change. The repository includes 
 ## License
 
 [MIT](LICENSE). Original dindbOS icons and SVG artwork are included. Demo wallpaper artwork was generated for this project; see [artwork provenance](docs/assets/README.md). Third-party projects and linked materials retain their own licenses.
+
+## Searchable selection control
+
+`renderSearchableSelect` and `mountSearchableSelect` are exported from `dindbos` (0.2.2). Import `dindbos/styles.css` and mount the control inside a `.dindbos-host`.
+
+```js
+import { renderSearchableSelect, mountSearchableSelect } from "dindbos";
+container.innerHTML = renderSearchableSelect({ id: "projects", label: "Projects", placeholder: "Search projects" });
+const picker = mountSearchableSelect(container.firstElementChild, {
+  options: [{ value: "all", label: "View all", pinned: true }, { value: "example", label: "Example", searchText: "Example web app" }],
+  value: "all", empty: "No results", onSearch: query => filterProjects(query), onSelect: value => openProject(value),
+});
+// Call picker.destroy() when replacing or closing the view.
+```
+
+Values are unique strings. Pinned choices remain available during search; ordinary options match `searchText` or `label`. `picker.select(value)` commits a selection; `picker.setValue(value)` synchronizes the displayed selection without clearing the query or calling callbacks. Search leaves selection decisions to the host. The control supports Arrow/Home/End, Enter, Escape/Tab and native outside dismissal. Targets are at least 44px, menus use the top layer, and listeners are disposed by `destroy()`.
+
+The optional `--dos-select-{line,bg,text,muted,accent,soft}` properties override the desktop theme for this control. Check the exported types for the complete signature. Run `npm run smoke:searchable-select` to validate source and built exports; the portfolio integration exercises touch, keyboard, empty results and filtering against the packed package.
