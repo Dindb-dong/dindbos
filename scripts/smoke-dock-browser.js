@@ -17,8 +17,21 @@ try {
   await files.waitFor();
   await page.locator('.dos-boot-screen').waitFor({ state: "detached" });
   const box = await files.boundingBox();
+  await page.evaluate(() => {
+    const events = [];
+    const read = Element.prototype.getBoundingClientRect, write = CSSStyleDeclaration.prototype.setProperty;
+    Element.prototype.getBoundingClientRect = function (...args) { if (this.matches('.dos-dock-item')) events.push('read'); return read.apply(this, args); };
+    CSSStyleDeclaration.prototype.setProperty = function (name, ...args) { if (name === '--dock-proximity') events.push('write'); return write.call(this, name, ...args); };
+    window.__dockReadWrite = () => {
+      Element.prototype.getBoundingClientRect = read; CSSStyleDeclaration.prototype.setProperty = write;
+      return events;
+    };
+  });
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await expect.poll(() => files.evaluate((el) => Number(el.style.getPropertyValue("--dock-proximity")))).toBeGreaterThan(.7);
+  const operations = await page.evaluate(() => window.__dockReadWrite());
+  assert(operations.includes('read') && operations.includes('write'));
+  assert(operations.lastIndexOf('read') < operations.indexOf('write'), 'Dock frame reads all bounds before writing any proximity');
   await expect.poll(() => files.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(box.width + 1);
   const values = await page.locator('.dos-dock-item').evaluateAll((items) => items.map((el) => Number(el.style.getPropertyValue("--dock-proximity"))));
   assert(values[1] > values[2] && values[2] > values[3], "Dock enlargement tapers with pointer distance");
@@ -53,7 +66,7 @@ try {
   await reducedPage.mouse.move(reducedBox.x + reducedBox.width / 2, reducedBox.y + reducedBox.height / 2);
   assert.equal(await reducedFiles.evaluate((el) => el.style.getPropertyValue("--dock-proximity")), "");
   await reduced.close();
-  console.log("Dock browser smoke passed: pointer falloff/reset, running/restore labels, keyboard open, narrow host, reduced motion");
+  console.log("Dock browser smoke passed: batched layout reads/writes, pointer falloff/reset, running/restore labels, keyboard open, narrow host, reduced motion");
 } finally {
   await browser.close();
 }
