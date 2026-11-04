@@ -39,12 +39,15 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Install Browser Test Runtime
-        run: npx playwright install --with-deps chromium
-
-      - name: Export Browserd Chrome Path
+      - name: Use the runner's existing Chrome
+        shell: bash
         run: |
-          echo "CHROME_PATH=$(node -e 'const { chromium } = require("playwright"); console.log(chromium.executablePath())')" >> "$GITHUB_ENV"
+          chrome_path="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$chrome_path" ]; then
+            echo "::error::The runner must provide Chrome or Chromium; browser installation is intentionally not part of this workflow."
+            exit 1
+          fi
+          echo "CHROME_PATH=$chrome_path" >> "$GITHUB_ENV"
 
       - name: Verify Runtime
         run: npm run smoke

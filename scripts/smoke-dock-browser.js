@@ -47,10 +47,12 @@ try {
   await files.click();
   await expect(files).toHaveAttribute("aria-label", "Focus Files");
   await fileWindow.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(fileWindow).toHaveCount(0);
   const readme = page.locator('.dos-icon[aria-label="Open README.md"]');
   await readme.focus();
   await readme.press("Enter");
-  await expect(page.locator('.dos-window')).toHaveCount(2);
+  await expect(page.locator('.dos-window[data-app-id="text"]')).toBeVisible();
+  await expect(page.locator('.dos-window')).toHaveCount(1);
   await page.setViewportSize({ width: 390, height: 844 });
   const narrow = await page.locator('.dos-dock').evaluate((el) => ({ left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right, width: document.documentElement.clientWidth }));
   assert(narrow.left >= 0 && narrow.right <= narrow.width + 1, "Dock remains inside narrow host");
