@@ -19,7 +19,7 @@ function Counter() {
   return <button onClick={() => { os.state.set("count", 1); window.minimize(); }}>Minimize</button>;
 }
 export const desktop = <DindbOSDesktop storage={{ backend: "memory", name: "typed-host" }}
-  theme={{ mode: "dark", accent: "#287a58", wallpaper: "meadow", dockSize: 52 }}
+  theme={{ mode: "dark", accent: "#287a58", wallpaper: 'url("/studio-wallpaper.jpg") center / cover', dockSize: 52, variables: { "--dock-radius": "12px", "--dock-background": "#24332f", "--dock-gap": "8px" } }}
   apps={[notes, hello]} launch={["counter"]}
   ui={{ liquidGlass: { strength: 1, blur: 0.6, maxSurfaces: 18 }, slots: { menubar({ element, defaultRender }) { defaultRender(); element.dataset.custom = "true"; return () => {}; } } }}>
   <DindbOSApp id="counter" name="Counter" chrome="document" minWidth={230} minHeight={408} icon={<span>C</span>}><Counter /></DindbOSApp>

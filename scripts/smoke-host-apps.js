@@ -41,6 +41,13 @@ const normalized = normalizeDindbOSHostConfig({ storage: { backend: "memory", na
 assert.equal(normalizeDindbOSHostConfig(normalized).storage.public.mode, "memory");
 assert.equal(normalizeDindbOSHostConfig(normalized).storage.public.name, "audit-sdk");
 
+const nfdName = "한글 café".normalize("NFD");
+const seeded = normalizeDindbOSHostConfig({ files: { [`/${nfdName}/note.txt`]: "untouched" } });
+assert.equal(seeded.fileSystem.children[0].name, "한글 café");
+assert.throws(() => normalizeDindbOSHostConfig({ files: { [`/${nfdName}.txt`]: "one", "/한글 café.txt": "two" } }), /duplicate fileSystem path/);
+assert.throws(() => normalizeDindbOSHostConfig({ files: { "/notes": { [`${nfdName}.txt`]: "one", "한글 café.txt": "two" } } }), /duplicate fileSystem path/);
+assert.throws(() => normalizeDindbOSHostConfig({ files: { "/notes": { "a.txt": "one" }, "/notes/a.txt": "two" } }), /duplicate fileSystem path/);
+
 const os = createDindbOSTestRuntime();
 os.registerApp(notes);
 const launched = os.launch(notes.id);

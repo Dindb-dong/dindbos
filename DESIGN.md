@@ -60,3 +60,7 @@ Avoid decorative dashboards, rainbow gradients, glass behind every paragraph, ex
 ## Verification
 
 Inspect actual desktop and mobile rendering, a narrow embedded desktop, light and dark appearances, active and inactive windows, keyboard focus, menus, long names and app errors. Observe motion while interacting; a still image cannot establish animation quality. Check two desktop instances and the surrounding page for style and event leakage. The design is complete only after the integrated screen follows these rules.
+
+## Consumer Dock tokens
+
+`theme.variables` exposes `--dock-background`, `--dock-border`, `--dock-radius`, `--dock-shadow`, `--dock-gap`, `--dock-padding` and `--dock-bottom`. Omitted values preserve the existing desktop and narrow-container defaults; glass and dark appearance honor the same overrides. Reduced transparency and forced colors retain opaque readable material. This API wiring and performance maintenance do not introduce a new visual design. Wallpaper and accent use the existing appearance API; full replacement uses `ui.slots.dock`.

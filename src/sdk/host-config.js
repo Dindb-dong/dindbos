@@ -96,7 +96,7 @@ function normalizeFileSystemSeed(seed) {
 }
 
 function addSeedPath(root, path, value) {
-  const normalized = String(path || "").trim();
+  const normalized = String(path || "").trim().normalize("NFC");
   if (!normalized.startsWith("/")) throw new Error(`DindbOS host config: fileSystem path must be absolute: ${path}`);
   const parts = normalized.split("/").filter(Boolean);
   if (!parts.length) return;
@@ -107,8 +107,8 @@ function addSeedPath(root, path, value) {
   const name = parts.at(-1);
   const existingIndex = directory.children.findIndex((child) => child.name === name);
   const node = seedNode(name, value);
-  if (existingIndex >= 0) directory.children[existingIndex] = node;
-  else directory.children.push(node);
+  if (existingIndex >= 0) throw new Error(`DindbOS host config: duplicate fileSystem path: ${normalized}`);
+  directory.children.push(node);
 }
 
 function ensureSeedDirectory(parent, name) {
@@ -123,7 +123,7 @@ function ensureSeedDirectory(parent, name) {
 
 function seedNode(name, value) {
   if (value && typeof value === "object" && (value.type === "directory" || value.type === "file")) {
-    return { ...value, name: value.name || name };
+    return { ...value, name };
   }
   if (value && typeof value === "object" && !(value instanceof Uint8Array) && !(value instanceof ArrayBuffer)) {
     const directory = { name, type: "directory", children: [] };
