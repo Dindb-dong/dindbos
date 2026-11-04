@@ -24,7 +24,13 @@ try{
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/app-menu-fixture`);await page.evaluate(()=>window.__ready);
  const menu=page.getByRole('menu',{name:'file menu',exact:true});
- const open=async(name)=>{await page.locator(`[data-shell-panel="${name}"]`).click();};
+ const open=async(name)=>{
+  const trigger=page.locator(`[data-shell-panel="${name}"]`);
+  await expect(trigger).toHaveAttribute('aria-expanded','false');
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded','true');
+  await expect(page.getByRole('menu',{name:`${name} menu`,exact:true})).toBeVisible();
+ };
  const launch=async(id,context={})=>{await page.keyboard.press('Escape');await page.evaluate(({id,context})=>window.__os.launch(id,context),{id,context});await expect(page.locator(`.dos-window[data-app-id="${id}"]`).last()).toBeVisible();};
  await open('file');await expect(menu.getByRole('menuitem')).toHaveCount(1);await expect(menu.getByRole('menuitem',{name:/Close Window/})).toBeEnabled();
  await expect(menu).not.toContainText('New Files');await expect(page.locator('[data-shell-panel="view"]')).toBeHidden();
@@ -41,7 +47,7 @@ try{
  await open('view');await page.getByRole('menu',{name:'view menu',exact:true}).getByRole('menuitem',{name:'Show History',exact:true}).click();await expect(page.locator('.calculator-history')).toBeVisible();
  await launch('clock');await expect(page.locator('[data-clock-mode="timer"]')).toBeVisible();await open('view');await page.getByRole('menu',{name:'view menu',exact:true}).getByRole('menuitem',{name:'Timer',exact:true}).click();await expect(page.locator('.clock-app')).toHaveAttribute('data-clock-view','timer');
  await launch('notes');await open('file');await menu.getByRole('menuitem',{name:'New Note',exact:true}).click();await expect(page.getByRole('textbox',{name:'Note text',exact:true})).toBeVisible();
- await launch('host-menu');await open('file');await page.evaluate(()=>{window.__commandDisabled=true;});await menu.getByRole('menuitem',{name:'Mutable Command',exact:true}).click();assert.equal(await page.evaluate(()=>Boolean(window.__mutableRan)),false);await open('file');await expect(menu.locator('kbd img')).toHaveCount(0);await expect(menu).toContainText('<img');await expect(menu.getByRole('menuitem',{name:'Disabled Command',exact:true})).toBeDisabled();
+ await launch('host-menu');await open('file');await page.evaluate(()=>{window.__commandDisabled=true;});await menu.getByRole('menuitem',{name:'Mutable Command',exact:true}).click();assert.equal(await page.evaluate(()=>Boolean(window.__mutableRan)),false);await expect(menu).toHaveCount(0);await open('file');await expect(menu.locator('kbd img')).toHaveCount(0);await expect(menu).toContainText('<img');await expect(menu.getByRole('menuitem',{name:'Disabled Command',exact:true})).toBeDisabled();
  // Changing focus while a menu is open must not reroute the original command.
  await page.evaluate(()=>window.__os.windows.focusLatestAppWindow('calculator'));
  await menu.getByRole('menuitem',{name:/Run Host Command/}).click();await expect(page.locator('.dos-window[data-app-id="host-menu"] .dos-window-content')).toHaveAttribute('data-command','1');
