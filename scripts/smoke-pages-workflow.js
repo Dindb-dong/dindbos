@@ -3,9 +3,11 @@ import { readFileSync, existsSync } from "node:fs";
 
 const workflowPath = ".github/workflows/pages.yml";
 const workflow = read(workflowPath);
+const ciWorkflow = read(".github/workflows/ci.yml");
 const index = read("index.html");
 const main = read("src/main.js");
 
+assert(workflow.includes("runs-on: ubuntu-24.04") && ciWorkflow.includes("runs-on: ubuntu-24.04"), "Browser jobs must use the Ubuntu image supported by the locked Playwright version");
 assert(existsSync(".nojekyll"), "GitHub Pages demo is missing .nojekyll");
 assert(workflow.includes("actions/configure-pages@v5"), "Pages workflow does not configure GitHub Pages");
 assert(workflow.includes("actions/upload-pages-artifact@v3"), "Pages workflow does not upload a Pages artifact");
@@ -27,6 +29,9 @@ assert(workflow.includes("path: dist-demo"), "Pages must upload the demo indepen
 assert(index.includes('src="./src/main.js"'), "Demo entry must use Vite's content-hashed build");
 assert(main.includes("./sdk/react.js"), "Demo must consume the public React SDK adapter");
 assert(main.includes("./demo/portfolio-demo.js"), "Demo filesystem seed import is missing");
+
+assert(ciWorkflow.includes("run: npx playwright install ffmpeg"), "Browser verification requires the Playwright video recording runtime");
+assert(ciWorkflow.indexOf("run: npx playwright install ffmpeg") < ciWorkflow.indexOf("run: npm run verify:ui"), "Prepare the video runtime before browser verification");
 
 console.log("pages workflow smoke ok");
 
