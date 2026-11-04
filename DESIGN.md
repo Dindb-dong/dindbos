@@ -60,3 +60,9 @@ Avoid decorative dashboards, rainbow gradients, glass behind every paragraph, ex
 ## Verification
 
 Inspect actual desktop and mobile rendering, a narrow embedded desktop, light and dark appearances, active and inactive windows, keyboard focus, menus, long names and app errors. Observe motion while interacting; a still image cannot establish animation quality. Check two desktop instances and the surrounding page for style and event leakage. The design is complete only after the integrated screen follows these rules.
+
+## Mobile app navigation (2026-11-04)
+
+- Canvas library document: DindbOS · Portfolio Mobile Navigation, Page 1 (`page-0959dd44-73da-422d-8f68-016cc5dce6a7`). Component board `5b4132bd-0793-4508-9e4b-93c26ce41b96`, main `9135cb80-f7fa-48e9-9862-dc1c1b3cfa8b`, component record `component-e63836fc-600a-4006-b4fc-d42a9b4d5e4c`; mobile screen board `bfb5aa81-4d2b-44c9-930e-d67bf4869ea1`. Reopened from the library to verify persistence.
+- `.dos-mobile-tabbar` is a CSS component in `dindbos/styles.css`: a 32px frosted capsule, 6px inset, 4px gaps, 20px icons, 11px labels and 64×52px minimum buttons. The host reserves a bottom row; content never sits behind it. Many destinations scroll horizontally.
+- Activate against app container width ≤760px. Preserve desktop sidebars, semantic nav/buttons, keyboard focus, disabled state and opaque accessibility modes. Use existing glass/theme tokens; portfolio supplies its existing blue accent. Canvas reviewed at 390px; implementation checks include 320/390/430px and narrowed desktop windows.

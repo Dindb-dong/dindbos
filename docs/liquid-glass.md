@@ -66,3 +66,18 @@ The browser check compares actual rendered pixels with the same tint and blur bu
 With the showcase already running, `node scripts/smoke-liquid-glass-integrated-browser.js` checks the actual desktop at `http://127.0.0.1:5174` (`DINDBOS_BASE_URL` overrides this). It preserves that server. The check settles image decoding, compares Control Center and Dock in optical/baseline/baseline/optical order, asserts stable repeated frames, and tests foreground input, light/dark appearance and forced-color Dock opacity. Its temporary stylesheet baseline survives shell clock mutations that legitimately reapply the adapter's inline filter. Evidence goes to `internal/docs/qa/liquid-glass-integrated/`.
 
 Run `node scripts/smoke-liquid-glass-integrated-browser.js` against the running showcase (default `http://127.0.0.1:5174`, override with `DINDBOS_QA_URL`) for real Control Center and Dock comparisons, including stable optical/baseline/baseline/optical captures and dark forced-colors behavior. `npm run verify:ui` includes both isolated and integrated optical checks.
+
+## Mobile app tab bar (0.2.1)
+
+`dindbos/styles.css` includes the `.dos-mobile-tabbar` component. Add it to an app's existing named `<nav>` with native buttons, SVG icons and visible labels. Mark the selected destination with `aria-current="page"`; retain your existing click handlers. The component activates at a containing width of 760 px or less, leaving desktop sidebar navigation to the host.
+
+```html
+<nav class="dos-mobile-tabbar" aria-label="App sections">
+  <button type="button" aria-current="page"><svg aria-hidden="true"><!-- icon --></svg><span>Overview</span></button>
+  <button type="button"><svg aria-hidden="true"><!-- icon --></svg><span>Projects</span></button>
+</nav>
+```
+
+The host must provide an inline-size container and reserve a bottom layout row for the bar so it never covers content. Targets are at least 64 × 52 px; long menus scroll horizontally without wrapping or shrinking targets. Native Tab focus scrolls destinations into view. Use scoped `--glass-*`, `--accent-soft`, `--accent` and `--text` tokens for appearance.
+
+Mobile browsers receive a frosted liquid-glass material with a refractive rim and selected capsule. This CSS component does not automatically opt into the desktop SVG refraction adapter. Reduced transparency and forced colors disable blur; forced colors also outlines the selected destination. No pointer handlers, framework, or positioning are installed.

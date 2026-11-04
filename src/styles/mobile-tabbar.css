@@ -1,0 +1,59 @@
+/* App-local navigation: the host owns placement; the bar owns touch geometry. */
+@scope (.dindbos-host) to (.dindbos-host) {
+  @container (max-width: 760px) {
+    :scope .dos-mobile-tabbar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      padding: 6px;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      touch-action: pan-x;
+      scrollbar-width: none;
+      border: 1px solid var(--glass-border, rgb(255 255 255 / .65));
+      border-radius: 32px;
+      background: var(--glass-bg-strong, rgb(248 252 250 / .72));
+      color: var(--text, #202124);
+      -webkit-backdrop-filter: blur(20px) saturate(1.45);
+      backdrop-filter: blur(20px) saturate(1.45);
+      box-shadow: var(--shadow-soft, 0 8px 24px rgb(30 45 60 / .14));
+    }
+    :scope .dos-mobile-tabbar::-webkit-scrollbar { display: none; }
+    :scope .dos-mobile-tabbar > button {
+      display: flex;
+      flex: 1 0 auto;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      width: auto;
+      min-width: 64px;
+      min-height: 52px;
+      padding: 6px 10px;
+      border: 0;
+      border-radius: 26px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    :scope .dos-mobile-tabbar > button > svg { width: 20px; height: 20px; flex: 0 0 20px; pointer-events: none; }
+    :scope .dos-mobile-tabbar > button > span { flex: 0 0 auto; font-size: inherit; line-height: inherit; pointer-events: none; }
+    :scope .dos-mobile-tabbar > button:is(:hover, :focus-visible) { background: var(--glass-bg-active, rgb(255 255 255 / .65)); }
+    :scope .dos-mobile-tabbar > button[aria-current="page"] { background: var(--accent-soft, #d5e3fc); color: var(--text, #202124); }
+    :scope .dos-mobile-tabbar > button:focus-visible { outline: 2px solid var(--accent, #287a58); outline-offset: -2px; }
+    :scope .dos-mobile-tabbar > button:disabled { opacity: .45; cursor: default; }
+    @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+      :scope .dos-mobile-tabbar { background: var(--content-bg, Canvas); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+    }
+    @media (forced-colors: active) {
+      :scope .dos-mobile-tabbar { background: Canvas; color: CanvasText; border-color: ButtonText; }
+      :scope .dos-mobile-tabbar > button[aria-current="page"] { outline: 2px solid Highlight; outline-offset: -2px; }
+    }
+  }
+}
