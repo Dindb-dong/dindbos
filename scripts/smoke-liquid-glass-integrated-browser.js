@@ -10,9 +10,10 @@ const output = process.env.DINDBOS_QA_OUTPUT || 'internal/docs/qa/liquid-glass-i
 const require = createRequire(import.meta.url);
 const { PNG } = require(join(process.cwd(), 'node_modules/playwright-core/lib/utilsBundle.js'));
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
+let page;
 try {
   await mkdir(output, { recursive: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${base}/?qa=fresh`);
   await page.locator('.dos-boot-screen').waitFor({ state: 'detached' });
@@ -77,17 +78,30 @@ try {
   await panel.getByRole('button', { name: 'Dark', exact: true }).click();
   await page.emulateMedia({ forcedColors: 'active' });
   await expect(panel).toHaveAttribute('data-liquid-glass-mode', 'reduced');
-  assert.equal(await panel.evaluate(element => getComputedStyle(element).backdropFilter), 'none');
+  await expect(panel).toHaveCSS('backdrop-filter', 'none');
   const dock = page.locator('.dos-dock');
   await expect(dock).toHaveAttribute('data-liquid-glass-mode', 'reduced');
-  assert.equal(await dock.evaluate(element => getComputedStyle(element).backgroundImage), 'none');
-  assert.equal(await dock.evaluate(element => getComputedStyle(element).backdropFilter), 'none');
+  await expect(dock).toHaveCSS('background-image', 'none');
+  await expect(dock).toHaveCSS('backdrop-filter', 'none');
   assert.equal(await dock.evaluate(element => getComputedStyle(element).backgroundColor), await page.evaluate(() => { const test=document.createElement('div');test.style.background='Canvas';document.body.append(test);const color=getComputedStyle(test).backgroundColor;test.remove();return color; }));
-  await page.emulateMedia({ forcedColors: 'none' }); await expect(panel).toHaveAttribute('data-liquid-glass-mode', 'refraction');
+  await page.emulateMedia({ forcedColors: 'none' });
+  await expect.poll(() => panel.evaluate(element => {
+    const quality = element.closest('.dindbos-host').dataset.glassQuality;
+    return element.dataset.liquidGlassMode === (quality === 'frosted' ? 'frosted' : 'refraction');
+  })).toBe(true);
+  await expect(panel).toHaveCSS('backdrop-filter', /url\(|blur\(/);
   await panel.getByRole('button', { name: /System Settings/ }).click();
   await expect(page.locator('.dos-window[data-app-id="settings"]')).toBeVisible();
   assert.deepEqual(errors, []);
   const result = { url: base, panelPixels, dockPixels, surfaces, errors, checks: ['ABBA pixel stability', 'live real desktop', 'Applications integrated chrome without glass opt-in', 'Dock', 'light/dark', 'forced colors', 'foreground Settings action'] };
   await writeFile(join(output, 'evidence.json'), JSON.stringify(result, null, 2));
   console.log('integrated liquid glass smoke ok', JSON.stringify({ panelPixels, dockPixels }));
+} catch (error) {
+  console.error('Integrated glass state at failure', await page?.locator('[data-liquid-glass-mode]').evaluateAll(elements => elements.map(element => ({
+    class: element.className, mode: element.dataset.liquidGlassMode,
+    inline: element.style.backdropFilter, computed: getComputedStyle(element).backdropFilter,
+    forced: matchMedia('(forced-colors: active)').matches,
+    quality: element.closest('.dindbos-host')?.dataset.glassQuality,
+  }))).catch(() => []));
+  throw error;
 } finally { await browser.close(); }
