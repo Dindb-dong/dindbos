@@ -428,7 +428,79 @@ result = await shell.executeAsync("/home/guest/bin/pythonish");
 assert(result.status === 1, `unsupported shebang status mismatch: ${result.status}`);
 assert(result.output.includes("unsupported interpreter"), `unsupported shebang output mismatch: ${result.output}`);
 
-console.log("shell smoke ok parser chaining status scripts");
+const textSystem = shell.os.permissions.systemPrincipal();
+for (const [name, content] of Object.entries({
+  "text-lines.txt": "pear\napple\napple\nlast",
+  "unicode.txt": "한글 café\n",
+  "empty.txt": "",
+  "text-errors.txt": "head: usage: ordinary content\n",
+  "numbers.txt": "12\n2\n-3\n",
+})) shell.os.fs.writeOrCreateFile(`/home/guest/${name}`, content, "/", { owner: "guest", group: "users" }, textSystem);
+
+const textCases = [
+  ["head -n 2 text-lines.txt", "pear\napple\n"],
+  ["tail -n 2 text-lines.txt", "apple\nlast"],
+  ["tail -n 0 text-lines.txt", ""],
+  ["head -n 0 text-lines.txt", ""],
+  ["head empty.txt", ""],
+  ["tail empty.txt", ""],
+  ["wc unicode.txt", "1 2 13 unicode.txt"],
+  ["wc -wc < unicode.txt", "2 13"],
+  ["wc -l text-lines.txt", "3 text-lines.txt"],
+  ["wc -lwc empty.txt", "0 0 0 empty.txt"],
+  ["cat text-lines.txt | sort | uniq -c", "2 apple\n1 last\n1 pear\n"],
+  ["sort -nr numbers.txt", "12\n2\n-3\n"],
+  ["uniq text-lines.txt", "pear\napple\nlast\n"],
+  ["echo final | tail -n 1 -", "final"],
+  ["echo repeated | uniq -c", "1 repeated\n"],
+  ["sort empty.txt", ""],
+  ["uniq -c empty.txt", ""],
+  ["head text-errors.txt", "head: usage: ordinary content\n"],
+  ["basename '/some folder/file.txt' .txt", "file"],
+  ["basename /some/path/", "path"],
+  ["basename /", "/"],
+  ["basename ''", ""],
+  ["dirname /some/path/", "/some"],
+  ["dirname file.txt", "."],
+  ["dirname /", "/"],
+  ["dirname ''", "."],
+];
+for (const run of [(line) => shell.execute(line), (line) => shell.executeAsync(line)]) {
+  for (const [line, expected] of textCases) {
+    const actual = await run(line);
+    assert(actual.status === 0 && actual.output === expected, `${line}: ${JSON.stringify(actual)}`);
+  }
+  for (const line of ["head -n -1", "head -n", "tail -n 1.5", "head -n 9007199254740992", "tail -f", "wc -z", "sort --random", "uniq -d", "basename", "dirname a b", "head a b"]) {
+    const actual = await run(line);
+    assert(actual.status === 2 && actual.output.includes(": usage:"), `${line} must return usage status: ${JSON.stringify(actual)}`);
+  }
+  assert((await run("head -n invalid || echo recovered")).output.endsWith("recovered"), "usage status must drive ||");
+  assert((await run("tail missing.txt")).status === 1, "text file read failure must return 1");
+}
+result = await shell.executeAsync("head -n 2 < text-lines.txt > first-lines.txt");
+assert(result.status === 0 && shell.os.fs.readFile("/home/guest/first-lines.txt") === "pear\napple\n", "head input/output redirection preserves lines");
+shell.os.fs.writeOrCreateFile("/home/guest/private.txt", "private", "/", { owner: "root", group: "root", permissions: "-rw-------" }, textSystem);
+for (const command of ["head", "tail", "wc", "sort", "uniq"]) {
+  const denied = await shell.executeAsync(`${command} private.txt`);
+  assert(denied.status === 1 && /denied/i.test(denied.output), `${command} must retain read permission checks`);
+  assert(shell.execute(`which ${command}`).output === `shell builtin: ${command}`, `${command} must be discoverable with which`);
+  assert(shell.execute(`man ${command}`).status === 0, `${command} must have help`);
+}
+const previousMountCheck = shell.os.localMounts.isMountedPath;
+shell.os.localMounts.isMountedPath = (path) => path.startsWith("/mnt/text/");
+shell.os.localMounts.readFile = async (path) => {
+  if (path.endsWith("missing")) throw new Error("mounted file not found");
+  return "b\na\na\n";
+};
+for (const [line, expected] of [["head -n 1 /mnt/text/source", "b\n"], ["tail -n 1 /mnt/text/source", "a\n"], ["wc -l /mnt/text/source", "3 /mnt/text/source"], ["sort /mnt/text/source | uniq -c", "2 a\n1 b\n"]]) {
+  const actual = await shell.executeAsync(line);
+  assert(actual.status === 0 && actual.output === expected, `async mount ${line}: ${JSON.stringify(actual)}`);
+}
+assert((await shell.executeAsync("head /mnt/text/missing")).status === 1, "mounted read rejection propagates");
+shell.os.localMounts.isMountedPath = previousMountCheck;
+delete shell.os.localMounts.readFile;
+
+console.log("shell smoke ok parser chaining status scripts and text utilities (sync, async mounts, Unicode, permissions)");
 
 function bootOs() {
   const permissions = new PermissionPolicy();

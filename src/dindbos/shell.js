@@ -6,6 +6,20 @@ const MAX_SHELL_HISTORY = 200;
 const RECOVERY_ROOT = "/var/recovery/fsck";
 
 const BUILTIN_MANUALS = {
+  apps: "apps - list registered apps",
+  basename: "basename <path> [suffix] - print the final path component",
+  dirname: "dirname <path> - print the parent path without accessing files",
+  head: "head [-n count] [file|-] - print the first lines (default 10)",
+  tail: "tail [-n count] [file|-] - print the last lines (default 10)",
+  wc: "wc [-lwc] [file|-] - count newlines, words, and UTF-8 bytes",
+  sort: "sort [-nr] [file|-] - sort text lines",
+  uniq: "uniq [-c] [file|-] - collapse adjacent duplicate lines",
+  readlink: "readlink [path] - print a VFS symbolic link target",
+  whoami: "whoami - print the session user",
+  id: "id - print the session user and groups",
+  uname: "uname - print the browser runtime identity",
+  date: "date - print the current local date and time",
+  history: "history - list this shell session history",
   cat: "cat <file> - print file contents",
   cd: "cd [path] - change current directory",
   chgrp: "chgrp <group> <path> - change file group metadata where supported",
@@ -160,8 +174,8 @@ export class ShellSession {
         result = this.executePipeline(item.command);
         previousStatus = result.status;
       } catch (error) {
-        result = { output: error.message, clear: false, reload: false, status: 1 };
-        previousStatus = 1;
+        result = { output: error.message, clear: false, reload: false, status: error.shellStatus === 2 ? 2 : 1 };
+        previousStatus = result.status;
       }
       if (result.clear) return { output: "", clear: true, reload: false, status: previousStatus };
       if (result.output) output.push(result.output);
@@ -187,8 +201,8 @@ export class ShellSession {
         result = await this.executePipelineAsync(item.command);
         previousStatus = result.status;
       } catch (error) {
-        result = { output: error.message, clear: false, reload: false, status: 1 };
-        previousStatus = 1;
+        result = { output: error.message, clear: false, reload: false, status: error.shellStatus === 2 ? 2 : 1 };
+        previousStatus = result.status;
       }
       if (result.clear) return { output: "", clear: true, reload: false, status: previousStatus };
       if (result.output) output.push(result.output);
@@ -299,6 +313,8 @@ export class ShellSession {
     if (command === "tree") return this.tree(args[0] || this.cwd);
     if (command === "cat") return args.length ? this.readFile(args[0]) : stdin;
     if (command === "grep") return this.grep(args, stdin);
+    if (["head", "tail", "wc", "sort", "uniq"].includes(command)) return this.textCommand(command, args, stdin);
+    if (command === "basename" || command === "dirname") return pathCommand(command, args);
     if (command === "echo") return args.join(" ");
     if (command === "mkdir") return this.mkdir(args);
     if (command === "touch") return this.touch(args);
@@ -613,6 +629,61 @@ export class ShellSession {
     }
     const content = filePath ? this.os.fs.readFile(filePath, this.cwd, this.principal) : stdin;
     return filterGrep(content, needle);
+  }
+
+  textCommand(command, args, stdin) {
+    let count = 10;
+    let options = "";
+    const paths = [];
+    let operands = false;
+    for (let index = 0; index < args.length; index += 1) {
+      const arg = args[index];
+      if (!operands && arg === "--") { operands = true; continue; }
+      if (!operands && arg.startsWith("-") && arg !== "-") {
+        if ((command === "head" || command === "tail") && arg === "-n") {
+          const value = args[++index];
+          if (!/^\d+$/.test(value || "") || !Number.isSafeInteger(Number(value))) throw shellUsage(command);
+          count = Number(value);
+        } else if ((command === "wc" && /^-[lwc]+$/.test(arg))
+          || (command === "sort" && /^-[nr]+$/.test(arg))
+          || (command === "uniq" && arg === "-c")) options += arg.slice(1);
+        else throw shellUsage(command);
+      } else paths.push(arg);
+    }
+    if (paths.length > 1) throw shellUsage(command);
+    const path = paths[0];
+    const input = path !== undefined && path !== "-" ? this.readFile(path) : stdin;
+    const transform = (content) => {
+      const text = String(content);
+      if (command === "wc") {
+        const selected = options || "lwc";
+        const counts = [];
+        if (selected.includes("l")) counts.push((text.match(/\n/g) || []).length);
+        if (selected.includes("w")) counts.push((text.match(/\S+/gu) || []).length);
+        if (selected.includes("c")) counts.push(new TextEncoder().encode(text).byteLength);
+        return counts.join(" ") + (path !== undefined && path !== "-" ? ` ${path}` : "");
+      }
+      const lines = text.match(/[^\n]*\n|[^\n]+$/g) || [];
+      if (command === "head") return lines.slice(0, count).join("");
+      if (command === "tail") return (count === 0 ? [] : lines.slice(-count)).join("");
+      const values = lines.map((line) => line.endsWith("\n") ? line.slice(0, -1) : line);
+      if (command === "sort") {
+        values.sort((left, right) => {
+          const numeric = options.includes("n") ? (parseFloat(left) || 0) - (parseFloat(right) || 0) : 0;
+          const order = numeric || (left < right ? -1 : left > right ? 1 : 0);
+          return options.includes("r") ? -order : order;
+        });
+        return values.length ? `${values.join("\n")}\n` : "";
+      }
+      const groups = [];
+      for (const line of values) {
+        const previous = groups.at(-1);
+        if (previous && previous.line === line) previous.count += 1;
+        else groups.push({ line, count: 1 });
+      }
+      return groups.length ? groups.map(({ line, count: total }) => `${options.includes("c") ? `${total} ` : ""}${line}\n`).join("") : "";
+    };
+    return isPromise(input) ? input.then(transform) : transform(input);
   }
 
   mkdir(args) {
@@ -1830,8 +1901,8 @@ export class ShellSession {
         result = await this.executePipelineAsyncWithDepth(item.command, stdin, depth);
         previousStatus = result.status;
       } catch (error) {
-        result = { output: error.message, clear: false, reload: false, status: 1 };
-        previousStatus = 1;
+        result = { output: error.message, clear: false, reload: false, status: error.shellStatus === 2 ? 2 : 1 };
+        previousStatus = result.status;
       }
       if (result.clear || result.reload) return { ...result, output: output.concat(result.output || []).join("\n") };
       if (result.output) output.push(result.output);
@@ -2085,6 +2156,24 @@ function ensureShellHistoryDirectory(os, user = "guest") {
       mime: "application/json",
     }, system);
   }
+}
+
+function shellUsage(command) {
+  return Object.assign(new Error(`${command}: usage: ${BUILTIN_MANUALS[command].split(" - ")[0]}`), { shellStatus: 2 });
+}
+
+function pathCommand(command, args) {
+  const operands = args[0] === "--" ? args.slice(1) : args;
+  if (!operands.length || operands.length > (command === "basename" ? 2 : 1)) throw shellUsage(command);
+  const path = operands[0].replace(/\/+$/, "") || (operands[0] ? "/" : "");
+  if (command === "dirname") {
+    const slash = path.lastIndexOf("/");
+    return slash < 0 ? "." : path.slice(0, slash).replace(/\/+$/, "") || "/";
+  }
+  let name = path === "/" ? "/" : path.slice(path.lastIndexOf("/") + 1);
+  const suffix = operands[1];
+  if (suffix && suffix !== name && name.endsWith(suffix)) name = name.slice(0, -suffix.length);
+  return name;
 }
 
 function shellStatus(command, output) {
