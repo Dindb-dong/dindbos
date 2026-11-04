@@ -56,10 +56,19 @@ Current implementation:
 - `os.diskPolicyAreas()`, `os.diskPolicyForPath(path)`, and `df` expose policy areas for `/home`, `/opt`, `/var`, `/tmp`, `/mnt`, and `/var/cache`.
 - `os.storageBucketPolicy()` reports whether `navigator.storageBuckets` exists and records the current decision. Today DindbOS keeps the proven OPFS/IndexedDB/Cache split, while `/tmp`, `/var/cache`, and durable areas are separated by disk policy and reported bucket intent.
 
+## Unicode filenames
+
+VFS paths and new filenames use Unicode NFC. Canonically equivalent NFC/NFD input addresses the same file; file text and binary content are never Unicode-normalized. Unique legacy NFD names are converted when a stored tree is loaded, including link targets and cached paths.
+
+If a legacy directory contains multiple names with the same NFC form, loading preserves every original name and its contents. Access or mutation through that ambiguous name fails with `ERR_UNICODE_NAME_COLLISION`; `fsck` reports an unrepairable `duplicate-name`. It does not merge or automatically rename either file. Export a snapshot/salvage before resolving the original names outside ordinary path lookup.
+
+Local mounts expose NFC names while resolving the original external filename for reads, writes, removal and native-helper rename. They do not bulk-rename the user's disk. New entries request NFC names, but the host filesystem controls its own on-disk Unicode representation. Canonically ambiguous external names are rejected before selecting or changing either entry.
+
 Smoke test:
 
 ```text
 npm run smoke:storage
+node scripts/smoke-nfc-paths.js
 npm run smoke:persistent-storage
 npm run smoke:files
 npm run smoke:local-mounts

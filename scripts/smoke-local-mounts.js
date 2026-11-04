@@ -299,7 +299,46 @@ await assertRejects(
 await mounts.unmount("/mnt/protected");
 assert(os.objects.list({ type: "mount", status: "revoked" }).some((object) => object.metadata?.path === "/mnt/protected"), "revoked local mount object missing diagnostics");
 
-console.log("local mounts smoke ok permission-denied metadata-limits directory-copy-policy native-rename sync-conflict");
+// Fakes distinguish canonical-equivalent names even on normalization-insensitive hosts.
+const nfd = (name) => name.normalize("NFD");
+const rawFolder = nfd("한글"), rawFile = nfd("café.txt");
+const unicodeDirectory = new MemoryDirectoryHandle(rawFolder, {
+  [rawFile]: new MemoryFileHandle(rawFile, "NFD bytes", "text/plain", 1_000),
+});
+const unicodeHandle = new MemoryDirectoryHandle("unicode", { [rawFolder]: unicodeDirectory });
+await mounts.mountLocal("unicode", { handle: unicodeHandle, persist: false });
+assert((await mounts.list("/mnt/unicode"))[0].name === "한글", "mounted directory names must be NFC");
+assert((await mounts.list("/mnt/unicode/한글"))[0].name === "café.txt", "mounted file names must be NFC");
+assert(await mounts.readFile("/mnt/unicode/한글/café.txt") === "NFD bytes", "NFC reads must reach raw NFD handles");
+await mounts.writeFile(nfd("/mnt/unicode/한글/café.txt"), "changed");
+assert(unicodeDirectory.files.size === 1 && unicodeDirectory.files.get(rawFile).content === "changed", "NFC writes must update the existing raw name");
+await mounts.writeFile(nfd("/mnt/unicode/한글/새파일.txt"), "new");
+assert(unicodeDirectory.files.has("새파일.txt"), "new external names must be requested in NFC");
+let renameRequest;
+await mounts.move("/mnt/unicode/한글/café.txt", "/mnt/unicode/한글/renamed.txt", "/", { nativeHelper: {
+  async renameEntry(request) {
+    renameRequest = request;
+    const node = unicodeDirectory.files.get(request.sourceName);
+    unicodeDirectory.files.delete(request.sourceName);
+    unicodeDirectory.files.set(request.destinationName, node);
+  },
+} });
+assert(renameRequest.sourceRelativePath === `${rawFolder}/${rawFile}`, "rename companion must receive the actual source spelling");
+assert(renameRequest.destinationRelativePath === `${rawFolder}/renamed.txt`, "rename companion must receive the actual parent spelling");
+await mounts.remove("/mnt/unicode/한글/renamed.txt");
+assert(!unicodeDirectory.files.has("renamed.txt"), "mounted removal must target the resolved external name");
+unicodeDirectory.files.set(rawFile, new MemoryFileHandle(rawFile, "first"));
+unicodeDirectory.files.set("café.txt", new MemoryFileHandle("café.txt", "second"));
+for (const action of [
+  () => mounts.readFile("/mnt/unicode/한글/café.txt"),
+  () => mounts.writeFile("/mnt/unicode/한글/café.txt", "lost"),
+  () => mounts.remove("/mnt/unicode/한글/café.txt"),
+  () => mounts.copy("/mnt/unicode/한글/새파일.txt", "/mnt/unicode/한글/café.txt"),
+  () => mounts.list("/mnt/unicode/한글"),
+]) await assertRejects(action, "Ambiguous NFC filename");
+assert(unicodeDirectory.files.get(rawFile).content === "first" && unicodeDirectory.files.get("café.txt").content === "second", "external canonical collisions must preserve both files");
+
+console.log("local mounts smoke ok permission-denied metadata-limits directory-copy-policy native-rename sync-conflict NFC-handles collisions");
 
 function bootOs() {
   const permissions = new PermissionPolicy();
