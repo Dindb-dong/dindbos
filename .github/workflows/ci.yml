@@ -56,6 +56,9 @@ jobs:
       - name: Verify real browser interactions
         run: npm run verify:ui
 
+      - name: Verify SDK customization when provided
+        run: npm run --if-present smoke:customization-browser
+
       - name: Verify packed SDK and framework examples
         run: |
           npm run smoke:sdk-pack

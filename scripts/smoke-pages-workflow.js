@@ -33,6 +33,9 @@ assert(main.includes("./demo/portfolio-demo.js"), "Demo filesystem seed import i
 assert(ciWorkflow.includes("run: npx playwright install ffmpeg"), "Browser verification requires the Playwright video recording runtime");
 assert(ciWorkflow.indexOf("run: npx playwright install ffmpeg") < ciWorkflow.indexOf("run: npm run verify:ui"), "Prepare the video runtime before browser verification");
 
+assert(ciWorkflow.includes("run: npm run --if-present smoke:customization-browser"), "Verify the customization regression when the SDK provides it");
+assert(ciWorkflow.indexOf("run: npm run verify:ui") < ciWorkflow.indexOf("run: npm run --if-present smoke:customization-browser"), "Run standalone customization after the UI suite releases its server port");
+
 console.log("pages workflow smoke ok");
 
 function read(path) {
