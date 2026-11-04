@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -50,8 +50,14 @@ jobs:
       - name: Verify host lifecycle, apps, UI contracts, and CLI
         run: npm run verify:host-contracts
 
+      - name: Install video recording runtime
+        run: npx playwright install ffmpeg
+
       - name: Verify real browser interactions
         run: npm run verify:ui
+
+      - name: Verify SDK customization when provided
+        run: npm run --if-present smoke:customization-browser
 
       - name: Verify packed SDK and framework examples
         run: |
