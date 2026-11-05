@@ -4,7 +4,20 @@ This changelog tracks user-visible runtime changes before tagged releases.
 
 ## Unreleased
 
-Date: 2026-05-04
+- No unreleased changes.
+
+## 0.2.0
+
+Date: 2026-11-05
+
+- Add React app registration, project templates, CLI app creation and diagnostics, and SDK customization guides.
+- Normalize virtual paths to NFC while preserving ambiguous legacy filenames without overwriting data.
+- Add terminal text utilities and improve Dock rendering and configurable appearance.
+- Include complete project and third-party license notices in standalone demo builds.
+- Point the live demo to the portfolio and document installation through the published npm package.
+- Publishing uses GitHub Actions OIDC. npm provenance is unavailable while the source repository remains private.
+
+### Runtime changes included in this release
 
 Release posture:
 

@@ -102,7 +102,7 @@ const troubleshooting = readFileSync("docs/troubleshooting.md", "utf8");
 
 [
   "npm install dindbos",
-  "npm exec --package=dindbos -- create-dindbos",
+  "npm exec --package=dindbos@latest -- create-dindbos",
   "import \"dindbos/styles.css\"",
   "docs/troubleshooting.md",
 ].forEach((term) => {

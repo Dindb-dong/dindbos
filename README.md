@@ -9,7 +9,7 @@
 <p align="center">Give a page its own desktop. Bring your own apps.</p>
 <p align="center"><a href="https://github.com/Dindb-dong/dindbos/blob/main/LICENSE">MIT</a> · React + JavaScript · Browser storage · Custom UI</p>
 <p align="center"><strong>English</strong> · <a href="README-ko.md">한국어</a></p>
-<p align="center"><a href="https://dindb-dong.github.io/dindbos/">Live desktop</a> · <a href="#quick-start">Quick start</a> · <a href="docs/react-apps.md">Write an app</a> · <a href="docs/customization.md">Customize</a> · <a href="docs/agent-guide.md">For agents</a></p>
+<p align="center"><a href="https://dindb-dong.github.io/">Live desktop</a> · <a href="#quick-start">Quick start</a> · <a href="docs/react-apps.md">Write an app</a> · <a href="docs/customization.md">Customize</a> · <a href="docs/agent-guide.md">For agents</a></p>
 
 <p align="center"><img src="docs/assets/desktop.png" alt="Current DindbOS desktop with Files, Notes, and Calculator" width="1280"></p>
 
@@ -26,7 +26,7 @@ A macOS-inspired desktop SDK for portfolios, interactive projects, and pages tha
 
 The [portfolio](https://dindb-dong.github.io/) is a real SDK consumer. Built-in Applications, Files, Notes, Reminders, Calendar, Photos, Music, Clock, TextEdit, Viewer, Terminal, Calculator, Activity Monitor, and Settings give a new desktop something useful to do. [App features and storage](docs/builtin-apps.md).
 
-> This README describes the current source revision. The new APIs need its corresponding package build; until that revision is published, use the local tarball instructions in [INSTALL.md](INSTALL.md). The hosted demo may still show an earlier release.
+> These examples require dindbos 0.2.0 or later. The [hosted portfolio](https://dindb-dong.github.io/) is an SDK consumer and may use a different release. For source builds, see [INSTALL.md](INSTALL.md).
 
 ## The desktop experience
 
@@ -63,10 +63,10 @@ A normal visit starts with an unobstructed desktop. The showcase images below us
 
 ### Start a project
 
-For a matching published package:
+Create a React project with the published package:
 
 ```sh
-npm exec --package=dindbos -- create-dindbos my-desktop --template react --yes
+npm exec --package=dindbos@latest -- create-dindbos my-desktop --template react --yes
 cd my-desktop
 npm install
 npm run dev
@@ -77,6 +77,8 @@ Choose `--template vanilla` for a JavaScript host. The CLI lives inside the `din
 [Build and install from source](INSTALL.md) · [CLI options](#cli)
 
 ### Put a desktop in your app
+
+Install dindbos in your existing host project:
 
 ```sh
 npm install dindbos
@@ -146,18 +148,20 @@ The runtime continues to own execution, file permissions, and window state. Trus
 
 ## CLI
 
+Use the published CLI to create and maintain a project:
+
 ```sh
 # Create without prompts; return a machine-readable result
-npm exec --package=dindbos -- create-dindbos studio --template react --yes --json
+npm exec --package=dindbos@latest -- create-dindbos studio --template react --yes --json
 
 # Add and register an app in a generated project
-npm exec --package=dindbos -- create-dindbos add app notes --root studio --json
+npm exec --package=dindbos@latest -- create-dindbos add app notes --root studio --json
 
 # Inspect the generated host files without changing them
-npm exec --package=dindbos -- create-dindbos doctor studio --json
+npm exec --package=dindbos@latest -- create-dindbos doctor studio --json
 
 # Preview creation without writing files
-npm exec --package=dindbos -- create-dindbos studio --template vanilla --dry-run --json
+npm exec --package=dindbos@latest -- create-dindbos studio --template vanilla --dry-run --json
 ```
 
 `--force` explicitly permits overwriting target files. `add app` uses the registry markers in generated `src/apps/index.js`; if they are missing, it stops before writing. Doctor checks local project structure, not deployed behavior or remote services.

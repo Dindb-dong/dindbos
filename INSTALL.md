@@ -2,18 +2,18 @@
 
 ## Use the package
 
-For a published version matching the API you need:
+Install the latest published package. The README examples require dindbos 0.2.0 or later:
 
 ```sh
 npm install dindbos
-npm exec --package=dindbos -- create-dindbos my-desktop --template react --yes
+npm exec --package=dindbos@latest -- create-dindbos my-desktop --template react --yes
 ```
 
 The CLI is distributed by `dindbos`. Do not assume `npm create dindbos` or `npx create-dindbos` refers to the same package. The CLI creates files but does not run `npm install`, initialize Git, publish, or deploy.
 
 ## Build this source revision
 
-Use this path for changes that have not been published:
+Use this path to develop the SDK or try changes that have not been published:
 
 ```sh
 git clone https://github.com/Dindb-dong/dindbos.git
@@ -45,7 +45,7 @@ The generated `package.json` requests the source package's version. If that vers
 cd my-desktop
 npm install
 npm run build
-npm exec --package=dindbos -- create-dindbos doctor --json
+npm exec --no -- create-dindbos doctor --json
 npm run dev
 ```
 

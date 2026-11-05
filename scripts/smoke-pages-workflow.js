@@ -21,7 +21,7 @@ assert(workflow.includes('if [ -z "$chrome_path" ]; then') && workflow.includes(
 assert(workflow.includes('echo "CHROME_PATH=$chrome_path" >> "$GITHUB_ENV"'), "Pages workflow does not export the discovered browser executable");
 assert(workflow.indexOf("Use the runner's existing Chrome") < workflow.indexOf("run: npm run smoke"), "Pages must prepare the browser before smoke tests");
 assert(workflow.includes("run: npm run smoke"), "Pages workflow does not gate deployment on npm run smoke");
-assert(workflow.includes("run: npm run build"), "Pages workflow does not build the static demo");
+assert(workflow.includes("run: npm run smoke:demo-build"), "Pages workflow does not verify the built demo and license notices");
 assert(workflow.includes("Check Pages Availability"), "Pages workflow does not preflight Pages availability");
 assert(workflow.includes("/repos/${GITHUB_REPOSITORY}/pages"), "Pages workflow does not check the repository Pages endpoint");
 assert(workflow.includes("steps.pages.outputs.enabled == 'true'"), "Pages workflow does not guard Pages-only deployment steps");

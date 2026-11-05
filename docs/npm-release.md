@@ -18,9 +18,9 @@ Use npm provenance whenever the registry and CI provider support it. If provenan
 - Run `npm run smoke:release-conformance`.
 - Run `npm run smoke:npm-release-trust`.
 - Confirm `dindbos-npm-release-trust.json` records the tarball SHA-256.
-- Confirm package contents only include `dist/`, `README.md`, and `package.json`.
+- Confirm package contents match the `package.json` file allowlist: SDK output, package metadata, maintained documentation, licenses, and showcase assets.
 - Confirm `docs/changelog.md` has user-visible release notes.
-- Confirm no `.env`, screenshots, local worktrees, or release-conformance output are included in the tarball.
+- Confirm no `.env`, local QA captures, worktrees, or release-conformance output are included in the tarball. Maintained showcase assets under `docs/assets/` are intentionally shipped.
 
 ## Evidence
 
