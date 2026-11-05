@@ -26,7 +26,7 @@ A macOS-inspired desktop SDK for portfolios, interactive projects, and pages tha
 
 The [portfolio](https://dindb-dong.github.io/) is a real SDK consumer. Built-in Applications, Files, Notes, Reminders, Calendar, Photos, Music, Clock, TextEdit, Viewer, Terminal, Calculator, Activity Monitor, and Settings give a new desktop something useful to do. [App features and storage](docs/builtin-apps.md).
 
-> This README describes the current source revision. The new APIs need its corresponding package build; until that revision is published, use the local tarball instructions in [INSTALL.md](INSTALL.md). The hosted demo may still show an earlier release.
+> These examples require dindbos 0.2.0 or later. The [hosted portfolio](https://dindb-dong.github.io/) is an SDK consumer and may use a different release. For source builds, see [INSTALL.md](INSTALL.md).
 
 ## The desktop experience
 
@@ -63,17 +63,12 @@ A normal visit starts with an unobstructed desktop. The showcase images below us
 
 ### Start a project
 
-Build this source revision to use the APIs shown below. The npm `latest` release may not include them:
+Create a React project with the published package:
 
 ```sh
-git clone https://github.com/Dindb-dong/dindbos.git
-cd dindbos
-npm ci
-npm run build:sdk
-DINDBOS_TARBALL="$(npm pack --silent)"
-node dist/create.js ../my-desktop --template react --yes
-cd ../my-desktop
-npm install "../dindbos/$DINDBOS_TARBALL"
+npm exec --package=dindbos@latest -- create-dindbos my-desktop --template react --yes
+cd my-desktop
+npm install
 npm run dev
 ```
 
@@ -83,10 +78,10 @@ Choose `--template vanilla` for a JavaScript host. The CLI lives inside the `din
 
 ### Put a desktop in your app
 
-Install the tarball built above into your existing host project, using its actual filename:
+Install dindbos in your existing host project:
 
 ```sh
-npm install /absolute/path/to/dindbos-VERSION.tgz
+npm install dindbos
 ```
 
 ```jsx
@@ -153,20 +148,20 @@ The runtime continues to own execution, file permissions, and window state. Trus
 
 ## CLI
 
-Use the same source tarball as your host; replace the absolute path and `VERSION` below:
+Use the published CLI to create and maintain a project:
 
 ```sh
 # Create without prompts; return a machine-readable result
-npm exec --package=/absolute/path/to/dindbos-VERSION.tgz -- create-dindbos studio --template react --yes --json
+npm exec --package=dindbos@latest -- create-dindbos studio --template react --yes --json
 
 # Add and register an app in a generated project
-npm exec --package=/absolute/path/to/dindbos-VERSION.tgz -- create-dindbos add app notes --root studio --json
+npm exec --package=dindbos@latest -- create-dindbos add app notes --root studio --json
 
 # Inspect the generated host files without changing them
-npm exec --package=/absolute/path/to/dindbos-VERSION.tgz -- create-dindbos doctor studio --json
+npm exec --package=dindbos@latest -- create-dindbos doctor studio --json
 
 # Preview creation without writing files
-npm exec --package=/absolute/path/to/dindbos-VERSION.tgz -- create-dindbos studio --template vanilla --dry-run --json
+npm exec --package=dindbos@latest -- create-dindbos studio --template vanilla --dry-run --json
 ```
 
 `--force` explicitly permits overwriting target files. `add app` uses the registry markers in generated `src/apps/index.js`; if they are missing, it stops before writing. Doctor checks local project structure, not deployed behavior or remote services.
