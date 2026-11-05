@@ -101,8 +101,8 @@ const troubleshooting = readFileSync("docs/troubleshooting.md", "utf8");
 });
 
 [
-  "npm install dindbos",
-  "npm exec --package=dindbos -- create-dindbos",
+  "npm install /absolute/path/to/dindbos-VERSION.tgz",
+  "node dist/create.js ../my-desktop --template react --yes",
   "import \"dindbos/styles.css\"",
   "docs/troubleshooting.md",
 ].forEach((term) => {

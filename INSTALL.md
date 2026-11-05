@@ -1,19 +1,8 @@
 # Install dindbOS
 
-## Use the package
-
-For a published version matching the API you need:
-
-```sh
-npm install dindbos
-npm exec --package=dindbos -- create-dindbos my-desktop --template react --yes
-```
-
-The CLI is distributed by `dindbos`. Do not assume `npm create dindbos` or `npx create-dindbos` refers to the same package. The CLI creates files but does not run `npm install`, initialize Git, publish, or deploy.
-
 ## Build this source revision
 
-Use this path for changes that have not been published:
+Use this path for the current README examples. The npm `latest` release may not yet provide these APIs:
 
 ```sh
 git clone https://github.com/Dindb-dong/dindbos.git
@@ -45,7 +34,7 @@ The generated `package.json` requests the source package's version. If that vers
 cd my-desktop
 npm install
 npm run build
-npm exec --package=dindbos -- create-dindbos doctor --json
+npm exec --no -- create-dindbos doctor --json
 npm run dev
 ```
 
@@ -56,3 +45,14 @@ No credentials or paid service are required for the ordinary desktop. Optional b
 ## Existing projects
 
 Give an agent the exact package path/version, host route, container, and app you want. Read [the agent guide](docs/agent-guide.md), preserve existing files, and use the public SDK. `--force` is explicit overwrite authorization for the target files; inspect them first.
+
+## Use the package
+
+Use the registry only after confirming that the published version includes the APIs you need:
+
+```sh
+npm install dindbos
+npm exec --package=dindbos -- create-dindbos my-desktop --template react --yes
+```
+
+The CLI is distributed by `dindbos`. Do not assume `npm create dindbos` or `npx create-dindbos` refers to the same package. The CLI creates files but does not run `npm install`, initialize Git, publish, or deploy.

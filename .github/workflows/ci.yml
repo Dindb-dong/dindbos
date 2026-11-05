@@ -65,7 +65,7 @@ jobs:
           npm run smoke:sdk-frameworks
 
       - name: Build demo
-        run: npm run build
+        run: npm run smoke:demo-build
 
       - name: Retain browser verification screenshots
         if: always()

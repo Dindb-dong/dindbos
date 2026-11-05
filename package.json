@@ -76,6 +76,7 @@
     "smoke:browserd-failures": "node scripts/smoke-browserd-failures.js",
     "smoke:conformance": "node scripts/smoke-conformance.js",
     "smoke:release-conformance": "node scripts/smoke-release-conformance.js",
+    "smoke:demo-build": "node scripts/smoke-demo-build.js",
     "smoke:pages-workflow": "node scripts/smoke-pages-workflow.js",
     "smoke:files": "node scripts/smoke-files-import-export.js && node scripts/smoke-files-context-commands.js",
     "smoke:settings": "node scripts/smoke-settings.js",

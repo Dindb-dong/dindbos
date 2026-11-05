@@ -8,7 +8,7 @@
 <h1 align="center">DindbOS</h1>
 <p align="center">웹페이지에 데스크톱을 넣고, 내 앱을 올리세요.</p>
 <p align="center"><a href="README.md">English</a> · <strong>한국어</strong></p>
-<p align="center"><a href="https://dindb-dong.github.io/dindbos/">데모</a> · <a href="INSTALL.md">설치</a> · <a href="docs/react-apps.md">앱 만들기</a> · <a href="docs/customization.md">커스터마이징</a></p>
+<p align="center"><a href="https://dindb-dong.github.io/">데모</a> · <a href="INSTALL.md">설치</a> · <a href="docs/react-apps.md">앱 만들기</a> · <a href="docs/customization.md">커스터마이징</a></p>
 
 <p align="center"><img src="docs/assets/desktop.png" alt="최신 Files·Notes·Calculator를 실행한 DindbOS 데스크톱" width="1280"></p>
 
@@ -51,18 +51,29 @@
 
 ## 시작하기
 
-현재 소스와 대응하는 npm 패키지가 게시된 경우:
+아래 API를 사용하려면 현재 소스를 빌드해 설치하세요. npm `latest`에는 이 API가 아직 없을 수 있습니다:
 
 ```sh
-npm exec --package=dindbos -- create-dindbos my-desktop --template react --yes
-cd my-desktop
-npm install
+git clone https://github.com/Dindb-dong/dindbos.git
+cd dindbos
+npm ci
+npm run build:sdk
+DINDBOS_TARBALL="$(npm pack --silent)"
+node dist/create.js ../my-desktop --template react --yes
+cd ../my-desktop
+npm install "../dindbos/$DINDBOS_TARBALL"
 npm run dev
 ```
 
 JavaScript 프로젝트는 `--template vanilla`로 생성합니다. CLI는 `dindbos` 패키지 안에 포함됩니다. 기존 파일을 기본적으로 덮어쓰지 않고, 의존성도 자동 설치하지 않습니다.
 
 ## React 앱 추가
+
+기존 프로젝트에서는 위에서 만든 tarball을 실제 파일명으로 설치한 뒤 아래 예제를 사용하세요:
+
+```sh
+npm install /absolute/path/to/dindbos-VERSION.tgz
+```
 
 ```jsx
 import React, { useState } from "react";
@@ -107,10 +118,12 @@ Hello가 창으로 열리고 데스크톱과 Dock에 아이콘이 생깁니다. 
 
 ## CLI와 에이전트
 
+호스트에 설치한 것과 같은 소스 tarball을 사용하세요. 아래 절대 경로와 `VERSION`은 실제 값으로 바꿉니다:
+
 ```sh
-npm exec --package=dindbos -- create-dindbos studio --template react --yes --json
-npm exec --package=dindbos -- create-dindbos add app notes --root studio --json
-npm exec --package=dindbos -- create-dindbos doctor studio --json
+npm exec --package=/absolute/path/to/dindbos-VERSION.tgz -- create-dindbos studio --template react --yes --json
+npm exec --package=/absolute/path/to/dindbos-VERSION.tgz -- create-dindbos add app notes --root studio --json
+npm exec --package=/absolute/path/to/dindbos-VERSION.tgz -- create-dindbos doctor studio --json
 ```
 
 `--dry-run`은 파일을 쓰지 않고 결과를 보여줍니다. `--force`가 있어야 덮어쓰기를 허용합니다. 생성된 `src/apps/index.js`의 등록 마커가 없으면 앱 추가를 중단합니다. doctor는 로컬 프로젝트 구조를 확인하며 배포나 외부 서비스 정상 동작까지 증명하지 않습니다.
