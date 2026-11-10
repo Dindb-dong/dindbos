@@ -51,6 +51,7 @@ export function installBuiltinApps(os, options = {}) {
     set: (patch) => os.setUIStylePreference(patch),
     subscribe: (listener) => os.bus.on("ui:preference-change", listener),
     owns: (target) => target.closest(".dindbos-host") === os.root,
+    status: () => os.memoryOnly ? "session" : os.uiStyleSaveFailed ? "failed" : "persistent",
   };
   const portfolioData = options.portfolioData || DEFAULT_PORTFOLIO_DATA;
   const includePortfolio = options.includePortfolio !== false;
@@ -4664,6 +4665,10 @@ function renderSettings(os, content, appearance = null, requestedSection, uiStyl
     const updateUI = () => {
       const preference = uiStyle.get();
       for (const button of content.querySelectorAll("[data-ui-preference-mode]")) button.setAttribute("aria-pressed", String((preference[button.dataset.uiPreferenceMode] || "auto") === button.dataset.uiPreferenceStyle));
+      content.querySelector("[data-ui-preference-status]").textContent = uiStyle.status() === "failed"
+        ? "Changed for this session. Browser storage could not save your choice; reloading may restore the previous choice."
+        : uiStyle.status() === "session" ? "Applies to this session. Automatic uses the configured defaults."
+          : "Remembered in this browser. Automatic uses the configured defaults.";
     };
     const onUI = (event) => {
       const button = event.target.closest("[data-ui-preference-mode]");
@@ -4873,7 +4878,7 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
               <div class="ui-style-setting-row"><strong>${label}</strong><div class="ui-style-buttons" role="group" aria-label="${label}">
                 ${[["auto", "Automatic"], ...styles].map(([style, title]) => `<button type="button" data-ui-preference-mode="${mode}" data-ui-preference-style="${style}" aria-pressed="${style === "auto"}">${title}</button>`).join("")}
               </div></div>`).join("")}
-            <p>Remembered in this browser. Automatic uses the configured defaults.</p>
+            <p data-ui-preference-status role="status">Automatic uses the configured defaults.</p>
           </section>
           ${appearanceMarkup(appearance, { wallpaper: false, dock: false })}
         </section>

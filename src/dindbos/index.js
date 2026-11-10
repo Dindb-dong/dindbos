@@ -110,6 +110,7 @@ export class DindbOS {
     this.appearanceStorageKey = `${options.storageKey || options.storage?.key || "dindbos:vfs"}:appearance`;
     this.uiStyleStorageKey = `${options.storageKey || options.storage?.key || "dindbos:vfs"}:ui-style`;
     this.uiStylePreference = {};
+    this.uiStyleSaveFailed = false;
     try {
       if (!this.memoryOnly) this.uiStylePreference = normalizeUIStylePreference(JSON.parse(globalThis.localStorage?.getItem(this.uiStyleStorageKey) || "{}"));
     } catch { /* Invalid or unavailable storage keeps automatic UI selection. */ }
@@ -4607,7 +4608,14 @@ export class DindbOS {
   setUIStylePreference(patch) {
     if (this.destroyed) return this.getUIStylePreference();
     this.uiStylePreference = normalizeUIStylePreference(patch, this.uiStylePreference);
-    try { if (!this.memoryOnly) globalThis.localStorage?.setItem(this.uiStyleStorageKey, JSON.stringify(this.uiStylePreference)); } catch { /* Keep the in-memory preference if storage is denied. */ }
+    this.uiStyleSaveFailed = false;
+    try { if (!this.memoryOnly) {
+      if (!globalThis.localStorage) throw new Error("Browser storage is unavailable");
+      globalThis.localStorage.setItem(this.uiStyleStorageKey, JSON.stringify(this.uiStylePreference));
+    } } catch {
+      this.uiStyleSaveFailed = true;
+      this.shell?.notify("UI style changed for this session. Browser storage could not save it.");
+    }
     this.bus.emit("ui:preference-change", this.getUIStylePreference());
     return this.getUIStylePreference();
   }
