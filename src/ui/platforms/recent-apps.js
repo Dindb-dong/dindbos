@@ -132,11 +132,15 @@ export function mountRecentApps(shell, { platform }) {
       preview.setAttribute("aria-label", task.title || task.appId);
       const snapshot = document.createElement("div");
       snapshot.className = "dos-recent-snapshot";
+      snapshot.style.containerName = document.defaultView.getComputedStyle(task.frame).containerName;
       snapshot.dataset.mobilePane = task.frame?.dataset.mobilePane || "";
       snapshot.setAttribute("aria-hidden", "true");
       snapshot.inert = true;
       const content = task.content?.cloneNode(true);
       if (content) {
+        const contentStyle = document.defaultView.getComputedStyle(task.content);
+        content.style.containerName = contentStyle.containerName;
+        content.style.containerType = contentStyle.containerType;
         const sources = [task.content, ...task.content.querySelectorAll("*")];
         const copies = [content, ...content.querySelectorAll("*")];
         copies.forEach((copy, index) => {

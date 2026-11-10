@@ -21,13 +21,28 @@ try {
     await page.goto(`http://127.0.0.1:5198/scripts/fixtures/platform-apps.html?style=${style}&width=390`);
     const root = page.locator("#platform-apps-host");
     await expect(root).toHaveAttribute("data-qa-ready", "true");
+    await page.addStyleTag({ content: `
+      [data-recent-mobile-nav], [data-recent-frame-layout] { display: none; }
+      .dos-window[data-app-id="recent-draft"] > .dos-window-content {
+        container-type: inline-size; container-name: portfolio-window;
+      }
+      @container portfolio-window (max-width: 760px) {
+        [data-recent-desktop-nav] { display: none; }
+        [data-recent-mobile-nav] { display: block; }
+      }
+      @container recent-frame (max-width: 760px) {
+        [data-recent-frame-layout] { display: block; }
+      }
+    ` });
     await page.evaluate(() => {
       const os = window.platformAppsQA.os;
       for (const task of [...os.windows.windows.values()]) os.windows.close(task.id, { force: true });
-      os.registerApp({ id: "recent-draft", name: "Draft", icon: "text", singleton: true, render({ content }) { content.innerHTML = '<label>Draft text<input aria-label="Draft text" value="Original"></label>'; } });
+      os.registerApp({ id: "recent-draft", name: "Draft", icon: "text", singleton: true, render({ content }) { content.innerHTML = '<nav data-recent-desktop-nav>Desktop navigation</nav><nav data-recent-mobile-nav>Mobile navigation</nav><span data-recent-frame-layout>Compact frame layout</span><label>Draft text<input aria-label="Draft text" value="Original"></label>'; } });
       for (const id of ["calculator", "notes", "recent-draft"]) os.launch(id);
+      os.windows.windows.get("recent-draft").frame.style.containerName = "recent-frame";
     });
     const original = root.locator('.dos-window[data-app-id="recent-draft"] input');
+    await expect(root.locator('.dos-window[data-app-id="recent-draft"] [data-recent-mobile-nav]')).toBeVisible();
     await original.fill("Unsaved test draft");
     const home = root.getByRole("button", { name: "Home", exact: true });
     const swipe = async (locator, dx, dy, duration = 0) => {
@@ -51,6 +66,10 @@ try {
     await open();
     const dialog = root.getByRole("dialog", { name: "Recent apps" });
     await expect(dialog.locator(".dos-recent-card")).toHaveCount(3);
+    const preview = dialog.locator('[data-recent-window-id="recent-draft"]');
+    await expect(preview.locator('[data-recent-mobile-nav]')).toBeVisible();
+    await expect(preview.locator('[data-recent-desktop-nav]')).toBeHidden();
+    await expect(preview.locator('[data-recent-frame-layout]')).toBeVisible();
     assert.equal(await dialog.locator('[data-recent-window-id="recent-draft"] input').inputValue(), "Unsaved test draft", "preview preserves current form state");
     await root.screenshot({ path: `${output}/${style}-recents.png` });
     const rail = dialog.locator(".dos-recents-rail");
