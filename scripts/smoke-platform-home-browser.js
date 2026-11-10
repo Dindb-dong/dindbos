@@ -17,7 +17,8 @@ const output = process.env.DINDBOS_QA_OUTPUT;
 if (output) await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
 try {
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  const motion = process.env.DINDBOS_QA_MOTION || "reduce";
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: motion });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(process.env.DINDBOS_QA_URL || "http://127.0.0.1:5186/?style=ios");
@@ -45,7 +46,25 @@ try {
   const dialog = root.getByRole("dialog", { name: "Experience", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("[data-folder-app-id]")).toHaveCount(6);
+  if (motion === "no-preference") {
+    const firstTransform = await dialog.evaluate((e) => getComputedStyle(e).transform);
+    await page.waitForTimeout(90);
+    const secondTransform = await dialog.evaluate((e) => getComputedStyle(e).transform);
+    assert.notEqual(firstTransform, secondTransform, "Folder grows from its home icon rather than appearing instantly");
+    await dialog.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)));
+  }
+  const geometry = await dialog.evaluate((e) => {
+    const title = e.querySelector("h2").getBoundingClientRect();
+    const grid = e.querySelector(".dos-home-folder-grid").getBoundingClientRect();
+    return { titleBottom: title.bottom, gridTop: grid.top, width: grid.width, height: grid.height };
+  });
+  assert.ok(geometry.titleBottom < geometry.gridTop, "Folder title sits above the app panel");
+  assert.equal(geometry.width, geometry.height, "Folder panel reserves a square 3x3 layout");
   await page.keyboard.press("Escape");
+  if (motion === "no-preference") {
+    assert.equal(await dialog.count(), 1, "Exit keeps the folder mounted during its reverse animation");
+    assert.ok(await dialog.evaluate((e) => e.getAnimations().some((a) => a.playState === "running")));
+  }
   await expect(dialog).toHaveCount(0);
   await expect(folder).toBeFocused();
   await folder.click();
@@ -64,9 +83,19 @@ try {
   await root.getByRole("button", { name: "Home", exact: true }).click();
   await root.evaluate((e) => { e.style.width = "390px"; });
   await folder.click();
+  await dialog.evaluate((e) => Promise.all([...e.getAnimations(), ...e.parentElement.getAnimations()].map((a) => a.finished)));
   if (output) await root.screenshot({ path: resolve(output, "ios-folder.png") });
   await root.getByRole("button", { name: "Home", exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  await root.evaluate((e) => { e.style.width = "320px"; });
+  assert.ok((await folder.locator(".dos-folder-preview svg").first().boundingBox()).width <= 20, "Narrow folder mini icons stay in their 2x2 cells");
+  await folder.click();
+  await dialog.evaluate((e) => Promise.all([...e.getAnimations(), ...e.parentElement.getAnimations()].map((a) => a.finished)));
+  const narrowPanel = await dialog.locator(".dos-home-folder-grid").boundingBox();
+  assert.equal(narrowPanel.width, narrowPanel.height, "Narrow folder remains square");
+  await dialog.getByRole("button", { name: "Close folder" }).click();
+  await expect(dialog).toHaveCount(0);
+  await root.evaluate((e) => { e.style.width = "390px"; });
   await page.evaluate(() => window.homeOS.setUIStylePreference({ mobile: "android" }));
   await expect(root).toHaveAttribute("data-ui-style", "android");
   await expect(root.getByRole("button", { name: "Open Experience", exact: true })).toHaveCount(0);
@@ -76,10 +105,21 @@ try {
     await expect(root.locator(".dos-desktop")).toHaveCSS("grid-template-columns", new RegExp(`^(?:[0-9.]+px ?){${columns}}$`));
     assert.equal(await root.locator(".dos-desktop").evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(" ").length), columns);
     assert.equal(await root.evaluate((e) => e.scrollWidth > e.clientWidth), false);
+    await expect(root.locator(".dos-dock")).toHaveCSS("backdrop-filter", "none");
+    await expect(root.locator(".dos-dock")).toHaveCSS("box-shadow", "none");
     await expect(root.locator(".dos-android-heading")).toHaveCount(0);
     assert.ok(await root.locator(".dos-dock-item:visible").count() <= 5);
   }
-  await page.evaluate(() => window.homeOS.destroy());
+  await root.evaluate(async (e) => {
+    const { attachLiquidGlass } = await import("/src/ui/liquid-glass.js");
+    window.homeGlassCleanup = attachLiquidGlass(e);
+  });
+  await expect(root.locator(".dos-dock")).toHaveAttribute("data-liquid-glass-mode", /.+/);
+  await page.evaluate(() => window.homeOS.setAppearance({ mode: "dark" }));
+  await expect(root.locator(".dos-dock")).toHaveCSS("backdrop-filter", "none");
+  await expect(root.locator(".dos-dock")).toHaveCSS("box-shadow", "none");
+  await expect(root.locator(".dos-dock")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await page.evaluate(() => { window.homeGlassCleanup(); return window.homeOS.destroy(); });
   assert.deepEqual(errors, []);
   console.log("Mobile home smoke passed: four columns, four dock apps, 2x2 folder preview, all six apps reachable, keyboard/focus/dismiss/launch, Android ungrouped");
 } finally { await browser.close(); }

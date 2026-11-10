@@ -35,8 +35,8 @@ try {
       const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
       await page.mouse.move(x, y);
       await page.mouse.down();
-      if (duration) await page.waitForTimeout(duration);
       await page.mouse.move(x + dx, y + dy, { steps: 12 });
+      if (duration) await page.waitForTimeout(duration);
       await page.mouse.up();
     };
     if (style === "ios") await swipe(home, 0, -100);
@@ -67,11 +67,13 @@ try {
       await expect(root.locator(".dos-recent-apps")).toBeVisible();
     } else await open();
     await page.evaluate(() => { window.platformAppsQA.os.windows.windows.get("recent-draft").beforeClose = () => false; });
-    await dialog.getByRole("button", { name: "Close Draft", exact: true }).click();
+    await dialog.getByRole("button", { name: "Close Draft", exact: true }).focus();
+    await page.keyboard.press("Enter");
     assert(await page.evaluate(() => window.platformAppsQA.os.windows.windows.has("recent-draft")), "rejected close preserves the draft");
     await expect(dialog.locator('[data-recent-window-id="recent-draft"]')).toHaveCount(1);
     await page.evaluate(() => { window.platformAppsQA.os.windows.windows.get("recent-draft").beforeClose = async () => { throw new Error("Rejected guard"); }; });
-    await dialog.getByRole("button", { name: "Close Draft", exact: true }).click();
+    await dialog.getByRole("button", { name: "Close Draft", exact: true }).focus();
+    await page.keyboard.press("Enter");
     await expect(dialog.locator('[data-recent-window-id="recent-draft"]')).toHaveCount(1);
     await page.evaluate(() => {
       const windows = window.platformAppsQA.os.windows;
@@ -89,6 +91,20 @@ try {
     await expect(dialog.locator('[data-recent-window-id="recent-draft"]')).toHaveCount(0);
     assert.equal(await page.evaluate(() => window.platformAppsQA.os.windows.windows.has("recent-draft")), false, "swipe dismiss uses the real guarded window lifecycle");
     if (style === "android") {
+      await page.evaluate(() => {
+        const windows = window.platformAppsQA.os.windows;
+        const tasks = [...windows.windows.values()].sort((a, b) => Number(b.frame.style.zIndex) - Number(a.frame.style.zIndex));
+        window.pendingRecentId = tasks[0].id;
+        tasks[0].beforeClose = () => new Promise(resolve => { window.resolveRecentBatch = resolve; });
+      });
+      await dialog.getByRole("button", { name: "Close all", exact: true }).click();
+      await expect.poll(() => page.evaluate(() => typeof window.resolveRecentBatch)).toBe("function");
+      await home.click();
+      await open();
+      await page.evaluate(() => window.resolveRecentBatch(true));
+      await expect.poll(() => page.evaluate(() => window.platformAppsQA.os.windows.windows.size)).toBe(1);
+      await expect(dialog.locator(".dos-recent-card")).toHaveCount(1);
+      assert.equal(await page.evaluate(() => window.platformAppsQA.os.windows.windows.size), 1, "an old Close all request must not close apps in a reopened overview");
       await dialog.getByRole("button", { name: "Close all", exact: true }).click();
       await expect(dialog).toHaveCount(0);
       assert.equal(await page.evaluate(() => window.platformAppsQA.os.windows.windows.size), 0);

@@ -4,21 +4,21 @@ Select `ui: { style: "ios" }` to force an iOS-inspired shell, or combine a deskt
 
 ## Official research and implementation decisions
 
-Sources were reviewed on November 10, 2026. Apple's public HIG describes application design; it does not prescribe a third-party Home screen clone. The app grid, horizontally scrollable Dock, and clickable Home indicator below are DindbOS design choices. They use original iOS-style SVG app artwork and the project wallpaper, with no Apple logo, bundled font, status indicators, or system artwork.
+Sources were reviewed on November 10, 2026. Apple's public HIG describes application design; it does not prescribe a third-party Home screen clone. The app grid, four-app Dock, and clickable Home indicator below are DindbOS web adaptations. They use original iOS-style SVG app artwork and the project wallpaper, with no Apple logo, bundled font, battery telemetry, or system artwork. Original status glyphs provide access to existing controls.
 
 | Official source | Guidance used | DindbOS adaptation |
 | --- | --- | --- |
 | [Apple HIG: Layout](https://developer.apple.com/design/human-interface-guidelines/layout) | Preserve visual hierarchy, group related controls, adapt to available size, and protect important controls from hardware and system overlays. | Four-column Home grid, full-width foreground app, safe-area insets around top and bottom chrome, and scrolling where content exceeds the host. |
 | [Apple HIG: Buttons](https://developer.apple.com/design/human-interface-guidelines/buttons) | Make actions identifiable and give them sufficient surrounding space; general guidance recommends a 44 × 44 point hit region. | Shell actions and Home use at least 44 × 44 CSS pixels, with visible keyboard focus and accessible names. CSS pixels are a web adaptation, not a physical-point equivalence guarantee. |
 | [Apple HIG: Accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility) | Support adequate contrast, readable text, and reduced motion; do not rely exclusively on visual effects. | Reuse light/dark semantic surfaces, labeled native buttons, accessible search, and `prefers-reduced-motion`. No gesture is the only route to an action. |
-| [Apple HIG: Motion](https://developer.apple.com/design/human-interface-guidelines/motion) | Motion should explain state and remain optional. | Reuse existing app opening/minimizing, disable spatial shell transitions with reduced motion, and avoid an extra Home animation system. |
+| [Apple HIG: Motion](https://developer.apple.com/design/human-interface-guidelines/motion) | Motion should explain state and remain optional. | Preserve app lifecycle while interpolating Home/card/folder geometry; disable spatial transitions with reduced motion. |
 
 ## Behavior and compatibility
 
 - Home dismisses the current shell panel and minimizes every visible window, preserving the app process, component state, and unsaved drafts. Reopen an app through the grid, Dock, or Search.
 - One foreground app occupies the content area. Background frames stay mounted. The bottom Home button remains reachable; the Dock and Home Search pill appear on Home.
 - Search opens the existing application launcher. Control Center, calendar, system menu, and compact application menus retain their existing behavior. The titlebar close action still uses the window manager's existing close and unsaved-change handling.
-- Pinned apps remain reachable through a horizontally scrollable Dock rather than being silently dropped after the fourth item. Desktop filesystem entries remain available alongside installed applications.
+- The Dock holds four pinned apps; all installed applications remain reachable through Home and Search. Desktop filesystem entries remain available alongside installed applications.
 - Supplied desktop and menubar slot renderers are retained. The adapter adds its own Home affordance and adds the Search pill only for the default desktop.
 - Resizing back to a desktop layout removes iOS controls and listeners without resetting application state. CSS is confined to the selected DindbOS host.
 
@@ -69,3 +69,10 @@ Astra review follow-up: Files folder tabs now use a 56px strip, 48px inset tab r
 Home uses a four-column app grid, a translucent four-app Dock, a quiet status area, and a 2×2 miniature preview for the Experience folder. Experience app entries keep their existing launch actions; custom desktop slots retain their own layout. The folder supports Escape, outside dismissal, keyboard navigation and return focus.
 
 A short upward swipe from the bottom Home region backgrounds the active app without losing its draft. From Home, an upward swipe opens recent apps; holding an upward swipe also opens them from an app. Recent apps are horizontally draggable cards with snapshots of existing app DOM. Tap resumes; swipe up or the accessible close button uses the normal guarded close lifecycle. Embedded external frames have labeled placeholders. These are browser-host gestures; the native operating system can reserve the physical screen edge.
+
+
+## Reference geometry and motion correction
+
+The [official iPhone App Switcher guide](https://support.apple.com/guide/iphone/switch-between-open-apps-iph1a1f981ad/ios) specifies swiping up, pausing, then lifting a finger. The adapter now detects a pause after the movement, rather than a hold before the movement. Direct manipulation moves/scales the actual app during a Home gesture. A short upward app swipe returns Home; a paused swipe opens the switcher. The requested Home-screen upward shortcut also opens recent apps.
+
+Switcher cards use76% host width, overlapping neighbors, original app icons and names above actual app previews. Resume expands the selected card into the real app over 380ms. Horizontal release, vertical cancellation and guarded dismissal share the motion contract documented for Android. The Experience folder title sits above a frosted 342px square with three icon columns and nine slots. It expands from its actual Home icon over 360ms and reverses over 240ms. Native Apple animation parameters are not claimed. Reduced motion removes spatial interpolation; [Apple describes using dissolves instead of zoom/slide effects](https://support.apple.com/en-us/111781).
