@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { normalizeDindbOSHostConfig, publicHostConfig } from "../src/sdk/host-config.js";
-import { detectVisitorOS, resolveUIStyle } from "../src/dindbos/ui-style.js";
+import { detectVisitorOS, resolveUIStyle, normalizeUIStylePreference } from "../src/dindbos/ui-style.js";
+
+assert.deepEqual(normalizeUIStylePreference({ desktop: "windows", mobile: "ios" }), { desktop: "windows", mobile: "ios" });
+assert.deepEqual(normalizeUIStylePreference({ desktop: null }, { desktop: "windows", mobile: "ios" }), { mobile: "ios" });
+for (const invalid of [null, [], "macos", { desktop: "ios" }, { mobile: "macos" }, { other: "windows" }, { mobile: ["ios"] }, { desktop: undefined }]) assert.throws(() => normalizeUIStylePreference(invalid), TypeError);
 
 assert.equal(normalizeDindbOSHostConfig().ui.style, "auto");
 for (const style of ["macos", "windows", "ios", "android"]) {

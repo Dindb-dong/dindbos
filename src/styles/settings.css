@@ -43,6 +43,12 @@
   .settings-history button:disabled { opacity: .28; cursor: default; }
   .settings-history button:hover:not(:disabled) { background: var(--control-hover); }
   .settings-section { min-width: 0; }
+  .ui-style-settings { margin-bottom: 20px; }
+  .ui-style-settings p { color: var(--muted); font-size: 12px; }
+  .ui-style-setting-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 0; }
+  .ui-style-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ui-style-buttons button { min-height: 44px; padding: 8px 12px; }
+  .ui-style-buttons button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
   .settings-section > .appearance-settings > h3 { display: none; }
   .settings-detail .appearance-modes { max-width: none; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
   .settings-detail .appearance-setting-row { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--settings-group-bg); }

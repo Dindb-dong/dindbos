@@ -271,6 +271,8 @@ export class DindbOS {
   registerApp(app: DindbOSHostApp): void;
   unregisterApp(id: string): boolean;
   setAppearance(theme: DindbOSThemeConfig): unknown;
+  getUIStylePreference(): { desktop?: "macos" | "windows"; mobile?: "ios" | "android" };
+  setUIStylePreference(patch: { desktop?: "macos" | "windows" | null; mobile?: "ios" | "android" | null }): { desktop?: "macos" | "windows"; mobile?: "ios" | "android" };
   appearance: DindbOSThemeConfig;
   boot(): void;
   loadPersistentFileSystem(options?: Record<string, unknown>): Promise<void>;

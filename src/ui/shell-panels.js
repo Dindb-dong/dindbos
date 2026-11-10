@@ -69,6 +69,7 @@ export class ShellPanels {
         null,
         { label: "System Settings…", icon: "settings", action: "settings", disabled: !available("settings") },
         { label: "Applications…", icon: "apps", action: "launch", app: "applications", disabled: !available("applications") },
+        { label: `Switch to ${{ macos: "Windows", windows: "macOS", ios: "Samsung", android: "iOS" }[this.shell.currentStyle] || "Windows"}`, action: "switch-ui-style" },
         null,
         { label: "Show Desktop", action: "show-desktop", disabled: !this.os.windows.windows.size },
       ],
@@ -331,6 +332,11 @@ export class ShellPanels {
       return this.os.flushPersistentFileSystem?.();
     }
     else if (action === "desktop-reveal" && contextNode) this.shell.launchApp("files", { path: this.os.fs.dirname(contextNode.path) });
+    else if (action === "switch-ui-style") {
+      const current = this.shell.currentStyle;
+      const next = { macos: "windows", windows: "macos", ios: "android", android: "ios" }[current];
+      this.os.setUIStylePreference({ [["ios", "android"].includes(current) ? "mobile" : "desktop"]: next });
+    }
     else if (action === "settings") this.shell.openSettings(data.section);
     else if (action === "launch") this.shell.launchApp(data.app);
     else if (action === "launch-new") this.shell.launchApp(data.app, {});

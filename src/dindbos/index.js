@@ -4,6 +4,7 @@ import { compatibilitySnapshot, conformanceReport, isolationSnapshot } from "./c
 import { DescriptorManager } from "./descriptors.js";
 import { RuntimeCacheStore } from "./cache-store.js";
 import { DesktopShell } from "./desktop-shell.js";
+import { normalizeUIStylePreference } from "./ui-style.js";
 import { EventBus } from "./event-bus.js";
 import { KeychainManager } from "./keychain.js";
 import { KernelObjectRegistry } from "./kernel-objects.js";
@@ -107,6 +108,11 @@ export class DindbOS {
       runtimeHosts.set(this.root, this);
     }
     this.appearanceStorageKey = `${options.storageKey || options.storage?.key || "dindbos:vfs"}:appearance`;
+    this.uiStyleStorageKey = `${options.storageKey || options.storage?.key || "dindbos:vfs"}:ui-style`;
+    this.uiStylePreference = {};
+    try {
+      if (!this.memoryOnly) this.uiStylePreference = normalizeUIStylePreference(JSON.parse(globalThis.localStorage?.getItem(this.uiStyleStorageKey) || "{}"));
+    } catch { /* Invalid or unavailable storage keeps automatic UI selection. */ }
     let savedAppearance = {};
     try { if (!this.memoryOnly) savedAppearance = JSON.parse(globalThis.localStorage?.getItem(this.appearanceStorageKey) || "{}"); } catch { /* Browser storage can be unavailable. */ }
     try { this.appearance = normalizeAppearance(savedAppearance); } catch { this.appearance = { ...DEFAULT_APPEARANCE }; }
@@ -4592,6 +4598,18 @@ export class DindbOS {
     try { if (!this.memoryOnly) globalThis.localStorage?.setItem(this.appearanceStorageKey, JSON.stringify(this.appearance)); } catch { /* Keep the in-memory preference if storage is denied. */ }
     this.bus.emit("appearance:change", { ...this.appearance });
     return { ...this.appearance };
+  }
+
+  getUIStylePreference() {
+    return { ...this.uiStylePreference };
+  }
+
+  setUIStylePreference(patch) {
+    if (this.destroyed) return this.getUIStylePreference();
+    this.uiStylePreference = normalizeUIStylePreference(patch, this.uiStylePreference);
+    try { if (!this.memoryOnly) globalThis.localStorage?.setItem(this.uiStyleStorageKey, JSON.stringify(this.uiStylePreference)); } catch { /* Keep the in-memory preference if storage is denied. */ }
+    this.bus.emit("ui:preference-change", this.getUIStylePreference());
+    return this.getUIStylePreference();
   }
 
   destroy() {

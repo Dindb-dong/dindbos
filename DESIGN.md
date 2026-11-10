@@ -67,6 +67,12 @@ Inspect actual desktop and mobile rendering, a narrow embedded desktop, light an
 
 ## Platform shells
 
+### Visitor style controls
+
+The system menu offers a direct switch within the current UI family: macOS/Windows or iOS/Samsung. Settings → Appearance exposes Desktop UI and Mobile UI groups, each with Automatic and its two named presets. Each group remembers its own choice under the instance storage key; Automatic restores the consumer's configured selection. The configured UI determines the family during resizing/rotation, so a manual mobile preference does not replace the landscape desktop. Changes reuse the responsive shell transition and preserve open apps and drafts. Controls use existing semantic tokens, 44px targets, wrapping rows and `aria-pressed`; keyboard focus remains reachable after a transition.
+
+The editable source is the existing **DindbOS · iOS Apps · Reviewed** document, **Components / UI style switching** board with a reusable Desktop/Automatic group and linked instance. The same controls are composed inside each platform's existing Settings appearance panel. Local IDs and rendered comparison evidence remain in the private evaluation record.
+
 `ui.style` defaults to `auto`. macOS visitors receive Windows on wide hosts and Samsung-inspired Android on compact hosts; Windows visitors receive macOS and iOS. Detected Android visitors receive iOS in portrait and macOS in landscape; iOS/iPadOS visitors receive Samsung-inspired Android and Windows. Unknown visitors retain macOS. Desktop selection uses the760px host breakpoint; mobile orientation uses the host width/height. `ui.autoStyles` overrides any visitor's desktop/mobile defaults, explicit named styles force a preset at all sizes, and `ui.mobileStyle` optionally overrides the compact choice. Palette, wallpaper and app state remain instance-owned.
 
 The editable project document is **DindbOS · Platform Shells**, page **Page 1**. Its platform foundations, linked navigation components, and desktop/mobile compositions define the preset designs. Maintained source references and component-to-code decisions live in [Windows](docs/platform-windows.md), [iOS](docs/platform-ios.md), and [Android](docs/platform-android.md). Each preset's adapter is in `src/ui/platforms/` and its scoped stylesheet is `src/styles/platform-*.css`. Local canvas IDs, captures, persistence checks, and runtime comparisons are kept in the project's private evidence record.

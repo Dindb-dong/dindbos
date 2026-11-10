@@ -67,6 +67,8 @@ export class DesktopShell {
       if (this.activePanel === "controls") this.panels.updateControls();
     });
     if (typeof unsubscribe === "function") this.cleanups.push(unsubscribe);
+    const unsubscribeUI = this.os.bus?.on?.("ui:preference-change", () => this.updateStyle());
+    if (typeof unsubscribeUI === "function") this.cleanups.push(unsubscribeUI);
     this.clockTimer = globalThis.setInterval(() => this.tickClock(), 1000);
     this.clockTimer.unref?.();
     this.tickClock();
@@ -81,7 +83,9 @@ export class DesktopShell {
   }
 
   updateStyle() {
-    const style = resolveUIStyle(this.styleOptions, this.root.clientWidth || 1024, this.root.clientHeight || 768, this.root.ownerDocument?.defaultView?.navigator);
+    const configured = resolveUIStyle(this.styleOptions, this.root.clientWidth || 1024, this.root.clientHeight || 768, this.root.ownerDocument?.defaultView?.navigator);
+    const mode = ["ios", "android"].includes(configured) ? "mobile" : "desktop";
+    const style = this.os.getUIStylePreference?.()[mode] || configured;
     if (this.currentStyle === style) return;
     this.closePanel(false);
     this.styleCleanup?.();

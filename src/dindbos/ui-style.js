@@ -1,5 +1,17 @@
 export const UI_STYLES = Object.freeze(["macos", "windows", "ios", "android"]);
 export const MOBILE_UI_WIDTH = 760;
+export const UI_STYLE_PAIRS = Object.freeze({ desktop: ["macos", "windows"], mobile: ["ios", "android"] });
+
+export function normalizeUIStylePreference(patch, previous = {}) {
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new TypeError("UI style preference must be an object");
+  const next = { ...previous };
+  for (const [mode, style] of Object.entries(patch)) {
+    if (!Object.hasOwn(UI_STYLE_PAIRS, mode) || (style !== null && !UI_STYLE_PAIRS[mode].includes(style))) throw new TypeError("Invalid UI style preference");
+    if (style === null) delete next[mode];
+    else next[mode] = style;
+  }
+  return next;
+}
 const DEFAULT_AUTO_STYLES = Object.freeze({
   macos: Object.freeze({ desktop: 'windows', mobile: 'android' }),
   windows: Object.freeze({ desktop: 'macos', mobile: 'ios' }),

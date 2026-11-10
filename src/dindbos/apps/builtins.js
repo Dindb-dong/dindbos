@@ -4655,7 +4655,20 @@ function renderSettings(os, content, appearance = null, requestedSection) {
     if (disposed) { rendered?.cleanup(); return; }
     navigate = rendered.select;
     const appearanceCleanup = appearance ? wireAppearanceControls(content, appearance) : () => {};
-    unsubscribe = () => { appearanceCleanup(); rendered.cleanup(); };
+    const updateUI = () => {
+      const preference = os.getUIStylePreference();
+      for (const button of content.querySelectorAll("[data-ui-preference-mode]")) button.setAttribute("aria-pressed", String((preference[button.dataset.uiPreferenceMode] || "auto") === button.dataset.uiPreferenceStyle));
+    };
+    const onUI = (event) => {
+      const button = event.target.closest("[data-ui-preference-mode]");
+      if (!button || !content.contains(button) || button.closest(".dindbos-host") !== os.root) return;
+      os.setUIStylePreference({ [button.dataset.uiPreferenceMode]: button.dataset.uiPreferenceStyle === "auto" ? null : button.dataset.uiPreferenceStyle });
+      if (button.isConnected) button.focus({ preventScroll: true });
+    };
+    updateUI();
+    content.addEventListener("click", onUI);
+    const unsubscribeUI = os.bus.on("ui:preference-change", updateUI);
+    unsubscribe = () => { appearanceCleanup(); unsubscribeUI(); content.removeEventListener("click", onUI); rendered.cleanup(); };
   }).catch((error) => {
     if (disposed) return;
     content.innerHTML = `
@@ -4847,6 +4860,15 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
           <div><h2 tabindex="-1">System Settings</h2><p>Personalize your desktop and manage your environment.</p></div>
         </header>
         <section class="settings-section is-active" id="${escapeAttr(prefix)}-section-appearance" data-settings-section="appearance" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-appearance">
+          <section class="settings-panel ui-style-settings" aria-label="UI style">
+            <header><h3>UI style</h3></header>
+            <p>Choose each layout. Open apps stay in place.</p>
+            ${[["desktop", "Desktop UI", [["macos", "macOS"], ["windows", "Windows"]]], ["mobile", "Mobile UI", [["ios", "iOS"], ["android", "Samsung"]]]].map(([mode, label, styles]) => `
+              <div class="ui-style-setting-row"><strong>${label}</strong><div class="ui-style-buttons" role="group" aria-label="${label}">
+                ${[["auto", "Automatic"], ...styles].map(([style, title]) => `<button type="button" data-ui-preference-mode="${mode}" data-ui-preference-style="${style}" aria-pressed="${style === "auto"}">${title}</button>`).join("")}
+              </div></div>`).join("")}
+            <p>Remembered in this browser. Automatic uses the configured defaults.</p>
+          </section>
           ${appearanceMarkup(appearance, { wallpaper: false, dock: false })}
         </section>
         <section class="settings-section" id="${escapeAttr(prefix)}-section-wallpaper" data-settings-section="wallpaper" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-wallpaper" hidden>
