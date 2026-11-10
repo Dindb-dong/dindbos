@@ -35,6 +35,10 @@ assert(styles.includes(".dos-shell"), "dist/styles.css missing desktop shell sty
 assert(styles.includes(".glass-panel"), "dist/styles.css missing Liquid Glass panel utility");
 assert(styles.includes("-webkit-backdrop-filter"), "dist/styles.css missing Safari glass blur support");
 assert(styles.includes('data-appearance="dark"'), "dist/styles.css missing instance-scoped dark appearance");
+for (const selector of [".dos-recent-apps.dos-recent-apps", ".dos-recents-rail", ".dos-window-layer:has(> .trusted-ui-surface)"]) {
+  assert(styles.includes(selector), `dist/styles.css missing mobile recents layout: ${selector}`);
+}
+assert(styles.includes("transform: var(--mobile-swipe-transform, none)"), "dist/styles.css missing interactive mobile Home motion");
 assert(!index.includes("portfolio-demo"), "SDK root bundle should not import demo portfolio data");
 
 const pack = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json"], { encoding: "utf8" }))[0];
