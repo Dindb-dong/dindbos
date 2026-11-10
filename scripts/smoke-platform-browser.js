@@ -49,7 +49,7 @@ try {
     await expect(root.locator('[data-failed-icon-test] svg')).toHaveAttribute("data-icon-style", style);
     await page.evaluate(() => { window.failedIconCleanup(); document.querySelector('[data-failed-icon-test]').remove(); });
     if (output) await root.screenshot({ path: resolve(output, `${style}-home.png`) });
-    await root.locator('[data-dock-app-id="draft"]').click();
+    await root.locator(["ios", "android"].includes(style) ? '[data-desktop-app-id="draft"]' : '[data-dock-app-id="draft"]').click();
     await root.getByRole("textbox", { name: "Draft text", exact: true }).fill(`${style} draft`);
     if (output) await root.screenshot({ path: resolve(output, `${style}-app.png`) });
     const box = await root.locator('.dos-window[data-app-id="draft"]').boundingBox();
@@ -61,7 +61,7 @@ try {
     if (style === "android") {
       await root.getByRole("button", { name: "Recent apps", exact: true }).click();
       await root.getByRole("dialog", { name: "Recent apps" }).getByRole("button", { name: "Draft", exact: true }).click();
-    } else await root.locator('[data-dock-app-id="draft"]').click();
+    } else await root.locator(style === "ios" ? '[data-desktop-app-id="draft"]' : '[data-dock-app-id="draft"]').click();
     await expect(root.getByRole("textbox", { name: "Draft text", exact: true })).toHaveValue(`${style} draft`);
     await page.evaluate(() => window.platformOS.setAppearance({ mode: "dark" }));
     await expect(root).toHaveAttribute("data-appearance", "dark");

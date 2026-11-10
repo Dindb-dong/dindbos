@@ -139,6 +139,8 @@
     "smoke:customization-browser": "node scripts/smoke-customization-browser.js",
     "smoke:platforms": "node scripts/smoke-platform-styles.js && node scripts/smoke-platform-windows.js && node scripts/smoke-platform-ios.js && node scripts/smoke-platform-android.js",
     "smoke:platform-browser": "node scripts/smoke-platform-browser.js",
+    "smoke:platform-home": "node scripts/smoke-platform-home-browser.js",
+    "smoke:platform-recents": "node scripts/smoke-platform-recents-browser.js",
     "smoke:platform-apps": "node scripts/smoke-platform-apps-browser.js",
     "smoke:platform-icons": "node scripts/smoke-platform-icons.js"
   },

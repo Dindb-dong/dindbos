@@ -62,3 +62,10 @@ The interior design uses 34px large titles, 17px readable content, grouped seman
 
 
 Astra review follow-up: Files folder tabs now use a 56px strip, 48px inset tab rail and 44px tab/close/new-tab controls. The existing 28/26px desktop strip previously clipped the larger mobile targets. Native browser review checked 390px light, 320px light/dark and two open folder tabs; measured tab and new-tab targets remain 44px tall. Canvas Files reflects the real commandbar and tab composition; Clock uses the bundled geographic silhouettes. Notes and Settings boards show the list state; their corresponding detail states use the existing mobile Back navigation.
+
+
+## Home and recent apps
+
+Home uses a four-column app grid, a translucent four-app Dock, a quiet status area, and a 2×2 miniature preview for the Experience folder. Experience app entries keep their existing launch actions; custom desktop slots retain their own layout. The folder supports Escape, outside dismissal, keyboard navigation and return focus.
+
+A short upward swipe from the bottom Home region backgrounds the active app without losing its draft. From Home, an upward swipe opens recent apps; holding an upward swipe also opens them from an app. Recent apps are horizontally draggable cards with snapshots of existing app DOM. Tap resumes; swipe up or the accessible close button uses the normal guarded close lifecycle. Embedded external frames have labeled placeholders. These are browser-host gestures; the native operating system can reserve the physical screen edge.

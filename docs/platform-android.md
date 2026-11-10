@@ -44,9 +44,9 @@ Utilities without a Samsung counterpart use the same layout grammar without clai
 ## Interaction contract
 
 - Home preserves process and component state by minimizing every visible window.
-- Recents shows window titles rather than fabricated screenshots. Selecting a task restores its existing window. A nonmodal `dialog` contains keyboard Tab focus while active, supports Escape dismissal and returns focus to its trigger. Other embedded desktops remain usable.
+- Recents shows horizontally draggable, snapping cards with inert snapshots of the actual running app content. Tap a card to restore its existing window, swipe it up to close through the guarded window lifecycle, or use Close all. Keyboard arrows navigate cards; each card has an accessible close action. A nonmodal `dialog` contains keyboard Tab focus, supports Escape dismissal and returns focus to its trigger. Other embedded desktops remain usable. External embedded frames show a labeled placeholder because their content cannot be safely cloned.
 - Back first closes an open shell panel. Otherwise the active app content receives a bubbling, cancelable `dindbos:back` event. Calling `preventDefault()` signals that the app handled its internal navigation. Without an app handler, Back goes Home without closing or discarding the app.
-- Apps and Quick settings reuse the existing searchable launcher and appearance controls.
+- The wallpaper home uses four icon columns (five from 440px), a search bar, four pinned Dock apps and transparent Back/Home/Recents navigation. Search and status controls reuse the existing launcher and appearance controls.
 - Active app windows fill the available mobile workspace. Desktop caption controls are replaced by system navigation.
 
 The mobile preset is selected by the host configuration; it does not detect the visitor's operating system. Native Android predictive-back animation, OS app switching, hardware keys, notification permissions, and device status are outside this browser shell's scope.
