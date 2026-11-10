@@ -87,8 +87,11 @@ export class DesktopShell {
     const mode = ["ios", "android"].includes(configured) ? "mobile" : "desktop";
     const style = this.os.getUIStylePreference?.()[mode] || configured;
     if (this.currentStyle === style) return;
+    const mobilePanes = ["ios", "android"].includes(this.currentStyle) && ["ios", "android"].includes(style)
+      ? [...this.root.querySelectorAll(".dos-window[data-mobile-pane]")].filter(frame => frame.closest(".dindbos-host") === this.root).map(frame => [frame, frame.dataset.mobilePane]) : [];
     this.closePanel(false);
     this.styleCleanup?.();
+    for (const [frame, pane] of mobilePanes) frame.dataset.mobilePane = pane;
     this.styleCleanup = null;
     const initial = !this.currentStyle;
     this.currentStyle = style;

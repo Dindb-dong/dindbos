@@ -336,6 +336,7 @@ export class ShellPanels {
       const current = this.shell.currentStyle;
       const next = { macos: "windows", windows: "macos", ios: "android", android: "ios" }[current];
       this.os.setUIStylePreference({ [["ios", "android"].includes(current) ? "mobile" : "desktop"]: next });
+      this.shell.root.querySelector(next === "windows" ? ".dos-windows-start" : next === "android" ? '[data-android-action="home"]' : ".dos-system-menu")?.focus({ preventScroll: true });
     }
     else if (action === "settings") this.shell.openSettings(data.section);
     else if (action === "launch") this.shell.launchApp(data.app);
