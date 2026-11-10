@@ -31,8 +31,13 @@
   }
   :scope .dos-icon { width: 100%; height: 96px; grid-template-rows: 60px auto; padding: 0; }
   :scope .dos-icon-art, :scope .dos-icon-art svg, :scope .dos-icon-art img { width: 60px; height: 60px; }
-  :scope .dos-icon-label { max-width: 100%; font-size: 12px; line-height: 16px; color: white; text-shadow: 0 1px 3px #0008; }
+  :scope .dos-icon-label { display: block; max-width: 100%; font-size: 12px; line-height: 16px; font-weight: 400; white-space: nowrap; text-overflow: ellipsis; color: white; text-shadow: 0 1px 3px #0008; }
+  :scope .dos-icon:is(:hover, .is-selected) { background: transparent; border-color: transparent; }
+  :scope .dos-icon.is-selected .dos-icon-label { background: transparent; color: white; text-shadow: 0 1px 3px #0008; }
+  :scope :is(.dos-icon-art, .dos-dock-glyph) { transition: transform 180ms cubic-bezier(.22,.8,.25,1), filter 180ms ease; }
+  :scope .dos-icon:active .dos-icon-art, :scope .dos-dock-item:active .dos-dock-glyph { transform: scale(.9); filter: brightness(.8); }
   :scope .dos-dock {
+    --dock-background: rgb(255 255 255 / 22%); --dock-border: 1px solid rgb(255 255 255 / 26%); --dock-shadow: none; --liquid-glass-blur: 24;
     inset: auto 12px calc(var(--ios-bottom) + 8px); transform: none; width: auto; max-width: none;
     height: 96px; padding: 16px; gap: 12px; align-items: center; justify-content: space-evenly; border-radius: 34px; background: rgb(255 255 255 / 22%); border: 1px solid rgb(255 255 255 / 26%); backdrop-filter: blur(24px);
     overflow: hidden; overscroll-behavior: contain;
@@ -55,8 +60,10 @@
   }
   :scope .dos-shell:has(.dos-window.is-active:not([hidden])) .dos-ios-home { color: var(--text); }
   :scope .dos-ios-home span { width: 128px; height: 5px; border-radius: 3px; background: currentColor; }
-  :scope .dos-ios-home:hover, :scope .dos-ios-search:hover { background: var(--control-hover); }
-  :scope .dos-ios-home:active, :scope .dos-ios-search:active { background: var(--control-pressed); }
+  :scope .dos-ios-home:hover { background: transparent; }
+  :scope .dos-ios-search:hover { background: rgb(255 255 255 / 28%); }
+  :scope .dos-ios-home:active { background: transparent; }
+  :scope .dos-ios-search:active { background: rgb(255 255 255 / 18%); }
   :scope .dos-ios-home:focus-visible, :scope .dos-ios-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   :scope .dos-window, :scope .dos-window:not(.is-maximized), :scope .dos-window.is-maximized {
     inset: var(--ios-top) 0 var(--ios-bottom) !important; width: auto !important; height: auto !important;
@@ -90,20 +97,25 @@
   :scope .dos-folder-preview > :is(svg, img) { width: 100%; height: 100%; min-width: 0; min-height: 0; border-radius: 4px; }
   :scope .dos-home-folder-backdrop {
     position: absolute; inset: 0; display: grid; place-items: center;
-    padding: 24px; background: rgb(25 28 47 / 35%); backdrop-filter: blur(24px);
+    padding: 24px; background: rgb(25 28 47 / 18%); backdrop-filter: blur(28px) saturate(1.15); -webkit-backdrop-filter: blur(28px) saturate(1.15);
   }
-  :scope .dos-home-folder { width: min(100%, 360px); max-height: calc(100% - 96px); padding: 24px 16px; overflow: auto; border-radius: 32px; background: rgb(255 255 255 / 25%); color: white; }
-  :scope .dos-home-folder header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 8px 24px; }
-  :scope .dos-home-folder h2 { margin: 0; font-size: 24px; font-weight: 500; }
-  :scope .dos-home-folder header button { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; color: white; background: rgb(255 255 255 / 20%); font-size: 26px; }
-  :scope .dos-home-folder-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 8px; }
+  :scope .dos-home-folder { width: min(100%, 342px); max-height: calc(100% - 96px); overflow: auto; color: white; transform-origin: top left; }
+  :scope .dos-home-folder header { position: relative; display: flex; align-items: center; justify-content: center; min-height: 44px; margin-bottom: 28px; }
+  :scope .dos-home-folder h2 { margin: 0; font-size: 28px; font-weight: 500; text-align: center; }
+  :scope .dos-home-folder header button { position: absolute; right: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; color: white; background: transparent; font-size: 26px; opacity: .75; }
+  :scope .dos-home-folder-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 92px; align-content: start; min-height: min(342px, calc(100cqw - 48px)); gap: 12px 8px; padding: 24px 12px; border-radius: 38px; background: rgb(255 255 255 / 22%); }
   :scope .dos-home-folder :is(button, .dos-icon):focus-visible { outline: 2px solid white; outline-offset: 3px; }
   @container (max-width: 350px) {
+    :scope .dos-home-folder-grid { padding: 16px 8px; grid-auto-rows: 76px; gap: 8px; border-radius: 32px; }
+    :scope .dos-home-folder-grid .dos-icon { height: 76px; grid-template-rows: 48px auto; }
+    :scope .dos-home-folder-grid .dos-icon-art, :scope .dos-home-folder-grid .dos-icon-art :is(svg, img) { width: 48px; height: 48px; }
     :scope .dos-active-app { max-width: 64px; }
     :scope .dos-menubar { padding-inline: 4px; }
     :scope .dos-icon-art, :scope .dos-icon-art svg, :scope .dos-icon-art img { width: 52px; height: 52px; }
+    :scope .dos-folder-preview > :is(svg, img) { width: 100%; height: 100%; }
   }
   @media (prefers-reduced-motion: reduce) {
-    :scope .dos-window, :scope .dos-dock-item { animation: none; transition: none; }
+    :scope .dos-window, :scope .dos-dock-item, :scope .dos-icon-art, :scope .dos-dock-glyph { animation: none; transition: none; }
+    :scope .dos-icon:active .dos-icon-art, :scope .dos-dock-item:active .dos-dock-glyph { transform: none; }
   }
 }

@@ -1,31 +1,47 @@
 @scope (.dindbos-host:is([data-ui-style='ios'], [data-ui-style='android'])) to (.dindbos-host) {
   :scope[data-recent-apps] .dos-window-layer:has(> .trusted-ui-surface) { z-index: 1200; }
   :scope[data-recent-apps] .dos-window-layer > .dos-window { visibility: hidden; pointer-events: none; }
+  :scope[data-recent-apps] :is(.dos-desktop, .dos-dock, .dos-ios-search, .dos-android-home-actions) { visibility: hidden; }
+    :scope[data-recent-apps] .dos-menubar,
+  :scope .dos-shell:not(:has(.dos-window.is-active:not([hidden]):not(.is-minimizing))) .dos-menubar[data-liquid-glass-mode] {
+    background: transparent !important; color: white; border: 0; box-shadow: none; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  }
+  :scope[data-recent-apps] .dos-menubar { z-index: 1101; }
+  :scope[data-recent-apps] .dos-android-navigation { z-index: 1102; background: transparent; color: white; }
   :scope .dos-recent-apps.dos-recent-apps {
-    position: absolute; inset: calc(48px + env(safe-area-inset-top, 0px)) 0 calc(56px + env(safe-area-inset-bottom, 0px));
-    width: 100%; max-width: none; height: auto; max-height: none; margin: 0; padding: 0 0 24px;
-    display: flex; flex-direction: column; align-items: center; gap: 16px; overflow: hidden;
-    border: 0; border-radius: 0; background: rgb(25 30 35 / 44%); color: white;
-    backdrop-filter: blur(24px) saturate(.75); box-shadow: none; pointer-events: auto;
+    position: absolute; inset: 0; z-index: 1040; width: 100%; max-width: none; height: 100%; max-height: none;
+    margin: 0; padding: 0; overflow: hidden; border: 0; border-radius: 0;
+    background: rgb(30 37 33 / 34%); color: white; backdrop-filter: blur(28px) saturate(.7);
+    box-shadow: none; pointer-events: auto;
   }
-  :scope .dos-recents-header { flex: 0 0 44px; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; }
-  :scope .dos-recents-header h2 { margin: 0; font-size: 14px; font-weight: 500; }
-  :scope .dos-recent-apps button { font: inherit; color: inherit; }
-  :scope .dos-recents-header button { min-height: 44px; padding: 0 12px; border: 0; background: transparent; border-radius: 24px; }
+  :scope .dos-recents-header { position: absolute; right: 16px; top: 52px; z-index: 2; }
+  :scope :is(.dos-recents-header h2, .dos-recents-header button, .dos-recent-close) {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
+  :scope .dos-recents-header button:focus-visible, :scope .dos-recent-close:focus-visible {
+    position: relative; width: auto; min-width: 44px; height: 44px; margin: 0; padding: 8px;
+    clip-path: none; border-radius: 22px; background: #26302e; color: white;
+  }
+  :scope .dos-recent-apps button { font: inherit; color: inherit; cursor: pointer; }
   :scope .dos-recents-rail {
-    display: flex; align-items: stretch; gap: 20px; width: 100%; flex: 1; min-height: 0;
-    padding: 0 13%; overflow: auto hidden; scroll-snap-type: x mandatory; scroll-padding-inline: 13%;
-    scrollbar-width: none; overscroll-behavior: contain; touch-action: none;
+    position: absolute; top: 11.5%; bottom: 26%; display: flex; align-items: center; gap: 20px;
+    width: 100%; padding-inline: 18%; overflow: auto hidden; scroll-snap-type: x mandatory;
+    scroll-padding-inline: 18%; scrollbar-width: none; overscroll-behavior: contain; touch-action: none;
   }
-  :scope .dos-recent-card { flex: 0 0 100%; min-width: 0; display: flex; flex-direction: column; scroll-snap-align: center; position: relative; user-select: none; height: 100%; justify-content: center; }
-  :scope .dos-recent-heading { flex: 0 0 52px; display: flex; align-items: center; gap: 8px; min-width: 0; }
-  :scope .dos-recent-heading > span:nth-child(2) { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-  :scope .dos-recent-icon, :scope .dos-recent-icon > :is(svg, img) { display: block; width: 36px; height: 36px; flex: 0 0 36px; }
-  :scope .dos-recent-close { flex: 0 0 44px; min-height: 44px; padding: 0; border: 0; background: transparent; border-radius: 22px; font-size: 25px !important; }
+  :scope .dos-recent-card {
+    flex: 0 0 100%; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: center;
+    scroll-snap-align: center; position: relative; user-select: none; scale: var(--recent-scale, 1);
+    transform-origin: center; will-change: transform;
+  }
+  :scope .dos-recent-card[data-closing] { pointer-events: none; }
+  :scope .dos-recent-heading { flex: 0 0 50px; display: flex; align-items: start; justify-content: center; gap: 8px; min-width: 0; }
+  :scope .dos-recent-heading > span:nth-child(2) { display: none; }
+  :scope .dos-recent-icon, :scope .dos-recent-icon > :is(svg, img) { display: block; width: 40px; height: 40px; flex: 0 0 40px; }
   :scope .dos-recent-apps .dos-recent-preview {
-    position: relative; flex: 0 1 auto; display: block; width: 100%; min-height: 0; padding: 0; margin: 0;
-    overflow: hidden; border: 0; border-radius: 26px; background: var(--content-bg); color: var(--text);
-    text-align: left; box-shadow: 0 12px 35px #0004; touch-action: none;
+    position: relative; flex: 0 1 auto; display: block; width: 100%; min-height: 0; max-height: calc(100% - 50px);
+    padding: 0; margin: 0; overflow: hidden; border: 0; border-radius: 24px;
+    background: var(--content-bg); color: var(--text); text-align: left; box-shadow: 0 12px 32px #0003; touch-action: none;
   }
   :scope .dos-recent-snapshot { position: absolute; inset: 0 auto auto 0; transform-origin: top left; pointer-events: none; overflow: hidden; container-type: inline-size; }
   :scope .dos-recent-snapshot > .dos-window-content { width: 100%; height: 100%; padding: 0; }
@@ -33,12 +49,33 @@
   :scope .dos-recent-snapshot[data-mobile-pane='list'] :is(.notes-sidebar, .settings-sidebar) { flex: 1; max-height: none; }
   :scope .dos-recent-snapshot[data-mobile-pane='detail'] :is(.notes-sidebar, .settings-sidebar) { display: none; }
   :scope .dos-recent-frame-placeholder { min-height: 200px; display: grid; place-items: center; background: var(--content-bg); color: var(--muted); }
-  :scope .dos-recent-apps .dos-recents-close-all { flex: 0 0 44px; min-width: 180px; min-height: 44px; padding: 0 32px; border: 1px solid #ffffff70; border-radius: 24px; background: #ffffff12; }
-  :scope .dos-recents-empty { margin: auto; color: white; }
+  :scope .dos-recent-apps .dos-recents-close-all {
+    position: absolute; bottom: 18.5%; left: 50%; transform: translateX(-50%); min-width: 180px; min-height: 44px;
+    padding: 0 28px; border: 1px solid #ffffff60; border-radius: 24px; background: #ffffff0a;
+  }
+  :scope .dos-recents-suggestions { position: absolute; inset: auto 0 8%; display: flex; justify-content: space-around; padding-inline: 24px; }
+  :scope .dos-recents-suggestions button { width: 48px; height: 48px; padding: 0; border: 0; background: transparent; }
+  :scope .dos-recents-suggestions .dos-app-icon { width: 48px; height: 48px; }
+  :scope .dos-recents-empty { position: absolute; inset: 45% 0 auto; margin: 0; text-align: center; }
   :scope .dos-recent-apps button:focus-visible { outline: 2px solid white; outline-offset: -3px; }
-  :scope .dos-recent-apps button:hover { filter: brightness(1.08); }
   :scope .dos-recent-apps button:active { filter: brightness(.94); }
   :scope .dos-ios-home { touch-action: none; }
-  :scope[data-ui-style='ios'] .dos-recent-apps { inset-block: var(--ios-top) var(--ios-bottom); padding-bottom: 32px; }
-  @media (prefers-reduced-motion: reduce) { :scope .dos-recents-rail { scroll-behavior: auto; } }
+  :scope[data-ui-style='ios'] .dos-recents-rail { top: 17%; bottom: 18%; padding-inline: 12%; scroll-padding-inline: 12%; gap: 0; }
+  :scope[data-ui-style='ios'] .dos-recent-card { margin-inline-end: -16px; }
+  :scope[data-ui-style='ios'] .dos-recent-heading { align-items: center; justify-content: start; padding-left: 8px; gap: 10px; }
+  :scope[data-ui-style='ios'] .dos-recent-heading > span:nth-child(2) { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+  :scope[data-ui-style='ios'] .dos-recent-icon, :scope[data-ui-style='ios'] .dos-recent-icon > :is(svg, img) { width: 32px; height: 32px; flex-basis: 32px; }
+  :scope[data-ui-style='ios'] .dos-recent-apps .dos-recent-preview { border-radius: 30px; }
+  @container (max-height: 540px) { :scope .dos-recents-rail { top: 14%; bottom: 26%; } :scope .dos-recents-suggestions { display: none; } :scope .dos-recents-close-all { bottom: 14%; } }
+  @media (prefers-reduced-motion: reduce) { :scope .dos-recent-card { scale: 1; will-change: auto; } }
+}
+
+@scope (.dindbos-host:is([data-ui-style='ios'], [data-ui-style='android'])) to (.dindbos-host) {
+  :scope .dos-window:not(.is-minimizing):not(.is-restoring) { transform: var(--mobile-swipe-transform, none); }
+  :scope .dos-window.is-minimizing, :scope .dos-window.is-restoring {
+    transform: translate3d(var(--minimize-x, 0), var(--minimize-y, 18px), 0) scale(var(--minimize-scale-x, .12));
+    border-radius: 36px;
+  }
+  :scope[data-home-gesture] .dos-window { transition: none; border-radius: 24px; }
+  @media (prefers-reduced-motion: reduce) { :scope .dos-window { transition: none; } }
 }

@@ -21,22 +21,42 @@ export function mountIOSShell(shell) {
   let suppressClick = false;
   const startSwipe = event => {
     if (event.button !== 0 || shell.os.windows.hasVisibleTrustedSurface?.()) return;
-    swipe = { x: event.clientX, y: event.clientY, pointer: event.pointerId, began: Date.now(), hadApp: [...shell.os.windows.windows.values()].some(task => !task.minimized) };
+    swipe = { x: event.clientX, y: event.clientY, pointer: event.pointerId, began: Date.now(), lastMove: Date.now(), frame: shell.os.windows.windows.get(shell.os.windows.activeWindowId)?.frame, hadApp: [...shell.os.windows.windows.values()].some(task => !task.minimized) };
     suppressClick = false;
     home.setPointerCapture?.(event.pointerId);
+  };
+  const clearSwipe = (gesture) => {
+    gesture.frame?.style.removeProperty("--mobile-swipe-transform");
+    delete shell.root.dataset.homeGesture;
+  };
+  const moveSwipe = event => {
+    if (!swipe || swipe.pointer !== event.pointerId || shell.os.windows.hasVisibleTrustedSurface?.()) return;
+    const distance = Math.max(0, swipe.y - event.clientY);
+    swipe.lastMove = Date.now();
+    if (swipe.frame && !document.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      shell.root.dataset.homeGesture = "true";
+      const progress = Math.min(.4, distance / Math.max(400, shell.root.clientHeight));
+      swipe.frame.style.setProperty("--mobile-swipe-transform", `translateY(${-distance * .35}px) scale(${1 - progress * .45})`);
+    }
   };
   const endSwipe = event => {
     if (!swipe || swipe.pointer !== event.pointerId) return;
     const gesture = swipe;
     swipe = null;
-    if (event.type !== "pointerup" || gesture.y - event.clientY < 35 || Math.abs(gesture.x - event.clientX) > 100) return;
+    delete shell.root.dataset.homeGesture;
+    if (event.type !== "pointerup" || gesture.y - event.clientY < 35 || Math.abs(gesture.x - event.clientX) > 100) { clearSwipe(gesture); return; }
     suppressClick = true;
-    if (gesture.hadApp && Date.now() - gesture.began < 500) showHome();
-    else recents.open();
+    const paused = Date.now() - gesture.lastMove >= 120;
+    if (gesture.hadApp && !paused) {
+      showHome();
+      // Let the window manager install its minimizing state before clearing direct manipulation.
+      document.defaultView?.requestAnimationFrame(() => clearSwipe(gesture));
+    } else { recents.open(); clearSwipe(gesture); }
   };
   const activateHome = () => { if (suppressClick) suppressClick = false; else showHome(); };
   home.addEventListener("click", activateHome);
   home.addEventListener("pointerdown", startSwipe);
+  home.addEventListener("pointermove", moveSwipe);
   home.addEventListener("pointerup", endSwipe);
   home.addEventListener("pointercancel", endSwipe);
   shell.refs.shell.appendChild(home);
@@ -54,8 +74,10 @@ export function mountIOSShell(shell) {
   }
   return () => {
     recents.destroy();
+    if (swipe) clearSwipe(swipe);
     home.removeEventListener("click", activateHome);
     home.removeEventListener("pointerdown", startSwipe);
+    home.removeEventListener("pointermove", moveSwipe);
     home.removeEventListener("pointerup", endSwipe);
     home.removeEventListener("pointercancel", endSwipe);
     home.remove();

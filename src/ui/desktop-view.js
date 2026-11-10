@@ -87,19 +87,48 @@ function DesktopGrid({ entries, isMobile, openNode, onSelectNode, overlayElement
 
 function HomeFolder({ folder, openNode, close, hasTrustedSurface }) {
   const panel = useRef(null);
+  const backdrop = useRef(null);
   const restoreFocus = useRef(true);
+  const dismiss = useRef(() => close());
   useEffect(() => {
-    const document = panel.current.ownerDocument;
+    const element = panel.current;
+    const shade = backdrop.current;
+    const document = element.ownerDocument;
     const trigger = document.activeElement;
-    panel.current.querySelector("button")?.focus({ preventScroll: true });
-    const outside = (event) => { if (!panel.current?.contains(event.target)) { restoreFocus.current = false; close(); } };
+    const source = trigger?.querySelector?.(".dos-icon-art")?.getBoundingClientRect();
+    const destination = element.getBoundingClientRect();
+    const reduced = document.defaultView.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const origin = !reduced && source ? `translate(${source.left - destination.left}px, ${source.top - destination.top}px) scale(${source.width / destination.width}, ${source.height / destination.height})` : "none";
+    const animations = [];
+    let closing = false;
+    const animate = (target, frames, duration, easing) => {
+      const animation = target.animate(frames, { duration: reduced ? 0 : duration, easing, fill: "both" });
+      animations.push(animation);
+      return animation;
+    };
+    animate(element, [{ transform: origin, opacity: 0 }, { transform: "none", opacity: 1 }], 360, "cubic-bezier(.22,.8,.25,1)");
+    animate(shade, [{ opacity: 0 }, { opacity: 1 }], 260, "ease-out");
+    dismiss.current = (after) => {
+      if (closing) return;
+      closing = true;
+      const current = document.defaultView.getComputedStyle(element);
+      animate(element, [{ transform: current.transform, opacity: current.opacity }, { transform: origin, opacity: 0 }], 240, "cubic-bezier(.4,0,.7,.3)");
+      const exit = animate(shade, [{ opacity: document.defaultView.getComputedStyle(shade).opacity }, { opacity: 0 }], 240, "ease-in");
+      exit.finished.then(() => { if (element.isConnected) { close(); if (!hasTrustedSurface?.()) after?.(); } }).catch(() => {});
+    };
+    element.querySelector("button")?.focus({ preventScroll: true });
+    const outside = (event) => { if (!element.contains(event.target)) { restoreFocus.current = false; dismiss.current(); } };
     document.addEventListener("pointerdown", outside, true);
-    return () => { document.removeEventListener("pointerdown", outside, true); if (restoreFocus.current && !hasTrustedSurface?.() && trigger?.isConnected) trigger.focus({ preventScroll: true }); };
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      animations.forEach((animation) => animation.cancel());
+      if (restoreFocus.current && !hasTrustedSurface?.() && trigger?.isConnected) trigger.focus({ preventScroll: true });
+    };
   }, []);
-  return h("div", { className: "dos-home-folder-backdrop" }, h("section", {
+  return h("div", { className: "dos-home-folder-backdrop", ref: backdrop }, h("section", {
     className: "dos-home-folder", ref: panel, role: "dialog", "aria-modal": "true", "aria-label": folder.name,
     onKeyDown: (event) => {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); dismiss.current(); }
       if (event.key === "Tab") {
         const buttons = [...panel.current.querySelectorAll("button")];
         const index = buttons.indexOf(event.currentTarget.ownerDocument.activeElement);
@@ -107,10 +136,10 @@ function HomeFolder({ folder, openNode, close, hasTrustedSurface }) {
         else if (!event.shiftKey && index === buttons.length - 1) { event.preventDefault(); buttons[0]?.focus(); }
       }
     },
-  }, h("header", null, h("h2", null, folder.name), h("button", { type: "button", "aria-label": "Close folder", onClick: close }, "×")),
+  }, h("header", null, h("h2", null, folder.name), h("button", { type: "button", "aria-label": "Close folder", onClick: () => dismiss.current() }, "×")),
   h("div", { className: "dos-home-folder-grid" }, folder.children.map((entry) => h("button", {
     type: "button", className: "dos-icon", key: entry.path || entry.appId, "aria-label": `Open ${entry.name}`, "data-folder-app-id": entry.appId,
-    onClick: () => { restoreFocus.current = false; close(); openNode(entry.node); },
+    onClick: () => { restoreFocus.current = false; dismiss.current(() => openNode(entry.node)); },
   }, h("span", { className: "dos-icon-art", "aria-hidden": true }, h(AppIcon, { icon: entry.icon })), h("span", { className: "dos-icon-label" }, entry.name))))));
 }
 

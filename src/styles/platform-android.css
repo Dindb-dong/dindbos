@@ -1,5 +1,5 @@
 @scope (.dindbos-host[data-ui-style='android']) to (.dindbos-host) {
-  :scope { --font-ui: Roboto, "Segoe UI", sans-serif; --dock-size: 48px; }
+  :scope { --font-ui: Roboto, Arial, sans-serif; --dock-size: 48px; }
   :scope .dos-menubar { height: calc(48px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 16px 0; background: var(--chrome-bg); border: 0; color: var(--text); backdrop-filter: none; }
   :scope .dos-app-menus, :scope .dos-menu-status > .dos-status-button { display: none; }
   :scope .dos-shell:has(.dos-window.is-active:not([hidden]):not(.is-minimizing)) .dos-app-menus { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
@@ -13,16 +13,24 @@
   :scope .dos-desktop { inset: calc(76px + env(safe-area-inset-top, 0px)) 20px calc(240px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: none; grid-auto-flow: row; grid-auto-rows: 94px; grid-auto-columns: auto; gap: 18px 8px; direction: ltr; align-content: start; overflow-y: auto; scrollbar-width: none; }
   :scope .dos-icon { width: 100%; height: 94px; grid-template-rows: 56px auto; gap: 8px; padding: 0; border-radius: 18px; }
   :scope .dos-icon-art, :scope .dos-icon-art svg, :scope .dos-icon-art img { width: 56px; height: 56px; }
-  :scope .dos-icon-label { max-width: 100%; font-size: 12px; line-height: 16px; white-space: nowrap; text-overflow: ellipsis; display: block; }
-  :scope .dos-dock { --dock-background: transparent; backdrop-filter: none; left: 24px; right: 24px; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); max-width: none; width: auto; min-height: 64px; justify-content: space-around; gap: 12px; padding: 8px; transform: none; background: transparent; border: 0; border-radius: 24px; box-shadow: none; overflow: auto hidden; scrollbar-width: thin; }
+  :scope .dos-icon-label { max-width: 100%; font-size: 12px; line-height: 16px; font-weight: 400; white-space: nowrap; text-overflow: ellipsis; display: block; }
+  :scope .dos-dock { --dock-background: transparent; --dock-border: 0; --dock-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; left: 24px; right: 24px; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); max-width: none; width: auto; min-height: 64px; justify-content: space-around; gap: 12px; padding: 8px; transform: none; background: transparent; border: 0; border-radius: 24px; box-shadow: none; overflow: auto hidden; scrollbar-width: thin; }
   :scope .dos-dock-item { flex: 0 0 48px; width: 48px; min-height: 48px; }
   :scope .dos-dock-separator, :scope .dos-dock-window, :scope .dos-dock-item:nth-of-type(n+5), :scope .dos-dock-tooltip { display: none; }
   :scope .dos-android-home-actions { position: absolute; left: 24px; right: 24px; bottom: calc(156px + env(safe-area-inset-bottom, 0px)); display: flex; justify-content: center; gap: 12px; }
-  :scope .dos-android-home-actions button { width: 100%; min-height: 48px; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 24px; background: rgb(28 33 31 / 72%); color: white; font-size: 14px; backdrop-filter: blur(20px); }
+  :scope .dos-android-home-actions button { width: 100%; min-height: 48px; padding: 0 18px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 12px; border: 0; border-radius: 24px; background: rgb(28 33 31 / 72%); color: white; font-size: 14px; backdrop-filter: blur(20px); }
+  :scope .dos-dock[data-liquid-glass-mode] { background: transparent; border: 0; box-shadow: none; filter: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  :scope .dos-icon:is(:hover, .is-selected) { background: transparent; border-color: transparent; }
+  :scope .dos-icon.is-selected .dos-icon-label { background: transparent; color: white; text-shadow: 0 1px 3px #0008; }
+  :scope :is(.dos-icon-art, .dos-dock-glyph) { transition: transform 180ms cubic-bezier(.22,.8,.25,1), filter 180ms ease; }
+  :scope .dos-icon:active .dos-icon-art, :scope .dos-dock-item:active .dos-dock-glyph { transform: scale(.9); filter: brightness(.8); }
+  :scope .dos-dock-glyph::after { display: none; }
   :scope .dos-android-home-actions svg, :scope .dos-android-navigation svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }
   :scope .dos-android-navigation { position: absolute; inset: auto 0 0; z-index: 1050; display: flex; justify-content: space-around; height: calc(56px + env(safe-area-inset-bottom, 0px)); padding: 4px 24px calc(4px + env(safe-area-inset-bottom, 0px)); background: transparent; color: white; }
   :scope .dos-android-navigation button { display: grid; place-items: center; width: 72px; min-height: 48px; padding: 0; border: 0; border-radius: 24px; background: transparent; color: inherit; }
-  :scope .dos-android-navigation button:hover, :scope .dos-android-home-actions button:hover { background: var(--accent-soft); }
+  :scope .dos-android-navigation button:hover { background: transparent; }
+  :scope .dos-android-navigation button:active { background: rgb(255 255 255 / 12%); }
+  :scope .dos-android-home-actions button:hover { background: rgb(28 33 31 / 80%); }
   :scope .dos-android-navigation button:focus-visible, :scope .dos-android-home-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
   :scope .dos-window, :scope .dos-window:not(.is-maximized), :scope .dos-window.is-maximized { inset: calc(48px + env(safe-area-inset-top, 0px)) 0 calc(56px + env(safe-area-inset-bottom, 0px)) !important; width: auto !important; height: auto !important; max-width: 100%; min-width: 0; min-height: 0; border: 0; border-radius: 0; grid-template-rows: 48px minmax(0, 1fr); }
   :scope .dos-window-titlebar, :scope .dos-window[data-window-chrome='integrated'] > .dos-window-titlebar { position: relative; width: auto; height: 48px; min-height: 48px; grid-row: 1; display: grid; grid-template-columns: 1fr; padding: 0 24px; background: var(--content-bg); }
@@ -44,6 +52,10 @@
   @container (max-width: 350px) {
     :scope .dos-desktop { inset-inline: 12px; gap: 12px 4px; }
     :scope .dos-icon-art, :scope .dos-icon-art svg, :scope .dos-icon-art img { width: 48px; height: 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :scope .dos-icon-art, :scope .dos-dock-glyph { transition: none; }
+    :scope .dos-icon:active .dos-icon-art, :scope .dos-dock-item:active .dos-dock-glyph { transform: none; }
   }
   @container (max-height: 540px) { :scope .dos-desktop { top: calc(56px + env(safe-area-inset-top, 0px)); bottom: calc(200px + env(safe-area-inset-bottom, 0px)); } }
 }
