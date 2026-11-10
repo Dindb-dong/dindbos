@@ -45,6 +45,31 @@ try {
   await expect(frame.getByLabel('Result', { exact: true })).toHaveText('9');
   await frame.getByRole('button', { name: 'Calculation history', exact: true }).click();
   await expect(frame.locator('.calculator-history')).toBeVisible();
+  for (const mode of ['light', 'dark']) {
+    await page.evaluate(mode => window.platformAppsQA.os.setAppearance({ mode }), mode);
+    await expect(page.locator('.dindbos-host')).toHaveAttribute('data-appearance', mode);
+    await page.mouse.move(0, 0);
+    await expect(frame.locator('.calculator-toolbar > button').first()).toHaveCSS('background-color', mode === 'light' ? 'rgb(255, 255, 255)' : 'rgb(43, 43, 43)');
+    await expect(frame.locator('.calculator-mode > summary')).toHaveCSS('background-color', mode === 'light' ? 'rgb(255, 255, 255)' : 'rgb(43, 43, 43)');
+    for (const control of await frame.locator('.calculator-toolbar > button, .calculator-mode > summary').all()) await expect(control).toHaveCSS('color', mode === 'light' ? 'rgb(27, 27, 27)' : 'rgb(243, 243, 243)');
+    const colors = await frame.locator('.calculator-toolbar > button, .calculator-mode > summary').evaluateAll(elements => elements.map(element => ({
+      background: getComputedStyle(element).backgroundColor, foreground: getComputedStyle(element).color,
+    })));
+    assert.equal(colors.length, 2);
+    for (const color of colors) {
+      assert.equal(color.background, mode === 'light' ? 'rgb(255, 255, 255)' : 'rgb(43, 43, 43)');
+      assert.equal(color.foreground, mode === 'light' ? 'rgb(27, 27, 27)' : 'rgb(243, 243, 243)');
+    }
+    await expect(frame.locator('.calculator-history button strong').first()).toHaveCSS('color', mode === 'light' ? 'rgb(27, 27, 27)' : 'rgb(243, 243, 243)');
+    await expect(frame.locator('.calculator-history button span').first()).toHaveCSS('color', mode === 'light' ? 'rgb(98, 98, 98)' : 'rgb(185, 185, 185)');
+    await frame.screenshot({ path: resolve(output, `calculator-toolbar-${mode}.png`) });
+    await frame.locator('.calculator-mode > summary').click();
+    const basicMode = frame.getByRole('menuitemradio', { name: /Basic/ });
+    await expect(basicMode).toHaveCSS('color', mode === 'light' ? 'rgb(27, 27, 27)' : 'rgb(243, 243, 243)');
+    await frame.screenshot({ path: resolve(output, `calculator-mode-${mode}.png`) });
+    await basicMode.click();
+  }
+  await page.evaluate(() => window.platformAppsQA.os.setAppearance({ mode: 'light' }));
   frame = await show('notes');
   await frame.getByRole('textbox', { name: 'Note title', exact: true }).fill('Windows preserved draft');
   await frame.getByRole('textbox', { name: 'Note text', exact: true }).fill('The original note editor still saves.');
@@ -70,8 +95,33 @@ try {
     frame = await show(id);
     await frame.screenshot({ path: resolve(output, `${id}-narrow.png`) });
   }
+  await page.evaluate(() => window.platformAppsQA.os.setAppearance({ mode: 'light' }));
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.locator('#platform-apps-host').evaluate((element, width) => { element.style.width = `${width}px`; }, width);
+    for (const id of ['files', 'notes']) {
+      frame = await show(id);
+      const geometry = await frame.evaluate(element => ({
+        window: element.getBoundingClientRect().toJSON(),
+        title: element.querySelector('.dos-window-titlebar').getBoundingClientRect().toJSON(),
+        captions: [...element.querySelectorAll('.dos-window-controls button')].map(button => button.getBoundingClientRect().toJSON()),
+      }));
+      assert(Math.abs(geometry.title.width - (geometry.window.width - 2)) < 2, `${id} title bar truncated at ${width}px`);
+      for (const caption of geometry.captions) assert(caption.left >= geometry.window.left && caption.right <= geometry.window.right, `${id} caption outside ${width}px window`);
+      if (id === 'notes') {
+        await expect(frame.locator('.notes-sidebar header strong')).toBeVisible();
+        await frame.getByRole('textbox', { name: 'Note title', exact: true }).fill(`Narrow draft ${width}`);
+        await frame.getByRole('textbox', { name: 'Note text', exact: true }).fill(`Edited at ${width} pixels.`);
+        await expect(frame.getByRole('textbox', { name: 'Note text', exact: true })).toHaveValue(`Edited at ${width} pixels.`);
+      } else {
+        await frame.getByRole('button', { name: 'Locations', exact: true }).click();
+        await frame.locator('.files-locations-sheet [data-location="/home/guest"]').first().click();
+      }
+      await frame.screenshot({ path: resolve(output, `${id}-${width}.png`) });
+    }
+  }
   assert.deepEqual(errors, []);
-  console.log(`Windows app interiors passed: ${ids.length} apps, calculator/history, note state, reminders, settings navigation, dark and narrow captures`);
+  console.log(`Windows app interiors passed: ${ids.length} apps, calculator/history and theme contrast, note state, reminders, settings navigation, dark, 600px and 320/390px narrow captures`);
 } finally {
   await browser.close();
 }

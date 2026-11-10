@@ -20,8 +20,13 @@
   :scope .files-commandbar .files-folder-title { font-size: 22px; font-weight: 700; min-width: 86px; max-width: none; }
   :scope .files-commandbar .files-icon-button, :scope .files-commandbar button { width: 44px; min-width: 44px; height: 44px; flex: 0 0 44px; border-radius: 22px; color: var(--ios-app-tint); }
   :scope .files-commandbar .files-history { flex: 0 0 auto; }
-  :scope .files-tabs { padding-left: 12px; }
-  :scope .files-tabs button { min-height: 44px; }
+  :scope .files-tabstrip { height: 56px; flex-basis: 56px; padding: 4px 12px; background: var(--ios-grouped); }
+  :scope .files-app .files-tabs { height: 48px; padding: 2px; }
+  :scope .files-app .files-tab-item { height: 44px; }
+  :scope .files-app .files-tab-item button { min-height: 44px; height: 44px; font-size: 14px; }
+  :scope .files-app .files-tab-item .files-tab-close { width: 44px; height: 44px; top: 0; left: 0; }
+  :scope .files-app .files-tab-item:has(.files-tab-close) > button:not(.files-tab-close) { padding-left: 44px; }
+  :scope .files-tabstrip > button { min-width: 44px; min-height: 44px; }
   :scope .files-table .files-row, :scope .files-list .files-row { min-height: 58px; font-size: 16px; }
   :scope .files-app[data-files-view='icons'] .files-row { min-height: 110px; }
   :scope .files-statusbar, :scope .files-pathbar { min-height: 36px; font-size: 13px; overflow-x: auto; }

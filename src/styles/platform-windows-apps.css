@@ -2,6 +2,7 @@
   :scope { --win-page: #f3f3f3; --win-panel: #fff; --win-panel-hover: #f9f9f9; --win-border: #00000016; --win-text: #1b1b1b; --win-muted: #626262; }
   :scope[data-appearance="dark"] { --win-page: #202020; --win-panel: #2b2b2b; --win-panel-hover: #323232; --win-border: #ffffff16; --win-text: #f3f3f3; --win-muted: #b9b9b9; }
   :scope .dos-window { --chrome-bg: var(--windows-chrome); }
+  :scope .dos-window[data-app-id][data-window-chrome] > .dos-window-titlebar { width: 100%; min-width: 0; box-sizing: border-box; }
   :scope :is(.files-app, .settings-app, .applications-app, .browser-app, .text-app, .viewer-app, .productivity-app, .media-app, .clock-app, .activity-app, .calculator-app, .portfolio-app) {
     --content-bg: var(--win-panel); --sidebar-bg: var(--win-page); --chrome-bg: var(--win-page); --text: var(--win-text); --muted: var(--win-muted); --line: var(--win-border); --control-bg: var(--win-panel); --control-hover: var(--win-panel-hover);
     font-family: var(--font-ui); color: var(--text); background: var(--content-bg);
@@ -100,6 +101,7 @@
   :scope .notes-folder-selected svg { color: #7b3fa0; }
   :scope .notes-sidebar { background: var(--win-page); }
   :scope .notes-sidebar header { height: 48px; flex-basis: 48px; padding: 8px 14px; }
+  :scope .notes-sidebar header strong { display: block; font-size: 12px; }
   :scope .notes-editor-toolbar { height: 48px; flex-basis: 48px; padding: 8px 12px; background: var(--win-page); }
   :scope .notes-list button { margin-bottom: 6px; min-height: 70px; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--win-panel); }
   :scope .notes-list button[aria-pressed="true"] { border-left: 3px solid #7b3fa0; background: var(--win-panel); }
@@ -194,7 +196,8 @@
   /* Calculator uses rectangular Windows keys and readable operand/history surfaces. */
   :scope .calculator-app { background: var(--win-page); color: var(--text); padding: 12px; gap: 4px; }
   :scope .calculator-toolbar { padding: 0 0 8px; min-height: 36px; background: transparent; }
-  :scope .calculator-app .calculator-toolbar > button, :scope .calculator-mode > summary { border-radius: 4px; color: var(--text); }
+  :scope .calculator-app .calculator-toolbar > button, :scope .calculator-mode > summary { border-radius: 4px; color: var(--text); background: var(--win-panel); border-color: var(--line); box-shadow: none; }
+  :scope .calculator-app .calculator-toolbar > button:hover, :scope .calculator-mode > summary:hover { background: var(--win-panel-hover); }
   :scope .calculator-app output { color: var(--text); font-size: clamp(24px, 14cqi, 44px); font-weight: 600; }
   :scope .calculator-display { background: transparent; color: var(--text); padding: 16px 4px; font-size: 44px; font-weight: 600; }
   :scope .calculator-app { grid-template-rows: 40px 80px minmax(0, 1fr); }
@@ -202,6 +205,9 @@
   :scope .calculator-keys button { border-radius: 4px; min-height: 44px; border: 1px solid var(--line); background: var(--win-panel); color: var(--text); box-shadow: 0 1px 2px #00000010; font-size: 20px; }
   :scope .calculator-keys button[data-value="="], :scope .calculator-keys button[data-key="="] { background: var(--accent); color: white; }
   :scope .calculator-history, :scope .calculator-mode [role="menu"] { background: var(--win-panel); color: var(--text); border-radius: 8px; border: 1px solid var(--line); }
+  :scope .calculator-app :is(.calculator-history, .calculator-mode [role="menu"]) button { color: var(--win-text); background: transparent; border-bottom-color: var(--line); }
+  :scope .calculator-app :is(.calculator-history, .calculator-mode [role="menu"]) button:hover { background: var(--win-panel-hover); }
+  :scope .calculator-history :is(p, button span) { color: var(--win-muted); }
 
   /* Terminal and runtime diagnostics remain real DindbOS tools. */
   :scope .terminal-app { padding: 14px 18px; background: #0c0c0c; color: #ccc; font-family: Consolas, var(--mono); }

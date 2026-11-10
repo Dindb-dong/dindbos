@@ -1,0 +1,132 @@
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { chromium, expect } from '@playwright/test';
+
+const repository = resolve(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim(), '..');
+const output = resolve(repository, 'internal/docs/platform-apps/mobile-location');
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
+try {
+  for (const style of ['macos', 'windows', 'ios', 'android']) {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+    await page.goto(new URL(`scripts/fixtures/platform-apps.html?style=${style}&width=390`, process.env.DINDBOS_QA_URL || 'http://127.0.0.1:5186/').href);
+    await page.waitForFunction(() => window.platformAppsQA);
+    await page.evaluate(() => window.platformAppsQA.show('files'));
+    const app = page.locator('.files-app');
+    const locations = app.getByRole('button', { name: 'Locations', exact: true });
+    await expect(locations).toBeVisible();
+    await expect(app.locator('.files-sidebar')).toBeHidden();
+    await expect(app.locator('.files-current-folder')).toHaveText('Documents');
+    await expect(app.locator('.files-commandbar')).toBeVisible();
+    await app.screenshot({ path: resolve(output, `${style}-390-closed.png`), animations: 'disabled' });
+    await locations.click();
+    const dialog = page.getByRole('dialog', { name: 'Locations', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('h2')).toBeFocused();
+    assert.equal(await dialog.evaluate(element => element.matches(':modal')), false, 'location sheet must not make sibling hosts inert');
+    await dialog.screenshot({ path: resolve(output, `${style}-390-open.png`), animations: 'disabled' });
+    const done = dialog.getByRole('button', { name: 'Done', exact: true });
+    const lastLocation = dialog.locator('[data-location]').last();
+    await lastLocation.focus();
+    await page.keyboard.press('Tab');
+    await expect(done).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(lastLocation).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(locations).toBeFocused();
+    await page.evaluate(() => {
+      const os = window.platformAppsQA.os;
+      const mounts = os.localMounts;
+      window.restoreQAMounts = { isMountedPath: mounts.isMountedPath, syncDirectory: mounts.syncDirectory };
+      mounts.isMountedPath = path => path === '/home/guest';
+      mounts.syncDirectory = async () => { throw Error('simulated mount unavailable'); };
+    });
+    await locations.click();
+    await dialog.locator('[data-location="/home/guest"]').first().click();
+    await expect(dialog.getByRole('alert')).toContainText('simulated mount unavailable');
+    await expect(dialog.getByRole('alert')).toBeFocused();
+    assert(await dialog.getByRole('alert').evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      const body = element.closest('.files-locations-body').getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && rect.top >= Math.max(body.top, 0)
+        && rect.bottom <= Math.min(body.bottom, window.innerHeight);
+    }), 'mount failure alert is inside the actual sheet scroll viewport');
+    await dialog.screenshot({ path: resolve(output, `${style}-390-mount-error.png`), animations: 'disabled' });
+    await expect(app.locator('.files-current-folder')).toHaveText('Documents');
+    await page.evaluate(() => Object.assign(window.platformAppsQA.os.localMounts, window.restoreQAMounts));
+    await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+    if (style === 'android') {
+      const frame = page.locator('.dos-window[data-app-id="files"]');
+      const back = page.locator('[data-android-action="back"]');
+      await locations.click();
+      await back.click();
+      await expect(dialog).toHaveCount(0);
+      await expect(frame).not.toHaveClass(/is-minimized/);
+      assert.equal(await page.evaluate(() => [...window.platformAppsQA.os.windows.windows.values()].find(task => task.appId === 'files').minimized), false);
+      await expect(locations).toBeFocused();
+      await app.screenshot({ path: resolve(output, 'android-390-back-dismissed.png'), animations: 'disabled' });
+      await back.click();
+      assert.equal(await page.evaluate(() => [...window.platformAppsQA.os.windows.windows.values()].find(task => task.appId === 'files').minimized), true, 'second Back retains Home fallback after sheet cleanup');
+      await page.evaluate(() => window.platformAppsQA.show('files'));
+    }
+    await page.setViewportSize({ width: 900, height: 844 });
+    await page.evaluate(() => {
+      const button = document.createElement('button');
+      button.id = 'outside-host-action';
+      button.textContent = 'Host action';
+      Object.assign(button.style, { position: 'fixed', left: '450px', top: '100px' });
+      button.onclick = () => { button.textContent = 'Host action worked'; };
+      document.body.append(button);
+    });
+    await locations.click();
+    await page.locator('#outside-host-action').click();
+    await expect(page.locator('#outside-host-action')).toHaveText('Host action worked');
+    await expect(dialog).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await app.getByRole('button', { name: 'Show parent folders', exact: true }).click();
+    await expect(dialog.locator('[data-location-path]')).toBeFocused();
+    await dialog.locator('[data-location="/home/guest"]').first().click();
+    await expect(app.locator('.files-current-folder')).toHaveText('Home');
+    await expect(app.locator('.files-current-folder')).toBeFocused();
+    await locations.click();
+    await dialog.locator('[data-location="/home/guest/Documents"]').click();
+    await expect(app.locator('.files-current-folder')).toHaveText('Documents');
+    await page.evaluate(() => {
+      const os = window.platformAppsQA.os;
+      const name = 'November project folder with a very long name 한글';
+      const path = `${os.session.home}/Documents/${name}`;
+      os.fs.createDirectory(path, '/', { owner: os.session.user, group: 'users' }, os.permissions.systemPrincipal());
+    });
+    await app.locator('[data-files-back]').click();
+    await app.locator('[data-files-forward]').click();
+    await app.locator('.files-row').filter({ hasText: 'November project folder with a very long name 한글' }).dblclick();
+    await expect(app.locator('.files-current-folder')).toHaveText('November project folder with a very long name 한글');
+    await page.setViewportSize({ width: 320, height: 740 });
+    await page.locator('#platform-apps-host').evaluate(root => { root.style.width = '320px'; root.style.height = '740px'; });
+    await page.evaluate(() => window.platformAppsQA.os.setAppearance({ mode: 'dark' }));
+    await app.screenshot({ path: resolve(output, `${style}-320-long-dark.png`), animations: 'disabled' });
+    await locations.click();
+    const size = await dialog.boundingBox();
+    assert(size.x >= 0 && size.y >= 0 && size.x + size.width <= 321 && size.y + size.height <= 741, 'sheet stays within the narrow host');
+    await expect(dialog.getByText('November project folder with a very long name 한글', { exact: false }).first()).toBeVisible();
+    await dialog.locator('[data-location="/var/log"]').scrollIntoViewIfNeeded();
+    await expect(dialog.locator('[data-location="/var/log"]')).toBeVisible();
+    await dialog.screenshot({ path: resolve(output, `${style}-320-sheet-dark.png`), animations: 'disabled' });
+    await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+    await expect(locations).toBeFocused();
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.locator('#platform-apps-host').evaluate(root => { root.style.width = '1100px'; root.style.height = '900px'; });
+    await expect(app.locator('.files-mobile-path')).toBeHidden();
+    await expect(app.locator('.files-sidebar')).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('#platform-apps-host').evaluate(root => { root.style.width = '390px'; root.style.height = '844px'; });
+    await locations.click();
+    await page.evaluate(() => window.platformAppsQA.os.destroy());
+    await expect(page.locator('.files-locations-sheet')).toHaveCount(0);
+    await page.close();
+    console.log(`${style}: compact path, ancestors, favorites, long names, 320px dark sheet, focus and desktop restoration passed`);
+  }
+} finally { await browser.close(); }
