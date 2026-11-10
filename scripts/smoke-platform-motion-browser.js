@@ -35,10 +35,12 @@ try {
         window.motionPointerTypes = [];
         document.addEventListener("pointerdown", event => window.motionPointerTypes.push(event.pointerType), true);
         window.startMotionTrace = selectors => {
+          const generation = window.motionTraceGeneration = (window.motionTraceGeneration || 0) + 1;
           window.motionTrace = [];
           window.motionTracing = true;
           const sample = now => {
-            window.motionTrace.push({ now, elements: selectors.map(selector => {
+            if (!window.motionTracing || generation !== window.motionTraceGeneration) return;
+            window.motionTrace.push({ now, generation, elements: selectors.map(selector => {
               const element = document.querySelector(selector);
               if (!element) return null;
               const box = element.getBoundingClientRect(), css = getComputedStyle(element);
@@ -69,7 +71,11 @@ try {
       const end = async (cancel = false) => cdp.send("Input.dispatchTouchEvent", { type: cancel ? "touchCancel" : "touchEnd", touchPoints: [] });
       const swipe = async (locator, dx, dy) => { await begin(locator); await move(dx, dy); await end(); };
       const trace = async selectors => page.evaluate(selectors => window.startMotionTrace(selectors), selectors);
-      const stop = async label => { traces[label] = await page.evaluate(() => { window.motionTracing = false; return window.motionTrace; }); return traces[label]; };
+      const stop = async label => {
+        traces[label] = await page.evaluate(() => { window.motionTracing = false; return window.motionTrace; });
+        assert(new Set(traces[label].map(sample => sample.generation)).size <= 1, "a trace must not contain samples from previous generations");
+        return traces[label];
+      };
       const settle = async locator => {
         await expect.poll(async () => locator.evaluate(element => {
           const animations = element.getAnimations({ subtree: true });
@@ -145,6 +151,7 @@ try {
       const baseline = await card.boundingBox();
       await begin(card.locator(".dos-recent-preview"));
       await move(0, -50);
+      await expect.poll(async () => baseline.y - (await card.boundingBox()).y).toBeGreaterThan(49);
       await trace([`[data-recent-window-id="${centeredId}"]`]);
       await end(true);
       await expect.poll(async () => (await card.boundingBox()).y, { timeout: 2000 }).toBeGreaterThan(baseline.y - 1);
