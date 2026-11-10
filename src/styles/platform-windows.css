@@ -8,6 +8,12 @@
   .dos-windows-start svg { width: 22px; height: 22px; fill: currentColor; }
   .dos-windows-start:hover, .dos-windows-start.is-open { background: var(--accent-soft); }
   .dos-windows-taskbar .dos-dock { position: static; transform: none; width: auto; max-width: none; min-width: 0; height: 44px; align-items: center; gap: 3px; padding: 0 2px; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+  :scope .dos-windows-taskbar .dos-dock[data-liquid-glass-mode],
+  :scope[data-appearance="dark"] .dos-windows-taskbar .dos-dock[data-liquid-glass-mode] {
+    --dock-background: transparent; --dock-border: 0; --dock-shadow: none;
+    background: transparent; border: 0; box-shadow: none;
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  }
   .dos-windows-taskbar .dos-dock-item { --dock-proximity: 0 !important; flex: 0 0 40px; width: 40px; min-width: 40px; height: 40px; padding: 6px; border-radius: 4px; transition: background 130ms; }
   .dos-windows-taskbar .dos-dock-item:hover, .dos-windows-taskbar .dos-dock-item.is-active { background: var(--accent-soft); }
   .dos-windows-taskbar .dos-dock-item.is-running .dos-dock-glyph::after { bottom: -4px; width: 6px; height: 3px; border-radius: 2px; background: var(--muted); }
@@ -33,6 +39,7 @@
   .dos-control-center, .dos-calendar { top: auto; bottom: 64px; max-height: calc(100% - 80px); border-radius: 8px; background: var(--windows-flyout); }
   .dos-window, .dos-window[data-window-chrome="document"], .dos-window[data-window-chrome="integrated"] { grid-template-rows: 40px minmax(0, 1fr); border-radius: 8px; backdrop-filter: none; }
   .dos-window > .dos-window-titlebar, .dos-window[data-window-chrome="integrated"] > .dos-window-titlebar, .dos-window[data-window-chrome="document"] > .dos-window-titlebar { position: static; display: grid; grid-template-columns: minmax(0, 1fr) 138px; width: auto; height: 40px; min-height: 40px; padding: 0 0 0 16px; gap: 8px; background: var(--windows-chrome); border-bottom: 1px solid var(--line); }
+  :scope .dos-window > .dos-window-titlebar { background: var(--windows-chrome) !important; box-shadow: none; backdrop-filter: none !important; }
   .dos-window[data-window-chrome="integrated"] > .dos-window-content { grid-row: 2; }
   .dos-window > .dos-window-titlebar > strong, .dos-window[data-window-chrome="integrated"] > .dos-window-titlebar > strong { display: block; grid-column: 1; grid-row: 1; text-align: left; font-weight: 400; }
   .dos-window-titlebar-spacer { display: none; }

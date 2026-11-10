@@ -16,3 +16,6 @@
 @import "./platform-windows.css";
 @import "./platform-ios.css";
 @import "./platform-android.css";
+@import "./platform-windows-apps.css";
+@import "./platform-android-apps.css";
+@import "./platform-ios-apps.css";

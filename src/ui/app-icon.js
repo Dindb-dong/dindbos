@@ -1,7 +1,12 @@
-import React, { useId, useState } from "react";
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { renderWindowsIcon } from "./platforms/windows-icons.js";
+import { renderAndroidIcon } from "./platforms/android-icons.js";
+import { renderIOSIcon } from "./platforms/ios-icons.js";
 import { createRoot } from "react-dom/client";
 
 const h = React.createElement;
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+const platformRenderers = { windows: renderWindowsIcon, ios: renderIOSIcon, android: renderAndroidIcon };
 const PALETTES = {
   welcome: ["#65b48a", "#287451"],
   files: ["#89d4ff", "#147be7"], folder: ["#8ed8ff", "#36a5e9"], directory: ["#8ed8ff", "#36a5e9"],
@@ -28,17 +33,33 @@ export function isImageIcon(icon) {
   return typeof icon === "string" && /^(https?:\/\/|data:image\/(?:png|jpeg|gif|webp|svg\+xml)[;,]|blob:|\/|\.\.?\/)/i.test(icon);
 }
 
-export function AppIcon({ icon = "app" }) {
-  const id = `dos-icon-${useId().replaceAll(":", "")}`;
+export function AppIcon({ icon = "app", uiStyle }) {
+  const element = useRef(null);
+  const [hostStyle, setHostStyle] = useState("macos");
   const [failedSource, setFailedSource] = useState(null);
+  useClientLayoutEffect(() => {
+    if (uiStyle !== undefined) return;
+    const host = element.current?.closest?.(".dindbos-host");
+    if (!host) return;
+    const update = () => setHostStyle(host.dataset.uiStyle || "macos");
+    update();
+    const Observer = host.ownerDocument.defaultView.MutationObserver;
+    const observer = new Observer(update);
+    observer.observe(host, { attributes: true, attributeFilter: ["data-ui-style"] });
+    return () => observer.disconnect();
+  }, [icon, uiStyle, failedSource]);
+  const id = `dos-icon-${useId().replaceAll(":", "")}`;
   if (React.isValidElement(icon)) return h("span", { className: "dos-custom-icon" }, icon);
   if (isImageIcon(icon) && failedSource !== icon) {
     return h("img", { className: "dos-app-icon dos-image-icon", src: icon, alt: "", draggable: false, onError: () => setFailedSource(icon) });
   }
   const type = typeof icon === "string" && !isImageIcon(icon) ? icon : "app";
+  const style = uiStyle ?? hostStyle;
+  const styled = Object.hasOwn(platformRenderers, style) ? platformRenderers[style](type, id) : null;
+  if (styled) return React.cloneElement(styled, { ref: element });
   const colors = PALETTES[type] || ["#a5b6c6", "#5f768b"];
   const folder = type === "folder" || type === "directory";
-  return h("svg", { className: "dos-app-icon", viewBox: "0 0 64 64", fill: "none", focusable: false, "aria-hidden": true },
+  return h("svg", { ref: element, className: "dos-app-icon", "data-icon-style": "macos", viewBox: "0 0 64 64", fill: "none", focusable: false, "aria-hidden": true },
     h("defs", null,
       h("linearGradient", { id, x1: "12", y1: "3", x2: "48", y2: "63", gradientUnits: "userSpaceOnUse" },
         h("stop", { stopColor: colors[0] }), h("stop", { offset: "1", stopColor: colors[1] }))),

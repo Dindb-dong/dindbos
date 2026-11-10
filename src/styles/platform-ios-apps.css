@@ -1,0 +1,272 @@
+@scope (.dindbos-host[data-ui-style='ios']) to (.dindbos-host) {
+  :scope { --ios-app-tint: #007aff; --ios-grouped: #f2f2f7; --ios-card: #fff; --ios-secondary: #6c6c70; }
+  :scope[data-appearance='dark'] { --ios-app-tint: #0a84ff; --ios-grouped: #000; --ios-card: #1c1c1e; --ios-secondary: #aeaeb2; }
+  :scope .dos-window-content { padding: 0; font-size: 17px; background: var(--ios-grouped); }
+  :scope .dos-window-content :is(button, summary) { min-height: 44px; touch-action: manipulation; }
+  :scope .dos-window-content :is(input:not([type=checkbox]):not([type=range]):not([type=color]), textarea, select) { font-size: 16px; }
+  :scope .dos-window-content :is(button, summary, input, textarea, select):focus-visible { outline: 2px solid var(--ios-app-tint); outline-offset: -2px; }
+  :scope .dos-window-content [hidden] { display: none !important; }
+  :scope .dos-window-content :is(.productivity-app, .media-app, .applications-app, .settings-app, .files-app, .browser-app) { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 17px; }
+  :scope [data-mobile-app-back], :scope [data-mobile-note-new] { flex: 0 0 auto; min-width: 64px; padding: 8px 10px; border: 0; border-radius: 22px; background: transparent; color: var(--ios-app-tint); font-size: 17px; }
+  :scope [data-mobile-app-back]::before { content: '‹'; padding-right: 5px; font-size: 25px; vertical-align: -1px; }
+
+  /* Files: a compact Browse view with reachable locations and command overflow. */
+  :scope .files-app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; background: var(--ios-card); }
+  :scope .files-sidebar { display: flex; flex-direction: row; gap: 12px; overflow: auto; padding: 8px 16px; border: 0; background: var(--ios-grouped); }
+  :scope .files-sidebar section { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  :scope .files-sidebar h3 { display: none; }
+  :scope .files-sidebar button { display: flex; gap: 8px; min-width: 90px; padding: 8px 12px; border-radius: 22px; font-size: 15px; white-space: nowrap; }
+  :scope .files-app .files-commandbar { min-height: 64px; height: auto; padding: 8px 12px; gap: 4px; overflow-x: auto; flex-wrap: nowrap; }
+  :scope .files-commandbar .files-folder-title { font-size: 22px; font-weight: 700; min-width: 86px; max-width: none; }
+  :scope .files-commandbar .files-icon-button, :scope .files-commandbar button { width: 44px; min-width: 44px; height: 44px; flex: 0 0 44px; border-radius: 22px; color: var(--ios-app-tint); }
+  :scope .files-commandbar .files-history { flex: 0 0 auto; }
+  :scope .files-tabs { padding-left: 12px; }
+  :scope .files-tabs button { min-height: 44px; }
+  :scope .files-table .files-row, :scope .files-list .files-row { min-height: 58px; font-size: 16px; }
+  :scope .files-app[data-files-view='icons'] .files-row { min-height: 110px; }
+  :scope .files-statusbar, :scope .files-pathbar { min-height: 36px; font-size: 13px; overflow-x: auto; }
+  :scope .files-inspector { max-height: 190px; overflow: auto; }
+  :scope .files-menu-layer, :scope .files-context-menu { border-radius: 18px; }
+  :scope :is(.files-menu-layer, .files-context-menu) button { min-height: 44px; }
+
+  /* Settings: grouped rows become a real list/detail navigation stack. */
+  :scope .settings-app:has(.settings-sidebar) { display: block; height: 100%; overflow: hidden; background: var(--ios-grouped); }
+  :scope .settings-sidebar { height: 100%; padding: 20px 16px; overflow-y: auto; background: var(--ios-grouped); border: 0; }
+  :scope .settings-sidebar::before { display: block; content: 'Settings'; font-size: 34px; font-weight: 700; letter-spacing: -.8px; margin: 0 0 20px; }
+  :scope .settings-search { height: 44px; min-height: 44px; margin: 0 0 24px; border: 0; border-radius: 12px; background: var(--ios-card); }
+  :scope .settings-search input { height: 42px; }
+  :scope .settings-nav { display: flex; flex-direction: column; gap: 0; overflow: visible; background: var(--ios-card); border-radius: 14px; padding: 0 12px; }
+  :scope .settings-nav-item { width: 100%; min-height: 56px; padding: 10px 0; gap: 12px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--text); }
+  :scope .settings-nav-item::after { content: '›'; margin-left: auto; color: var(--ios-secondary); font-size: 23px; }
+  :scope .settings-nav-item.is-active strong { color: var(--text); }
+  :scope .settings-nav-item strong { font-size: 17px; font-weight: 400; }
+  :scope .settings-nav-item span:last-child { position: static; width: auto; height: auto; clip: auto; overflow: visible; }
+  :scope .settings-nav-icon { display: grid; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 7px; }
+  :scope .settings-nav-item[data-settings-section-button='overview'] { margin-top: 0; }
+  :scope .settings-detail { height: 100%; padding: 0 16px 24px; overflow-y: auto; background: var(--ios-grouped); }
+  :scope .settings-detail-header { min-height: 64px; height: auto; position: sticky; top: 0; margin: 0 -16px 20px; padding: 8px 10px; background: var(--ios-grouped); gap: 8px; flex-wrap: wrap; }
+  :scope .settings-detail-header h2 { font-size: 22px; font-weight: 700; }
+  :scope .settings-history { flex: 0 0 88px; width: 88px; height: 44px; margin-left: auto; }
+  :scope .settings-history button { width: 44px; height: 44px; }
+  :scope .settings-detail :is(.settings-panel, .settings-preference-group, .appearance-setting-row, .settings-wallpaper-summary) { background: var(--ios-card); border: 0; border-radius: 14px; padding: 16px; }
+  :scope .settings-detail :is(h3, label, p) { line-height: 1.5; }
+  :scope .settings-detail .appearance-modes { gap: 8px; }
+  :scope .settings-wallpaper-current { grid-template-columns: 1fr; }
+  :scope .settings-wallpaper-display { width: 100%; height: 160px; }
+  :scope .dos-window[data-app-id='settings'][data-mobile-pane='list'] .settings-detail { display: none; }
+  :scope .dos-window[data-app-id='settings'][data-mobile-pane='detail'] .settings-sidebar { display: none; }
+
+  /* Notes: familiar warm-tint note lists and a full-width editor. */
+  :scope .notes-app { display: block; height: 100%; background: var(--ios-card); }
+  :scope .notes-folders { display: none; }
+  :scope .notes-sidebar { height: 100%; padding: 18px 16px; border: 0; background: var(--ios-grouped); }
+  :scope .notes-sidebar > header { min-height: 80px; height: auto; display: flex; flex-direction: row-reverse; justify-content: space-between; padding: 0 0 18px; }
+  :scope .notes-sidebar > header strong { display: block; font-size: 34px; line-height: 1.1; letter-spacing: -.8px; }
+  :scope .notes-sidebar > header strong span { display: block; font-size: 13px; margin-top: 8px; }
+  :scope .notes-app :is([data-mobile-note-new], [data-mobile-app-back], .productivity-icon-button) { color: #a86d00; }
+  :scope[data-appearance='dark'] .notes-app :is([data-mobile-note-new], [data-mobile-app-back], .productivity-icon-button) { color: #ffd60a; }
+  :scope [data-mobile-note-search] { display: block; margin: 0 0 16px; }
+  :scope [data-mobile-note-search] input { width: 100%; min-height: 44px; padding: 10px 14px; border: 0; border-radius: 12px; background: var(--ios-card); }
+  :scope .notes-sidebar { overflow-y: auto; }
+  :scope .notes-list { height: auto; min-height: 0; padding: 0 12px; background: var(--ios-card); border-radius: 14px; }
+  :scope .notes-list button { min-height: 86px; padding: 12px 4px; border-radius: 0; gap: 5px; }
+  :scope .notes-list button[aria-pressed=true] { background: transparent; }
+  :scope .notes-list button strong { font-size: 17px; }
+  :scope .notes-list button span, :scope .notes-list button time { display: block; font-size: 13px; }
+  :scope .note-editor { height: 100%; }
+  :scope .notes-editor-toolbar { min-height: 60px; height: auto; flex: 0 0 auto; padding: 8px; gap: 0; }
+  :scope .notes-editor-toolbar .productivity-icon-button { width: 44px; height: 44px; flex-basis: 44px; }
+  :scope .notes-editor-toolbar .productivity-search { min-width: 0; margin: 0; flex: 1; }
+  :scope .notes-editor-toolbar .productivity-search input { height: 40px; border: 0; border-radius: 22px; }
+  :scope .note-toolbar time { font-size: 13px; }
+  :scope .note-editor > input[data-note-title] { min-height: 56px; padding: 8px 20px; font-size: 28px; }
+  :scope .note-editor > textarea { padding: 12px 20px 24px; font-size: 17px; line-height: 1.6; }
+  :scope .dos-window[data-app-id='notes'][data-mobile-pane='list'] .note-editor:not(:has([data-productivity-error]:not([hidden]))) { display: none; }
+  :scope .dos-window[data-app-id='notes'][data-mobile-pane='list']:has([data-productivity-error]:not([hidden])) .notes-sidebar { display: none; }
+  :scope .dos-window[data-app-id='notes'][data-mobile-pane='detail'] .notes-sidebar { display: none; }
+
+  /* Reminders: compact smart-list cards above a touch-sized task list. */
+  :scope .reminders-app { display: flex; flex-direction: column; overflow-y: auto; background: var(--ios-grouped); }
+  :scope .reminders-app .productivity-sidebar { flex: 0 0 auto; overflow: visible; border: 0; padding: 16px; background: transparent; }
+  :scope .reminder-smart-lists { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+  :scope .reminder-smart-lists button { color: var(--text); }
+  :scope .reminder-smart-lists button[aria-pressed=true] { color: var(--text); }
+  :scope .reminder-smart-lists button { min-height: 78px; padding: 12px; border-radius: 16px; background: var(--ios-card); }
+  :scope .reminder-smart-lists button span { font-size: 16px; }
+  :scope .reminder-smart-lists button strong { font-size: 28px; }
+  :scope .productivity-sidebar .reminder-local-list { min-height: 52px; font-size: 17px; }
+  :scope .reminder-main { flex: 1 0 auto; overflow: visible; padding: 0 20px 24px; }
+  :scope .reminder-toolbar { height: 44px; }
+  :scope .reminder-main h1 { font-size: 34px; color: var(--ios-app-tint); }
+  :scope .reminder-create { grid-template-columns: minmax(0,1fr) 44px; gap: 8px; padding: 12px 0; }
+  :scope .reminder-create [type=date] { grid-column: 1; grid-row: 2; width: 100%; }
+  :scope .reminder-create button { grid-column: 2; grid-row: 1 / 3; width: 44px; height: 44px; }
+  :scope .reminder-create input { min-height: 44px; }
+  :scope .reminder-list li { min-height: 64px; font-size: 17px; }
+  :scope .reminder-list li > button { width: 44px; height: 44px; opacity: 1; }
+  :scope .reminder-list input[type=checkbox] { width: 24px; height: 24px; flex-basis: 24px; }
+
+  /* Calendar: month above the agenda, all six weeks and events reachable. */
+  :scope .calendar-app { display: flex; flex-direction: column; overflow-y: auto; background: var(--ios-card); }
+  :scope .calendar-main { order: 0; flex: 0 0 auto; }
+  :scope .calendar-sidebar { order: 1; flex: 0 0 auto; overflow: visible; padding: 16px 20px; border: 0; background: var(--ios-grouped); }
+  :scope .calendar-mini { display: none; }
+  :scope .calendar-sidebar > h2 { margin-top: 0; }
+  :scope .calendar-local { display: flex; font-size: 17px; min-height: 44px; }
+  :scope .calendar-topbar { min-height: 52px; padding: 4px 16px; color: #ff3b30; }
+  :scope .calendar-topbar button { width: 44px; height: 44px; }
+  :scope .calendar-toolbar { padding: 4px 16px 16px; flex-wrap: wrap; }
+  :scope .calendar-toolbar h1 { font-size: 30px; letter-spacing: -.7px; }
+  :scope .calendar-toolbar button { min-width: 44px; }
+  :scope .calendar-month { flex: 0 0 auto; grid-auto-rows: minmax(58px,auto); min-height: 348px; }
+  :scope .calendar-month > button { min-width: 0; min-height: 58px; padding: 6px 2px; border: 0; text-align: center; }
+  :scope .calendar-month > button > span { margin: auto; font-size: 18px; width: 32px; height: 32px; }
+  :scope .calendar-cell-events em { font-size: 9px; overflow: hidden; }
+  :scope .calendar-agenda h2 { font-size: 26px; }
+  :scope .calendar-agenda li { min-height: 56px; font-size: 16px; }
+  :scope .productivity-sheet { width: calc(100% - 24px); max-height: calc(100% - 24px); overflow: auto; border-radius: 24px; padding: 24px; font-size: 17px; }
+  :scope .productivity-sheet :is(button,input) { min-height: 44px; }
+
+  /* Clock: persistent bottom tabs and full-width digital timer/stopwatch. */
+  :scope .clock-app { --clock-accent: #ff9f0a; background: #000; grid-template-rows: minmax(0,1fr) auto auto 62px; }
+  :scope .clock-toolbar { grid-row: 4; height: 62px; padding: 6px 8px; background: #1c1c1e; border-radius: 26px 26px 0 0; }
+  :scope .clock-toolbar [role=tablist] { width: 100%; justify-content: space-around; border: 0; background: transparent; padding: 0 40px 0 0; gap: 0; }
+  :scope .clock-toolbar [role=tablist] button { min-width: 0; padding: 6px; min-height: 48px; font-size: 12px; }
+  :scope .clock-toolbar button[aria-selected=true] { background: transparent; color: #ff9f0a; }
+  :scope .clock-toolbar .clock-toolbar-add { width: 44px; height: 44px; top: 9px; right: 4px; background: #333; color: #ff9f0a; }
+  :scope .clock-pane { grid-row: 1; padding: 20px; }
+  :scope [data-clock-view='world'] .clock-pane { overflow: auto; }
+  :scope .clock-world { height: auto; min-height: 100%; display: flex; flex-direction: column; }
+  :scope .clock-world-map { height: 180px; min-height: 180px; order: 1; }
+  :scope .clock-world-grid { display: flex; flex-direction: column; overflow: visible; background: #000; padding: 16px 20px; gap: 0; }
+  :scope .clock-city { flex: 0 0 auto; display: grid; grid-template-columns: 76px minmax(0,1fr); gap: 6px 16px; padding: 16px 44px 16px 0; border-bottom: 1px solid #38383a; border-radius: 0; background: transparent; text-align: left; }
+  :scope .clock-analog { width: 70px; height: 70px; grid-row: 1 / 3; margin: 0; }
+  :scope .clock-city-caption { justify-content: space-between; gap: 8px; }
+  :scope .clock-city h2, :scope .clock-city time { font-size: 17px; }
+  :scope .clock-city > button { opacity: 1; top: 26px; right: 0; width: 44px; height: 44px; }
+  :scope .clock-city-date { font-size: 13px; }
+  :scope .clock-add-popover { top: auto; bottom: 70px; right: 12px; width: calc(100% - 24px); max-height: calc(100% - 90px); overflow: auto; padding: 24px; border-radius: 22px; }
+  :scope .clock-add-popover header button, :scope .clock-alarm > button { width: 44px; height: 44px; }
+  :scope .clock-digits { font-size: clamp(42px,14cqw,80px); }
+  :scope .clock-actions { width: 100%; }
+  :scope .clock-actions button { width: 80px; height: 80px; border-radius: 50%; }
+  :scope .clock-footer { font-size: 12px; }
+
+  /* Calculator: iPhone-style circular keypad, without removing history or modes. */
+  :scope .calculator-app { height: 100%; width: 100%; min-width: 0; max-width: none; padding: 12px 16px 20px; display: grid; grid-template-rows: 44px minmax(100px,1fr) auto; background: #000; color: white; }
+  :scope .calculator-toolbar { padding: 0; height: 44px; background: #000; }
+  :scope .calculator-toolbar :is(button,summary) { width: 44px; height: 44px; color: #ff9f0a; }
+  :scope .calculator-display { justify-content: flex-end; padding: 12px 6px 20px; }
+  :scope .calculator-display output { color: #fff; font-size: clamp(46px,18cqw,84px); font-weight: 300; }
+  :scope .calculator-keys { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; padding: 0; }
+  :scope .calculator-keys button { width: 100%; height: auto; aspect-ratio: 1; min-height: 44px; border: 0; border-radius: 50%; background: #333; color: white; font-size: clamp(22px,7cqw,32px); font-weight: 400; }
+  :scope .calculator-keys button.is-function { background: #a5a5a5; color: #000; }
+  :scope .calculator-keys button.is-operator { background: #ff9f0a; color: white; }
+  :scope .calculator-history { top: 56px; bottom: 16px; left: 12px; right: 12px; width: auto; padding: 20px; background: #1c1c1e; color: white; border-radius: 22px; }
+
+  /* Browser: document above a bottom address/navigation surface, real tabs retained. */
+  :scope .browser-app:has(.browser-tabs[data-single-tab="true"]) { grid-template-rows: 48px minmax(0,1fr) 116px; }
+  :scope .browser-app { height: 100%; grid-template-rows: auto minmax(0,1fr) auto; }
+  :scope .browser-app .browser-toolbar { grid-row: 3; height: auto; min-height: 108px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; padding: 8px 12px; background: var(--ios-grouped); }
+  :scope .browser-app .browser-address-field { grid-column: 1 / -1; grid-row: 1; width: 100%; height: 48px; border-radius: 24px; padding: 0 8px 0 14px; }
+  :scope .browser-app .browser-toolbar .browser-address-field input { height: 44px; font-size: 16px; }
+  :scope .browser-app .browser-address-field button { width: 44px; height: 44px; }
+  :scope .browser-app .browser-navigation-controls { grid-column: 1; grid-row: 2; }
+  :scope .browser-app .browser-navigation-controls button { width: 44px; height: 44px; color: var(--ios-app-tint); }
+  :scope .browser-app .browser-connection { grid-column: 2; grid-row: 2; }
+  :scope .browser-app .browser-connection > summary { width: 44px; height: 44px; }
+  :scope .browser-app .browser-tabs { grid-row: 1; padding: 4px 8px; min-height: 48px; }
+  :scope .browser-app .browser-viewport { grid-row: 2; min-height: 0; }
+  :scope .browser-app .browser-connection-panel { top: auto; bottom: 50px; right: 0; max-height: min(440px,65cqh); }
+  :scope .browser-app .browser-tab { min-height: 44px; }
+
+  /* Photos and Music: content-led library with touch controls and an actual MiniPlayer. */
+  :scope .media-app { display: flex; flex-direction: column; background: var(--ios-card); }
+  :scope .media-sidebar { display: flex !important; flex: 0 0 auto; gap: 8px; align-items: center; overflow-x: auto; padding: 8px 16px; border: 0; background: var(--ios-grouped); }
+  :scope .media-sidebar h2, :scope .media-sidebar p, :scope .media-sidebar-caption, :scope .media-sidebar-note { display: none; }
+  :scope .media-search { display: flex; min-width: 180px; flex: 0 0 180px; }
+  :scope .media-sidebar > button { width: auto; flex: 0 0 auto; border-radius: 22px; font-size: 15px; white-space: nowrap; }
+  :scope .media-main { flex: 1; }
+  :scope .media-app .media-toolbar { height: auto; min-height: 72px; padding: 12px 16px; background: var(--ios-card); }
+  :scope .media-toolbar-title strong, :scope .music-app .media-toolbar-title strong { font-size: 30px; line-height: 1.1; }
+  :scope .media-toolbar-title small { display: block; font-size: 13px; }
+  :scope .media-toolbar-actions button { width: 44px; height: 44px; color: var(--ios-app-tint); }
+  :scope .photos-app .media-toolbar { position: static; inset: auto; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  :scope .photo-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 3px; padding: 3px; }
+  :scope .photo-tile { border-radius: 4px; }
+  :scope .photo-viewer { padding: 12px; }
+  :scope .photo-viewer header { flex-wrap: wrap; }
+  :scope .media-library-footer { font-size: 13px; padding: 8px; }
+  :scope .music-app .media-toolbar-actions button { color: #fa2d48; }
+  :scope .music-library { padding: 16px 16px 220px; }
+  :scope .music-track { min-height: 64px; font-size: 16px; padding: 8px; border-radius: 12px; }
+  :scope .music-track-icon { width: 44px; height: 44px; flex-basis: 44px; border-radius: 8px; }
+  :scope .music-player { left: 12px; right: 12px; width: auto; min-width: 0; max-width: none; bottom: 12px; transform: none; height: auto; display: grid; grid-template-columns: minmax(0,1fr); gap: 8px; padding: 12px; border-radius: 24px; background: var(--ios-grouped); }
+  :scope .music-player .music-now-playing { padding: 0; min-height: 44px; }
+  :scope .music-artwork { display: grid; width: 44px; height: 44px; flex-basis: 44px; }
+  :scope .music-now-playing strong { font-size: 15px; }
+  :scope .music-now-playing small { font-size: 12px; }
+  :scope .music-playback { display: flex; flex-direction: column; }
+  :scope .music-transport { position: static; justify-content: center; }
+  :scope .music-transport button { width: 52px; height: 44px; }
+  :scope .music-timeline { position: static; width: 100%; padding: 0; font-size: 12px; }
+  :scope .music-volume { grid-column: 1; grid-row: auto; display: flex; flex-direction: row; width: 100%; gap: 8px; }
+  :scope .music-volume input { flex: 1; height: 24px; }
+  :scope .media-empty { padding: 24px; font-size: 16px; }
+  :scope .media-empty button { border-radius: 22px; font-size: 17px; }
+
+  /* Text and Viewer: readable document surfaces with scrolling command groups. */
+  :scope .text-app { height: 100%; background: var(--ios-card); font-size: 17px; }
+  :scope .text-toolbar { padding: 8px 12px; gap: 8px; overflow-x: auto; flex-wrap: nowrap; background: var(--ios-grouped); }
+  :scope .text-toolbar :is(button,summary) { flex: 0 0 auto; border-radius: 22px; color: var(--ios-app-tint); }
+  :scope .text-app textarea { padding: 20px; font-size: 17px; line-height: 1.65; }
+  :scope .text-document-status { font-size: 13px; padding: 10px 16px; }
+  :scope .viewer-app { height: 100%; background: var(--ios-grouped); }
+  :scope .viewer-header { padding: 12px 16px; display: flex; flex-direction: column; align-items: stretch; gap: 10px; background: var(--ios-card); }
+  :scope .viewer-header h2 { font-size: 22px; }
+  :scope .viewer-toolbar { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px; }
+  :scope .viewer-toolbar :is(button,summary) { min-width: 44px; flex: 0 0 auto; }
+  :scope .viewer-preview { min-height: 0; padding: 12px; }
+  :scope .viewer-markdown { font-size: 17px; padding: 20px; border-radius: 16px; }
+  :scope .viewer-empty { padding: 28px; background: var(--ios-card); }
+
+  /* App Library and DindbOS utilities use the same mobile hierarchy. */
+  :scope .applications-app { background: var(--ios-grouped); }
+  :scope .applications-header { padding: 16px; height: auto; min-height: 72px; gap: 8px; }
+  :scope .applications-app .applications-search input { font-size: 24px; }
+  :scope .applications-categories { padding: 8px 16px; }
+  :scope .applications-categories button { border-radius: 22px; padding: 8px 14px; font-size: 15px; background: var(--ios-card); }
+  :scope .applications-library { padding: 20px 12px; }
+  :scope .applications-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px 8px; }
+  :scope .applications-grid .applications-item { min-height: 110px; }
+  :scope .applications-item-name { font-size: 13px; }
+  :scope .applications-footer { font-size: 12px; padding: 10px 16px; }
+  :scope .terminal-app { height: 100%; padding: 20px 16px; background: #000; color: #e5e5ea; font: 14px/1.6 var(--mono); }
+  :scope .terminal-app pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+  :scope .terminal-app form { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-top: 1px solid #38383a; }
+  :scope .terminal-app input { min-height: 44px; min-width: 120px; flex: 1; background: #1c1c1e; color: #e5e5ea; border-radius: 12px; padding: 8px 12px; }
+  :scope .activity-app { height: 100%; padding: 16px; background: var(--ios-grouped); font-size: 16px; overflow-y: auto; }
+  :scope .activity-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  :scope .activity-controls input { width: 100%; min-width: 0; min-height: 44px; border-radius: 12px; }
+  :scope .activity-grid { display: flex; flex-direction: column; gap: 16px; }
+  :scope .activity-table { max-height: none; border: 0; background: var(--ios-card); border-radius: 14px; }
+  :scope .activity-row { min-height: 56px; grid-template-columns: 42px minmax(0,1fr) 70px; }
+  :scope .activity-detail { padding: 16px; border: 0; border-radius: 16px; background: var(--ios-card); }
+  :scope .activity-bottom-summary { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; padding: 16px 0; }
+  :scope .portfolio-app { padding: 28px 20px; background: var(--ios-grouped); min-height: 100%; }
+  :scope .portfolio-app .dos-kicker { color: var(--ios-secondary); font-size: 13px; }
+  :scope .portfolio-app h1 { font-size: 34px; letter-spacing: -.8px; line-height: 1.1; }
+  :scope .portfolio-app > p { font-size: 17px; line-height: 1.5; }
+  :scope .portfolio-grid { grid-template-columns: minmax(0,1fr); gap: 16px; }
+  :scope .portfolio-grid article { padding: 20px; border: 0; border-radius: 16px; background: var(--ios-card); }
+  :scope .portfolio-grid strong { font-size: 22px; }
+  :scope .portfolio-grid p { font-size: 16px; line-height: 1.5; }
+  @container (max-width: 350px) {
+    :scope .notes-editor-toolbar .productivity-search { flex-basis: 100%; }
+    :scope .notes-editor-toolbar { flex-wrap: wrap; }
+    :scope .calendar-toolbar h1 { font-size: 26px; }
+    :scope .clock-toolbar [role=tablist] button { font-size: 10px; padding: 4px; }
+    :scope .media-toolbar-title strong { font-size: 26px; }
+    :scope .calculator-keys { gap: 8px; }
+  }
+}

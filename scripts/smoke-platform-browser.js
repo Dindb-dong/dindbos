@@ -37,6 +37,15 @@ try {
     await page.evaluate(({ style, width }) => window.platformMount({ style }, width), { style, width });
     const root = page.locator("#platform-test");
     await expect(root).toHaveAttribute("data-ui-style", style);
+    await expect(root.locator(".dos-dock .dos-app-icon").first()).toHaveAttribute("data-icon-style", style);
+    await root.evaluate(async (element) => {
+      const { mountAppIcon } = await import("/src/ui/app-icon.js");
+      const target = element.ownerDocument.createElement("span");
+      target.dataset.failedIconTest = ""; target.hidden = true; element.append(target);
+      window.failedIconCleanup = mountAppIcon(target, "data:image/png;base64,invalid");
+    });
+    await expect(root.locator('[data-failed-icon-test] svg')).toHaveAttribute("data-icon-style", style);
+    await page.evaluate(() => { window.failedIconCleanup(); document.querySelector('[data-failed-icon-test]').remove(); });
     if (output) await root.screenshot({ path: resolve(output, `${style}-home.png`) });
     await root.locator('[data-dock-app-id="draft"]').click();
     await root.getByRole("textbox", { name: "Draft text", exact: true }).fill(`${style} draft`);
@@ -63,6 +72,7 @@ try {
   for (const [width, style] of [[760, "ios"], [761, "windows"], [320, "ios"], [1280, "windows"], [390, "ios"], [1280, "windows"]]) {
     await root.evaluate((element, width) => { element.style.width = `${width}px`; }, width);
     await expect(root).toHaveAttribute("data-ui-style", style);
+    await expect(root.locator(".dos-dock .dos-app-icon").first()).toHaveAttribute("data-icon-style", style);
     await expect(root.getByRole("textbox", { name: "Draft text", exact: true })).toHaveValue("Survives responsive transitions");
     await expect(root.locator(".dos-window")).toHaveCount(1);
     assert.equal(await root.evaluate((element) => element.scrollWidth > element.clientWidth), false, `${width}: host has no horizontal overflow`);

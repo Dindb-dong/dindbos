@@ -1,3 +1,4 @@
+import { mountMobileAppNavigation } from "../ui/platforms/mobile-app-navigation.js";
 import { normalizeUIStyleOptions, resolveUIStyle } from "./ui-style.js";
 import { mountWindowsShell } from "../ui/platforms/windows.js";
 import { mountIOSShell } from "../ui/platforms/ios.js";
@@ -90,7 +91,9 @@ export class DesktopShell {
     this.root.dataset.uiStyle = style;
     if (!initial) this.renderSlot("menubar", this.menuState(), () => this.renderMenubar());
     const mount = { windows: mountWindowsShell, ios: mountIOSShell, android: mountAndroidShell }[style];
-    this.styleCleanup = mount?.(this) || null;
+    const shellCleanup = mount?.(this);
+    const appCleanup = ["ios", "android"].includes(style) ? mountMobileAppNavigation(this) : null;
+    this.styleCleanup = () => { try { appCleanup?.(); } finally { shellCleanup?.(); } };
     if (!initial) {
       this.renderDesktop();
       this.renderDock();

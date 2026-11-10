@@ -1,0 +1,39 @@
+import React from "react";
+
+const h = React.createElement;
+const ARTWORK = {
+  "files": ["#fff", () => [h("path", {"d": "M11 22h17l5 5h20v23H11Z", "fill": "#168cff"}), h("path", {"d": "M11 21h17l5 6H11Z", "fill": "#69c5ff"})]],
+  "browser": ["#fff", () => [h("circle", {"cx": "32", "cy": "32", "r": "24", "fill": "#20a9f8"}), h("circle", {"cx": "32", "cy": "32", "r": "20", "fill": "none", "stroke": "#b9ebff", "strokeWidth": "1.5"}), h("path", {"d": "m20 44 9-15 15-9-9 15Z", "fill": "#fff"}), h("path", {"d": "m29 29 15-9-9 15Z", "fill": "#ff544e"})]],
+  "portfolio": ["#327adc", () => [h("rect", {"x": "14", "y": "22", "width": "36", "height": "27", "rx": "5", "fill": "#fff"}), h("path", {"d": "M24 22v-7h16v7M14 32h36M28 32v6h8v-6", "fill": "none", "stroke": "#174b9d", "strokeWidth": "3"})]],
+  "terminal": ["#151515", () => [h("path", {"d": "m15 21 11 10-11 10M31 43h18", "fill": "none", "stroke": "#fff", "strokeWidth": "4", "strokeLinecap": "round"})]],
+  "activity": ["#121c22", () => [h("path", {"d": "M9 33h9l5-15 8 30 7-23 5 8h12", "fill": "none", "stroke": "#38e18b", "strokeWidth": "3", "strokeLinejoin": "round"})]],
+  "text": ["#fff", () => [h("rect", {"x": "15", "y": "9", "width": "34", "height": "46", "rx": "4", "fill": "#f7f8fb", "stroke": "#d4dbe5"}), h("path", {"d": "M22 21h20M22 28h20M22 35h20M22 42h12", "stroke": "#3c84e9", "strokeWidth": "3"})]],
+  "pdf": ["#fff", () => [h("rect", {"x": "15", "y": "9", "width": "34", "height": "46", "rx": "4", "fill": "#fff0ee"}), h("path", {"d": "M22 42 31 18l7 22-15-8 22 1", "fill": "none", "stroke": "#eb4a43", "strokeWidth": "3", "strokeLinejoin": "round"})]],
+  "applications": ["#1d85ed", () => [h("path", {"d": "m21 45 15-28M28 17l15 28M15 37h34", "fill": "none", "stroke": "#fff", "strokeWidth": "5", "strokeLinecap": "round"})]],
+  "calculator": ["#222", () => [h("rect", {"x": "11", "y": "10", "width": "42", "height": "12", "rx": "4", "fill": "#727272"}), h("path", {"d": "M15 14h30", "stroke": "#fff", "strokeWidth": "2"}), h("circle", {"cx": "19", "cy": "33", "r": "7", "fill": "#a7a7a7"}), h("circle", {"cx": "19", "cy": "49", "r": "7", "fill": "#666"}), h("circle", {"cx": "35", "cy": "33", "r": "7", "fill": "#666"}), h("circle", {"cx": "35", "cy": "49", "r": "7", "fill": "#666"}), h("rect", {"x": "46", "y": "26", "width": "10", "height": "30", "rx": "5", "fill": "#ff9f0a"})]],
+  "settings": ["#b1b4ba", () => [h("path", {"d": "m26 9 12 0 2 7 7 4 7-1 6 10-5 5-1 8 4 6-9 8-6-4-8 1-5 5-10-5 1-8-4-6-7-2V25l7-2 4-7Z", "fill": "#73777f"}), h("circle", {"cx": "32", "cy": "32", "r": "15", "fill": "#c9ccd1", "stroke": "#eef0f3", "strokeWidth": "2"}), h("circle", {"cx": "32", "cy": "32", "r": "8", "fill": "#72777e"})]],
+  "notes": ["#fff", () => [h("path", {"d": "M0 0h64v20H0Z", "fill": "#ffd552"}), h("path", {"d": "M13 30h38M13 39h38M13 48h26", "stroke": "#c8c8ce", "strokeWidth": "2"})]],
+  "reminders": ["#fff", () => [h("circle", {"cx": "15", "cy": "19", "r": "4", "fill": "none", "stroke": "#007aff", "strokeWidth": "2"}), h("circle", {"cx": "15", "cy": "32", "r": "4", "fill": "none", "stroke": "#ff9500", "strokeWidth": "2"}), h("circle", {"cx": "15", "cy": "45", "r": "4", "fill": "none", "stroke": "#ff3b30", "strokeWidth": "2"}), h("path", {"d": "M25 19h26M25 32h26M25 45h26", "stroke": "#c8c8ce", "strokeWidth": "2"})]],
+  "calendar": ["#fff", () => [h("path", {"d": "M0 0h64v18H0Z", "fill": "#ff453a"}), h("path", {"d": "M16 29h8v22M35 29h12L35 51", "fill": "none", "stroke": "#171719", "strokeWidth": "4", "strokeLinejoin": "round"})]],
+  "clock": ["#000", () => [h("circle", {"cx": "32", "cy": "32", "r": "26", "fill": "#fff"}), h("path", {"d": "M32 9v4M32 51v4M9 32h4M51 32h4M16 16l3 3M45 45l3 3M16 48l3-3M45 19l3-3", "stroke": "#000", "strokeWidth": "2"}), h("path", {"d": "M32 17v16l10 6", "fill": "none", "stroke": "#000", "strokeWidth": "3", "strokeLinecap": "round"}), h("path", {"d": "M32 31 22 45", "stroke": "#ff453a", "strokeWidth": "1.5"})]],
+  "music": ["#fa4262", () => [h("path", {"d": "M28 42V18l22-5v24M28 23l22-5", "fill": "none", "stroke": "#fff", "strokeWidth": "5", "strokeLinejoin": "round"}), h("ellipse", {"cx": "21", "cy": "44", "rx": "9", "ry": "7", "fill": "#fff"}), h("ellipse", {"cx": "43", "cy": "39", "rx": "9", "ry": "7", "fill": "#fff"})]],
+  "photos": ["#fff", () => [h("ellipse", {"cx": "32", "cy": "20", "rx": "8", "ry": "13", "fill": "#ffcd3c", "fillOpacity": ".86", "transform": "rotate(0 32 32)"}), h("ellipse", {"cx": "32", "cy": "20", "rx": "8", "ry": "13", "fill": "#ff9f23", "fillOpacity": ".86", "transform": "rotate(45 32 32)"}), h("ellipse", {"cx": "32", "cy": "20", "rx": "8", "ry": "13", "fill": "#ff684e", "fillOpacity": ".86", "transform": "rotate(90 32 32)"}), h("ellipse", {"cx": "32", "cy": "20", "rx": "8", "ry": "13", "fill": "#f34a8a", "fillOpacity": ".86", "transform": "rotate(135 32 32)"}), h("ellipse", {"cx": "32", "cy": "20", "rx": "8", "ry": "13", "fill": "#ad62d4", "fillOpacity": ".86", "transform": "rotate(180 32 32)"}), h("ellipse", {"cx": "32", "cy": "20", "rx": "8", "ry": "13", "fill": "#548cf2", "fillOpacity": ".86", "transform": "rotate(225 32 32)"}), h("ellipse", {"cx": "32", "cy": "20", "rx": "8", "ry": "13", "fill": "#46c9ca", "fillOpacity": ".86", "transform": "rotate(270 32 32)"}), h("ellipse", {"cx": "32", "cy": "20", "rx": "8", "ry": "13", "fill": "#77cd65", "fillOpacity": ".86", "transform": "rotate(315 32 32)"})]],
+  "image": ["#fff", () => [h("rect", {"x": "10", "y": "15", "width": "44", "height": "35", "rx": "5", "fill": "#a7ddfb"}), h("circle", {"cx": "42", "cy": "25", "r": "5", "fill": "#ffe075"}), h("path", {"d": "m10 46 14-19 14 16 7-9 9 12v4H10Z", "fill": "#61b7a0"})]],
+  "home": ["#168bfa", () => [h("path", {"d": "m10 29 22-18 22 18M16 25v27h12V37h9v15h12V25", "fill": "none", "stroke": "#fff", "strokeWidth": "4", "strokeLinejoin": "round"})]],
+  "trash": ["#8d949e", () => [h("path", {"d": "M19 22h26l-2 31H21ZM14 17h36M26 17v-6h12v6M27 28v18M37 28v18", "fill": "none", "stroke": "#fff", "strokeWidth": "3", "strokeLinejoin": "round"})]],
+  "app": ["#5577db", () => [h("rect", {"x": "16", "y": "16", "width": "13", "height": "13", "rx": "3", "fill": "#fff"}), h("rect", {"x": "35", "y": "16", "width": "13", "height": "13", "rx": "3", "fill": "#fff"}), h("rect", {"x": "16", "y": "35", "width": "13", "height": "13", "rx": "3", "fill": "#fff"}), h("rect", {"x": "35", "y": "35", "width": "13", "height": "13", "rx": "3", "fill": "#fff"})]],
+  "folder": ["#fff", () => [h("path", {"d": "M11 22h17l5 5h20v23H11Z", "fill": "#168cff"}), h("path", {"d": "M11 21h17l5 6H11Z", "fill": "#69c5ff"})]],
+  "directory": ["#fff", () => [h("path", {"d": "M11 22h17l5 5h20v23H11Z", "fill": "#168cff"}), h("path", {"d": "M11 21h17l5 6H11Z", "fill": "#69c5ff"})]],
+  "file": ["#fff", () => [h("rect", {"x": "15", "y": "9", "width": "34", "height": "46", "rx": "4", "fill": "#f7f8fb", "stroke": "#d4dbe5"}), h("path", {"d": "M22 21h20M22 28h20M22 35h20M22 42h12", "stroke": "#3c84e9", "strokeWidth": "3"})]],
+  "welcome": ["#327adc", () => [h("rect", {"x": "14", "y": "22", "width": "36", "height": "27", "rx": "5", "fill": "#fff"}), h("path", {"d": "M24 22v-7h16v7M14 32h36M28 32v6h8v-6", "fill": "none", "stroke": "#174b9d", "strokeWidth": "3"})]]
+};
+
+/** Original SVG artwork for iOS-inspired built-in and filesystem icons. */
+export function renderIOSIcon(type, id) {
+  const artwork = Object.hasOwn(ARTWORK, type) ? ARTWORK[type] : null;
+  if (!artwork) return null;
+  const clip = `${id}-ios-tile`;
+  return h("svg", { className: "dos-app-icon", "data-icon-style": "ios", viewBox: "0 0 64 64", fill: "none", focusable: false, "aria-hidden": true },
+    h("defs", null, h("clipPath", { id: clip }, h("rect", { width: 64, height: 64, rx: 14 }))),
+    h("g", { clipPath: `url(#${clip})` }, h("rect", { width: 64, height: 64, rx: 14, fill: artwork[0] }), ...artwork[1]()));
+}
