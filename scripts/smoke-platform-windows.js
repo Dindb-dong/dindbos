@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import { chromium, expect } from "@playwright/test";
+
+const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
+try {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" });
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const url = new URL(process.env.DINDBOS_QA_URL || "http://127.0.0.1:5186/");
+  url.searchParams.set("style", "windows");
+  await page.goto(url.href);
+  await page.locator(".dos-windows-taskbar").waitFor();
+  await page.locator(".dos-boot-screen").waitFor({ state: "detached" });
+  const start = page.getByRole("button", { name: "Start", exact: true });
+  await start.click();
+  await expect(page.getByRole("searchbox", { name: "Search applications" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(start).toBeFocused();
+  await page.keyboard.press("Control+Escape");
+  await expect(page.getByRole("searchbox", { name: "Search applications" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  const counter = page.locator('.dos-window[data-app-id="counter"]');
+  const task = page.locator('[data-dock-app-id="counter"]');
+  await task.click();
+  await expect(task).toHaveClass(/is-active/);
+  await counter.getByRole("button", { name: "Increase count" }).click();
+  await expect(counter.getByLabel("Count", { exact: true })).toHaveText("1");
+  await task.click();
+  await expect(counter).toBeHidden();
+  await expect(task).not.toHaveClass(/is-active/);
+  await task.click();
+  await expect(counter.getByLabel("Count", { exact: true })).toHaveText("1");
+  const controls = await counter.locator(".dos-window-controls button").evaluateAll(buttons => Object.fromEntries(buttons.map(button => [button.getAttribute("aria-label"), button.getBoundingClientRect().x])));
+  assert(controls.Minimize < controls.Maximize && controls.Maximize < controls.Close, "caption controls follow Windows order");
+  await counter.getByRole("button", { name: "Maximize", exact: true }).click();
+  const [windowBounds, taskbarBounds] = await Promise.all([counter.boundingBox(), page.locator(".dos-windows-taskbar").boundingBox()]);
+  assert(windowBounds.y + windowBounds.height <= taskbarBounds.y, "maximized content remains above the taskbar");
+  await page.locator(".dos-windows-app-menus > summary").click();
+  await page.locator('.dos-menubar [data-shell-panel="file"]').click();
+  await expect(page.getByRole("menu", { name: "file menu", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator('.dos-menubar [data-shell-panel="file"]')).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await start.click();
+  const [launcher, host] = await Promise.all([page.locator(".dos-launcher").boundingBox(), page.locator(".dindbos-host").boundingBox()]);
+  assert(launcher.x >= host.x && launcher.x + launcher.width <= host.x + host.width, "Start fits a narrow host");
+  assert.deepEqual(errors, []);
+  console.log("Windows shell smoke passed: Start/focus, Ctrl+Escape, taskbar minimize/restore with state, caption order, maximized bounds, app menus and narrow host");
+} finally {
+  await browser.close();
+}

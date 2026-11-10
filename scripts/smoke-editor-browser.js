@@ -7,7 +7,7 @@ import { createServer } from "vite";
 const moduleSource = `
 import { createAndBootDindbOS } from '/src/sdk/index.js';
 ${["dindbos", "theme", "shell", "windows", "dock", "apps"].map((name) => `import '/src/styles/${name}.css';`).join("\n")}
-window.__editorReady = createAndBootDindbOS({
+window.__editorReady = createAndBootDindbOS({ui:{style:'macos'},
   root: document.getElementById('desktop'), storage: {backend:'memory', name:'editor-close-smoke'},
   bootstrapPackages: false, builtins: {include:['text','files']},
   launch:['text'],

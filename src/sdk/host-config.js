@@ -1,3 +1,4 @@
+import { normalizeUIStyleOptions } from "../dindbos/ui-style.js";
 import { defineApp } from "./app-definition.js";
 
 const normalizedConfigs = new WeakSet();
@@ -59,7 +60,7 @@ export function publicHostConfig(config = {}) {
       hasConformanceHook: typeof config.diagnostics?.onConformanceEvidence === "function",
     },
     theme: config.theme,
-    ui: { slots: Object.keys(config.ui?.slots || {}), liquidGlass: config.ui?.liquidGlass !== false },
+    ui: { style: config.ui?.style || "auto", visitorOS: config.ui?.visitorOS, mobileStyle: config.ui?.mobileStyle, autoStyles: normalizeUIStyleOptions(config.ui || {}).autoStyles, slots: Object.keys(config.ui?.slots || {}), liquidGlass: config.ui?.liquidGlass !== false },
   };
 }
 
@@ -278,7 +279,7 @@ function normalizeUI(value) {
   for (const [name, render] of Object.entries(slots)) {
     if (!["desktop", "menubar", "dock", "windowChrome"].includes(name) || typeof render !== "function") throw new TypeError(`Invalid DindbOS UI slot: ${name}`);
   }
-  return { ...value, slots };
+  return normalizeUIStyleOptions({ ...value, slots });
 }
 
 function normalizeTheme(value) {

@@ -25,9 +25,11 @@ const expected = {
     "installBuiltinApps",
     "installDindbOSBuiltins",
     "isolationSnapshot",
+    "mountSearchableSelect",
     "normalizeDindbOSHostConfig",
     "prepareDindbOSHost",
     "publicHostConfig",
+    "renderSearchableSelect",
   ],
   desktop: [
     "bootDindbOS",

@@ -1,0 +1,288 @@
+/* One UI 9-inspired app layouts reuse the registered apps and their actions. */
+@scope (.dindbos-host[data-ui-style='android']) to (.dindbos-host) {
+  :scope { --oneui-page: #f2f2f7; --oneui-group: #fff; --oneui-ink: #17171a; --oneui-secondary: #62626b; --oneui-blue: #1769e0; --oneui-soft: #e6efff; --oneui-line: #dcdce2; }
+  :scope[data-appearance='dark'] { --oneui-page: #080808; --oneui-group: #171719; --oneui-ink: #f5f5f7; --oneui-secondary: #aaaab2; --oneui-blue: #8bb6ff; --oneui-soft: #173154; --oneui-line: #35353b; }
+  :scope .dos-window-content { --content-bg: var(--oneui-group); --sidebar-bg: var(--oneui-page); --chrome-bg: var(--oneui-group); --control-bg: var(--oneui-page); --control-hover: var(--oneui-soft); --control-pressed: var(--oneui-soft); --text: var(--oneui-ink); --muted: var(--oneui-secondary); --line: var(--oneui-line); padding: 0; background: var(--oneui-page); color: var(--oneui-ink); font: 16px/1.45 Roboto, 'Segoe UI', sans-serif; }
+  :scope .dos-window-content :is(button, summary, select, input:not([type='checkbox']):not([type='range']), textarea) { font-family: inherit; }
+  :scope .dos-window-content :is(button, summary, select) { min-height: 48px; }
+  :scope .dos-window-content :is(button, summary, input, textarea, select):focus-visible { outline: 3px solid var(--oneui-blue); outline-offset: -3px; }
+  :scope .dos-window-content :is(input[type='search'], input[type='text'], input:not([type]), textarea) { font-size: 16px; }
+  :scope .dos-window-content :is(button, input, textarea, select):disabled { opacity: .45; }
+  :scope .dos-window-content :is(.productivity-sheet, .files-action-menu, .files-context-menu) { max-width: calc(100% - 24px); border-radius: 24px; background: var(--oneui-group); color: var(--oneui-ink); }
+  :scope .dos-window-content :is(.productivity-sheet, .files-action-menu, .files-context-menu) button { min-height: 48px; }
+
+  /* My Files: a reachable location strip and readable file rows. */
+  :scope .files-app, :scope .files-app.has-inspector { --content-bg: var(--oneui-group); --sidebar-bg: var(--oneui-page); --control-bg: var(--oneui-page); --control-hover: var(--oneui-soft); --text: var(--oneui-ink); --muted: var(--oneui-secondary); --line: var(--oneui-line); display: flex; flex-direction: column; min-height: 0; background: var(--oneui-page); }
+  :scope .files-app .files-sidebar { display: flex; flex: 0 0 auto; max-height: 120px; overflow: auto; flex-direction: row; gap: 12px; padding: 12px 16px; border: 0; background: var(--oneui-page); }
+  :scope .files-app .files-sidebar section { display: flex; gap: 8px; flex: 0 0 auto; }
+  :scope .files-app .files-sidebar h3 { display: none; }
+  :scope .files-app .files-sidebar button { display: flex; flex: 0 0 auto; min-height: 56px; gap: 10px; padding: 12px 16px; border-radius: 18px; background: var(--oneui-group); font-size: 14px; white-space: nowrap; }
+  :scope .files-sidebar .dos-mini-icon { color: #e8a327; }
+  :scope .files-main { flex: 1; min-height: 0; background: var(--oneui-group); border-radius: 24px 24px 0 0; overflow: hidden; }
+  :scope .files-app .files-commandbar { height: auto; min-height: 64px; flex-wrap: wrap; justify-content: flex-start; gap: 4px; padding: 8px 12px; background: var(--oneui-group); }
+  :scope .files-commandbar .files-folder-title { order: -1; flex: 1 0 calc(100% - 110px); max-width: none; font-size: 25px; font-weight: 500; }
+  :scope .files-app .files-commandbar :is(button, summary), :scope .files-app .files-commandbar .files-history button { min-width: 48px; min-height: 48px; width: 48px; height: 48px; padding: 12px; border-radius: 24px; }
+  :scope .files-commandbar .files-history { border: 0; background: none; }
+  :scope .files-app .files-addressbar { padding: 8px 16px; gap: 8px; background: var(--oneui-group); }
+  :scope .files-tabstrip { height: 56px; flex-basis: 56px; padding: 4px 12px; background: var(--oneui-group); }
+  :scope .files-app .files-tabs { height: 48px; }
+  :scope .files-app .files-tab-item button { min-height: 44px; height: 44px; font-size: 14px; }
+  :scope .files-app [data-files-new-tab] { width: 48px; min-height: 48px; height: 48px; flex: 0 0 48px; }
+  :scope .files-app[data-files-view='list'] .files-row { min-height: 64px; font-size: 15px; padding-block: 12px; }
+  :scope .files-app[data-files-view='list'] .files-row-name { font-size: 15px; }
+  :scope .files-app .files-inspector { flex: 0 0 auto; max-height: 220px; overflow: auto; border: 0; border-top: 1px solid var(--oneui-line); background: var(--oneui-page); padding: 16px; }
+  :scope .files-list, :scope .files-column-view { min-height: 100px; }
+
+  /* Settings: grouped rows stay accessible above the selected detail. */
+  :scope .settings-app:has(.settings-sidebar) { display: flex; flex-direction: column; min-height: 0; background: var(--oneui-page); }
+  :scope .settings-sidebar { padding: 20px 16px 12px; flex: 0 0 auto; max-height: 45%; overflow: auto; background: var(--oneui-page); border: 0; }
+  :scope .settings-search { margin: 0 0 16px; max-width: none; height: 48px; padding: 4px 16px; border: 0; border-radius: 24px; background: var(--oneui-group); }
+  :scope .settings-search input { font-size: 16px; }
+  :scope .settings-nav { display: grid; grid-template-columns: 1fr; gap: 0; overflow: visible; border-radius: 24px; background: var(--oneui-group); padding: 8px 0; }
+  :scope .settings-nav-item { display: grid; grid-template-columns: 36px minmax(0, 1fr); min-height: 56px; width: 100%; gap: 12px; padding: 8px 16px; border: 0; border-radius: 0; color: var(--oneui-ink); font-size: 16px; }
+  :scope .settings-nav-item span:last-child { position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal; }
+  :scope .settings-app .settings-nav-item.is-active :is(strong, small) { color: var(--oneui-blue); }
+  :scope .settings-nav-item strong { font-size: 16px; }
+  :scope .settings-nav-item small { display: block; font-size: 12px; color: var(--oneui-secondary); }
+  :scope .settings-nav-item + .settings-nav-item { border-top: 1px solid var(--oneui-line); }
+  :scope .settings-nav-icon { display: grid; width: 32px; height: 32px; border-radius: 10px; }
+  :scope .settings-app .settings-nav-item.is-active { background: var(--oneui-soft); color: var(--oneui-blue); box-shadow: none; }
+  :scope .settings-detail { flex: 1; min-height: 0; overflow: auto; padding: 8px 16px 24px; }
+  :scope .settings-detail-header { min-height: 72px; height: auto; margin-bottom: 12px; padding: 12px 0; flex-wrap: wrap; }
+  :scope .settings-detail-header h2 { font-size: 28px; font-weight: 500; }
+  :scope .settings-detail-header :is(button, p) { font-size: 14px; }
+  :scope :is(.settings-section-panel, .settings-preference-group, .settings-panel, .appearance-detail-group) { border-radius: 24px; padding: 16px; background: var(--oneui-group); }
+  :scope .settings-appearance-option { border-radius: 20px; }
+  :scope .settings-detail :is(button, select) { font-size: 14px; }
+
+  /* Samsung Notes and Reminder: rounded paper and clear task grouping. */
+  :scope .notes-app { display: flex; flex-direction: column; background: var(--oneui-page); }
+  :scope .notes-folders { display: none; }
+  :scope .notes-sidebar { display: flex; flex: 0 0 auto; max-height: 32%; padding: 12px 16px; border: 0; background: var(--oneui-page); }
+  :scope .notes-sidebar header { min-height: 48px; height: auto; padding: 0 4px; }
+  :scope .notes-sidebar header strong { display: block; font-size: 26px; font-weight: 500; }
+  :scope .notes-sidebar header strong span { display: inline; margin-left: 12px; font-size: 13px; }
+  :scope .notes-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px 0; }
+  :scope .notes-list button { min-height: 90px; gap: 8px; border-radius: 20px; padding: 16px; background: var(--oneui-group); border: 0; }
+  :scope .notes-list button[aria-pressed='true'] { background: #fff0c6; color: #29231a; }
+  :scope .notes-list button strong { font-size: 15px; }
+  :scope .notes-list button :is(span, time) { font-size: 12px; }
+  :scope .note-editor { flex: 1; min-height: 0; background: var(--oneui-group); border-radius: 24px 24px 0 0; }
+  :scope .notes-editor-toolbar { height: auto; min-height: 64px; padding: 8px 12px; gap: 4px; }
+  :scope .notes-editor-toolbar .productivity-search { flex: 1; min-width: 0; margin: 0; }
+  :scope .notes-editor-toolbar .productivity-search input { height: 48px; font-size: 16px; border: 0; border-radius: 24px; padding: 8px 16px; }
+  :scope .productivity-app .productivity-icon-button { width: 48px; height: 48px; flex: 0 0 48px; border-radius: 24px; color: var(--oneui-blue); }
+  :scope .note-editor > input[data-note-title] { min-height: 56px; padding: 8px 24px; font-size: 28px; font-weight: 500; }
+  :scope .note-editor > textarea { font-size: 17px; line-height: 1.7; padding: 12px 24px; }
+  :scope .note-toolbar { padding: 8px 24px; text-align: left; }
+  :scope .reminders-app { display: flex; flex-direction: column; background: var(--oneui-page); }
+  :scope .reminders-app .productivity-sidebar { padding: 16px; border: 0; flex: 0 0 auto; max-height: 225px; }
+  :scope .reminder-smart-lists { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  :scope .reminder-smart-lists button { padding: 10px 8px; border-radius: 20px; min-height: 84px; }
+  :scope .reminder-smart-lists button strong { font-size: 22px; }
+  :scope .reminder-smart-lists button span { font-size: 11px; }
+  :scope .reminders-app .productivity-sidebar h2 { display: none; }
+  :scope .reminder-local-list { min-height: 48px; }
+  :scope .reminder-main { flex: 1; padding: 0 16px 24px; border-radius: 24px 24px 0 0; background: var(--oneui-group); }
+  :scope .reminder-toolbar { height: 48px; }
+  :scope .reminder-main h1 { color: var(--oneui-ink); font-size: 30px; font-weight: 500; }
+  :scope .reminder-create { grid-template-columns: minmax(0,1fr) 48px; padding-block: 16px; }
+  :scope .reminder-create input { min-height: 48px; border-radius: 14px; background: var(--oneui-page); padding: 8px 12px; font-size: 16px; }
+  :scope .reminder-create input[type='date'] { grid-column: 1; grid-row: 2; font-size: 14px; }
+  :scope .reminder-create button { grid-column: 2; grid-row: 1 / 3; align-self: center; background: var(--oneui-soft); }
+  :scope .reminder-list li { min-height: 72px; }
+  :scope .reminder-list input[type='checkbox'] { width: 24px; height: 24px; flex-basis: 24px; }
+  :scope .reminder-list li > button { opacity: 1; }
+
+  /* Samsung Internet: address capsule, exposed tabs, no desktop traffic-light padding. */
+  :scope .browser-app { display: grid; grid-template-rows: auto auto minmax(0, 1fr); background: var(--oneui-page); }
+  :scope .browser-app .browser-toolbar { height: auto; min-height: 64px; padding: 8px; grid-template-columns: 96px minmax(0, 1fr) 48px; gap: 4px; background: var(--oneui-group); }
+  :scope .browser-app .browser-navigation-controls button { width: 48px; height: 48px; }
+  :scope .browser-app .browser-address-field { height: 48px; width: 100%; border: 0; border-radius: 24px; background: var(--oneui-page); }
+  :scope .browser-app .browser-toolbar .browser-address-field input { height: 44px; font-size: 16px; }
+  :scope .browser-app .browser-toolbar > :is(button, details), :scope .browser-app .browser-toolbar .browser-connection-trigger { min-width: 48px; width: 48px; height: 48px; }
+  :scope .browser-app .browser-tabs, :scope .browser-app .browser-tabs[data-single-tab='true'] { min-height: 56px; height: auto; padding: 4px 8px; background: var(--oneui-group); }
+  :scope .browser-app .browser-tabs[data-single-tab='true'] .browser-tab-list { display: flex; }
+  :scope .browser-app .browser-tabs[data-single-tab='true'] .browser-tab-actions { position: static; }
+  :scope .browser-app .browser-tab-item { height: 48px; min-width: 120px; background: var(--oneui-page); border-radius: 16px; }
+  :scope .browser-app .browser-tab-item [role='tab'] { height: 48px; font-size: 13px; padding-left: 44px; }
+  :scope .browser-app .browser-tabs .browser-tab-close { top: 0; left: 0; width: 44px; height: 48px; opacity: 1; }
+  :scope .browser-app .browser-tab-actions button { min-width: 48px; height: 48px; }
+  :scope .browser-app:has(.browser-tabs[data-single-tab='true']) { grid-template-rows: auto auto minmax(0, 1fr); }
+  :scope .browser-app .browser-connection-panel { top: 100%; right: 0; width: min(340px, calc(100cqw - 24px)); border-radius: 24px; padding: 20px; }
+
+  /* Calculator: Samsung's restrained white/green keypad grammar. */
+  :scope .calculator-app { --calculator-bg: var(--oneui-group); color: var(--oneui-ink); grid-template-rows: 56px minmax(110px, 1fr) minmax(340px, 2fr); padding: 0 12px 16px; background: var(--oneui-group); }
+  :scope .calculator-toolbar { padding: 4px; }
+  :scope .calculator-app .calculator-toolbar > button, :scope .calculator-mode > summary { width: 48px; height: 48px; min-height: 48px; padding: 12px; border: 0; background: var(--oneui-page); color: var(--oneui-secondary); box-shadow: none; }
+  :scope .calculator-app .calculator-display { padding: 16px 12px; }
+  :scope .calculator-app output { color: var(--oneui-ink); font-size: clamp(34px, 13cqw, 64px); font-weight: 400; }
+  :scope .calculator-app .calculator-keys { gap: 10px; padding: 8px 0 0; }
+  :scope .calculator-app .calculator-keys button { background: var(--oneui-page); color: var(--oneui-ink); font-size: 30px; border: 0; border-radius: 50%; min-height: 48px; }
+  :scope .calculator-app .calculator-keys button.is-operator { color: #25852e; background: var(--oneui-page); }
+  :scope .calculator-app .calculator-keys button[data-key='='] { color: white; background: #25852e; }
+  :scope .calculator-app .calculator-keys button[data-clear] { color: #d4463c; }
+  :scope .calculator-app .calculator-history { background: var(--oneui-group); color: var(--oneui-ink); border-radius: 24px; top: 56px; }
+  :scope .calculator-mode [role='menu'] { background: var(--oneui-group); color: var(--oneui-ink); }
+
+  /* Calendar: full-width month and an agenda below it, both kept usable. */
+  :scope .calendar-app { display: flex; flex-direction: column; overflow: auto; background: var(--oneui-group); }
+  :scope .calendar-main { flex: 0 0 auto; order: 0; min-height: 430px; }
+  :scope .calendar-sidebar { display: block; order: 1; padding: 16px; border: 0; overflow: visible; background: var(--oneui-page); }
+  :scope .calendar-sidebar > h2, :scope .calendar-mini { display: none; }
+  :scope .calendar-local { min-height: 48px; font-size: 15px; }
+  :scope .calendar-local input { width: 24px; height: 24px; }
+  :scope .calendar-topbar { min-height: 56px; height: auto; padding: 4px 16px; }
+  :scope .calendar-toolbar { padding: 8px 16px 16px; gap: 4px; }
+  :scope .calendar-toolbar h1 { font-size: 26px; font-weight: 500; }
+  :scope .calendar-toolbar > div > button:not(.productivity-icon-button) { min-height: 48px; }
+  :scope .calendar-month { min-height: 468px; grid-template-rows: repeat(6, minmax(78px, auto)); }
+  :scope .calendar-month button { align-items: center; border: 0; padding: 2px; }
+  :scope .calendar-month button > span { width: 32px; height: 32px; font-size: 15px; }
+  :scope .calendar-month button[aria-pressed='true'] { border-radius: 18px; background: var(--oneui-soft); }
+  :scope .calendar-month button.is-today > span { background: var(--oneui-blue); }
+  :scope .calendar-cell-events em { font-size: 9px; max-width: 100%; }
+  :scope .calendar-weekdays { text-align: center; padding-inline: 8px; font-size: 12px; }
+  :scope .calendar-agenda { padding: 20px; border-radius: 24px; background: var(--oneui-group); }
+  :scope .calendar-agenda h2 { font-size: 24px; }
+
+  /* Clock: daylight map retained, cities become stacked reachable groups. */
+  :scope .clock-app { --clock-accent: var(--oneui-blue); --text: var(--oneui-ink); --muted: var(--oneui-secondary); --line: var(--oneui-line); --control-bg: var(--oneui-page); --sidebar-bg: var(--oneui-page); display: flex; flex-direction: column; color: var(--oneui-ink); background: var(--oneui-page); }
+  :scope .clock-toolbar { order: 3; padding: 8px; height: auto; min-height: 64px; background: var(--oneui-group); }
+  :scope .clock-toolbar [role='tablist'] { width: 100%; justify-content: space-around; border: 0; background: none; gap: 0; }
+  :scope .clock-toolbar button { min-height: 48px; padding: 6px 10px; font-size: 13px; }
+  :scope .clock-toolbar button[aria-selected='true'] { background: var(--oneui-soft); color: var(--oneui-blue); box-shadow: none; }
+  :scope .clock-toolbar .clock-toolbar-add { position: static; flex: 0 0 48px; width: 48px; height: 48px; min-height: 48px; background: var(--oneui-soft); color: var(--oneui-blue); }
+  :scope .clock-pane { flex: 1; padding: 24px; min-height: 0; }
+  :scope [data-clock-view='world'] .clock-pane { overflow: auto; padding: 0; }
+  :scope .clock-world { height: auto; display: flex; flex-direction: column; }
+  :scope .clock-world-map { height: 180px; flex: 0 0 180px; }
+  :scope .clock-world-grid { display: flex; flex-direction: column; overflow: visible; padding: 16px; background: var(--oneui-page); }
+  :scope .clock-city { display: grid; grid-template-columns: 76px minmax(0, 1fr); flex: none; min-height: 116px; padding: 16px; border-radius: 24px; background: var(--oneui-group); text-align: left; }
+  :scope .clock-analog { grid-row: 1 / 3; width: 64px; height: 64px; margin: 0; }
+  :scope .clock-city-caption { justify-content: flex-start; flex-direction: column; align-items: flex-start; gap: 6px; }
+  :scope .clock-city h2 { font-size: 15px; }
+  :scope .clock-city time { font-size: 26px; }
+  :scope .clock-city-date { margin: 4px 0 0; color: var(--oneui-secondary); }
+  :scope .clock-city > button { opacity: 1; min-width: 48px; width: 48px; height: 48px; color: var(--oneui-secondary); }
+  :scope .clock-alarm { padding: 24px 16px; margin-bottom: 12px; border: 0; border-radius: 24px; background: var(--oneui-group); }
+  :scope .clock-alarm > button { min-width: 48px; }
+  :scope .clock-alarm-empty h2 { color: var(--oneui-ink); }
+  :scope .clock-app .clock-actions button { min-height: 56px; min-width: 100px; border: 0; font-size: 16px; }
+  :scope .clock-timer-ring::before { background: var(--oneui-page); }
+  :scope .clock-add-popover { top: auto; bottom: 80px; right: 12px; background: var(--oneui-group); border-radius: 24px; color: var(--oneui-ink); max-height: calc(100% - 100px); overflow: auto; }
+  :scope .clock-add-popover input, :scope .clock-add-popover select { min-height: 48px; font-size: 16px; }
+  :scope .clock-footer { order: 2; color: var(--oneui-secondary); font-size: 11px; }
+  :scope .clock-announcement { order: 1; }
+
+  /* Gallery and Music share media actions, with different content emphasis. */
+  :scope .media-app { display: flex; flex-direction: column; background: var(--oneui-group); }
+  :scope .media-sidebar { display: flex; flex: 0 0 auto; align-items: center; padding: 8px 16px; gap: 8px; overflow-x: auto; border: 0; background: var(--oneui-page); }
+  :scope .media-sidebar-caption, :scope .media-sidebar-note { display: none; }
+  :scope .media-sidebar > button { flex: 0 0 auto; min-height: 48px; padding: 8px 16px; font-size: 13px; border-radius: 24px; }
+  :scope .media-main { flex: 1; min-height: 0; }
+  :scope .media-toolbar, :scope .music-app .media-toolbar { min-height: 72px; height: auto; padding: 12px 16px; gap: 8px; background: var(--oneui-group); flex-wrap: wrap; }
+  :scope .media-toolbar-title strong, :scope .music-app .media-toolbar-title strong { font-size: 28px; font-weight: 500; }
+  :scope .media-toolbar-title small { display: block; font-size: 12px; }
+  :scope .media-toolbar-actions { display: flex; flex-wrap: wrap; gap: 0; }
+  :scope .media-toolbar-actions button { width: 48px; height: 48px; min-height: 48px; padding: 12px; border-radius: 24px; }
+  :scope .photos-app .media-toolbar { position: static; }
+  :scope .photo-grid { padding: 4px; gap: 4px; grid-template-columns: repeat(3, minmax(0,1fr)); }
+  :scope .photo-tile { min-height: 110px; border-radius: 4px; }
+  :scope .photo-tile span { padding: 6px; font-size: 11px; }
+  :scope .photo-viewer footer { min-height: 56px; flex-wrap: wrap; padding: 4px 12px; background: var(--oneui-page); }
+  :scope .photo-viewer footer button { min-width: 48px; }
+  :scope .media-library-footer { font-size: 12px; padding: 12px 16px; }
+  :scope .music-app .media-sidebar { flex-wrap: wrap; }
+  :scope .media-search { display: flex; flex: 1 0 100%; min-height: 48px; padding: 8px 16px; border-radius: 24px; background: var(--oneui-group); }
+  :scope .media-search input { font-size: 16px; }
+  :scope .music-app .media-main { display: flex; flex-direction: column; }
+  :scope .music-library { flex: 1; min-height: 80px; padding: 8px 16px 16px; }
+  :scope .music-track { min-height: 64px; padding: 12px; border-radius: 16px; }
+  :scope .music-track > span:nth-child(2) { font-size: 15px; }
+  :scope .music-player { position: static; display: flex; flex: 0 0 auto; flex-direction: column; height: auto; width: auto; min-width: 0; max-width: none; transform: none; margin: 8px 12px 12px; padding: 16px; gap: 12px; border: 0; border-radius: 24px; background: var(--oneui-page); }
+  :scope .music-now-playing { width: 100%; padding: 0; }
+  :scope .music-now-playing strong { font-size: 16px; }
+  :scope .music-now-playing small { font-size: 12px; }
+  :scope .music-artwork { display: grid; }
+  :scope .music-playback { display: block; width: 100%; }
+  :scope .music-transport { position: static; justify-content: center; gap: 24px; }
+  :scope .music-transport button { width: 48px; height: 48px; }
+  :scope .music-timeline { position: static; margin-top: 8px; min-height: 28px; }
+  :scope .music-volume { display: flex; align-items: center; width: 100%; gap: 12px; }
+  :scope .music-volume input { flex: 1; }
+
+  /* Document tools, app drawer and utilities retain their full capabilities. */
+  :scope .text-app { background: var(--oneui-group); }
+  :scope .text-app textarea { padding: 24px; font: 16px/1.65 var(--mono); color: var(--oneui-ink); background: var(--oneui-group); }
+  :scope .text-app footer { min-height: 56px; padding: 8px 16px; gap: 12px; flex-wrap: wrap; background: var(--oneui-page); }
+  :scope .text-app button { border-radius: 24px; padding: 10px 20px; color: var(--oneui-blue); }
+  :scope .dos-window-titlebar > .text-document-status { top: 0; right: 4px; min-height: 48px; }
+  :scope .text-document-status > button { min-height: 48px; padding: 8px 12px; font-size: 13px; border-radius: 24px; }
+  :scope .viewer-app { color: var(--oneui-ink); background: var(--oneui-page); }
+  :scope .viewer-header { min-height: 72px; padding: 12px 16px; flex-wrap: wrap; gap: 12px; background: var(--oneui-group); }
+  :scope .viewer-header h2 { font-size: 22px; }
+  :scope .viewer-toolbar { flex-wrap: wrap; }
+  :scope .viewer-toolbar :is(button, summary) { min-width: 48px; min-height: 48px; border-radius: 24px; }
+  :scope .viewer-preview { min-height: 120px; background: var(--oneui-page); }
+  :scope .viewer-markdown { padding: 24px; font-size: 16px; }
+  :scope .viewer-empty { padding: 32px 24px; gap: 16px; }
+  :scope .viewer-empty h2 { font-size: 28px; font-weight: 500; }
+  :scope .applications-app { background: var(--oneui-page); }
+  :scope .applications-header { height: auto; min-height: 72px; padding: 12px 16px; gap: 8px; background: var(--oneui-page); }
+  :scope .applications-app .applications-search { height: 48px; padding: 8px 16px; border-radius: 24px; background: var(--oneui-group); }
+  :scope .applications-app .applications-search input { height: 44px; font-size: 17px; letter-spacing: 0; }
+  :scope .applications-actions > summary { min-width: 48px; min-height: 48px; padding: 10px; }
+  :scope .applications-categories { padding: 8px 16px; gap: 8px; }
+  :scope .applications-categories button { min-height: 48px; padding: 8px 16px; border-radius: 24px; font-size: 13px; background: var(--oneui-group); }
+  :scope .applications-categories button[aria-selected='true'] { color: var(--oneui-blue); background: var(--oneui-soft); }
+  :scope .applications-grid { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 20px 8px; }
+  :scope .applications-grid .applications-item { min-height: 116px; gap: 10px; border-radius: 24px; }
+  :scope .applications-icon { width: 60px; height: 60px; flex-basis: 60px; }
+  :scope .applications-item-name { font-size: 13px; }
+  :scope .terminal-app { padding: 20px; background: #101114; color: #bdebbb; font: 14px/1.65 var(--mono); }
+  :scope .terminal-app form { align-items: center; min-height: 48px; flex-wrap: wrap; }
+  :scope .terminal-app [data-prompt] { font-size: 12px; overflow-wrap: anywhere; }
+  :scope .terminal-app form input { flex: 1 1 120px; min-height: 48px; font-size: 16px; }
+  :scope .activity-app { background: var(--oneui-page); color: var(--oneui-ink); padding: 16px; }
+  :scope .activity-controls { display: flex; flex-wrap: wrap; padding: 0 0 16px; gap: 8px; }
+  :scope .activity-controls > :is(input, select) { min-width: 0; flex: 1 1 140px; min-height: 48px; border-radius: 24px; padding: 10px 16px; font-size: 14px; }
+  :scope .activity-grid { display: flex; flex-direction: column; background: var(--oneui-group); border-radius: 24px; }
+  :scope .activity-table { max-height: 50cqh; border: 0; }
+  :scope .activity-row { min-height: 64px; padding-block: 12px; font-size: 13px; }
+  :scope .activity-detail { max-height: 45cqh; overflow: auto; padding: 16px; border: 0; background: var(--oneui-group); }
+  :scope .activity-bottom-summary { border: 0; border-radius: 24px; background: var(--oneui-group); margin-top: 12px; padding: 16px; }
+  :scope .portfolio-app { height: 100%; overflow: auto; padding: 32px 24px; background: var(--oneui-page); }
+  :scope .portfolio-app h1 { font-size: 36px; font-weight: 500; letter-spacing: -1px; }
+  :scope .portfolio-app > p { font-size: 16px; line-height: 1.65; color: var(--oneui-secondary); }
+  :scope .portfolio-grid { grid-template-columns: 1fr; gap: 16px; }
+  :scope .portfolio-grid article { padding: 24px; border: 0; border-radius: 24px; background: var(--oneui-group); }
+  :scope .portfolio-grid article strong { font-size: 22px; font-weight: 500; }
+  :scope .portfolio-grid article :is(span, p) { font-size: 15px; }
+
+  /* Shared pane state preserves the original editor and Settings handlers. */
+  :scope .dos-window[data-mobile-pane='list'] .settings-detail,
+  :scope .dos-window[data-mobile-pane='list'] .note-editor:not(:has([data-productivity-error]:not([hidden]))) { display: none; }
+  :scope .dos-window[data-mobile-pane='list']:has([data-productivity-error]:not([hidden])) .notes-sidebar { display: none; }
+  :scope .dos-window[data-mobile-pane='detail'] :is(.notes-sidebar, .settings-sidebar) { display: none; }
+  :scope .dos-window[data-mobile-pane='list'] :is(.notes-sidebar, .settings-sidebar) { flex: 1; max-height: none; overflow: auto; }
+  :scope .dos-window[data-mobile-pane='list'] .notes-list { flex: 1; align-content: start; }
+  :scope .notes-sidebar header { display: flex; justify-content: space-between; gap: 12px; }
+  :scope [data-mobile-note-new], :scope [data-mobile-app-back] { min-width: 48px; min-height: 48px; border: 0; border-radius: 24px; color: var(--oneui-blue); background: var(--oneui-soft); padding: 8px 12px; font-size: 15px; }
+  :scope [data-mobile-app-back] svg, :scope [data-mobile-note-new] svg { width: 22px; height: 22px; }
+  :scope .settings-detail-header [data-mobile-app-back] { flex: 0 0 auto; }
+  :scope [data-mobile-note-search] { display: block; width: 100%; max-width: none; padding: 8px 0; }
+  :scope [data-mobile-note-search] input { width: 100%; min-height: 48px; padding: 8px 16px; border: 0; border-radius: 24px; background: var(--oneui-group); color: var(--oneui-ink); font-size: 16px; }
+
+  @container (max-width: 350px) {
+    :scope .files-app .files-commandbar { padding-inline: 8px; }
+    :scope .reminder-smart-lists { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    :scope .reminders-app .productivity-sidebar { max-height: 235px; }
+    :scope .clock-toolbar button { font-size: 11px; padding-inline: 6px; }
+    :scope .clock-toolbar .clock-toolbar-add { flex-basis: 44px; width: 44px; }
+    :scope .calculator-app { grid-template-rows: 56px minmax(80px, 1fr) minmax(300px, 2fr); }
+    :scope .calendar-toolbar { flex-wrap: wrap; }
+    :scope .calendar-toolbar > div { margin-left: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { :scope .dos-window-content * { transition: none; animation: none; } }
+}

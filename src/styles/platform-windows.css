@@ -1,0 +1,73 @@
+@scope (.dindbos-host[data-ui-style="windows"]) to (.dindbos-host) {
+  :scope { --font-ui: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; --windows-chrome: #eef1f4; --windows-flyout: rgb(242 246 249 / .96); }
+  :scope[data-appearance="dark"] { --windows-chrome: #25282c; --windows-flyout: rgb(36 39 43 / .97); }
+  :scope .dos-desktop { inset: 12px 12px 70px; direction: ltr; }
+  .dos-windows-taskbar { position: absolute; inset: auto 0 0; z-index: 1000; display: grid; grid-template-columns: minmax(92px, 1fr) minmax(0, auto) minmax(120px, 1fr); align-items: center; height: 54px; padding: 4px 10px; gap: 8px; border-top: 1px solid var(--line); background: var(--windows-flyout); color: var(--text); backdrop-filter: blur(24px); }
+  .dos-windows-taskbar-apps { display: flex; align-items: center; min-width: 0; gap: 4px; }
+  .dos-windows-start { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; padding: 10px; border: 0; border-radius: 4px; background: transparent; color: var(--accent); box-shadow: none; }
+  .dos-windows-start svg { width: 22px; height: 22px; fill: currentColor; }
+  .dos-windows-start:hover, .dos-windows-start.is-open { background: var(--accent-soft); }
+  .dos-windows-taskbar .dos-dock { position: static; transform: none; width: auto; max-width: none; min-width: 0; height: 44px; align-items: center; gap: 3px; padding: 0 2px; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+  :scope .dos-windows-taskbar .dos-dock[data-liquid-glass-mode],
+  :scope[data-appearance="dark"] .dos-windows-taskbar .dos-dock[data-liquid-glass-mode] {
+    --dock-background: transparent; --dock-border: 0; --dock-shadow: none;
+    background: transparent; border: 0; box-shadow: none;
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  }
+  .dos-windows-taskbar .dos-dock-item { --dock-proximity: 0 !important; flex: 0 0 40px; width: 40px; min-width: 40px; height: 40px; padding: 6px; border-radius: 4px; transition: background 130ms; }
+  .dos-windows-taskbar .dos-dock-item:hover, .dos-windows-taskbar .dos-dock-item.is-active { background: var(--accent-soft); }
+  .dos-windows-taskbar .dos-dock-item.is-running .dos-dock-glyph::after { bottom: -4px; width: 6px; height: 3px; border-radius: 2px; background: var(--muted); }
+  .dos-windows-taskbar .dos-dock-item.is-active .dos-dock-glyph::after { width: 16px; background: var(--accent); }
+  .dos-windows-taskbar .dos-dock-item.is-launching .dos-dock-glyph { animation: none; }
+  .dos-windows-taskbar .dos-dock-separator { height: 24px; }
+  .dos-windows-tray { display: flex; justify-content: flex-end; min-width: 0; height: 44px; }
+  .dos-windows-tray .dos-menu-status { gap: 2px; }
+  .dos-windows-tray button { display: inline-flex; justify-content: center; align-items: center; height: 40px; min-width: 32px; padding: 4px 7px; border: 0; border-radius: 4px; background: transparent; color: inherit; box-shadow: none; }
+  .dos-windows-tray button:hover { background: var(--accent-soft); }
+  .dos-windows-tray .dos-clock { display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 3px; font-size: 11px; }
+  .dos-windows-app-menus { position: relative; justify-self: start; font-size: 12px; }
+  .dos-windows-app-menus > summary { padding: 10px 8px; border-radius: 4px; cursor: pointer; list-style: none; }
+  .dos-windows-app-menus > summary::-webkit-details-marker { display: none; }
+  .dos-windows-app-menus > summary:hover { background: var(--accent-soft); }
+  .dos-windows-app-menus .dos-menubar { position: absolute; inset: auto auto 48px 0; width: max-content; max-width: calc(100cqw - 20px); height: auto; min-height: 40px; padding: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--windows-flyout); box-shadow: var(--menu-shadow); }
+  .dos-windows-app-menus .dos-app-menus { flex-wrap: wrap; }
+  .dos-shell-menu { top: auto; bottom: 108px; max-height: calc(100% - 124px); border-radius: 8px; background: var(--windows-flyout); }
+  .dos-launcher { top: auto; bottom: 64px; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 80px); border-radius: 8px; background: var(--windows-flyout); }
+  .dos-launcher-search { padding: 20px; }
+  .dos-launcher-search input { font-size: 14px; }
+  .dos-launcher-results button { border-radius: 4px; }
+  .dos-control-center, .dos-calendar { top: auto; bottom: 64px; max-height: calc(100% - 80px); border-radius: 8px; background: var(--windows-flyout); }
+  .dos-window, .dos-window[data-window-chrome="document"], .dos-window[data-window-chrome="integrated"] { grid-template-rows: 40px minmax(0, 1fr); border-radius: 8px; backdrop-filter: none; }
+  .dos-window > .dos-window-titlebar, .dos-window[data-window-chrome="integrated"] > .dos-window-titlebar, .dos-window[data-window-chrome="document"] > .dos-window-titlebar { position: static; display: grid; grid-template-columns: minmax(0, 1fr) 138px; width: auto; height: 40px; min-height: 40px; padding: 0 0 0 16px; gap: 8px; background: var(--windows-chrome); border-bottom: 1px solid var(--line); }
+  :scope .dos-window > .dos-window-titlebar { background: var(--windows-chrome) !important; box-shadow: none; backdrop-filter: none !important; }
+  .dos-window[data-window-chrome="integrated"] > .dos-window-content { grid-row: 2; }
+  .dos-window > .dos-window-titlebar > strong, .dos-window[data-window-chrome="integrated"] > .dos-window-titlebar > strong { display: block; grid-column: 1; grid-row: 1; text-align: left; font-weight: 400; }
+  .dos-window-titlebar-spacer { display: none; }
+  .dos-window .dos-window-controls { grid-column: 2; grid-row: 1; width: 138px; height: 40px; gap: 0; }
+  .dos-window .dos-window-controls button { flex: 0 0 46px; width: 46px; height: 40px; min-width: 46px; min-height: 40px; border: 0; border-radius: 0; background: transparent; color: var(--text); box-shadow: none; font: 18px/1 var(--font-ui); }
+  .dos-window .dos-window-controls button::before { display: none; }
+  .dos-window .dos-window-controls button span { opacity: 1; }
+  .dos-window .dos-window-controls [data-window-minimize] { order: 0; }
+  .dos-window .dos-window-controls [data-window-maximize] { order: 1; }
+  .dos-window .dos-window-controls [data-window-close] { order: 2; }
+  .dos-window .dos-window-controls [data-window-maximize] span { font-size: 0; width: 10px; height: 10px; border: 1px solid currentColor; }
+  .dos-window .dos-window-controls button:hover, .dos-window:not(.is-active) .dos-window-controls button:hover { background: var(--accent-soft); }
+  .dos-window .dos-window-controls [data-window-close]:hover, .dos-window:not(.is-active) .dos-window-controls [data-window-close]:hover { background: #c42b1c; color: white; }
+  .dos-window:not(.is-active) .dos-window-controls button { background: transparent; color: var(--muted); }
+  .dos-window.is-maximized { inset: 0 0 62px !important; border-radius: 0; }
+  .files-app .files-sidebar { padding-top: 12px; }
+  .browser-app .browser-toolbar { padding-left: 16px; }
+  .dos-windows-taskbar :is(button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  @container (max-width: 760px) {
+    .dos-windows-taskbar { grid-template-columns: 70px minmax(0, 1fr) 80px; padding-inline: 4px; gap: 2px; }
+    .dos-windows-app-menus > summary { padding-inline: 3px; font-size: 11px; }
+    .dos-windows-tray .dos-status-button, .dos-windows-tray .dos-clock-date { display: none; }
+    .dos-window, .dos-window:not(.is-maximized) { inset: 8px 4px 62px !important; max-width: calc(100cqw - 8px); }
+    .files-app .files-commandbar { padding-top: 7px; }
+  }
+  @media (forced-colors: active) {
+    .dos-windows-taskbar, .dos-windows-app-menus .dos-menubar { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
+    .dos-windows-start { color: ButtonText; }
+    .dos-window .dos-window-controls button:focus-visible { outline-color: Highlight; }
+  }
+}

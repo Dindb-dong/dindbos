@@ -13,3 +13,12 @@
 @import "./applications.css";
 @import "./liquid-glass.css";
 @import "./control-center.css";
+@import "./mobile-tabbar.css";
+@import "./searchable-select.css";
+@import "./platform-windows.css";
+@import "./platform-ios.css";
+@import "./platform-android.css";
+@import "./platform-windows-apps.css";
+@import "./platform-android-apps.css";
+@import "./platform-ios-apps.css";
+@import "./platform-recents.css";

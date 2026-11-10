@@ -15,7 +15,10 @@ try {
   await mkdir(output, { recursive: true });
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  await page.goto(`${base}/?qa=fresh`);
+  const fixtureUrl = new URL(base);
+  fixtureUrl.searchParams.set('qa', 'fresh');
+  fixtureUrl.searchParams.set('style', 'macos');
+  await page.goto(fixtureUrl.href);
   await page.locator('.dos-boot-screen').waitFor({ state: 'detached' });
   await page.locator('[data-dock-app-id="applications"]').click();
   const header = page.locator('.applications-header');

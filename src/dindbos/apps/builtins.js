@@ -46,6 +46,13 @@ export function installBuiltinApps(os, options = {}) {
     set: (patch) => os.setAppearance?.(patch),
     subscribe: (listener) => os.bus?.on?.("appearance:change", listener) || (() => {}),
   };
+  const uiStyle = {
+    get: () => os.getUIStylePreference(),
+    set: (patch) => os.setUIStylePreference(patch),
+    subscribe: (listener) => os.bus.on("ui:preference-change", listener),
+    owns: (target) => target.closest(".dindbos-host") === os.root,
+    status: () => os.memoryOnly ? "session" : os.uiStyleSaveFailed ? "failed" : "persistent",
+  };
   const portfolioData = options.portfolioData || DEFAULT_PORTFOLIO_DATA;
   const includePortfolio = options.includePortfolio !== false;
   const userHome = os.session.home || "/home/guest";
@@ -215,7 +222,7 @@ export function installBuiltinApps(os, options = {}) {
       capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read", "browser.read"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
     },
-    render: ({ content, os: runtime, context }) => renderSettings(runtime, content, appearance, context?.section || context?.settingsSection),
+    render: ({ content, os: runtime, context }) => renderSettings(runtime, content, appearance, context?.section || context?.settingsSection, uiStyle),
   });
   for (const [id, name, render, width, height, accepts] of [
     ["notes", "Notes", renderNotes, 840, 580],
@@ -344,6 +351,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
   const navigationHistory = restoredHistory[restoredIndex] === currentPath ? restoredHistory : [currentPath];
   let navigationIndex = navigationHistory === restoredHistory ? restoredIndex : 0;
   let dismissToolbarMenus = null;
+  let dismissLocations = () => {};
   let disconnectColumns = null;
   let fileIconCleanups = [];
   let cancelInlineRename = () => {};
@@ -416,8 +424,11 @@ function renderFiles(os, content, path, windowApi, context = {}) {
     cancelTabDrag();
     if (disposed) return;
     const generation = ++drawGeneration;
-    currentPath = os.fs.normalize(nextPath);
-    if (!os.fs.resolve(currentPath)) currentPath = os.session.home || "/";
+    let targetPath = os.fs.normalize(nextPath);
+    if (!os.fs.resolve(targetPath)) targetPath = os.session.home || "/";
+    if (os.localMounts?.isMountedPath(targetPath)) await os.localMounts.syncDirectory(targetPath);
+    if (disposed || generation !== drawGeneration) return;
+    currentPath = targetPath;
     if (!options.skipHistory && navigationHistory[navigationIndex] !== currentPath) {
       navigationHistory.splice(navigationIndex + 1);
       navigationHistory.push(currentPath);
@@ -425,7 +436,6 @@ function renderFiles(os, content, path, windowApi, context = {}) {
     }
     const activeTab = folderTabs.find((tab) => tab.id === activeTabId);
     Object.assign(activeTab, { path: currentPath, history: [...navigationHistory], historyIndex: navigationIndex });
-    if (os.localMounts?.isMountedPath(currentPath)) await os.localMounts.syncDirectory(currentPath);
     selectedPath = nextSelectedPath ? os.fs.normalize(nextSelectedPath) : currentPath;
     if (!options.preserveSelection) {
       selectedPaths = new Set([selectedPath]);
@@ -454,6 +464,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
     sidebar[0].items = favoriteItems();
     const activeSidebarItem = sidebar.flatMap((group) => group.items).filter((item) => isWithinPath(currentPath, item.path)).sort((a, b) => b.path.length - a.path.length)[0];
 
+    dismissLocations(false);
     content.innerHTML = `
       <section class="files-app${inspectorOpen ? " has-inspector" : ""}" tabindex="0" data-files-view="${viewMode}" style="--app-sidebar-width:205px">
         <aside class="files-sidebar">
@@ -471,6 +482,11 @@ function renderFiles(os, content, path, windowApi, context = {}) {
           `).join("")}
         </aside>
         <div class="files-main">
+          <nav class="files-mobile-path" aria-label="Folder location">
+            ${currentPath !== '/' ? `<button type="button" data-files-locations="path" aria-label="Show parent folders" aria-haspopup="dialog">${filesToolIcon('more')}</button><span aria-hidden="true">/</span>` : ''}
+            <span class="files-current-folder" tabindex="-1" aria-current="page" title="${escapeAttr(currentPath)}">${escapeHtml(currentPath === (os.session.home || '/home/guest') ? 'Home' : currentPath === '/' ? 'DindbOS' : os.fs.basename(currentPath))}</span>
+            <button type="button" data-files-locations="all" aria-haspopup="dialog">Locations ${filesToolIcon('chevron')}</button>
+          </nav>
           <div class="files-toolbar files-commandbar" data-window-drag role="toolbar" aria-label="File actions">
             <div class="files-history">
               <button type="button" data-files-back aria-label="Back" title="Back" ${navigationIndex === 0 ? "disabled" : ""}>${filesToolIcon("back")}</button>
@@ -557,6 +573,66 @@ function renderFiles(os, content, path, windowApi, context = {}) {
     `;
     const appRoot = content.querySelector(".files-app");
     appRoot.dataset.filesPath = currentPath;
+    content.querySelectorAll('[data-files-locations]').forEach(trigger => trigger.addEventListener('click', () => {
+      dismissLocations(false);
+      const doc = content.ownerDocument;
+      const dialog = doc.createElement('dialog');
+      dialog.className = 'files-locations-sheet';
+      dialog.setAttribute('aria-label', 'Locations');
+      const pathRows = fileBreadcrumbs(os, currentPath).map(crumb => crumb.path === currentPath
+        ? `<p aria-current="page">${escapeHtml(crumb.label)} <small>Current folder</small></p>`
+        : `<button type="button" data-location="${escapeAttr(crumb.path)}">${escapeHtml(crumb.label)}<small>${escapeHtml(crumb.path)}</small></button>`).join('');
+      dialog.innerHTML = `<header><h2 tabindex="-1">Locations</h2><button type="button" data-close-locations>Done</button></header><div class="files-locations-body"><p role="alert" tabindex="-1" hidden></p><h3 tabindex="-1" data-location-path>Current path</h3>${pathRows}${sidebar.map(group => `<h3>${escapeHtml(group.section)}</h3>${group.items.map(item => `<button type="button" data-location="${escapeAttr(item.path)}">${escapeHtml(item.label)}<small>${escapeHtml(item.path)}</small></button>`).join('')}`).join('')}</div>`;
+      const backdrop = doc.createElement('div');
+      backdrop.className = 'files-locations-backdrop';
+      appRoot.append(backdrop, dialog);
+      const outside = event => {
+        const systemBack = event.target.closest?.('[data-android-action="back"]');
+        if (systemBack?.closest('.dindbos-host') === content.closest('.dindbos-host')) return;
+        if (!dialog.contains(event.target) && !trigger.contains(event.target)) dismissLocations(false);
+      };
+      const back = event => { event.preventDefault(); dismissLocations(); };
+      doc.addEventListener('pointerdown', outside, true);
+      content.addEventListener('dindbos:back', back);
+      dismissLocations = (restoreFocus = true) => {
+        doc.removeEventListener('pointerdown', outside, true);
+        content.removeEventListener('dindbos:back', back);
+        dialog.close();
+        dialog.remove();
+        backdrop.remove();
+        trigger.setAttribute('aria-expanded', 'false');
+        if (restoreFocus && trigger.isConnected) trigger.focus({ preventScroll: true });
+        dismissLocations = () => {};
+      };
+      dialog.querySelector('[data-close-locations]').addEventListener('click', () => dismissLocations());
+      dialog.addEventListener('cancel', event => { event.preventDefault(); dismissLocations(); });
+      dialog.addEventListener('keydown', event => {
+        event.stopPropagation();
+        if (event.key === 'Escape') { event.preventDefault(); dismissLocations(); }
+        if (event.key === 'Tab') {
+          const buttons = [...dialog.querySelectorAll('button:not(:disabled)')];
+          if (event.shiftKey && (doc.activeElement === buttons[0] || !buttons.includes(doc.activeElement))) { event.preventDefault(); buttons.at(-1)?.focus(); }
+          else if (!event.shiftKey && doc.activeElement === buttons.at(-1)) { event.preventDefault(); buttons[0]?.focus(); }
+        }
+      });
+      dialog.querySelectorAll('[data-location]').forEach(button => button.addEventListener('click', async () => {
+        try {
+          os.fs.list(button.dataset.location);
+          await draw(button.dataset.location);
+          const heading = content.querySelector('.files-current-folder');
+          heading?.focus({ preventScroll: true });
+        } catch (error) {
+          const alert = dialog.querySelector('[role=alert]');
+          alert.textContent = `Could not open this folder. ${error.message}`;
+          alert.hidden = false;
+          dialog.querySelector('.files-locations-body').scrollTop = 0;
+          alert.focus({ preventScroll: true });
+        }
+      }));
+      trigger.setAttribute('aria-expanded', 'true');
+      dialog.show();
+      dialog.querySelector(trigger.dataset.filesLocations === 'path' ? '[data-location-path]' : 'h2').focus();
+    }));
     const registeredApps = new Map(os.apps.list().map((app) => [app.id, app]));
     fileIconCleanups = [...content.querySelectorAll("[data-files-app-icon]")].map((element) => mountAppIcon(element, registeredApps.get(element.dataset.filesAppIcon)?.icon || element.dataset.filesIconFallback || "app"));
     content.querySelectorAll("[data-files-tab]").forEach((button) => {
@@ -1229,6 +1305,7 @@ function renderFiles(os, content, path, windowApi, context = {}) {
   });
   return () => {
     disposed = true;
+    dismissLocations(false);
     cancelInlineRename();
     finishInitialDraw(new Error("Finder window closed before opening"));
     for (const cancel of pendingTabTransfers) cancel();
@@ -1535,7 +1612,7 @@ export function filesActionTargets(currentPath, selectedPath, selectedPaths = []
   return [];
 }
 
-function renderBreadcrumb(os, currentPath) {
+function fileBreadcrumbs(os, currentPath) {
   const normalized = os.fs.normalize(currentPath);
   const parts = normalized.split("/").filter(Boolean);
   const crumbs = [{ label: "DindbOS", path: "/" }];
@@ -1544,6 +1621,11 @@ function renderBreadcrumb(os, currentPath) {
     cursor = os.fs.join(cursor, part);
     crumbs.push({ label: part, path: cursor });
   });
+  return crumbs;
+}
+
+function renderBreadcrumb(os, currentPath) {
+  const crumbs = fileBreadcrumbs(os, currentPath);
   return crumbs.map((crumb, index) => `
     <button type="button" data-nav="${escapeAttr(crumb.path)}">
       ${escapeHtml(crumb.label)}
@@ -4558,7 +4640,7 @@ const SETTINGS_SECTIONS = [
 
 const settingsCleanups = new WeakMap();
 
-function renderSettings(os, content, appearance = null, requestedSection) {
+function renderSettings(os, content, appearance = null, requestedSection, uiStyle) {
   let initialSection = requestedSection || content.querySelector(".settings-app")?.dataset.settingsActive || "appearance";
   let navigate = null;
   const onNavigate = (event) => {
@@ -4576,11 +4658,28 @@ function renderSettings(os, content, appearance = null, requestedSection) {
       <p class="settings-muted" role="status">Loading Settings…</p>
     </section>
   `;
-  renderSettingsContent(os, content, appearance, () => disposed, () => initialSection).then((rendered) => {
+  renderSettingsContent(os, content, appearance, () => disposed, () => initialSection, uiStyle).then((rendered) => {
     if (disposed) { rendered?.cleanup(); return; }
     navigate = rendered.select;
     const appearanceCleanup = appearance ? wireAppearanceControls(content, appearance) : () => {};
-    unsubscribe = () => { appearanceCleanup(); rendered.cleanup(); };
+    const updateUI = () => {
+      const preference = uiStyle.get();
+      for (const button of content.querySelectorAll("[data-ui-preference-mode]")) button.setAttribute("aria-pressed", String((preference[button.dataset.uiPreferenceMode] || "auto") === button.dataset.uiPreferenceStyle));
+      content.querySelector("[data-ui-preference-status]").textContent = uiStyle.status() === "failed"
+        ? "Changed for this session. Browser storage could not save your choice; reloading may restore the previous choice."
+        : uiStyle.status() === "session" ? "Applies to this session. Automatic uses the configured defaults."
+          : "Remembered in this browser. Automatic uses the configured defaults.";
+    };
+    const onUI = (event) => {
+      const button = event.target.closest("[data-ui-preference-mode]");
+      if (!button || !content.contains(button) || !uiStyle.owns(button)) return;
+      uiStyle.set({ [button.dataset.uiPreferenceMode]: button.dataset.uiPreferenceStyle === "auto" ? null : button.dataset.uiPreferenceStyle });
+      if (button.isConnected) button.focus({ preventScroll: true });
+    };
+    updateUI();
+    content.addEventListener("click", onUI);
+    const unsubscribeUI = uiStyle.subscribe(updateUI);
+    unsubscribe = () => { appearanceCleanup(); unsubscribeUI(); content.removeEventListener("click", onUI); rendered.cleanup(); };
   }).catch((error) => {
     if (disposed) return;
     content.innerHTML = `
@@ -4593,7 +4692,7 @@ function renderSettings(os, content, appearance = null, requestedSection) {
   return () => { settingsCleanups.get(content)?.(); settingsCleanups.delete(content); };
 }
 
-async function renderSettingsContent(os, content, appearance, isDisposed = () => false, initialSection = "appearance") {
+async function renderSettingsContent(os, content, appearance, isDisposed = () => false, initialSection = "appearance", uiStyle) {
   const snapshot = await settingsRuntimeSnapshot(os);
   if (isDisposed()) return;
   const sectionPrefix = content.dataset.settingsPrefix ||= `settings-${Math.random().toString(36).slice(2, 9)}`;
@@ -4683,7 +4782,7 @@ async function renderSettingsContent(os, content, appearance, isDisposed = () =>
           await os.resolveRemoteSyncConflict(button.dataset.conflictPath, { action: button.dataset.syncAction });
         }
       } finally {
-        renderSettings(os, content, appearance);
+        renderSettings(os, content, appearance, undefined, uiStyle);
       }
     });
   });
@@ -4772,6 +4871,15 @@ export function settingsRuntimeMarkup(snapshot, appearance = {}, prefix = "setti
           <div><h2 tabindex="-1">System Settings</h2><p>Personalize your desktop and manage your environment.</p></div>
         </header>
         <section class="settings-section is-active" id="${escapeAttr(prefix)}-section-appearance" data-settings-section="appearance" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-appearance">
+          <section class="settings-panel ui-style-settings" aria-label="UI style">
+            <header><h3>UI style</h3></header>
+            <p>Choose each layout. Open apps stay in place.</p>
+            ${[["desktop", "Desktop UI", [["macos", "macOS"], ["windows", "Windows"]]], ["mobile", "Mobile UI", [["ios", "iOS"], ["android", "Samsung"]]]].map(([mode, label, styles]) => `
+              <div class="ui-style-setting-row"><strong>${label}</strong><div class="ui-style-buttons" role="group" aria-label="${label}">
+                ${[["auto", "Automatic"], ...styles].map(([style, title]) => `<button type="button" data-ui-preference-mode="${mode}" data-ui-preference-style="${style}" aria-pressed="${style === "auto"}">${title}</button>`).join("")}
+              </div></div>`).join("")}
+            <p data-ui-preference-status role="status">Automatic uses the configured defaults.</p>
+          </section>
           ${appearanceMarkup(appearance, { wallpaper: false, dock: false })}
         </section>
         <section class="settings-section" id="${escapeAttr(prefix)}-section-wallpaper" data-settings-section="wallpaper" role="tabpanel" aria-labelledby="${escapeAttr(prefix)}-tab-wallpaper" hidden>

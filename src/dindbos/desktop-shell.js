@@ -1,3 +1,8 @@
+import { mountMobileAppNavigation } from "../ui/platforms/mobile-app-navigation.js";
+import { normalizeUIStyleOptions, resolveUIStyle } from "./ui-style.js";
+import { mountWindowsShell } from "../ui/platforms/windows.js";
+import { mountIOSShell } from "../ui/platforms/ios.js";
+import { mountAndroidShell } from "../ui/platforms/android.js";
 import { createDesktopRenderer } from "../ui/desktop-view.js";
 import { ShellPanels } from "../ui/shell-panels.js";
 import { attachLiquidGlass } from "../ui/liquid-glass.js";
@@ -17,6 +22,7 @@ export class DesktopShell {
   mount(root) {
     this.destroy();
     this.root = root;
+    this.styleOptions = normalizeUIStyleOptions(this.os.uiOptions || {});
     root.innerHTML = `
       <main class="dos-shell">
         <header class="dos-menubar"></header>
@@ -33,7 +39,10 @@ export class DesktopShell {
     this.renderer = createDesktopRenderer({
       desktopElement: this.refs.desktop,
       dockElement: this.refs.dock,
-      isMobile: () => (this.root.clientWidth || 1024) <= 760,
+      overlayElement: this.refs.overlays,
+      getStyle: () => this.currentStyle,
+      hasTrustedSurface: () => this.os.windows.hasVisibleTrustedSurface?.(),
+      isMobile: () => ["ios", "android"].includes(this.currentStyle) || (this.root.clientWidth || 1024) <= 760,
       onOpenNode: (node) => this.os.openNode(node),
       onLaunchApp: (id) => this.launchApp(id),
     });
@@ -61,10 +70,46 @@ export class DesktopShell {
       if (this.activePanel === "controls") this.panels.updateControls();
     });
     if (typeof unsubscribe === "function") this.cleanups.push(unsubscribe);
+    const unsubscribeUI = this.os.bus?.on?.("ui:preference-change", () => this.updateStyle());
+    if (typeof unsubscribeUI === "function") this.cleanups.push(unsubscribeUI);
     this.clockTimer = globalThis.setInterval(() => this.tickClock(), 1000);
     this.clockTimer.unref?.();
     this.tickClock();
+    this.updateStyle();
+    const ResizeObserverType = root.ownerDocument?.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    if (ResizeObserverType) {
+      const observer = new ResizeObserverType(() => this.updateStyle());
+      observer.observe(root);
+      this.cleanups.push(() => observer.disconnect());
+    } else this.listen(globalThis.window, "resize", () => this.updateStyle());
     if (this.os.uiOptions?.liquidGlass !== false) this.cleanups.push(attachLiquidGlass(root, this.os.uiOptions?.liquidGlass === true ? {} : this.os.uiOptions?.liquidGlass || {}));
+  }
+
+  updateStyle() {
+    const configured = resolveUIStyle(this.styleOptions, this.root.clientWidth || 1024, this.root.clientHeight || 768, this.root.ownerDocument?.defaultView?.navigator);
+    const mode = ["ios", "android"].includes(configured) ? "mobile" : "desktop";
+    const style = this.os.getUIStylePreference?.()[mode] || configured;
+    if (this.currentStyle === style) return;
+    const mobilePanes = ["ios", "android"].includes(this.currentStyle) && ["ios", "android"].includes(style)
+      ? [...this.root.querySelectorAll(".dos-window[data-mobile-pane]")].filter(frame => frame.closest(".dindbos-host") === this.root).map(frame => [frame, frame.dataset.mobilePane]) : [];
+    this.closePanel(false);
+    this.styleCleanup?.();
+    for (const [frame, pane] of mobilePanes) frame.dataset.mobilePane = pane;
+    this.styleCleanup = null;
+    const initial = !this.currentStyle;
+    this.currentStyle = style;
+    this.root.dataset.uiStyle = style;
+    if (!initial) this.renderSlot("menubar", this.menuState(), () => this.renderMenubar());
+    const mount = { windows: mountWindowsShell, ios: mountIOSShell, android: mountAndroidShell }[style];
+    const shellCleanup = mount?.(this);
+    const appCleanup = ["ios", "android"].includes(style) ? mountMobileAppNavigation(this) : null;
+    this.styleCleanup = () => { try { appCleanup?.(); } finally { shellCleanup?.(); } };
+    if (!initial) {
+      this.renderDesktop();
+      this.renderDock();
+      this.os.windows?.keepWindowsInViewport?.();
+    }
+    this.tickClock();
   }
 
   listen(target, name, handler, options) {
@@ -124,7 +169,7 @@ export class DesktopShell {
       </nav>
       <div class="dos-menu-status">
         <button type="button" class="dos-status-button" data-shell-panel="launcher" aria-label="Search applications" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
-        <button type="button" class="dos-status-button" data-shell-panel="controls" aria-label="Control Center" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="3"/><rect x="3" y="14" width="18" height="6" rx="3"/><circle cx="8" cy="7" r="1"/><circle cx="16" cy="17" r="1"/></svg></button>
+        <button type="button" class="dos-status-button" data-shell-panel="controls" aria-label="Control Center" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="3"/><rect x="3" y="14" width="18" height="6" rx="3"/><circle cx="8" cy="7" r="1"/><circle cx="16" cy="17" r="1"/></svg><span class="dos-mobile-status" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 20v-4m6 4v-8m6 8V8m6 12V4"/></svg><svg viewBox="0 0 24 24"><path d="M3 9q9-8 18 0M6 13q6-6 12 0m-9 4q3-3 6 0"/><circle cx="12" cy="20" r="1"/></svg></span></button>
         <button type="button" class="dos-clock-button" data-shell-panel="calendar" aria-label="Date and calendar" aria-haspopup="dialog" aria-expanded="false"><time class="dos-clock"></time></button>
       </div>`;
     this.refs.clock = this.refs.menubar.querySelector(".dos-clock");
@@ -156,10 +201,19 @@ export class DesktopShell {
 
   renderDesktop() {
     const desktopPath = this.os.session.desktopPath || this.os.fs.join(this.os.session.home, "Desktop");
-    const entries = this.os.fs.list(desktopPath).map((node) => {
+    const mobile = ["ios", "android"].includes(this.currentStyle);
+    const nodes = this.os.fs.list(desktopPath);
+    if (mobile) {
+      const present = new Set(nodes.map((node) => this.os.fs.resolveNode(node).appId).filter(Boolean));
+      for (const node of this.os.fs.list("/usr/share/applications")) {
+        const appId = this.os.fs.resolveNode(node).appId;
+        if (appId && !present.has(appId)) { nodes.push(node); present.add(appId); }
+      }
+    }
+    const entries = nodes.map((node) => {
       const resolved = this.os.fs.resolveNode(node);
       const app = resolved.appId && this.os.apps.list().find((item) => item.id === resolved.appId);
-      return { node, name: node.name, path: node.path, appId: app?.id, kind: resolved.type, icon: app?.icon || resolved.icon || resolved.type };
+      return { node, name: mobile && app ? app.name : node.name, path: node.path, appId: app?.id, category: app?.category, kind: resolved.type, icon: app?.icon || resolved.icon || resolved.type };
     });
     this.renderSlot("desktop", { entries }, () => this.renderer.renderDesktop(entries));
   }
@@ -302,7 +356,7 @@ export class DesktopShell {
     const now = new Date();
     if (!this.refs.clock) return;
     this.refs.clock.dateTime = now.toISOString();
-    this.refs.clock.innerHTML = `<span class="dos-clock-date">${escapeHtml(now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }))}</span><span class="dos-clock-time">${escapeHtml(now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))}</span>`;
+    this.refs.clock.innerHTML = `<span class="dos-clock-date">${escapeHtml(now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }))}</span><span class="dos-clock-time">${escapeHtml(now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", ...(["ios", "android"].includes(this.currentStyle) ? { hour12: false } : {}) }))}</span>`;
     this.refs.clock.title = now.toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
   }
 
@@ -327,6 +381,10 @@ export class DesktopShell {
     if (this.clockTimer) globalThis.clearInterval(this.clockTimer);
     this.clockTimer = null;
     attempt(() => this.closePanel(false));
+    attempt(() => this.styleCleanup?.());
+    this.styleCleanup = null;
+    this.currentStyle = null;
+    if (this.root?.dataset) delete this.root.dataset.uiStyle;
     const cleanups = [...this.cleanups.splice(0), ...this.slotCleanups.values()];
     this.slotCleanups.clear();
     for (const cleanup of cleanups) attempt(cleanup);

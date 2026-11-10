@@ -18,7 +18,7 @@ if (new URLSearchParams(location.search).has('registry')) {
  document.querySelector('.dindbos-host').style.containerName='none';
  const {createAndBootDindbOS}=await import('/src/sdk/index.js');
  await import('/src/styles/index.css');
- window.__clockOS=await createAndBootDindbOS({root:document.querySelector('.dindbos-host'),storage:{backend:'memory',name:'clock-registry-smoke'},bootstrapPackages:false,builtins:{include:['clock']}});
+ window.__clockOS=await createAndBootDindbOS({ui:{style:'macos'},root:document.querySelector('.dindbos-host'),storage:{backend:'memory',name:'clock-registry-smoke'},bootstrapPackages:false,builtins:{include:['clock']}});
  window.__clockOS.launch('clock');
 } else window.__cleanupClock=renderClock({},document.getElementById('app'),{}, {setTitle(){}});
 `;

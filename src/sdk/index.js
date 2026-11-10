@@ -138,3 +138,5 @@ function watchAbort(os, signal) {
   os.lifecycleCleanups.push(() => signal.removeEventListener("abort", cancel));
   if (signal.aborted) cancel();
 }
+
+export { renderSearchableSelect, mountSearchableSelect } from "./searchable-select.js";

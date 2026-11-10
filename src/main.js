@@ -4,7 +4,11 @@ import { DindbOSDesktop, DindbOSApp, useDindbOSApp } from "./sdk/react.js";
 import { demoFileSystem, portfolioData, removeLegacyWelcomeLaunchers } from "./demo/portfolio-demo.js";
 
 const h = React.createElement;
-const launch = new URLSearchParams(window.location.search).get("qa") === "fresh" ? ["files"] : [];
+const params = new URLSearchParams(window.location.search);
+const ui = { style: params.get("style") || "auto", ...(params.has("mobileStyle") ? { mobileStyle: params.get("mobileStyle") } : {}) };
+const device = params.get('device');
+if (['macos', 'windows', 'ios', 'android', 'other'].includes(device)) ui.visitorOS = device;
+const launch = params.get("qa") === "fresh" ? ["files"] : [];
 
 function Counter() {
   const [count, setCount] = useState(0);
@@ -24,6 +28,7 @@ createRoot(document.querySelector("#dindbos-root")).render(
   h(DindbOSDesktop, {
     style: { width: "100%", height: "100%" },
     fileSystem: demoFileSystem,
+    ui,
     session: { user: "guest", product: "DindbOS" },
     storage: { name: "dindbos-showcase" },
     builtins: { portfolioData },

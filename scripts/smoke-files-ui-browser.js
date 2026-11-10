@@ -8,7 +8,7 @@ import { createServer } from "vite";
 const moduleSource = `
 import { createAndBootDindbOS } from '/src/sdk/index.js';
 import '/src/styles/index.css';
-window.__filesReady = createAndBootDindbOS({
+window.__filesReady = createAndBootDindbOS({ui:{style:'macos'},
   root: document.getElementById('desktop'), storage: {backend:'memory', name:'files-ui-smoke'},
   bootstrapPackages: false, builtins: {include:['files','calculator']},
   launch:[],

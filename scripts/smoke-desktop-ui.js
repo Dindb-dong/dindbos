@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { dockMagnification } from "../src/ui/desktop-view.js";
+import { dockMagnification, groupMobileHomeEntries } from "../src/ui/desktop-view.js";
 import { AppIcon, isImageIcon } from "../src/ui/app-icon.js";
 
 assert.equal(dockMagnification(0), 1);
@@ -27,3 +27,11 @@ assert(image.includes('src="/brand.svg"'));
 const blocked = renderToStaticMarkup(React.createElement(AppIcon, { icon: "javascript:alert(1)" }));
 assert(!blocked.includes("javascript:"));
 console.log("desktop UI smoke passed: Dock falloff, safe custom icons, all built-in artwork");
+
+const careerEntries = [{ appId: "files", name: "Files" }, ...Array.from({ length: 6 }, (_, i) => ({ appId: `experience-${i}`, name: `Career ${i}` }))];
+const grouped = groupMobileHomeEntries(careerEntries);
+assert.equal(grouped.length, 2);
+assert.equal(grouped[1].children.length, 6);
+assert.equal(careerEntries.length, 7, "Grouping preserves original desktop data");
+assert.equal(groupMobileHomeEntries(careerEntries.slice(0, 2)).length, 2, "Single career app stays directly accessible");
+assert.equal(groupMobileHomeEntries([{ category: "career" }, { category: "experience" }])[0].children.length, 2);

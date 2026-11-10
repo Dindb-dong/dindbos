@@ -14,6 +14,14 @@ const server = await createServer({
     { find: /^dindbos\/react$/, replacement: resolve("src/sdk/react.js") },
   ] },
   plugins: [{
+    name: "embed-macos-qa-baseline",
+    enforce: "pre",
+    transform(source, id) {
+      if (id.split("?")[0] !== resolve("examples/embedded/src/main.jsx")) return;
+      // Keep this existing geometry/isolation baseline independent of automatic OS detection.
+      return source.replace("<DindbOSDesktop", '<DindbOSDesktop ui={{ style: "macos" }}');
+    },
+  }, {
     name: "sdk-embed-style-entry",
     resolveId(id) { if (id === "dindbos/styles.css") return "\0sdk-embed-styles"; },
     load(id) {

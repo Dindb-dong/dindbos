@@ -33,7 +33,7 @@ try {
             root: document.getElementById(id), storage: { backend: "memory", name: id },
             builtins: false, bootstrapPackages: false, bootScreen: false,
             apps: [{ id: "notes", name: "Notes", pinned: true, render({ content }) { content.textContent = "Notes"; } }],
-            ui: { liquidGlass: glass !== false },
+            ui: { style: "macos", liquidGlass: glass !== false },
             theme: { mode: "light", wallpaper: custom ? "linear-gradient(red, blue)" : "graphite", ...(custom ? { variables: {
               "--dock-background": "rgb(10, 20, 30)", "--dock-border": "2px solid rgb(40, 50, 60)",
               "--dock-radius": "11px", "--dock-shadow": "none", "--dock-gap": "8px",

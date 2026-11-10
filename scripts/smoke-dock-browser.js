@@ -3,6 +3,9 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, expect } from "@playwright/test";
 
+// This regression measures the original macOS shell, independently of host detection.
+const fixtureUrl = new URL(process.env.DINDBOS_QA_URL || "http://127.0.0.1:5174/");
+fixtureUrl.searchParams.set("style", "macos");
 const output = process.env.DINDBOS_QA_OUTPUT;
 if (output) await mkdir(output, { recursive: true });
 const browser = await chromium.launch({
@@ -12,7 +15,7 @@ const browser = await chromium.launch({
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "no-preference" });
   const page = await context.newPage();
-  await page.goto(process.env.DINDBOS_QA_URL || "http://127.0.0.1:5174/");
+  await page.goto(fixtureUrl.href);
   const files = page.locator('.dos-dock-item[data-dock-app-id="files"]');
   await files.waitFor();
   await page.locator('.dos-boot-screen').waitFor({ state: "detached" });
@@ -60,7 +63,7 @@ try {
   await context.close();
   const reduced = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
   const reducedPage = await reduced.newPage();
-  await reducedPage.goto(process.env.DINDBOS_QA_URL || "http://127.0.0.1:5174/");
+  await reducedPage.goto(fixtureUrl.href);
   const reducedFiles = reducedPage.locator('.dos-dock-item[data-dock-app-id="files"]');
   await reducedFiles.waitFor();
   await reducedPage.locator('.dos-boot-screen').waitFor({ state: "detached" });
