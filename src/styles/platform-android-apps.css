@@ -48,7 +48,7 @@
   :scope .settings-nav-icon { display: grid; width: 32px; height: 32px; border-radius: 10px; }
   :scope .settings-app .settings-nav-item.is-active { background: var(--oneui-soft); color: var(--oneui-blue); box-shadow: none; }
   :scope .settings-detail { flex: 1; min-height: 0; overflow: auto; padding: 8px 16px 24px; }
-  :scope .settings-detail-header { min-height: 72px; height: auto; margin-bottom: 12px; padding: 12px 0; }
+  :scope .settings-detail-header { min-height: 72px; height: auto; margin-bottom: 12px; padding: 12px 0; flex-wrap: wrap; }
   :scope .settings-detail-header h2 { font-size: 28px; font-weight: 500; }
   :scope .settings-detail-header :is(button, p) { font-size: 14px; }
   :scope :is(.settings-section-panel, .settings-preference-group, .settings-panel, .appearance-detail-group) { border-radius: 24px; padding: 16px; background: var(--oneui-group); }
