@@ -159,3 +159,10 @@
 }
 
 .dindbos-host .dos-menubar button[hidden] { display: none !important; }
+
+@scope (.dindbos-host) to (.dindbos-host) {
+  .dos-mobile-status { display: none; }
+  :scope:is([data-ui-style='ios'], [data-ui-style='android']) .dos-mobile-status { display: inline-flex; align-items: center; gap: 6px; }
+  :scope:is([data-ui-style='ios'], [data-ui-style='android']) .dos-status-button:has(.dos-mobile-status) > svg { display: none; }
+  .dos-mobile-status svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; }
+}

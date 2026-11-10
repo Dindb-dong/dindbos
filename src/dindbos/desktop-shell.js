@@ -39,7 +39,10 @@ export class DesktopShell {
     this.renderer = createDesktopRenderer({
       desktopElement: this.refs.desktop,
       dockElement: this.refs.dock,
-      isMobile: () => (this.root.clientWidth || 1024) <= 760,
+      overlayElement: this.refs.overlays,
+      getStyle: () => this.currentStyle,
+      hasTrustedSurface: () => this.os.windows.hasVisibleTrustedSurface?.(),
+      isMobile: () => ["ios", "android"].includes(this.currentStyle) || (this.root.clientWidth || 1024) <= 760,
       onOpenNode: (node) => this.os.openNode(node),
       onLaunchApp: (id) => this.launchApp(id),
     });
@@ -166,7 +169,7 @@ export class DesktopShell {
       </nav>
       <div class="dos-menu-status">
         <button type="button" class="dos-status-button" data-shell-panel="launcher" aria-label="Search applications" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
-        <button type="button" class="dos-status-button" data-shell-panel="controls" aria-label="Control Center" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="3"/><rect x="3" y="14" width="18" height="6" rx="3"/><circle cx="8" cy="7" r="1"/><circle cx="16" cy="17" r="1"/></svg></button>
+        <button type="button" class="dos-status-button" data-shell-panel="controls" aria-label="Control Center" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="3"/><rect x="3" y="14" width="18" height="6" rx="3"/><circle cx="8" cy="7" r="1"/><circle cx="16" cy="17" r="1"/></svg><span class="dos-mobile-status" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 20v-4m6 4v-8m6 8V8m6 12V4"/></svg><svg viewBox="0 0 24 24"><path d="M3 9q9-8 18 0M6 13q6-6 12 0m-9 4q3-3 6 0"/><circle cx="12" cy="20" r="1"/></svg></span></button>
         <button type="button" class="dos-clock-button" data-shell-panel="calendar" aria-label="Date and calendar" aria-haspopup="dialog" aria-expanded="false"><time class="dos-clock"></time></button>
       </div>`;
     this.refs.clock = this.refs.menubar.querySelector(".dos-clock");
@@ -210,7 +213,7 @@ export class DesktopShell {
     const entries = nodes.map((node) => {
       const resolved = this.os.fs.resolveNode(node);
       const app = resolved.appId && this.os.apps.list().find((item) => item.id === resolved.appId);
-      return { node, name: mobile && app ? app.name : node.name, path: node.path, appId: app?.id, kind: resolved.type, icon: app?.icon || resolved.icon || resolved.type };
+      return { node, name: mobile && app ? app.name : node.name, path: node.path, appId: app?.id, category: app?.category, kind: resolved.type, icon: app?.icon || resolved.icon || resolved.type };
     });
     this.renderSlot("desktop", { entries }, () => this.renderer.renderDesktop(entries));
   }
@@ -353,7 +356,7 @@ export class DesktopShell {
     const now = new Date();
     if (!this.refs.clock) return;
     this.refs.clock.dateTime = now.toISOString();
-    this.refs.clock.innerHTML = `<span class="dos-clock-date">${escapeHtml(now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }))}</span><span class="dos-clock-time">${escapeHtml(now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))}</span>`;
+    this.refs.clock.innerHTML = `<span class="dos-clock-date">${escapeHtml(now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }))}</span><span class="dos-clock-time">${escapeHtml(now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", ...(["ios", "android"].includes(this.currentStyle) ? { hour12: false } : {}) }))}</span>`;
     this.refs.clock.title = now.toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
   }
 
