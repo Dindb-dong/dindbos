@@ -286,21 +286,30 @@ export function mountRecentApps(shell, { platform }) {
     cleanups.push(() => document.removeEventListener("pointerdown", outside, true));
     shell.refs.overlays.append(dialog);
     dialog.show();
+    const fitSnapshot = snapshot => {
+      const preview = snapshot.parentElement;
+      const width = parseFloat(snapshot.style.width), height = parseFloat(snapshot.style.height);
+      const availableHeight = preview.parentElement.clientHeight - preview.previousElementSibling.offsetHeight;
+      preview.style.transition = "none";
+      preview.style.maxWidth = `${Math.max(0, availableHeight) * width / height}px`;
+      preview.style.alignSelf = "center";
+      snapshot.style.transform = `scale(${parseFloat(document.defaultView.getComputedStyle(preview).width) / width})`;
+    };
     for (const snapshot of rail.querySelectorAll(".dos-recent-snapshot")) {
       const task = shell.os.windows.windows.get(snapshot.closest("[data-recent-window-id]").dataset.recentWindowId);
       const width = task.content.clientWidth || root.clientWidth;
       const height = task.content.clientHeight || Math.max(240, root.clientHeight - 148);
       const preview = snapshot.parentElement;
-      const scale = preview.clientWidth / width;
       preview.style.aspectRatio = `${width} / ${height}`;
-      Object.assign(snapshot.style, { width: `${width}px`, height: `${height}px`, transform: `scale(${scale})` });
+      Object.assign(snapshot.style, { width: `${width}px`, height: `${height}px` });
+      fitSnapshot(snapshot);
       snapshot._scrollPositions?.();
       delete snapshot._scrollPositions;
     }
     const ResizeObserverType = document.defaultView.ResizeObserver;
     if (ResizeObserverType) {
       const observer = new ResizeObserverType(() => {
-        for (const snapshot of rail.querySelectorAll(".dos-recent-snapshot")) snapshot.style.transform = `scale(${snapshot.parentElement.clientWidth / parseFloat(snapshot.style.width)})`;
+        for (const snapshot of rail.querySelectorAll(".dos-recent-snapshot")) fitSnapshot(snapshot);
       });
       observer.observe(rail);
       cleanups.push(() => observer.disconnect());

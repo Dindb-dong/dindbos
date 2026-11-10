@@ -37,7 +37,7 @@ try {
     await page.evaluate(() => {
       const os = window.platformAppsQA.os;
       for (const task of [...os.windows.windows.values()]) os.windows.close(task.id, { force: true });
-      os.registerApp({ id: "recent-draft", name: "Draft", icon: "text", singleton: true, render({ content }) { content.innerHTML = '<nav data-recent-desktop-nav>Desktop navigation</nav><nav data-recent-mobile-nav>Mobile navigation</nav><span data-recent-frame-layout>Compact frame layout</span><label>Draft text<input aria-label="Draft text" value="Original"></label>'; } });
+      os.registerApp({ id: "recent-draft", name: "Draft", icon: "text", singleton: true, render({ content }) { content.innerHTML = '<div style="display:flex;flex-direction:column;height:100%"><nav data-recent-desktop-nav>Desktop navigation</nav><span data-recent-frame-layout>Compact frame layout</span><label>Draft text<input aria-label="Draft text" value="Original"></label><nav data-recent-mobile-nav style="margin-top:auto;height:44px;flex-shrink:0">Mobile navigation</nav></div>'; } });
       for (const id of ["calculator", "notes", "recent-draft"]) os.launch(id);
       os.windows.windows.get("recent-draft").frame.style.containerName = "recent-frame";
     });
@@ -70,6 +70,21 @@ try {
     await expect(preview.locator('[data-recent-mobile-nav]')).toBeVisible();
     await expect(preview.locator('[data-recent-desktop-nav]')).toBeHidden();
     await expect(preview.locator('[data-recent-frame-layout]')).toBeVisible();
+    const assertPreviewFits = async () => {
+      await expect.poll(() => preview.evaluate(card => {
+        const frame = card.querySelector('.dos-recent-preview').getBoundingClientRect();
+        const snapshot = card.querySelector('.dos-recent-snapshot').getBoundingClientRect();
+        const nav = card.querySelector('[data-recent-mobile-nav]').getBoundingClientRect();
+        return Math.max(snapshot.bottom - frame.bottom, snapshot.right - frame.right, nav.bottom - frame.bottom);
+      })).toBeLessThan(1);
+    };
+    await assertPreviewFits();
+    await page.setViewportSize({ width: 320, height: 540 });
+    await root.evaluate(element => { element.style.width = '320px'; element.style.height = '540px'; });
+    await assertPreviewFits();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await root.evaluate(element => { element.style.width = '390px'; element.style.height = '844px'; });
+    await assertPreviewFits();
     assert.equal(await dialog.locator('[data-recent-window-id="recent-draft"] input').inputValue(), "Unsaved test draft", "preview preserves current form state");
     await root.screenshot({ path: `${output}/${style}-recents.png` });
     const rail = dialog.locator(".dos-recents-rail");
