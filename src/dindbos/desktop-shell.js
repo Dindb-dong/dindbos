@@ -1,3 +1,7 @@
+import { normalizeUIStyleOptions, resolveUIStyle } from "./ui-style.js";
+import { mountWindowsShell } from "../ui/platforms/windows.js";
+import { mountIOSShell } from "../ui/platforms/ios.js";
+import { mountAndroidShell } from "../ui/platforms/android.js";
 import { createDesktopRenderer } from "../ui/desktop-view.js";
 import { ShellPanels } from "../ui/shell-panels.js";
 import { attachLiquidGlass } from "../ui/liquid-glass.js";
@@ -17,6 +21,7 @@ export class DesktopShell {
   mount(root) {
     this.destroy();
     this.root = root;
+    this.styleOptions = normalizeUIStyleOptions(this.os.uiOptions || {});
     root.innerHTML = `
       <main class="dos-shell">
         <header class="dos-menubar"></header>
@@ -64,7 +69,34 @@ export class DesktopShell {
     this.clockTimer = globalThis.setInterval(() => this.tickClock(), 1000);
     this.clockTimer.unref?.();
     this.tickClock();
+    this.updateStyle();
+    const ResizeObserverType = root.ownerDocument?.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    if (ResizeObserverType) {
+      const observer = new ResizeObserverType(() => this.updateStyle());
+      observer.observe(root);
+      this.cleanups.push(() => observer.disconnect());
+    } else this.listen(globalThis.window, "resize", () => this.updateStyle());
     if (this.os.uiOptions?.liquidGlass !== false) this.cleanups.push(attachLiquidGlass(root, this.os.uiOptions?.liquidGlass === true ? {} : this.os.uiOptions?.liquidGlass || {}));
+  }
+
+  updateStyle() {
+    const style = resolveUIStyle(this.styleOptions, this.root.clientWidth || 1024);
+    if (this.currentStyle === style) return;
+    this.closePanel(false);
+    this.styleCleanup?.();
+    this.styleCleanup = null;
+    const initial = !this.currentStyle;
+    this.currentStyle = style;
+    this.root.dataset.uiStyle = style;
+    if (!initial) this.renderSlot("menubar", this.menuState(), () => this.renderMenubar());
+    const mount = { windows: mountWindowsShell, ios: mountIOSShell, android: mountAndroidShell }[style];
+    this.styleCleanup = mount?.(this) || null;
+    if (!initial) {
+      this.renderDesktop();
+      this.renderDock();
+      this.os.windows?.keepWindowsInViewport?.();
+    }
+    this.tickClock();
   }
 
   listen(target, name, handler, options) {
@@ -156,10 +188,19 @@ export class DesktopShell {
 
   renderDesktop() {
     const desktopPath = this.os.session.desktopPath || this.os.fs.join(this.os.session.home, "Desktop");
-    const entries = this.os.fs.list(desktopPath).map((node) => {
+    const mobile = ["ios", "android"].includes(this.currentStyle);
+    const nodes = this.os.fs.list(desktopPath);
+    if (mobile) {
+      const present = new Set(nodes.map((node) => this.os.fs.resolveNode(node).appId).filter(Boolean));
+      for (const node of this.os.fs.list("/usr/share/applications")) {
+        const appId = this.os.fs.resolveNode(node).appId;
+        if (appId && !present.has(appId)) { nodes.push(node); present.add(appId); }
+      }
+    }
+    const entries = nodes.map((node) => {
       const resolved = this.os.fs.resolveNode(node);
       const app = resolved.appId && this.os.apps.list().find((item) => item.id === resolved.appId);
-      return { node, name: node.name, path: node.path, appId: app?.id, kind: resolved.type, icon: app?.icon || resolved.icon || resolved.type };
+      return { node, name: mobile && app ? app.name : node.name, path: node.path, appId: app?.id, kind: resolved.type, icon: app?.icon || resolved.icon || resolved.type };
     });
     this.renderSlot("desktop", { entries }, () => this.renderer.renderDesktop(entries));
   }
@@ -327,6 +368,10 @@ export class DesktopShell {
     if (this.clockTimer) globalThis.clearInterval(this.clockTimer);
     this.clockTimer = null;
     attempt(() => this.closePanel(false));
+    attempt(() => this.styleCleanup?.());
+    this.styleCleanup = null;
+    this.currentStyle = null;
+    if (this.root?.dataset) delete this.root.dataset.uiStyle;
     const cleanups = [...this.cleanups.splice(0), ...this.slotCleanups.values()];
     this.slotCleanups.clear();
     for (const cleanup of cleanups) attempt(cleanup);

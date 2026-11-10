@@ -2,6 +2,24 @@
 
 The host owns app content and appearance. The runtime owns execution, permissions, virtual files, and window state. Keep that boundary when replacing a view.
 
+## Platform shell
+
+Choose shell layout and navigation through `ui`, independently of the light/dark palette in `theme`:
+
+```jsx
+<DindbOSDesktop ui={{ style: "windows", mobileStyle: "ios" }} />
+```
+
+```js
+await mountDindbOSDesktop({ root, ui: { style: "macos", mobileStyle: "android" } });
+```
+
+`style` accepts `macos` (default), `windows`, `ios`, or `android`. iOS and Android apply only when the desktop host is at most 760 CSS pixels wide; on wider hosts they fall back to macOS. `mobileStyle` optionally selects iOS or Android for narrow hosts while keeping the selected desktop style on wider hosts. This uses the host container, including embedded desktops, rather than device detection. Resizing swaps shell controls while preserving running applications and files. Set these options when mounting; changing React props does not remount a running desktop.
+
+The presets adapt browser UI and existing DindbOS actions. They do not emulate a native operating system. Custom `ui.slots` continue to own their slot content and may need styles appropriate to the chosen preset. See the official-source design notes for [Windows](platform-windows.md), [iOS](platform-ios.md), and [Samsung-inspired Android](platform-android.md).
+
+The local demo accepts `?style=windows`, `?style=ios`, `?style=android`, or `?style=windows&mobileStyle=ios` for comparison. Mobile styles require a narrow host.
+
 ## Appearance
 
 Pass the initial appearance in `theme`:

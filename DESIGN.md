@@ -64,3 +64,13 @@ Inspect actual desktop and mobile rendering, a narrow embedded desktop, light an
 ## Consumer Dock tokens
 
 `theme.variables` exposes `--dock-background`, `--dock-border`, `--dock-radius`, `--dock-shadow`, `--dock-gap`, `--dock-padding` and `--dock-bottom`. Omitted values preserve the existing desktop and narrow-container defaults; glass and dark appearance honor the same overrides. Reduced transparency and forced colors retain opaque readable material. This API wiring and performance maintenance do not introduce a new visual design. Wallpaper and accent use the existing appearance API; full replacement uses `ui.slots.dock`.
+
+## Platform shells
+
+macOS remains the default. `ui.style` selects `macos`, `windows`, `ios`, or `android`; `ui.mobileStyle` overrides the style for hosts at most 760 CSS pixels wide. Mobile-only styles fall back to macOS above that width. The container width controls this choice, independently of surrounding page size. Palette, wallpaper and app state remain instance-owned.
+
+The editable project document is **DindbOS · Platform Shells**, page **Page 1**. Its platform foundations, linked navigation components, and desktop/mobile compositions define the preset designs. Maintained source references and component-to-code decisions live in [Windows](docs/platform-windows.md), [iOS](docs/platform-ios.md), and [Android](docs/platform-android.md). Each preset's adapter is in `src/ui/platforms/` and its scoped stylesheet is `src/styles/platform-*.css`. Local canvas IDs, captures, persistence checks, and runtime comparisons are kept in the project's private evidence record.
+
+Windows uses a bottom taskbar, Start launcher, tray and right-aligned caption controls. iOS uses a compact status/navigation area, app-focused fullscreen layout and a state-preserving Home action. Samsung-inspired Android uses a reachable home layout and Back/Home/Recents navigation. All use existing runtime application, window and panel actions. These are web adaptations of published design guidance; no vendor logos, fonts or wallpapers are bundled. Desktop app chrome and functions remain available within the mobile layout.
+
+Compare the Windows board at desktop size and each mobile board at 390 CSS pixels. Verify 320px, 760px and 761px boundaries, narrow embedded hosts, keyboard navigation, dark mode, reduced motion, Home/restore state preservation and repeated responsive transitions. Native device behavior requires separate physical-device evidence.

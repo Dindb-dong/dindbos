@@ -1,0 +1,84 @@
+@scope (.dindbos-host[data-ui-style='ios']) to (.dindbos-host) {
+  :scope {
+    --ios-top: calc(52px + env(safe-area-inset-top, 0px));
+    --ios-bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  :scope .dos-menubar {
+    height: var(--ios-top); min-height: 52px; padding: env(safe-area-inset-top, 0px) 12px 0;
+    border: 0; background: var(--chrome-bg); box-shadow: none;
+  }
+  :scope .dos-menubar button { min-width: 44px; min-height: 44px; border-radius: 22px; }
+  :scope .dos-app-menus { min-width: 0; gap: 0; }
+  :scope .dos-menu-label { display: none; }
+  :scope .dos-active-app { max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+  :scope .dos-clock-date { display: none; }
+  :scope .dos-clock { font-size: 13px; font-weight: 600; }
+  :scope .dos-menu-status { gap: 0; }
+  :scope .dos-desktop {
+    inset: calc(var(--ios-top) + 16px) 12px calc(var(--ios-bottom) + 152px);
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: none;
+    grid-auto-flow: row; grid-auto-columns: auto; grid-auto-rows: 100px;
+    gap: 16px 4px; direction: ltr; align-content: start;
+  }
+  :scope .dos-icon { width: 100%; height: 100px; grid-template-rows: 60px auto; padding: 0; }
+  :scope .dos-icon-art, :scope .dos-icon-art svg, :scope .dos-icon-art img { width: 60px; height: 60px; }
+  :scope .dos-icon-label { max-width: 100%; font-size: 12px; line-height: 16px; }
+  :scope .dos-dock {
+    inset: auto 12px calc(var(--ios-bottom) + 8px); transform: none; width: auto; max-width: none;
+    height: 88px; padding: 12px; gap: 16px; align-items: center; border-radius: 28px;
+    overflow: auto hidden; overscroll-behavior: contain; scrollbar-width: thin;
+  }
+  :scope .dos-dock-item { flex: 0 0 56px; width: 56px; height: 56px; min-width: 56px; }
+  :scope .dos-dock-separator { flex-shrink: 0; }
+  :scope .dos-dock-tooltip { display: none; }
+  :scope .dos-ios-search {
+    position: absolute; bottom: calc(var(--ios-bottom) + 108px); left: 50%; transform: translateX(-50%);
+    z-index: 75; min-width: 88px; min-height: 44px; padding: 8px 20px; border: 1px solid var(--line);
+    border-radius: 24px; background: var(--chrome-bg); color: var(--text); font: inherit;
+    backdrop-filter: blur(20px);
+  }
+  :scope .dos-ios-home {
+    position: absolute; z-index: 1100; left: 50%; bottom: env(safe-area-inset-bottom, 0px);
+    transform: translateX(-50%); width: 160px; min-height: 44px; padding: 0;
+    display: grid; place-items: center; border: 0; border-radius: 22px;
+    background: transparent; color: var(--text); box-shadow: none;
+  }
+  :scope .dos-ios-home span { width: 128px; height: 5px; border-radius: 3px; background: currentColor; }
+  :scope .dos-ios-home:hover, :scope .dos-ios-search:hover { background: var(--control-hover); }
+  :scope .dos-ios-home:active, :scope .dos-ios-search:active { background: var(--control-pressed); }
+  :scope .dos-ios-home:focus-visible, :scope .dos-ios-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  :scope .dos-window, :scope .dos-window:not(.is-maximized), :scope .dos-window.is-maximized {
+    inset: var(--ios-top) 0 var(--ios-bottom) !important; width: auto !important; height: auto !important;
+    max-width: none; min-width: 0; min-height: 0; border-radius: 0; border: 0;
+    grid-template-rows: 44px minmax(0, 1fr);
+  }
+  :scope .dos-window:not(.is-active):not(.is-minimizing) { visibility: hidden; pointer-events: none; }
+  :scope .dos-window-titlebar, :scope .dos-window[data-window-chrome] > .dos-window-titlebar {
+    position: static; width: auto; height: 44px; min-height: 44px; padding: 0 12px;
+    display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; background: var(--chrome-bg);
+  }
+  :scope .dos-window[data-window-chrome] > .dos-window-titlebar > strong { display: block; }
+  :scope .dos-window[data-window-chrome] > .dos-window-content { grid-row: 2; }
+  :scope .dos-window-controls { width: 44px; }
+  :scope .dos-window-controls button[data-window-close] {
+    width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; color: var(--text);
+  }
+  :scope .dos-window-controls button[data-window-close] span { opacity: 1; font-size: 22px; }
+  :scope [data-window-minimize], :scope [data-window-maximize], :scope .dos-resize { display: none; }
+  :scope .dos-window-titlebar-spacer { width: 44px; }
+  :scope .dos-shell:has(.dos-window.is-active:not([hidden])) > :is(.dos-desktop, .dos-dock, .dos-ios-search) { visibility: hidden; pointer-events: none; }
+  :scope .dos-launcher { top: calc(var(--ios-top) + 8px); max-height: calc(100% - var(--ios-top) - var(--ios-bottom) - 16px); }
+  :scope .dos-launcher-search input { font-size: 16px; }
+  :scope .dos-launcher-results { max-height: min(420px, 48cqh); }
+  :scope .dos-launcher-results button, :scope .dos-shell-menu button { min-height: 44px; }
+  :scope .dos-shell-panel, :scope .dos-shell-menu { top: calc(var(--ios-top) + 8px); max-height: calc(100% - var(--ios-top) - var(--ios-bottom) - 16px); overflow-y: auto; }
+  @container (max-width: 350px) {
+    :scope .dos-active-app { max-width: 64px; }
+    :scope .dos-menubar { padding-inline: 4px; }
+    :scope .dos-icon-art, :scope .dos-icon-art svg, :scope .dos-icon-art img { width: 52px; height: 52px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :scope .dos-window, :scope .dos-dock-item { animation: none; transition: none; }
+  }
+}

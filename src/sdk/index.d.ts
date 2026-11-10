@@ -138,7 +138,12 @@ export interface DindbOSSlotContext {
   defaultRender(): void;
 }
 export type DindbOSSlotRenderer = (context: DindbOSSlotContext) => void | (() => void);
+export type DindbOSUIStyle = "macos" | "windows" | "ios" | "android";
 export interface DindbOSUIOptions {
+  /** iOS and Android apply only to hosts at most 760 CSS pixels wide. */
+  style?: DindbOSUIStyle;
+  /** Override the shell on narrow hosts while retaining the desktop style. */
+  mobileStyle?: "ios" | "android";
   slots?: Partial<Record<"desktop" | "menubar" | "dock" | "windowChrome", DindbOSSlotRenderer>>;
   liquidGlass?: boolean | { strength?: number; blur?: number; maxSurfaces?: number };
 }

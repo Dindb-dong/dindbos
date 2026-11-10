@@ -21,7 +21,7 @@ function Counter() {
 export const desktop = <DindbOSDesktop storage={{ backend: "memory", name: "typed-host" }}
   theme={{ mode: "dark", accent: "#287a58", wallpaper: 'url("/studio-wallpaper.jpg") center / cover', dockSize: 52, variables: { "--dock-radius": "12px", "--dock-background": "#24332f", "--dock-gap": "8px" } }}
   apps={[notes, hello]} launch={["counter"]}
-  ui={{ liquidGlass: { strength: 1, blur: 0.6, maxSurfaces: 18 }, slots: { menubar({ element, defaultRender }) { defaultRender(); element.dataset.custom = "true"; return () => {}; } } }}>
+  ui={{ style: "windows", mobileStyle: "ios", liquidGlass: { strength: 1, blur: 0.6, maxSurfaces: 18 }, slots: { menubar({ element, defaultRender }) { defaultRender(); element.dataset.custom = "true"; return () => {}; } } }}>
   <DindbOSApp id="counter" name="Counter" chrome="document" minWidth={230} minHeight={408} icon={<span>C</span>}><Counter /></DindbOSApp>
 </DindbOSDesktop>;
 void createDindbOS({ apps: [notes], configure(os) { os.setAppearance({ mode: "light" }); } });
@@ -29,3 +29,8 @@ void createDindbOS({ apps: [notes], configure(os) { os.setAppearance({ mode: "li
 void createDindbOS({ theme: { mode: "night" } });
 // @ts-expect-error App definitions must include their mount function.
 defineApp({ id: "missing-render" });
+
+// @ts-expect-error Unknown platform styles are rejected.
+void createDindbOS({ ui: { style: "linux" } });
+// @ts-expect-error Desktop presets cannot be used as mobile overrides.
+void createDindbOS({ ui: { mobileStyle: "windows" } });

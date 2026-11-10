@@ -141,6 +141,9 @@ assert(manager.activeWindowId === "two", "alt-tab shortcut did not cycle focus")
 manager.handleGlobalKeyDown({ ctrlKey: true, key: "m", preventDefault: () => {} });
 assert(manager.windows.get("two").minimized === true, "ctrl-m did not minimize active window");
 assert(manager.activeWindowId === "one", "minimizing active window did not focus the next visible window");
+assert(manager.appDockStates().one.active === true, "Dock must identify the focused app");
+assert(manager.appDockStates().two.active === false, "minimized apps cannot be active in the Dock");
+assert(manager.dockApps().find((entry) => entry.appId === "one").active === true, "transient Dock apps retain focused state");
 assert(manager.minimizedWindows().some((entry) => entry.id === "two"), "minimized windows did not expose dock entries");
 assert(manager.appDockStates().two.minimized === true, "minimized app did not expose yellow dock state");
 assert(manager.dockApps(new Set(["one"])).some((entry) => entry.id === "two" && entry.minimized), "unpinned minimized app did not expose a dock thumbnail");

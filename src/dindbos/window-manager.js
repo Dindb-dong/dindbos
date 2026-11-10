@@ -554,8 +554,9 @@ export class WindowManager {
     for (const task of this.windows.values()) {
       const appId = String(task.appId || "");
       if (!appId) continue;
-      const state = states[appId] || { running: false, minimized: false, visible: false };
+      const state = states[appId] || { running: false, minimized: false, visible: false, active: false };
       state.running = true;
+      state.active ||= task.id === this.activeWindowId && !task.minimized;
       state.minimized = state.minimized || Boolean(task.minimized);
       state.visible = state.visible || !task.minimized;
       states[appId] = state;
@@ -584,6 +585,7 @@ export class WindowManager {
       icon: task.icon || "app",
       minimized: Boolean(states[task.appId]?.minimized),
       running: Boolean(states[task.appId]?.running),
+      active: Boolean(states[task.appId]?.active),
     }));
   }
 
