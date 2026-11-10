@@ -48,6 +48,8 @@ The presets adapt browser UI and existing DindbOS actions. They do not emulate a
 
 The local demo defaults to automatic selection and accepts `?style=windows`, `?style=ios`, `?style=android`, or `?style=windows&mobileStyle=ios` for comparison. Mobile presets are designed for compact layouts; forcing one in a wide host is supported for consumer previews.
 
+To test visitor detection without changing your browser identity, use `?device=macos`, `?device=windows`, `?device=ios`, or `?device=android`. `?device=other` tests the unknown-platform fallback. This overrides the visitor identity while keeping automatic layout selection: resize the host to test desktop/compact rules or portrait/landscape mobile rules. Removing `device` restores detection; unknown query values are ignored. An explicit `style` still takes precedence. SDK hosts can use the equivalent `ui.visitorOS` option; it does not spoof browser APIs, permissions, touch input or browser-engine behavior.
+
 Mobile Files shows a compact current-path row. The parent-path and Locations controls open a host-contained sheet with ancestors, existing Favorites and other locations. Keyboard dismissal restores focus, navigation focuses the current folder, failed mounted-folder navigation keeps the original path, and the sheet does not block sibling hosts or protected prompts.
 
 ## Appearance

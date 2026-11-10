@@ -14,6 +14,7 @@ export function normalizeUIStyleOptions(value = {}) {
   if (value.mobileStyle !== undefined && !UI_STYLES.includes(value.mobileStyle)) {
     throw new TypeError("DindbOS ui.mobileStyle must be macos, windows, ios, or android");
   }
+  if (value.visitorOS !== undefined && (typeof value.visitorOS !== 'string' || !Object.hasOwn(DEFAULT_AUTO_STYLES, value.visitorOS))) throw new TypeError('DindbOS ui.visitorOS must be macos, windows, ios, android, or other');
   const overrides = value.autoStyles === undefined ? {} : value.autoStyles;
   if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) throw new TypeError('DindbOS ui.autoStyles must be a visitor OS map');
   const autoStyles = Object.fromEntries(Object.entries(DEFAULT_AUTO_STYLES).map(([os, pair]) => [os, { ...pair }]));
@@ -40,7 +41,7 @@ export function detectVisitorOS(navigator = globalThis.navigator) {
 export function resolveUIStyle(options = {}, width = 1024, height = 768, navigator = globalThis.navigator) {
   const style = options.style || 'auto';
   if (style !== 'auto') return width > 0 && width <= MOBILE_UI_WIDTH ? options.mobileStyle || style : style;
-  const visitor = detectVisitorOS(navigator);
+  const visitor = options.visitorOS || detectVisitorOS(navigator);
   const mobile = ['ios', 'android'].includes(visitor) ? width <= height : width > 0 && width <= MOBILE_UI_WIDTH;
   const mode = mobile ? 'mobile' : 'desktop';
   return (mobile && options.mobileStyle) || options.autoStyles?.[visitor]?.[mode] || DEFAULT_AUTO_STYLES[visitor][mode];

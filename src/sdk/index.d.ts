@@ -143,6 +143,8 @@ export type DindbOSVisitorOS = "macos" | "windows" | "ios" | "android" | "other"
 export interface DindbOSUIOptions {
   /** Defaults to auto; a named preset forces that UI at every host size. */
   style?: DindbOSUIStyle | "auto";
+  /** Override detected visitor identity for previews and deterministic host integration. */
+  visitorOS?: DindbOSVisitorOS;
   /** Override the compact shell; explicit presets use the 760px host breakpoint. */
   mobileStyle?: DindbOSUIStyle;
   /** Override any visitor OS pair. Phone/tablet portrait uses mobile, landscape desktop. */
@@ -295,3 +297,21 @@ export function conformanceReport(runtime?: Record<string, unknown>): Record<str
 export function isolationSnapshot(browser?: Record<string, unknown>): Record<string, unknown>;
 
 export function applyDindbOSTheme(os: DindbOS, theme?: DindbOSThemeConfig): void;
+
+/** String values must be unique within a selector. Import dindbos/styles.css. */
+export interface SearchableSelectOption {
+  value: string;
+  label: string;
+  searchText?: string;
+  /** Keep a navigation/reset choice visible while searching. */
+  pinned?: boolean;
+}
+export function renderSearchableSelect(options: { id: string; label: string; placeholder: string }): string;
+export function mountSearchableSelect(root: HTMLElement, options: {
+  options: SearchableSelectOption[];
+  value: string;
+  query?: string;
+  empty: string;
+  onSearch: (query: string, value: string) => void;
+  onSelect: (value: string) => void;
+}): { select(value: string): void; setValue(value: string): void; destroy(): void };

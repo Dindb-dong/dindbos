@@ -21,6 +21,35 @@ try {
   await page.locator('[data-qa-ready=true]').waitFor();
   const ids = await page.evaluate(() => window.platformAppsQA.appIds);
   assert.equal(ids.length, 16);
+  await page.evaluate(() => window.platformAppsQA.show('portfolio'));
+  const statusContrast = [];
+  for (const mode of ['light', 'dark']) {
+    await page.evaluate(mode => window.platformAppsQA.os.setAppearance({ mode, wallpaper: 'meadow' }), mode);
+    await expect(page.locator('#platform-apps-host')).toHaveAttribute('data-appearance', mode);
+    await expect(page.locator('.dos-menubar')).toHaveCSS('background-color', mode === 'dark' ? 'rgba(43, 43, 43, 0.9)' : 'rgba(247, 247, 247, 0.86)');
+    await expect(page.locator('.dos-menubar .dos-clock')).toHaveCSS('color', mode === 'dark' ? 'rgb(237, 237, 237)' : 'rgb(37, 37, 37)');
+    const colors = await page.locator('.dos-menubar').evaluate(bar => {
+      const color = element => getComputedStyle(element).color;
+      return { background: getComputedStyle(bar).backgroundColor, caption: color(bar.querySelector('.dos-active-app')), clock: color(bar.querySelector('.dos-clock')) };
+    });
+    const rgba = value => value.match(/[\d.]+/g).map(Number);
+    const background = rgba(colors.background);
+    const alpha = background[3] ?? 1;
+    assert(alpha >= .8, `${mode}: status bar must cover the wallpaper`);
+    const luminance = rgb => rgb.map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
+    for (const target of ['caption', 'clock']) {
+      const foreground = luminance(rgba(colors[target]).slice(0, 3));
+      for (const underlay of [0, 255]) {
+        const surface = luminance(background.slice(0, 3).map(channel => channel * alpha + underlay * (1 - alpha)));
+        const ratio = (Math.max(foreground, surface) + .05) / (Math.min(foreground, surface) + .05);
+        assert(ratio >= 4.5, `${mode}: ${target} contrast ${ratio.toFixed(2)} against wallpaper extreme ${underlay}`);
+      }
+    }
+    statusContrast.push({ mode, ...colors });
+    await page.locator('.dos-menubar').screenshot({ path: resolve(output, `statusbar-${mode}.png`) });
+  }
+  await writeFile(resolve(output, 'statusbar-contrast.json'), JSON.stringify(statusContrast, null, 2));
+  await page.evaluate(() => window.platformAppsQA.os.setAppearance({ mode: 'light' }));
   for (const id of ids) {
     await page.evaluate(id => window.platformAppsQA.show(id), id);
     const app = page.locator(`.dos-window[data-app-id="${id}"]`).last();

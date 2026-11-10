@@ -1,6 +1,6 @@
 @scope (.dindbos-host[data-ui-style='android']) to (.dindbos-host) {
   :scope { --font-ui: Roboto, "Segoe UI", sans-serif; --dock-size: 48px; }
-  :scope .dos-menubar { height: calc(48px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 16px 0; background: transparent; border: 0; color: white; backdrop-filter: none; }
+  :scope .dos-menubar { height: calc(48px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 16px 0; background: var(--chrome-bg); border: 0; color: var(--text); backdrop-filter: none; }
   :scope .dos-app-menus, :scope .dos-menu-status > .dos-status-button { display: none; }
   :scope .dos-shell:has(.dos-window.is-active:not([hidden]):not(.is-minimizing)) .dos-app-menus { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   :scope .dos-shell:has(.dos-window.is-active:not([hidden]):not(.is-minimizing)) .dos-menu-status { width: auto; flex: 0 0 auto; }

@@ -33,6 +33,14 @@ for (const [os, navigator] of Object.entries(visitors)) {
 assert.equal(detectVisitorOS({ platform: 'MacIntel', maxTouchPoints: 5, userAgent: 'Macintosh' }), 'ios', 'desktop-mode iPad');
 assert.equal(detectVisitorOS({ userAgentData: { platform: 'Windows' } }), 'windows');
 assert.equal(detectVisitorOS(null), 'other', 'SSR/unknown fallback');
+for (const [visitorOS, pair] of Object.entries(pairs)) {
+  const config = normalizeDindbOSHostConfig({ ui: { visitorOS } });
+  assert.equal(publicHostConfig(config).ui.visitorOS, visitorOS);
+  assert.equal(resolveUIStyle(config.ui, 390, 844, visitors.other), pair[1], 'preview identity overrides actual navigator');
+  assert.equal(resolveUIStyle(config.ui, 740, 390, visitors.other), ['ios', 'android'].includes(visitorOS) ? pair[0] : pair[1]);
+}
+assert.equal(resolveUIStyle({ style: 'windows', visitorOS: 'windows' }, 390, 844), 'windows', 'explicit style wins over preview identity');
+for (const visitorOS of ['linux', 'constructor', null, {}, [], ['ios'], new String('android'), { toString: () => 'ios' }]) assert.throws(() => normalizeDindbOSHostConfig({ ui: { visitorOS } }), /ui.visitorOS/);
 const customized = normalizeDindbOSHostConfig({ ui: { autoStyles: { macos: { desktop: 'macos' }, ios: { mobile: 'ios', desktop: 'android' } } } });
 assert.equal(resolveUIStyle(customized.ui, 1280, 900, visitors.macos), 'macos');
 assert.equal(resolveUIStyle(customized.ui, 390, 844, visitors.macos), 'android', 'partial rules retain defaults');

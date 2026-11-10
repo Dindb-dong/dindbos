@@ -33,6 +33,9 @@ defineApp({ id: "missing-render" });
 // @ts-expect-error Unknown platform styles are rejected.
 void createDindbOS({ ui: { style: "linux" } });
 void createDindbOS({ ui: { style: 'auto', mobileStyle: 'windows', autoStyles: { macos: { desktop: 'macos', mobile: 'ios' } } } });
+void createDindbOS({ ui: { visitorOS: 'android' } });
+// @ts-expect-error Preview identity must name a supported visitor OS.
+void createDindbOS({ ui: { visitorOS: 'linux' } });
 // @ts-expect-error Visitor mappings must name a supported visitor OS.
 void createDindbOS({ ui: { autoStyles: { linux: { desktop: 'macos' } } } });
 // @ts-expect-error Automatic rules cannot recursively select auto.

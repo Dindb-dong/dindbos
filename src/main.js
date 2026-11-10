@@ -6,6 +6,8 @@ import { demoFileSystem, portfolioData, removeLegacyWelcomeLaunchers } from "./d
 const h = React.createElement;
 const params = new URLSearchParams(window.location.search);
 const ui = { style: params.get("style") || "auto", ...(params.has("mobileStyle") ? { mobileStyle: params.get("mobileStyle") } : {}) };
+const device = params.get('device');
+if (['macos', 'windows', 'ios', 'android', 'other'].includes(device)) ui.visitorOS = device;
 const launch = params.get("qa") === "fresh" ? ["files"] : [];
 
 function Counter() {
