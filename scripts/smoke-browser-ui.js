@@ -8,7 +8,7 @@ const output = process.env.DINDBOS_QA_OUTPUT || 'internal/docs/qa/browser-refine
 const source = `
 import { createAndBootDindbOS } from '/src/sdk/index.js';
 import '/src/styles/index.css';
-window.__browserReady = createAndBootDindbOS({ root: document.getElementById('desktop'), storage:{backend:'memory',name:'browser-chrome-smoke'}, bootstrapPackages:false, builtins:{include:['browser']} }).then(os => {
+window.__browserReady = createAndBootDindbOS({ui:{style:'macos'}, root: document.getElementById('desktop'), storage:{backend:'memory',name:'browser-chrome-smoke'}, bootstrapPackages:false, builtins:{include:['browser']} }).then(os => {
   window.__browserOS = os;
   os.fs.createFile('/home/guest/Documents/first.html','/',{mime:'text/html',content:'<!doctype html><title>First document</title><h1>Local document one</h1><p>This document should get the space, not browser diagnostics.</p>'});
   os.fs.createFile('/home/guest/Documents/second.html','/',{mime:'text/html',content:'<!doctype html><title>Second document</title><h1>Local document two</h1>'});

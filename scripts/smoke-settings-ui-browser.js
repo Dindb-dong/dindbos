@@ -7,7 +7,7 @@ const source = `
 import {createAndBootDindbOS} from '/src/sdk/index.js';
 import '/src/styles/index.css';
 import '/src/styles/settings.css';
-window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'indexeddb',name:'settings-ui'},bootstrapPackages:false,builtins:{include:['settings','files']}}).then(os=>{window.__os=os;os.launch('settings',{section:'wallpaper'});return os;});`;
+window.__ready=createAndBootDindbOS({ui:{style:'macos'},root:document.getElementById('desktop'),storage:{backend:'indexeddb',name:'settings-ui'},bootstrapPackages:false,builtins:{include:['settings','files']}}).then(os=>{window.__os=os;os.launch('settings',{section:'wallpaper'});return os;});`;
 const server = await createServer({ configFile: false, logLevel: "error", optimizeDeps: { entries: [] }, plugins: [{ name: "settings-fixture", resolveId(id) { if (id === "/settings-fixture.js") return "\0settings-fixture"; }, load(id) { if (id === "\0settings-fixture") return source; }, configureServer(vite) { vite.middlewares.use(async (req, res, next) => { if (req.url?.split("?")[0] !== "/settings-fixture") return next(); res.setHeader("Content-Type", "text/html"); try { res.end(await vite.transformIndexHtml(req.url, '<!doctype html><body style="margin:0"><div id="desktop" style="height:100vh"></div><script type="module" src="/settings-fixture.js"></script>')); } catch (error) { next(error); } }); } }], server: { host: "127.0.0.1", port: 0, hmr: false, watch: null } });
 const output = process.env.DINDBOS_QA_OUTPUT || "internal/docs/qa/settings-navigation";
 let browser;

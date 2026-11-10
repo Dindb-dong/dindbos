@@ -3,12 +3,15 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, expect } from "@playwright/test";
 
+// This regression measures the original macOS shell, independently of host detection.
+const fixtureUrl = new URL(process.env.DINDBOS_QA_URL || "http://127.0.0.1:5174/");
+fixtureUrl.searchParams.set("style", "macos");
 const output = process.env.DINDBOS_QA_OUTPUT;
 if (output) await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}) });
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await page.goto(process.env.DINDBOS_QA_URL || "http://127.0.0.1:5174/");
+  await page.goto(fixtureUrl.href);
   await page.locator(".dos-menubar").waitFor();
   await page.locator(".dos-boot-screen").waitFor({ state: "detached" });
   const checkCompact = async () => {

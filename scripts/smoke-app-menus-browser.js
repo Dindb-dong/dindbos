@@ -7,7 +7,7 @@ const source = `
 import {createAndBootDindbOS} from '/src/sdk/index.js';
 import {demoFileSystem} from '/src/demo/portfolio-demo.js';
 import '/src/styles/index.css';
-window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'memory',name:'app-menu-fixture'},bootstrapPackages:false,fileSystem:demoFileSystem}).then(os=>{
+window.__ready=createAndBootDindbOS({ui:{style:'macos'},root:document.getElementById('desktop'),storage:{backend:'memory',name:'app-menu-fixture'},bootstrapPackages:false,fileSystem:demoFileSystem}).then(os=>{
  window.__os=os;
  os.registerApp({id:'host-menu',name:'Host Menu',menus:({content})=>({file:[{label:'Run Host Command',accelerator:'Mod+Shift+L',shortcut:'<img src=x onerror="window.__unsafe=true">',run:({os:appOS,content,window,context})=>{if(appOS===os)throw Error('raw kernel leaked');content.dataset.command=String(Number(content.dataset.command||0)+1);window.setTitle('Host command ran');}},{label:'Mutable Command',enabled:()=>!window.__commandDisabled,run:()=>{window.__mutableRan=true;}},{label:'Disabled Command',enabled:()=>false,run:()=>{window.__disabledRan=true;}}],view:[{label:'Throwing Enabled',enabled:()=>{throw Error('enabled failure');},run:()=>{}}]}),render:({content})=>{content.innerHTML='<textarea aria-label="Host text"></textarea>';}});
  os.registerApp({id:'bad-menu',name:'Bad Menu',menus:()=>{throw Error('factory failure');},render:({content})=>{content.textContent='Failure isolation';}});

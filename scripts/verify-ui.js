@@ -26,6 +26,8 @@ try {
     url = server.resolvedUrls.local[0];
   }
   await mkdir(output, { recursive: true });
+  // These original UI baselines explicitly select macOS inside their fixtures.
+  // Automatic/platform selection has its own platform regression suite.
   for (const [name, script] of [
     ["shell", "smoke-shell-browser.js"],
     ["control-center", "smoke-control-center-browser.js"],

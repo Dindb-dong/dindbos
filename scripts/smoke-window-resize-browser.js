@@ -6,7 +6,7 @@ import { createServer } from "vite";
 const source = `
 import {createAndBootDindbOS} from '/src/sdk/index.js';
 import '/src/styles/index.css';
-window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'memory'},bootstrapPackages:false,builtins:{include:[]}}).then(os=>{
+window.__ready=createAndBootDindbOS({ui:{style:'macos'},root:document.getElementById('desktop'),storage:{backend:'memory'},bootstrapPackages:false,builtins:{include:[]}}).then(os=>{
  window.__os=os;
  for(const id of ['background','foreground']) os.registerApp({id,singleton:true,width:id==='background'?1100:640,height:id==='background'?700:480,render:({content})=>{content.innerHTML='<button type="button" style="width:100%;height:100%">'+id+'</button>';}});
  os.launch('background');os.launch('foreground');return os;

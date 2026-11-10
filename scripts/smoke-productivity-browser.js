@@ -7,7 +7,7 @@ const source = `
 import {createAndBootDindbOS} from '/src/sdk/index.js';
 import '/src/styles/index.css';
 import '/src/styles/productivity.css';
-window.__ready = createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'memory',name:'productivity-ui'},bootstrapPackages:false,builtins:{include:['notes','reminders','calendar']}}).then(os=>window.__os=os);`;
+window.__ready = createAndBootDindbOS({ui:{style:'macos'},root:document.getElementById('desktop'),storage:{backend:'memory',name:'productivity-ui'},bootstrapPackages:false,builtins:{include:['notes','reminders','calendar']}}).then(os=>window.__os=os);`;
 const server = await createServer({ configFile: false, logLevel: "error", optimizeDeps: { entries: [] }, plugins: [{ name: "productivity-fixture", resolveId(id) { if (id === "/productivity-fixture.js") return "\0productivity-fixture"; }, load(id) { if (id === "\0productivity-fixture") return source; }, configureServer(vite) { vite.middlewares.use(async (req, res, next) => { if (req.url?.split("?")[0] !== "/productivity-fixture") return next(); res.setHeader("Content-Type", "text/html"); try { res.end(await vite.transformIndexHtml(req.url, '<!doctype html><body style="margin:0"><div id="desktop" style="height:100vh"></div><script type="module" src="/productivity-fixture.js"></script>')); } catch (error) { next(error); } }); } }], server: { host: "127.0.0.1", port: 0, hmr: false, watch: null } });
 const output = process.env.DINDBOS_QA_OUTPUT || "internal/docs/qa/productivity";
 let browser;

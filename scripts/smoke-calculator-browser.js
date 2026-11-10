@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { createServer } from 'vite';
-const source=`import {createAndBootDindbOS} from '/src/sdk/index.js';import '/src/styles/index.css';window.__os=await createAndBootDindbOS({root:document.getElementById('app'),storage:{backend:'memory'},bootstrapPackages:false,builtins:{include:['calculator']}});window.__os.launch('calculator');`;
+const source=`import {createAndBootDindbOS} from '/src/sdk/index.js';import '/src/styles/index.css';window.__os=await createAndBootDindbOS({ui:{style:'macos'},root:document.getElementById('app'),storage:{backend:'memory'},bootstrapPackages:false,builtins:{include:['calculator']}});window.__os.launch('calculator');`;
 const server=await createServer({configFile:false,logLevel:'error',optimizeDeps:{entries:[]},plugins:[{name:'calculator-fixture',resolveId(id){if(id==='/calculator-fixture.js')return '\0calculator';},load(id){if(id==='\0calculator')return source;},configureServer(vite){vite.middlewares.use(async(req,res,next)=>{if(req.url!=='/calculator-fixture')return next();res.setHeader('Content-Type','text/html');res.end(await vite.transformIndexHtml(req.url,'<!doctype html><html><body style="margin:0"><div id="app" style="height:100vh"></div><script type="module" src="/calculator-fixture.js"></script></body></html>'));});}}],server:{host:'127.0.0.1',port:0,hmr:false,watch:null}});
 let browser;
 try{

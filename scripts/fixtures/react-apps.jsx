@@ -29,7 +29,7 @@ function Fixture() {
     <button data-testid="change-app-id" onClick={() => setAppId("counter-renamed")}>Change app ID</button>
     <button data-testid="update-label" onClick={() => setLabel("After update")}>Update label</button>
     {mounted && <DindbOSDesktop style={{ width: 720, height: 540, position: "relative" }}
-      storage={storage} builtins={false} bootstrapPackages={false} bootScreen={false}
+      ui={{ style: "macos" }} storage={storage} builtins={false} bootstrapPackages={false} bootScreen={false}
       launch={[{ id: appId, context: { message: "launch context preserved" } }]}
       onReady={(os) => { window.__sdkFixture.os = os; window.__sdkFixture.ready += 1; }}
       onError={(error) => window.__sdkFixture.errors.push(error.stack || error.message)}>

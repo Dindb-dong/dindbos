@@ -8,7 +8,7 @@ import { createServer } from "vite";
 const source = `
 import { createAndBootDindbOS } from '/src/sdk/index.js';
 import '/src/styles/index.css';
-window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'memory',name:'files-tabs-smoke'},bootstrapPackages:false,builtins:{include:['files']}}).then(os=>{
+window.__ready=createAndBootDindbOS({ui:{style:'macos'},root:document.getElementById('desktop'),storage:{backend:'memory',name:'files-tabs-smoke'},bootstrapPackages:false,builtins:{include:['files']}}).then(os=>{
  window.__os=os;
  const windowApi=os.launch('files',{path:'/home/guest'});
  window.__sourceId=windowApi.id;

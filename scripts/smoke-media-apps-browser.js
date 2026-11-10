@@ -8,7 +8,7 @@ const output = process.env.DINDBOS_QA_OUTPUT || "internal/docs/qa/media-apps";
 const fixture = `
 import { createAndBootDindbOS } from '/src/sdk/index.js';
 import '/src/styles/index.css';
-window.__ready = createAndBootDindbOS({ root:document.querySelector('#desktop'), storage:{backend:'memory',name:'media-app-smoke'}, bootstrapPackages:false, builtins:{include:['photos','music']}}).then(os=>{ window.__os=os; os.launch('photos'); });`;
+window.__ready = createAndBootDindbOS({ui:{style:'macos'}, root:document.querySelector('#desktop'), storage:{backend:'memory',name:'media-app-smoke'}, bootstrapPackages:false, builtins:{include:['photos','music']}}).then(os=>{ window.__os=os; os.launch('photos'); });`;
 const server = await createServer({ configFile:false, logLevel:"error", optimizeDeps:{entries:[]}, plugins:[{
  name:"media-fixture", resolveId(id){ if(id==='/media-fixture.js') return '\0media-fixture'; }, load(id){if(id==='\0media-fixture')return fixture;},
  configureServer(vite){vite.middlewares.use(async(req,res,next)=>{if(req.url?.split('?')[0]!=='/media-fixture')return next();res.setHeader('Content-Type','text/html');try{res.end(await vite.transformIndexHtml(req.url,'<!doctype html><html><body style="margin:0"><div id="desktop" style="height:100vh"></div><script type="module" src="/media-fixture.js"></script></body></html>'));}catch(error){next(error);}});}

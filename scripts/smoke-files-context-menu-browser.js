@@ -8,7 +8,7 @@ import { createServer } from 'vite';
 const source = `
 import { createAndBootDindbOS } from '/src/sdk/index.js';
 import '/src/styles/index.css';
-window.__ready=createAndBootDindbOS({root:document.getElementById('desktop'),storage:{backend:'memory',name:'files-context-menu'},bootstrapPackages:false,builtins:{include:['files','text','viewer']}}).then(os=>{
+window.__ready=createAndBootDindbOS({ui:{style:'macos'},root:document.getElementById('desktop'),storage:{backend:'memory',name:'files-context-menu'},bootstrapPackages:false,builtins:{include:['files','text','viewer']}}).then(os=>{
  const base='/home/guest/Documents';
  os.fs.createFile(base+'/notes.txt','/',{content:'Context menu evidence',mime:'text/plain',owner:'guest',group:'guest'});
  os.fs.createDirectory(base+'/Projects','/',{owner:'guest',group:'guest'});
