@@ -15,7 +15,9 @@
 
 [Watch the actual desktop in motion](docs/assets/demo.webm) · [Dark appearance](docs/assets/desktop-dark.png) · [Mobile](docs/assets/mobile.png) · [Two embedded desktops](examples/embedded/README.md)
 
-A macOS-inspired desktop SDK for portfolios, interactive projects, and pages that deserve a different shape. Mount a desktop in one part of your site, register your components as apps, and replace its appearance without rewriting the runtime.
+A browser desktop SDK with macOS, Windows, iOS and Samsung-inspired Android presets for portfolios, interactive projects, and pages that deserve a different shape. Mount a desktop in one part of your site, register your components as apps, and replace its appearance without rewriting the runtime.
+
+The default automatically offers visitors an alternative OS and adapts to host size or mobile rotation. Override any visitor's desktop/mobile pair through `ui.autoStyles`, or force a preset with `ui.style`. See [platform customization](docs/customization.md#platform-shell).
 
 | You build | dindbOS handles |
 | --- | --- |

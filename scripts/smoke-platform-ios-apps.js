@@ -5,7 +5,7 @@ const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_P
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
   const base = process.env.DINDBOS_QA_URL || 'http://127.0.0.1:5186/';
-  await page.goto(new URL('scripts/fixtures/platform-apps.html?style=ios&width=390', base).href);
+  await page.goto(new URL('scripts/fixtures/platform-apps.html?style=windows&mobileStyle=ios&width=390', base).href);
   await page.waitForFunction(() => window.platformAppsQA);
   const show = id => page.evaluate(id => window.platformAppsQA.show(id), id);
   await show('notes');
@@ -38,7 +38,7 @@ try {
   await expect(settings.getByRole('button', { name: 'Back to Settings', exact: true })).toBeVisible();
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.locator('#platform-apps-host').evaluate(root => { root.style.width = '900px'; });
-  await expect(page.locator('#platform-apps-host')).toHaveAttribute('data-ui-style', 'macos');
+  await expect(page.locator('#platform-apps-host')).toHaveAttribute('data-ui-style', 'windows');
   await expect(page.locator('[data-mobile-app-back], [data-mobile-note-new]')).toHaveCount(0);
   assert.equal(await page.locator('[data-mobile-pane]').count(), 0);
   await expect(notes.locator('.notes-editor-toolbar .productivity-search')).toHaveCount(1);

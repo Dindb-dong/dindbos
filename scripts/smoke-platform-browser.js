@@ -11,7 +11,9 @@ const errors = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: "reduce" });
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto(url);
+  const demoURL = new URL(url);
+  demoURL.searchParams.set('style', 'macos');
+  await page.goto(demoURL.href);
   await page.locator('.dindbos-host[data-ui-style="macos"]').waitFor();
   await page.locator(".dos-boot-screen").waitFor({ state: "detached" });
   await page.evaluate(async () => {
@@ -78,7 +80,7 @@ try {
     assert.equal(await root.evaluate((element) => element.scrollWidth > element.clientWidth), false, `${width}: host has no horizontal overflow`);
   }
   await page.evaluate(() => window.platformMount({ style: "android" }, 1280));
-  await expect(root).toHaveAttribute("data-ui-style", "macos");
+  await expect(root).toHaveAttribute("data-ui-style", "android");
   await root.evaluate((element) => { element.style.width = "390px"; });
   await expect(root).toHaveAttribute("data-ui-style", "android");
   await page.evaluate(() => {
@@ -97,7 +99,7 @@ try {
   await page.evaluate(() => window.platformOS.destroy());
   await expect(root).not.toHaveAttribute("data-ui-style", /.+/);
   assert.deepEqual(errors, [], "no uncaught browser errors");
-  console.log("platform browser passed: four presets, real apps, preserved drafts, dark mode, embedded width, transitions, mobile-only fallback, cleanup");
+  console.log("platform browser passed: four presets, real apps, preserved drafts, dark mode, embedded width, transitions, explicit overrides, cleanup");
 } finally {
   await browser.close();
 }

@@ -81,7 +81,7 @@ export class DesktopShell {
   }
 
   updateStyle() {
-    const style = resolveUIStyle(this.styleOptions, this.root.clientWidth || 1024);
+    const style = resolveUIStyle(this.styleOptions, this.root.clientWidth || 1024, this.root.clientHeight || 768, this.root.ownerDocument?.defaultView?.navigator);
     if (this.currentStyle === style) return;
     this.closePanel(false);
     this.styleCleanup?.();

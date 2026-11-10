@@ -60,7 +60,7 @@ export function publicHostConfig(config = {}) {
       hasConformanceHook: typeof config.diagnostics?.onConformanceEvidence === "function",
     },
     theme: config.theme,
-    ui: { style: config.ui?.style || "macos", mobileStyle: config.ui?.mobileStyle, slots: Object.keys(config.ui?.slots || {}), liquidGlass: config.ui?.liquidGlass !== false },
+    ui: { style: config.ui?.style || "auto", mobileStyle: config.ui?.mobileStyle, autoStyles: normalizeUIStyleOptions(config.ui || {}).autoStyles, slots: Object.keys(config.ui?.slots || {}), liquidGlass: config.ui?.liquidGlass !== false },
   };
 }
 

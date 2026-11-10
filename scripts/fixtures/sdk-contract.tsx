@@ -32,5 +32,8 @@ defineApp({ id: "missing-render" });
 
 // @ts-expect-error Unknown platform styles are rejected.
 void createDindbOS({ ui: { style: "linux" } });
-// @ts-expect-error Desktop presets cannot be used as mobile overrides.
-void createDindbOS({ ui: { mobileStyle: "windows" } });
+void createDindbOS({ ui: { style: 'auto', mobileStyle: 'windows', autoStyles: { macos: { desktop: 'macos', mobile: 'ios' } } } });
+// @ts-expect-error Visitor mappings must name a supported visitor OS.
+void createDindbOS({ ui: { autoStyles: { linux: { desktop: 'macos' } } } });
+// @ts-expect-error Automatic rules cannot recursively select auto.
+void createDindbOS({ ui: { autoStyles: { ios: { mobile: 'auto' } } } });

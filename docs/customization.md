@@ -4,7 +4,35 @@ The host owns app content and appearance. The runtime owns execution, permission
 
 ## Platform shell
 
-Choose shell layout and navigation through `ui`, independently of the light/dark palette in `theme`:
+Choose shell layout and navigation through `ui`, independently of the light/dark palette in `theme`. The default `style: "auto"` shows visitors an alternative OS:
+
+| Visitor | Desktop / landscape | Compact / portrait |
+| --- | --- | --- |
+| macOS | Windows | Samsung-inspired Android |
+| Windows | macOS | iOS |
+| Android | macOS | iOS |
+| iOS / iPadOS | Windows | Samsung-inspired Android |
+| Unknown / other | macOS | macOS |
+
+For desktop visitors, compact means a host at most760 CSS pixels wide. For detected phones/tablets, portrait and landscape use the host's width/height, so a740×390 landscape host already selects its desktop UI. This responds to the embedded container, rather than assuming the surrounding page fills the screen. OS detection uses browser-reported platform/UA, including touch-enabled desktop-mode iPads; spoofed or restricted identifiers can be misclassified. No device permission or network request is needed.
+
+These are defaults, not restrictions. Override individual visitor rules; omitted entries retain their defaults:
+
+```js
+await mountDindbOSDesktop({
+  root,
+  ui: {
+    style: "auto",
+    autoStyles: {
+      macos: { desktop: "macos", mobile: "ios" },
+      ios: { desktop: "windows", mobile: "ios" },
+      other: { desktop: "windows", mobile: "android" },
+    },
+  },
+});
+```
+
+Use a named `style` to force a preset for every visitor and host size, or add `mobileStyle` for a fixed desktop/compact pair:
 
 ```jsx
 <DindbOSDesktop ui={{ style: "windows", mobileStyle: "ios" }} />
@@ -14,11 +42,13 @@ Choose shell layout and navigation through `ui`, independently of the light/dark
 await mountDindbOSDesktop({ root, ui: { style: "macos", mobileStyle: "android" } });
 ```
 
-`style` accepts `macos` (default), `windows`, `ios`, or `android`. iOS and Android apply only when the desktop host is at most 760 CSS pixels wide; on wider hosts they fall back to macOS. `mobileStyle` optionally selects iOS or Android for narrow hosts while keeping the selected desktop style on wider hosts. This uses the host container, including embedded desktops, rather than device detection. Resizing swaps shell controls while preserving running applications and files. Set these options when mounting; changing React props does not remount a running desktop.
+`style` accepts `auto` (default), `macos`, `windows`, `ios`, or `android`. `mobileStyle` accepts any named preset. With a fixed style it applies at the760px host breakpoint; with `auto` it overrides the selected visitor's compact/portrait rule. Explicit presets remain fixed across rotation unless a mobile override is supplied. Resizing swaps shell controls while preserving running applications, files and drafts. Set these options when mounting; changing React props does not remount a running desktop.
 
 The presets adapt browser UI and existing DindbOS actions. They do not emulate a native operating system. Custom `ui.slots` continue to own their slot content and may need styles appropriate to the chosen preset. See the official-source design notes for [Windows](platform-windows.md), [iOS](platform-ios.md), and [Samsung-inspired Android](platform-android.md).
 
-The local demo accepts `?style=windows`, `?style=ios`, `?style=android`, or `?style=windows&mobileStyle=ios` for comparison. Mobile styles require a narrow host.
+The local demo defaults to automatic selection and accepts `?style=windows`, `?style=ios`, `?style=android`, or `?style=windows&mobileStyle=ios` for comparison. Mobile presets are designed for compact layouts; forcing one in a wide host is supported for consumer previews.
+
+Mobile Files shows a compact current-path row. The parent-path and Locations controls open a host-contained sheet with ancestors, existing Favorites and other locations. Keyboard dismissal restores focus, navigation focuses the current folder, failed mounted-folder navigation keeps the original path, and the sheet does not block sibling hosts or protected prompts.
 
 ## Appearance
 

@@ -139,11 +139,14 @@ export interface DindbOSSlotContext {
 }
 export type DindbOSSlotRenderer = (context: DindbOSSlotContext) => void | (() => void);
 export type DindbOSUIStyle = "macos" | "windows" | "ios" | "android";
+export type DindbOSVisitorOS = "macos" | "windows" | "ios" | "android" | "other";
 export interface DindbOSUIOptions {
-  /** iOS and Android apply only to hosts at most 760 CSS pixels wide. */
-  style?: DindbOSUIStyle;
-  /** Override the shell on narrow hosts while retaining the desktop style. */
-  mobileStyle?: "ios" | "android";
+  /** Defaults to auto; a named preset forces that UI at every host size. */
+  style?: DindbOSUIStyle | "auto";
+  /** Override the compact shell; explicit presets use the 760px host breakpoint. */
+  mobileStyle?: DindbOSUIStyle;
+  /** Override any visitor OS pair. Phone/tablet portrait uses mobile, landscape desktop. */
+  autoStyles?: Partial<Record<DindbOSVisitorOS, Partial<Record<"desktop" | "mobile", DindbOSUIStyle>>>>;
   slots?: Partial<Record<"desktop" | "menubar" | "dock" | "windowChrome", DindbOSSlotRenderer>>;
   liquidGlass?: boolean | { strength?: number; blur?: number; maxSurfaces?: number };
 }

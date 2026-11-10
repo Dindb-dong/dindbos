@@ -5,7 +5,7 @@ const root = document.querySelector("#platform-apps-host");
 root.style.width = `${Number(params.get("width")) || 1280}px`;
 const os = await mountDindbOSDesktop({
   root,
-  ui: { style: params.get("style") || "macos" },
+  ui: { style: params.get("style") || "auto", ...(params.has('mobileStyle') ? { mobileStyle: params.get('mobileStyle') } : {}) },
   theme: { mode: "light" },
   storage: { backend: "memory", name: "platform-apps-evaluation" },
   serviceWorker: false,
