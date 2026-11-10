@@ -77,12 +77,26 @@ export function mountMobileAppNavigation(shell) {
     const frame = event.target.closest('.dos-window[data-app-id="settings"]');
     if (frame) frame.dataset.mobilePane = 'detail';
   };
+  const back = event => {
+    if (!owns(event.target) || shell.os.windows.hasVisibleTrustedSurface?.()) return;
+    const frame = event.target.closest('.dos-window[data-mobile-pane="detail"]');
+    if (!frame || !['notes', 'settings'].includes(frame.dataset.appId)) return;
+    showList(frame);
+    event.preventDefault();
+  };
+  const keydown = event => {
+    if (!owns(event.target) || shell.os.windows.hasVisibleTrustedSurface?.()) return;
+    const frame = event.target.closest('.dos-window[data-app-id="notes"]');
+    if (frame && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n') frame.dataset.mobilePane = 'detail';
+  };
   const Observer = document.defaultView.MutationObserver;
   const observer = new Observer(schedule);
   observer.observe(root, { childList: true, subtree: true });
   root.addEventListener('click', click, true);
   root.addEventListener('focusin', focus);
   root.addEventListener('dindbos:settings-navigate', navigate, true);
+  root.addEventListener('dindbos:back', back);
+  root.addEventListener('keydown', keydown, true);
   decorate();
   return () => {
     disposed = true;
@@ -90,6 +104,8 @@ export function mountMobileAppNavigation(shell) {
     root.removeEventListener('click', click, true);
     root.removeEventListener('focusin', focus);
     root.removeEventListener('dindbos:settings-navigate', navigate, true);
+    root.removeEventListener('dindbos:back', back);
+    root.removeEventListener('keydown', keydown, true);
     for (const [search, marker] of searches) {
       marker.replaceWith(search);
       delete search.dataset.mobileNoteSearch;

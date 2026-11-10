@@ -64,6 +64,7 @@ try {
           assert.equal(await root.evaluate((element) => element.scrollWidth > element.clientWidth + 1), false, "320px host does not overflow");
           const narrow = await frame.boundingBox();
           assert(narrow.x >= 0 && narrow.x + narrow.width <= 321 && narrow.y + narrow.height <= 741, "320px app remains inside its host");
+          if (style === 'android' && app === 'calendar') await assertCalendarEventsFit(frame);
           if (["settings", "notes", "calculator", "browser", "calendar"].includes(app)) {
             const path = `${style}-${app}-320.png`;
             await root.screenshot({ path: resolve(output, path) }); result.screenshots.push(path);
@@ -175,6 +176,7 @@ async function exerciseApp(page, root, frame, app, style) {
     await frame.getByRole("textbox", { name: "Event title", exact: true }).fill("Platform review");
     await frame.getByRole("button", { name: "Add Event", exact: true }).click();
     await expect(frame.getByText("Platform review", { exact: true }).first()).toBeVisible();
+    if (style === 'android') await assertCalendarEventsFit(frame);
   }
   if (app === "clock") {
     await frame.getByRole("tab", { name: "Stopwatch", exact: true }).click();
@@ -195,4 +197,13 @@ async function exerciseApp(page, root, frame, app, style) {
     await frame.getByRole("searchbox", { name: "Search songs", exact: true }).fill("");
     await expect(frame.locator('.music-player')).toBeVisible();
   }
+}
+
+async function assertCalendarEventsFit(frame) {
+  const clipped = await frame.locator('.calendar-cell-events em').evaluateAll(labels => labels.some(label => {
+    const cell = label.closest('button').getBoundingClientRect();
+    const rect = label.getBoundingClientRect();
+    return rect.top < cell.top || rect.bottom > cell.bottom + 1;
+  }));
+  assert.equal(clipped, false, 'calendar event labels fit vertically inside their date cells');
 }

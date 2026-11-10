@@ -136,7 +136,7 @@
   :scope .calendar-toolbar { padding: 8px 16px 16px; gap: 4px; }
   :scope .calendar-toolbar h1 { font-size: 26px; font-weight: 500; }
   :scope .calendar-toolbar > div > button:not(.productivity-icon-button) { min-height: 48px; }
-  :scope .calendar-month { min-height: 288px; grid-template-rows: repeat(6, 48px); }
+  :scope .calendar-month { min-height: 468px; grid-template-rows: repeat(6, minmax(78px, auto)); }
   :scope .calendar-month button { align-items: center; border: 0; padding: 2px; }
   :scope .calendar-month button > span { width: 32px; height: 32px; font-size: 15px; }
   :scope .calendar-month button[aria-pressed='true'] { border-radius: 18px; background: var(--oneui-soft); }
@@ -261,7 +261,9 @@
   :scope .portfolio-grid article :is(span, p) { font-size: 15px; }
 
   /* Shared pane state preserves the original editor and Settings handlers. */
-  :scope .dos-window[data-mobile-pane='list'] :is(.note-editor, .settings-detail) { display: none; }
+  :scope .dos-window[data-mobile-pane='list'] .settings-detail,
+  :scope .dos-window[data-mobile-pane='list'] .note-editor:not(:has([data-productivity-error]:not([hidden]))) { display: none; }
+  :scope .dos-window[data-mobile-pane='list']:has([data-productivity-error]:not([hidden])) .notes-sidebar { display: none; }
   :scope .dos-window[data-mobile-pane='detail'] :is(.notes-sidebar, .settings-sidebar) { display: none; }
   :scope .dos-window[data-mobile-pane='list'] :is(.notes-sidebar, .settings-sidebar) { flex: 1; max-height: none; overflow: auto; }
   :scope .dos-window[data-mobile-pane='list'] .notes-list { flex: 1; align-content: start; }
