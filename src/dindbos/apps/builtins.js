@@ -46,6 +46,12 @@ export function installBuiltinApps(os, options = {}) {
     set: (patch) => os.setAppearance?.(patch),
     subscribe: (listener) => os.bus?.on?.("appearance:change", listener) || (() => {}),
   };
+  const uiStyle = {
+    get: () => os.getUIStylePreference(),
+    set: (patch) => os.setUIStylePreference(patch),
+    subscribe: (listener) => os.bus.on("ui:preference-change", listener),
+    owns: (target) => target.closest(".dindbos-host") === os.root,
+  };
   const portfolioData = options.portfolioData || DEFAULT_PORTFOLIO_DATA;
   const includePortfolio = options.includePortfolio !== false;
   const userHome = os.session.home || "/home/guest";
@@ -215,7 +221,7 @@ export function installBuiltinApps(os, options = {}) {
       capabilities: ["process.read", "storage.read", "storage.manage", "package.read", "localMount.read", "localMount.manage", "service.read", "service.manage", "keychain.read", "browser.read"],
       fileSystem: { read: ["/etc", "/proc", userHome], write: [] },
     },
-    render: ({ content, os: runtime, context }) => renderSettings(runtime, content, appearance, context?.section || context?.settingsSection),
+    render: ({ content, os: runtime, context }) => renderSettings(runtime, content, appearance, context?.section || context?.settingsSection, uiStyle),
   });
   for (const [id, name, render, width, height, accepts] of [
     ["notes", "Notes", renderNotes, 840, 580],
@@ -4633,7 +4639,7 @@ const SETTINGS_SECTIONS = [
 
 const settingsCleanups = new WeakMap();
 
-function renderSettings(os, content, appearance = null, requestedSection) {
+function renderSettings(os, content, appearance = null, requestedSection, uiStyle) {
   let initialSection = requestedSection || content.querySelector(".settings-app")?.dataset.settingsActive || "appearance";
   let navigate = null;
   const onNavigate = (event) => {
@@ -4651,23 +4657,23 @@ function renderSettings(os, content, appearance = null, requestedSection) {
       <p class="settings-muted" role="status">Loading Settings…</p>
     </section>
   `;
-  renderSettingsContent(os, content, appearance, () => disposed, () => initialSection).then((rendered) => {
+  renderSettingsContent(os, content, appearance, () => disposed, () => initialSection, uiStyle).then((rendered) => {
     if (disposed) { rendered?.cleanup(); return; }
     navigate = rendered.select;
     const appearanceCleanup = appearance ? wireAppearanceControls(content, appearance) : () => {};
     const updateUI = () => {
-      const preference = os.getUIStylePreference();
+      const preference = uiStyle.get();
       for (const button of content.querySelectorAll("[data-ui-preference-mode]")) button.setAttribute("aria-pressed", String((preference[button.dataset.uiPreferenceMode] || "auto") === button.dataset.uiPreferenceStyle));
     };
     const onUI = (event) => {
       const button = event.target.closest("[data-ui-preference-mode]");
-      if (!button || !content.contains(button) || button.closest(".dindbos-host") !== os.root) return;
-      os.setUIStylePreference({ [button.dataset.uiPreferenceMode]: button.dataset.uiPreferenceStyle === "auto" ? null : button.dataset.uiPreferenceStyle });
+      if (!button || !content.contains(button) || !uiStyle.owns(button)) return;
+      uiStyle.set({ [button.dataset.uiPreferenceMode]: button.dataset.uiPreferenceStyle === "auto" ? null : button.dataset.uiPreferenceStyle });
       if (button.isConnected) button.focus({ preventScroll: true });
     };
     updateUI();
     content.addEventListener("click", onUI);
-    const unsubscribeUI = os.bus.on("ui:preference-change", updateUI);
+    const unsubscribeUI = uiStyle.subscribe(updateUI);
     unsubscribe = () => { appearanceCleanup(); unsubscribeUI(); content.removeEventListener("click", onUI); rendered.cleanup(); };
   }).catch((error) => {
     if (disposed) return;
@@ -4681,7 +4687,7 @@ function renderSettings(os, content, appearance = null, requestedSection) {
   return () => { settingsCleanups.get(content)?.(); settingsCleanups.delete(content); };
 }
 
-async function renderSettingsContent(os, content, appearance, isDisposed = () => false, initialSection = "appearance") {
+async function renderSettingsContent(os, content, appearance, isDisposed = () => false, initialSection = "appearance", uiStyle) {
   const snapshot = await settingsRuntimeSnapshot(os);
   if (isDisposed()) return;
   const sectionPrefix = content.dataset.settingsPrefix ||= `settings-${Math.random().toString(36).slice(2, 9)}`;
@@ -4771,7 +4777,7 @@ async function renderSettingsContent(os, content, appearance, isDisposed = () =>
           await os.resolveRemoteSyncConflict(button.dataset.conflictPath, { action: button.dataset.syncAction });
         }
       } finally {
-        renderSettings(os, content, appearance);
+        renderSettings(os, content, appearance, undefined, uiStyle);
       }
     });
   });
