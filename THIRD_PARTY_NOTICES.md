@@ -30,6 +30,10 @@ SOFTWARE.
 
 The world map in `src/dindbos/apps/clock-world-map.js` is derived from Natural Earth 1:110m land geometry, in the public domain. Source: https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_110m_land.geojson. Source SHA-256: `9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9`. Projection and simplification are performed before bundling; no map service is contacted at runtime.
 
+## wasmdoom
+
+The showcase Doom app runs the unmodified wasmdoom engine from [release v0.0.2](https://github.com/theMagicalKarp/wasmdoom/releases/tag/v0.0.2), built from [revision `3edb40afadefe6b2d2955e02fa83b74f1b89bc7f`](https://github.com/theMagicalKarp/wasmdoom/tree/3edb40afadefe6b2d2955e02fa83b74f1b89bc7f) and based on id Software's Linux Doom source. The demo serves the engine from `vendor/doom/wasmdoom.wasm` alongside its corresponding source (`wasmdoom-v0.0.2-source.tar.gz`) and license (`GPL-2.0.txt`). The engine SHA-256 is `caa3d9152830738325d0b0b2b1448c4cef25edeed1e3a5f979f6c7bbfada1683`. The demo user selects the game data separately.
+
 ## React, React DOM, and scheduler
 
 The standalone demo bundles React, React DOM, and scheduler. These packages share the following MIT license, reproduced from their distributed `LICENSE` files:
