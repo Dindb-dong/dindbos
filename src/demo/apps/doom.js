@@ -153,6 +153,12 @@ function DoomGame() {
 }
 
 export function DoomApp() {
-  return h(DindbOSApp, { id: "doom", name: "Doom", icon: "app", singleton: true, width: 650, height: 520 },
-    h(DoomGame));
+  return h(DindbOSApp, {
+    id: "doom",
+    name: "Doom",
+    icon: new URL("./doom.svg", import.meta.url).href,
+    singleton: true,
+    width: 650,
+    height: 520,
+  }, h(DoomGame));
 }
