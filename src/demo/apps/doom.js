@@ -157,6 +157,7 @@ export function DoomApp() {
     id: "doom",
     name: "Doom",
     icon: new URL("./doom.svg", import.meta.url).href,
+    desktop: true,
     singleton: true,
     width: 650,
     height: 520,

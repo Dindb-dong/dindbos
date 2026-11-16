@@ -15,6 +15,7 @@ export function NestedDesktopApp({ children }) {
     id: "nested-desktop",
     name: "Nested DindbOS",
     icon: new URL("./nested-desktop.svg", import.meta.url).href,
+    desktop: true,
     singleton: true,
     width: 960,
     height: 680,
