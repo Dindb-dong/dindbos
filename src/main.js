@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DindbOSDesktop, DindbOSApp, useDindbOSApp } from "./sdk/react.js";
 import { demoFileSystem, portfolioData, removeLegacyWelcomeLaunchers } from "./demo/portfolio-demo.js";
+import { DoomApp } from "./demo/apps/doom.js";
+import { NestedDesktopApp } from "./demo/apps/nested-desktop.js";
 
 const h = React.createElement;
 const params = new URLSearchParams(window.location.search);
@@ -39,5 +41,9 @@ createRoot(document.querySelector("#dindbos-root")).render(
     },
     serviceWorker: false,
     launch,
-  }, h(DindbOSApp, { id: "counter", name: "My App", icon: "app", pinned: true, desktop: true, singleton: true, width: 540, height: 440 }, h(Counter))),
+  },
+    h(DindbOSApp, { id: "counter", name: "My App", icon: "app", pinned: true, desktop: true, singleton: true, width: 540, height: 440 }, h(Counter)),
+    h(DoomApp),
+    h(NestedDesktopApp, null, h(DoomApp)),
+  ),
 );

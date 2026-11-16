@@ -719,6 +719,8 @@ export class WindowManager {
   }
 
   keepWindowsInViewport() {
+    // A minimized ancestor hides the host; there is no viewport to constrain against.
+    if (this.os.root?.getClientRects?.().length === 0) return;
     const viewport = this.viewport();
     this.windows.forEach((task) => {
       task.frame.style.setProperty?.("--window-workspace-bottom", `${viewport.bottomInset}px`);

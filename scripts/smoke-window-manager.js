@@ -681,6 +681,14 @@ async function runLiveWindowStateSmoke() {
     globalThis.window.dispatchTestEvent("keydown", { key: "w", ctrlKey: true, target: { inside: false }, preventDefault: () => { hostKeyPrevented = true; } });
     assert(!hostKeyPrevented && liveManager.has("embedded"), "desktop consumed a host-page shortcut");
     if (embedded.maximized) liveManager.maximize("embedded");
+    const visibleRoot = liveOs.root;
+    const geometry = { ...embedded.frame.style };
+    liveOs.root = { clientWidth: 0, clientHeight: 0, getClientRects: () => [] };
+    liveManager.keepWindowsInViewport();
+    assert(embedded.frame.style.width === geometry.width && embedded.frame.style.height === geometry.height &&
+      embedded.frame.style.left === geometry.left && embedded.frame.style.top === geometry.top,
+    "hiding an embedded desktop must preserve its window geometry");
+    liveOs.root = visibleRoot;
     embedded.titlebar.listeners.pointerdown({ pointerId: 91, button: 0, clientX: 340, clientY: 280, target: { closest: () => null }, preventDefault() {}, stopPropagation() {} });
     assert(embedded.titlebar.capturedPointerIds.has(91), "embedded drag did not begin");
     embedded.api.setBeforeClose(() => false);
